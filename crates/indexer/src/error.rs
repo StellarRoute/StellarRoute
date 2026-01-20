@@ -10,6 +10,9 @@ pub enum IndexerError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
+    #[error("Network error: {0}")]
+    Network(String),
+
     #[error("Stellar API error: {0}")]
     StellarApi(String),
 

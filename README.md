@@ -124,8 +124,8 @@ StellarRoute is built with a modular architecture consisting of several key comp
 
 ## 📊 Current Status & Contribution Opportunities
 
-**Phase**: M1 - Phase 1.2 (SDEX Indexer Development)  
-**Status**: 🔄 **In Active Development** | **Actively seeking contributors**
+**Phase**: M1 - Phase 1.3 (Database Layer)  
+**Status**: 🔄 **Ready to Begin** | **Actively seeking contributors**
 
 ### Why Contribute to StellarRoute?
 
@@ -143,16 +143,17 @@ StellarRoute is built with a modular architecture consisting of several key comp
 - ✅ CI/CD pipeline with GitHub Actions
 - ✅ Comprehensive documentation structure
 
-**Phase 1.2 Implementation (In Progress):**
+**Phase 1.2 Complete (✅ 100%):**
 - ✅ Database schema created (`migrations/0001_init.sql`)
 - ✅ Stellar Horizon API client implemented
-- ✅ Data models for Assets and Offers
+- ✅ Data models for Assets and Offers with validation
 - ✅ Database connection pooling with sqlx
-- ✅ SDEX indexer service with polling loop
+- ✅ SDEX indexer service with dual modes (polling & streaming)
 - ✅ Main indexer binary created
-- 🔄 Retry logic (basic error handling done)
-- 🔄 Real-time streaming support (polling implemented, streaming next)
-- 🔄 Orderbook snapshot endpoint (pending verification)
+- ✅ Retry logic with exponential backoff (3 retries, 100ms-5s)
+- ✅ Real-time streaming support (polling-based, SSE-ready)
+- ✅ Orderbook snapshot endpoint (`/order_book`)
+- ✅ Comprehensive data validation
 
 ### 🔥 Active Development Areas (Help Wanted!)
 

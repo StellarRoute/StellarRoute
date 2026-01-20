@@ -8,21 +8,48 @@ use crate::error::{IndexerError, Result};
 use crate::horizon::HorizonClient;
 use crate::models::{asset::Asset, horizon::HorizonOffer, offer::Offer};
 
+/// Indexing mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexingMode {
+    /// Poll for offers at regular intervals
+    Polling,
+    /// Stream offers in real-time (SSE)
+    Streaming,
+}
+
 /// SDEX orderbook indexer
 pub struct SdexIndexer {
     horizon: HorizonClient,
     db: Database,
+    mode: IndexingMode,
 }
 
 impl SdexIndexer {
-    /// Create a new SDEX indexer
+    /// Create a new SDEX indexer with polling mode
     pub fn new(horizon: HorizonClient, db: Database) -> Self {
-        Self { horizon, db }
+        Self {
+            horizon,
+            db,
+            mode: IndexingMode::Polling,
+        }
+    }
+
+    /// Create a new SDEX indexer with specified mode
+    pub fn with_mode(horizon: HorizonClient, db: Database, mode: IndexingMode) -> Self {
+        Self { horizon, db, mode }
     }
 
     /// Start indexing offers from Horizon
     pub async fn start_indexing(&self) -> Result<()> {
-        info!("Starting SDEX offer indexing");
+        match self.mode {
+            IndexingMode::Polling => self.start_polling().await,
+            IndexingMode::Streaming => self.start_streaming().await,
+        }
+    }
+
+    /// Start polling mode indexing
+    async fn start_polling(&self) -> Result<()> {
+        info!("Starting SDEX offer indexing (polling mode)");
 
         loop {
             match self.index_offers().await {
@@ -38,6 +65,50 @@ impl SdexIndexer {
             // Poll every 5 seconds
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
+    }
+
+    /// Start streaming mode indexing
+    async fn start_streaming(&self) -> Result<()> {
+        use futures::StreamExt;
+
+        info!("Starting SDEX offer indexing (streaming mode)");
+
+        let stream = self.horizon.stream_offers().await?;
+        futures::pin_mut!(stream);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(horizon_offer) => {
+                    // Convert to our Offer model
+                    match Offer::try_from(horizon_offer) {
+                        Ok(offer) => {
+                            // Index the offer
+                            let pool = self.db.pool();
+                            if let Err(e) = self.upsert_asset(pool, &offer.selling).await {
+                                warn!("Failed to upsert selling asset: {}", e);
+                            }
+                            if let Err(e) = self.upsert_asset(pool, &offer.buying).await {
+                                warn!("Failed to upsert buying asset: {}", e);
+                            }
+                            if let Err(e) = self.upsert_offer(pool, &offer).await {
+                                warn!("Failed to upsert offer {}: {}", offer.id, e);
+                            } else {
+                                debug!("Indexed offer {} via streaming", offer.id);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse streamed offer: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Stream error: {}", e);
+                }
+            }
+        }
+
+        warn!("Offer stream ended unexpectedly");
+        Ok(())
     }
 
     /// Index offers from Horizon API

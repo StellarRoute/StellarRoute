@@ -20,6 +20,59 @@ pub struct Offer {
     pub last_modified_time: Option<DateTime<Utc>>,
 }
 
+impl Offer {
+    /// Validate offer data
+    pub fn validate(&self) -> Result<()> {
+        // Validate seller address (basic check - should be 56 chars starting with G)
+        if !self.seller.starts_with('G') || self.seller.len() != 56 {
+            return Err(IndexerError::StellarApi(format!(
+                "Invalid seller address: {}",
+                self.seller
+            )));
+        }
+
+        // Validate amount is positive
+        let amount_f64: f64 = self
+            .amount
+            .parse()
+            .map_err(|_| IndexerError::StellarApi(format!("Invalid amount: {}", self.amount)))?;
+        if amount_f64 <= 0.0 {
+            return Err(IndexerError::StellarApi(format!(
+                "Amount must be positive: {}",
+                self.amount
+            )));
+        }
+
+        // Validate price is positive
+        let price_f64: f64 = self
+            .price
+            .parse()
+            .map_err(|_| IndexerError::StellarApi(format!("Invalid price: {}", self.price)))?;
+        if price_f64 <= 0.0 {
+            return Err(IndexerError::StellarApi(format!(
+                "Price must be positive: {}",
+                self.price
+            )));
+        }
+
+        // Validate price ratio
+        if self.price_d == 0 {
+            return Err(IndexerError::StellarApi(
+                "Price denominator cannot be zero".to_string(),
+            ));
+        }
+
+        // Validate that selling and buying assets are different
+        if self.selling == self.buying {
+            return Err(IndexerError::StellarApi(
+                "Selling and buying assets must be different".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 impl TryFrom<HorizonOffer> for Offer {
     type Error = IndexerError;
 
@@ -45,7 +98,7 @@ impl TryFrom<HorizonOffer> for Offer {
             .map(|r| r.d as i32)
             .unwrap_or(1);
 
-        Ok(Offer {
+        let offer = Offer {
             id,
             seller: horizon_offer.seller,
             selling,
@@ -56,7 +109,11 @@ impl TryFrom<HorizonOffer> for Offer {
             price: horizon_offer.price,
             last_modified_ledger: horizon_offer.last_modified_ledger as u64,
             last_modified_time: None, // Horizon doesn't provide this directly
-        })
+        };
+
+        // Validate the offer before returning
+        offer.validate()?;
+        Ok(offer)
     }
 }
 

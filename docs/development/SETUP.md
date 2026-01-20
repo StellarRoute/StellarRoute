@@ -25,14 +25,28 @@ rustup target add wasm32-unknown-unknown
 
 ### 3. Install Soroban CLI
 
-Follow the instructions on [Stellar Developer Docs](https://developers.stellar.org/docs/tools/sdks/cli) to install Soroban CLI.
-
-For macOS:
+**Option 1: Install via Cargo (Recommended)**
 ```bash
-brew install stellar/soroban/soroban
+cargo install --locked soroban-cli
 ```
 
-For other platforms, check the official documentation.
+**Option 2: Install via Official Installer Script**
+```bash
+# For macOS/Linux
+curl -sSfL https://github.com/stellar/soroban-tools/releases/latest/download/soroban-install.sh | sh
+```
+
+**Option 3: Manual Binary Download**
+1. Visit [Soroban Tools Releases](https://github.com/stellar/soroban-tools/releases)
+2. Download the appropriate binary for your platform
+3. Extract and add to your PATH
+
+**Verify Installation:**
+```bash
+soroban --version
+```
+
+**Note:** The Homebrew tap `stellar/soroban/soroban` is not currently available. Use one of the methods above instead.
 
 ### 4. Clone the Repository
 

@@ -59,7 +59,10 @@ StellarRoute/
 ```
 
 ### Issues Encountered
-- None yet
+1. **Homebrew Soroban Installation Failed**
+   - Error: `brew install stellar/soroban/soroban` failed with "Repository not found"
+   - Root Cause: Homebrew tap doesn't exist
+   - Resolution: Updated documentation with alternative installation methods (cargo install, installer script, manual binary)
 
 ### Notes
 - Following planning-with-files approach

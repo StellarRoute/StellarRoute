@@ -7,9 +7,14 @@
 ## Stellar/Soroban Research
 
 ### Stellar Horizon API
-- **Status:** Need to research
-- **Notes:** Need to investigate endpoints for SDEX orderbook data
-- **Links:** TBD
+- **Status:** In progress
+- **Notes:** We confirmed the Offers resource page and endpoints via Stellar Docs snapshot.
+- **Confirmed endpoints (Horizon):**
+  - `GET /offers`
+  - `GET /offers/:offer_id`
+  - `GET /offers/:offer_id/trades`
+  - Source: Stellar Docs “Offers” resource page (snapshot captured in-session)
+- **Orderbook endpoint:** Still needs confirmation from Stellar Docs (search page wasn’t returning the actual endpoint page in our browser session).
 
 ### Soroban Development
 - **Status:** Need to research
@@ -60,6 +65,16 @@
 2. What are the existing Soroban AMM contract interfaces?
 3. What are the best practices for indexing Stellar orderbooks in real-time?
 
+## Phase 1.2 (SDEX Indexer) Notes
+
+### What we can implement immediately
+- Use `reqwest` directly (no confirmed “official” Rust Horizon SDK yet) and model Horizon JSON responses with `serde`.
+- Start indexing from `GET /offers` (confirmed), persist normalized offers to Postgres.
+- Add an ingestion cursor/state table so we can later switch to paging/streaming safely.
+
+### Pending confirmations
+- Exact orderbook snapshot endpoint and query params (commonly `/order_book?...`) — must confirm from Stellar Horizon docs before implementing the final orderbook snapshot fetcher.
+
 ## Environment Setup Notes
 
 ### Rust Installation
@@ -67,6 +82,16 @@
 - **Resolution:** Need manual Rust installation or verify network connectivity
 - **Manual Installation Command:** `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **After Installation:** Run `rustup target add wasm32-unknown-unknown` for Soroban support
+
+### Soroban CLI Installation
+- **Issue:** Homebrew tap `brew install stellar/soroban/soroban` fails with "Repository not found" error
+- **Error:** `fatal: repository 'https://github.com/stellar/homebrew-soroban/' not found`
+- **Root Cause:** The Homebrew tap repository doesn't exist or has been moved
+- **Resolution:** Use alternative installation methods:
+  1. **Via Cargo:** `cargo install --locked soroban-cli` (recommended)
+  2. **Via Installer Script:** `curl -sSfL https://github.com/stellar/soroban-tools/releases/latest/download/soroban-install.sh | sh`
+  3. **Manual Binary:** Download from [Soroban Tools Releases](https://github.com/stellar/soroban-tools/releases)
+- **Status:** Updated SETUP.md with correct installation instructions
 
 ---
 

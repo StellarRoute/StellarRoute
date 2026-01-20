@@ -22,6 +22,8 @@ chrono.workspace = true
 uuid.workspace = true
 config.workspace = true
 
+futures = "0.3"
+
 # Stellar SDK (TBD - need to find correct package)
 # stellar-sdk = "?"
 

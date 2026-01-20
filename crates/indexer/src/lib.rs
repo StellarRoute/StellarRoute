@@ -3,12 +3,18 @@
 //! This crate provides the indexing service for SDEX orderbooks and Soroban AMM pools.
 
 pub mod error;
+pub mod config;
+pub mod db;
+pub mod horizon;
+pub mod models;
+
+// Legacy placeholders (kept for now; will be replaced as Phase 1.2 progresses)
 pub mod sdex;
 pub mod soroban;
 
 /// Indexer service
 pub struct Indexer {
-    // TODO: Implement indexer state
+    // TODO: implement long-running orchestration (polling + eventual streaming)
 }
 
 impl Indexer {

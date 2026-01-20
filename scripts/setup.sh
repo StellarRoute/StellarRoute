@@ -18,6 +18,15 @@ fi
 echo "📦 Installing WASM target..."
 rustup target add wasm32-unknown-unknown
 
+# Check Soroban CLI installation
+if ! command -v soroban &> /dev/null; then
+    echo "⚠️  Soroban CLI is not installed."
+    echo "   Install it with: cargo install --locked soroban-cli"
+    echo "   Or visit: https://github.com/stellar/soroban-tools/releases"
+else
+    echo "✅ Soroban CLI is installed: $(soroban --version 2>&1 | head -n 1)"
+fi
+
 # Check Docker installation
 if ! command -v docker &> /dev/null; then
     echo "⚠️  Docker is not installed. Please install Docker to run local services."

@@ -47,6 +47,7 @@ Build Phase 1.1 foundation for StellarRoute: Set up development environment, pro
 | Error | Attempt | Resolution |
 |-------|---------|------------|
 | SSL connection error during Rust installation | 1 | Documented manual installation process in docs/development/SETUP.md |
+| Homebrew tap `stellar/soroban/soroban` not found | 1 | Updated SETUP.md with alternative installation methods (cargo install, installer script, manual binary) |
 
 ---
 

@@ -1,7 +1,7 @@
-"use client"
+'use client';
 
-import Link from "next/link"
-import { ModeToggle } from "@/components/mode-toggle"
+import Link from 'next/link';
+import { ModeToggle } from '@/components/mode-toggle';
 
 export function Header() {
   return (
@@ -19,5 +19,5 @@ export function Header() {
         </div>
       </div>
     </header>
-  )
+  );
 }

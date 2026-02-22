@@ -73,16 +73,16 @@ impl HorizonClient {
                 Err(e) => {
                     attempt += 1;
 
-                    // Check if error is retryable
-                    let is_retryable = match &e {
-                        IndexerError::Network(_) => true,
-                        IndexerError::StellarApi(msg) if msg.contains("rate limit") => true,
-                        IndexerError::StellarApi(msg) if msg.contains("timeout") => true,
-                        _ => false,
-                    };
-
-                    if !is_retryable || attempt >= self.retry_config.max_retries {
-                        warn!("Request failed after {} attempts: {}", attempt, e);
+                    if !e.is_retryable() || attempt >= self.retry_config.max_retries {
+                        match e.log_level() {
+                            tracing::Level::ERROR => {
+                                tracing::error!("Request failed after {} attempts: {}", attempt, e)
+                            }
+                            tracing::Level::WARN => {
+                                tracing::warn!("Request failed after {} attempts: {}", attempt, e)
+                            }
+                            _ => tracing::info!("Request failed after {} attempts: {}", attempt, e),
+                        }
                         return Err(e);
                     }
 
@@ -93,7 +93,6 @@ impl HorizonClient {
 
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
-                    // Exponential backoff
                     delay_ms = ((delay_ms as f64) * self.retry_config.backoff_multiplier) as u64;
                     delay_ms = delay_ms.min(self.retry_config.max_delay_ms);
                 }
@@ -133,18 +132,19 @@ impl HorizonClient {
 
         self.retry_request(|| async {
             debug!("Fetching offers from: {}", url_clone);
-            let resp = client
-                .get(&url_clone)
-                .send()
-                .await
-                .map_err(|e| IndexerError::Network(e.to_string()))?
-                .error_for_status()
-                .map_err(|e| IndexerError::StellarApi(e.to_string()))?;
+            let resp = client.get(&url_clone).send().await?;
 
-            let page: HorizonPage<HorizonOffer> = resp
-                .json()
-                .await
-                .map_err(|e| IndexerError::Network(e.to_string()))?;
+            let status = resp.status();
+            if !status.is_success() {
+                let error_body = resp.text().await.unwrap_or_default();
+                return Err(IndexerError::StellarApi {
+                    endpoint: url_clone.clone(),
+                    status: status.as_u16(),
+                    message: error_body,
+                });
+            }
+
+            let page: HorizonPage<HorizonOffer> = resp.json().await?;
             Ok(page.embedded.records)
         })
         .await
@@ -185,18 +185,19 @@ impl HorizonClient {
 
         self.retry_request(|| async {
             debug!("Fetching orderbook from: {}", url_clone);
-            let resp = client
-                .get(&url_clone)
-                .send()
-                .await
-                .map_err(|e| IndexerError::Network(e.to_string()))?
-                .error_for_status()
-                .map_err(|e| IndexerError::StellarApi(e.to_string()))?;
+            let resp = client.get(&url_clone).send().await?;
 
-            let orderbook: serde_json::Value = resp
-                .json()
-                .await
-                .map_err(|e| IndexerError::Network(e.to_string()))?;
+            let status = resp.status();
+            if !status.is_success() {
+                let error_body = resp.text().await.unwrap_or_default();
+                return Err(IndexerError::StellarApi {
+                    endpoint: url_clone.clone(),
+                    status: status.as_u16(),
+                    message: error_body,
+                });
+            }
+
+            let orderbook: serde_json::Value = resp.json().await?;
             Ok(orderbook)
         })
         .await
@@ -249,13 +250,13 @@ impl HorizonClient {
 
     /// Convert the Horizon asset JSON into our typed `Asset`.
     pub fn parse_asset(&self, v: &serde_json::Value) -> Result<crate::models::asset::Asset> {
-        // Horizon uses objects like:
-        // { "asset_type":"native" } OR
-        // { "asset_type":"credit_alphanum4","asset_code":"USDC","asset_issuer":"G..." }
         let asset_type = v
             .get("asset_type")
             .and_then(|x| x.as_str())
-            .ok_or_else(|| IndexerError::StellarApi("missing asset_type".to_string()))?;
+            .ok_or_else(|| IndexerError::MissingField {
+                field: "asset_type".to_string(),
+                context: "Horizon API asset response".to_string(),
+            })?;
 
         match asset_type {
             "native" => Ok(crate::models::asset::Asset::Native),
@@ -263,29 +264,44 @@ impl HorizonClient {
                 asset_code: v
                     .get("asset_code")
                     .and_then(|x| x.as_str())
-                    .ok_or_else(|| IndexerError::StellarApi("missing asset_code".to_string()))?
+                    .ok_or_else(|| IndexerError::MissingField {
+                        field: "asset_code".to_string(),
+                        context: "credit_alphanum4 asset".to_string(),
+                    })?
                     .to_string(),
                 asset_issuer: v
                     .get("asset_issuer")
                     .and_then(|x| x.as_str())
-                    .ok_or_else(|| IndexerError::StellarApi("missing asset_issuer".to_string()))?
+                    .ok_or_else(|| IndexerError::MissingField {
+                        field: "asset_issuer".to_string(),
+                        context: "credit_alphanum4 asset".to_string(),
+                    })?
                     .to_string(),
             }),
             "credit_alphanum12" => Ok(crate::models::asset::Asset::CreditAlphanum12 {
                 asset_code: v
                     .get("asset_code")
                     .and_then(|x| x.as_str())
-                    .ok_or_else(|| IndexerError::StellarApi("missing asset_code".to_string()))?
+                    .ok_or_else(|| IndexerError::MissingField {
+                        field: "asset_code".to_string(),
+                        context: "credit_alphanum12 asset".to_string(),
+                    })?
                     .to_string(),
                 asset_issuer: v
                     .get("asset_issuer")
                     .and_then(|x| x.as_str())
-                    .ok_or_else(|| IndexerError::StellarApi("missing asset_issuer".to_string()))?
+                    .ok_or_else(|| IndexerError::MissingField {
+                        field: "asset_issuer".to_string(),
+                        context: "credit_alphanum12 asset".to_string(),
+                    })?
                     .to_string(),
             }),
-            other => Err(IndexerError::StellarApi(format!(
-                "unknown asset_type: {other}"
-            ))),
+            other => Err(IndexerError::InvalidAsset {
+                asset: other.to_string(),
+                reason:
+                    "Unknown asset type, expected: native, credit_alphanum4, or credit_alphanum12"
+                        .to_string(),
+            }),
         }
     }
 }

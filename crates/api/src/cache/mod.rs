@@ -57,7 +57,7 @@ impl CacheManager {
         })?;
 
         self.client
-            .set_ex::<_, _, ()>(key, json, ttl.as_secs() as u64)
+            .set_ex::<_, _, ()>(key, json, ttl.as_secs())
             .await?;
 
         debug!("Cached key: {} with TTL: {:?}", key, ttl);

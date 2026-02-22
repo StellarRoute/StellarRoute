@@ -107,10 +107,8 @@ impl ArchivalManager {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
-
-    // Note: These tests require a running database
-    // They are marked as ignored and can be run with --ignored flag
 
     #[tokio::test]
     #[ignore]

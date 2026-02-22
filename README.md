@@ -18,6 +18,7 @@ StellarRoute is a comprehensive DEX aggregation platform built for the Stellar e
 ### The Problem We're Solving
 
 Stellar users currently face:
+
 - **Fragmented liquidity** between SDEX and Soroban AMM pools
 - **No unified price discovery** across different trading venues
 - **Suboptimal trade execution** due to lack of intelligent routing
@@ -39,6 +40,7 @@ StellarRoute addresses these challenges by building open-source infrastructure t
 ## ✨ Key Features
 
 ### Core Capabilities
+
 - ✅ **Best Price Discovery**: Automatically find the best execution price across all liquidity sources
 - ✅ **Multi-Hop Routing**: Support for complex multi-step trades (e.g., XLM → USDC → BTC)
 - ✅ **Price Impact Analysis**: Real-time calculation of price impact and slippage
@@ -46,12 +48,14 @@ StellarRoute addresses these challenges by building open-source infrastructure t
 - ✅ **Developer-Friendly**: Comprehensive SDKs and APIs for easy integration
 
 ### For Traders
+
 - Execute swaps at the best available prices
 - Visualize trade routes and price impact before execution
 - Access deep liquidity across multiple sources
 - Set custom slippage tolerance
 
 ### For Developers
+
 - REST API for price quotes and orderbook data
 - WebSocket support for real-time updates
 - JavaScript/TypeScript SDK for web applications
@@ -62,33 +66,41 @@ StellarRoute addresses these challenges by building open-source infrastructure t
 
 ## 🏗️ Architecture
 
-StellarRoute is built with a modular architecture consisting of several key components:
+StellarRoute is built with a modular architecture consisting of several key components. See our [comprehensive architecture diagrams](docs/architecture/diagrams.md) for detailed visualizations.
 
-### Backend Components (Rust)
+### High-Level Overview
+
+```mermaid
+graph TB
+    subgraph "StellarRoute Platform"
+        Indexer[Indexer Service<br/>Syncs SDEX + AMM Data]
+        Router[Routing Engine<br/>Pathfinding]
+        API[API Server<br/>REST + WebSocket]
+        Contracts[Smart Contracts<br/>Soroban]
+    end
+
+    subgraph "Data Layer"
+        DB[(PostgreSQL)]
+        Cache[(Redis)]
+    end
+
+    Stellar[Stellar Network<br/>Horizon + Soroban] --> Indexer
+    Indexer --> DB
+    Router --> DB
+    API --> Cache
+    API --> Router
+    WebUI[Web UI] --> API
+    SDKs[TypeScript/Rust SDKs] --> API
+    Contracts --> Stellar
+
+    style Indexer fill:#e1f5ff
+    style Router fill:#e1f5ff
+    style API fill:#e1f5ff
+    style DB fill:#fff4e1
+    style Cache fill:#ffe1e1
 ```
-┌─────────────────────────────────────────────────────┐
-│                   StellarRoute                      │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐ │
-│  │   Indexer    │  │   Routing    │  │   API    │ │
-│  │   Service    │─▶│   Engine     │─▶│  Server  │ │
-│  └──────────────┘  └──────────────┘  └──────────┘ │
-│         │                                  │        │
-│         ▼                                  ▼        │
-│  ┌──────────────┐                   ┌──────────┐  │
-│  │  PostgreSQL  │                   │  Redis   │  │
-│  │   Database   │                   │  Cache   │  │
-│  └──────────────┘                   └──────────┘  │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-         ▲                                    │
-         │                                    │
-    ┌────┴────┐                          ┌───▼────┐
-    │ Stellar │                          │  Web   │
-    │ Network │                          │   UI   │
-    └─────────┘                          └────────┘
-```
+
+### Core Components
 
 1. **Indexer Service**: Syncs SDEX orderbooks and Soroban AMM pool states from Stellar Horizon API
 2. **Routing Engine**: Pathfinding algorithms for optimal multi-hop route discovery
@@ -97,11 +109,14 @@ StellarRoute is built with a modular architecture consisting of several key comp
 5. **Frontend UI**: React-based web interface for traders
 6. **SDKs**: TypeScript and Rust libraries for developers
 
+📊 **[View Detailed Architecture Diagrams →](docs/architecture/diagrams.md)**
+
 ---
 
 ## 🛠️ Technology Stack
 
 ### Backend
+
 - **Language**: Rust (for performance and safety)
 - **Framework**: Axum/Actix-web (API server)
 - **Database**: PostgreSQL (orderbook storage)
@@ -109,6 +124,7 @@ StellarRoute is built with a modular architecture consisting of several key comp
 - **Blockchain**: Soroban (smart contracts)
 
 ### Frontend
+
 - **Framework**: React/Next.js
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS + shadcn/ui
@@ -116,6 +132,7 @@ StellarRoute is built with a modular architecture consisting of several key comp
 - **Wallet Integration**: Freighter, XBull
 
 ### Infrastructure
+
 - **CI/CD**: GitHub Actions
 - **Containerization**: Docker & Docker Compose
 - **Monitoring**: Prometheus/Grafana (planned)
@@ -140,12 +157,14 @@ StellarRoute is built with a modular architecture consisting of several key comp
 ### ✅ Recent Progress (Phase 1.2)
 
 **Phase 1.1 Complete:**
+
 - ✅ Rust workspace structure (5 modular crates)
 - ✅ Docker Compose setup for local development
 - ✅ CI/CD pipeline with GitHub Actions
 - ✅ Comprehensive documentation structure
 
 **Phase 1.2 Complete (✅ 100%):**
+
 - ✅ Database schema created (`migrations/0001_init.sql`)
 - ✅ Stellar Horizon API client implemented
 - ✅ Data models for Assets and Offers with validation
@@ -158,6 +177,7 @@ StellarRoute is built with a modular architecture consisting of several key comp
 - ✅ Comprehensive data validation
 
 **Phase 1.3 Complete (✅ 100%):**
+
 - ✅ Performance indexes (11 strategic indexes for common queries)
 - ✅ Data archival system (30-day retention, SQL functions)
 - ✅ Database health monitoring (metrics, pool stats, table sizes)
@@ -165,6 +185,7 @@ StellarRoute is built with a modular architecture consisting of several key comp
 - ✅ HealthMonitor & ArchivalManager Rust modules
 
 **Phase 1.4 Complete (✅ 100%):**
+
 - ✅ Axum-based REST API framework
 - ✅ Core endpoints (pairs, orderbook, quote, health)
 - ✅ Request/response models with validation
@@ -174,6 +195,7 @@ StellarRoute is built with a modular architecture consisting of several key comp
 - ✅ Comprehensive error handling
 
 **Phase 1.5 Complete (✅ 100%):**
+
 - ✅ Redis caching layer (optional, graceful fallback)
 - ✅ Smart TTLs: pairs (10s), orderbook (5s), quotes (2s)
 - ✅ Gzip response compression (tower-http)
@@ -189,14 +211,14 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    - Implement real-time streaming (SSE from Horizon)
    - Verify and implement orderbook snapshot endpoint
    - Add comprehensive unit tests
-   - *Skills: Rust, API integration, Error handling*
+   - _Skills: Rust, API integration, Error handling_
 
 2. **Database Optimization** 💾
    - Query performance tuning and indexes
    - Add database health monitoring
    - Implement data archival strategy
    - Schema optimization based on query patterns
-   - *Skills: PostgreSQL, SQL, Performance tuning*
+   - _Skills: PostgreSQL, SQL, Performance tuning_
 
 3. **API Development** 🔌
    - Implement REST API server (Axum/Actix)
@@ -204,14 +226,14 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    - Add `/api/v1/orderbook/{base}/{quote}` endpoint
    - Add `/api/v1/quote` endpoint
    - WebSocket support for real-time updates
-   - *Skills: Rust (Axum/Actix), REST APIs, WebSocket*
+   - _Skills: Rust (Axum/Actix), REST APIs, WebSocket_
 
 4. **Testing & Documentation** ✅
    - Unit tests for indexer, models, and database layer
    - Integration tests with test database
    - API documentation (OpenAPI/Swagger)
    - Code examples and tutorials
-   - *Skills: Testing, Technical writing*
+   - _Skills: Testing, Technical writing_
 
 5. **Infrastructure & Monitoring** ⚡
    - Add structured logging with tracing crate
@@ -219,9 +241,10 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    - Set up metrics collection
    - Redis caching layer
    - Rate limiting middleware
-   - *Skills: Observability, Redis, Performance*
+   - _Skills: Observability, Redis, Performance_
 
 ### 📋 Next Immediate Tasks
+
 1. Test indexer with local Postgres database
 2. Add retry logic for transient Horizon API failures
 3. Implement Horizon streaming (SSE) for real-time updates
@@ -237,6 +260,7 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
 ## 🚦 Getting Started
 
 ### Prerequisites
+
 - Rust 1.75+ (installation instructions in [SETUP.md](docs/development/SETUP.md))
 - Soroban CLI
 - Docker & Docker Compose
@@ -248,6 +272,7 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
 #### Backend Setup
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/yourusername/StellarRoute.git
    cd StellarRoute
@@ -257,11 +282,13 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    Follow the detailed instructions in [docs/development/SETUP.md](docs/development/SETUP.md)
 
 3. **Start local services**
+
    ```bash
    docker-compose up -d
    ```
 
 4. **Build the project**
+
    ```bash
    cargo build
    ```

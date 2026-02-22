@@ -14,7 +14,9 @@ use crate::{
 
 /// List all available trading pairs
 ///
-/// Returns a list of trading pairs with offer counts
+/// Returns a list of trading pairs with active offers in the orderbook.
+/// Each pair exposes human-readable `base`/`counter` codes alongside
+/// canonical Stellar asset identifiers (`base_asset`/`counter_asset`).
 #[utoipa::path(
     get,
     path = "/api/v1/pairs",
@@ -37,7 +39,8 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
         }
     }
 
-    // Query distinct trading pairs from the database
+    // Query distinct trading pairs that have active offers in the orderbook.
+    // Results are ranked by offer depth so the most liquid pairs appear first.
     let rows = sqlx::query(
         r#"
         select
@@ -69,7 +72,9 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
         let selling_type: String = row.get("selling_type");
         let buying_type: String = row.get("buying_type");
 
-        let base_asset = if selling_type == "native" {
+        // Build AssetInfo helpers so we can derive both display names and
+        // canonical identifiers from a single source of truth.
+        let base_info = if selling_type == "native" {
             AssetInfo::native()
         } else {
             AssetInfo::credit(
@@ -79,7 +84,7 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
             )
         };
 
-        let quote_asset = if buying_type == "native" {
+        let counter_info = if buying_type == "native" {
             AssetInfo::native()
         } else {
             AssetInfo::credit(
@@ -93,8 +98,10 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
         let last_updated: Option<chrono::DateTime<chrono::Utc>> = row.get("last_updated");
 
         pairs.push(TradingPair {
-            base_asset,
-            quote_asset,
+            base: base_info.display_name(),
+            counter: counter_info.display_name(),
+            base_asset: base_info.to_canonical(),
+            counter_asset: counter_info.to_canonical(),
             offer_count,
             last_updated: last_updated.map(|dt| dt.to_rfc3339()),
         });
@@ -107,7 +114,7 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
         pairs,
     };
 
-    // Cache the response (TTL: 10 seconds)
+    // Cache the response for 10 s to keep latency well under the 100 ms SLA.
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
             let _ = cache

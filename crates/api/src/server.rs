@@ -6,13 +6,18 @@ use std::{net::SocketAddr, sync::Arc};
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
+    trace::TraceLayer,
 };
 use tracing::{info, warn};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    cache::CacheManager, docs::ApiDoc, error::Result, middleware::RateLimitLayer, routes,
+    cache::CacheManager,
+    docs::ApiDoc,
+    error::Result,
+    middleware::{EndpointConfig, RateLimitLayer},
+    routes,
     state::AppState,
 };
 
@@ -53,29 +58,58 @@ impl Server {
     /// Create a new API server
     pub async fn new(config: ServerConfig, db: PgPool) -> Self {
         // Try to connect to Redis if URL is provided
-        let state = if let Some(redis_url) = &config.redis_url {
+        let (state, rate_limit_layer) = if let Some(redis_url) = &config.redis_url {
             match CacheManager::new(redis_url).await {
                 Ok(cache) => {
                     info!("✅ Redis cache connected");
-                    Arc::new(AppState::with_cache(db, cache))
+
+                    // Build rate limit layer backed by the same Redis connection
+                    let rate_limit = match redis::Client::open(redis_url.as_str()) {
+                        Ok(client) => match redis::aio::ConnectionManager::new(client).await {
+                            Ok(conn) => {
+                                info!("✅ Rate limiter using Redis backend");
+                                RateLimitLayer::with_redis(conn, EndpointConfig::default())
+                            }
+                            Err(e) => {
+                                warn!("⚠️  Redis rate limiter connection failed ({}), using in-memory fallback", e);
+                                RateLimitLayer::in_memory(EndpointConfig::default())
+                            }
+                        },
+                        Err(e) => {
+                            warn!("⚠️  Redis client error ({}), using in-memory fallback", e);
+                            RateLimitLayer::in_memory(EndpointConfig::default())
+                        }
+                    };
+
+                    (Arc::new(AppState::with_cache(db, cache)), rate_limit)
                 }
                 Err(e) => {
                     warn!("⚠️  Redis connection failed, running without cache: {}", e);
-                    Arc::new(AppState::new(db))
+                    (
+                        Arc::new(AppState::new(db)),
+                        RateLimitLayer::in_memory(EndpointConfig::default()),
+                    )
                 }
             }
         } else {
             info!("ℹ️  Running without Redis cache");
-            Arc::new(AppState::new(db))
+            (
+                Arc::new(AppState::new(db)),
+                RateLimitLayer::in_memory(EndpointConfig::default()),
+            )
         };
 
-        let app = Self::build_app(state, &config);
+        let app = Self::build_app(state, &config, rate_limit_layer);
 
         Self { config, app }
     }
 
     /// Build the application router
-    fn build_app(state: Arc<AppState>, config: &ServerConfig) -> Router {
+    fn build_app(
+        state: Arc<AppState>,
+        config: &ServerConfig,
+        rate_limit: RateLimitLayer,
+    ) -> Router {
         let mut app = routes::create_router(state);
 
         // Add Swagger UI for API documentation
@@ -98,9 +132,11 @@ impl Server {
             app = app.layer(cors);
         }
 
-        // Add rate limiting
-        let rate_limit = RateLimitLayer::default();
+        // Add rate limiting (innermost — runs before CORS/compression in the response path)
         app = app.layer(rate_limit);
+
+        // Add request logging (method, URI, status code, latency)
+        app = app.layer(TraceLayer::new_for_http());
 
         app
     }
@@ -125,7 +161,12 @@ impl Server {
         Ok(())
     }
 
-    /// Get router for testing
+    /// Consume the server and return the router (for integration testing)
+    pub fn into_router(self) -> Router {
+        self.app
+    }
+
+    /// Get router for testing (crate-internal)
     #[cfg(test)]
     pub fn router(self) -> Router {
         self.app

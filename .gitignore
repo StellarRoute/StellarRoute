@@ -57,3 +57,8 @@ progress.md
 .claude/skills/planning-with-files/scripts/init-session.sh
 
 GITHUB_ISSUES.md
+
+.agent/
+.agents/
+
+issue.md

@@ -18,7 +18,10 @@ impl Database {
 
         let pool = PgPool::connect(&config.database_url).await.map_err(|e| {
             error!("Failed to connect to database: {}", e);
-            IndexerError::Database(e)
+            IndexerError::DatabaseConnection(format!(
+                "Failed to connect to {}: {}",
+                config.database_url, e
+            ))
         })?;
 
         info!("Database connection established");
@@ -45,7 +48,7 @@ impl Database {
             .await
             .map_err(|e| {
                 error!("Migration 0001 failed: {}", e);
-                IndexerError::Database(e)
+                IndexerError::DatabaseMigration(format!("Failed to run 0001_init.sql: {}", e))
             })?;
 
         info!("Running migration 0002_performance_indexes.sql");
@@ -54,7 +57,10 @@ impl Database {
             .await
             .map_err(|e| {
                 error!("Migration 0002 failed: {}", e);
-                IndexerError::Database(e)
+                IndexerError::DatabaseMigration(format!(
+                    "Failed to run 0002_performance_indexes.sql: {}",
+                    e
+                ))
             })?;
 
         info!("Database migrations completed");
@@ -76,7 +82,7 @@ impl Database {
         sqlx::query("SELECT 1")
             .execute(&self.pool)
             .await
-            .map_err(IndexerError::Database)?;
+            .map_err(IndexerError::DatabaseQuery)?;
         Ok(())
     }
 }

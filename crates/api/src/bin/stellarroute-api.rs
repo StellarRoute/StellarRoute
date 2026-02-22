@@ -3,7 +3,6 @@
 use sqlx::PgPool;
 use stellarroute_api::{Server, ServerConfig};
 use tracing::{error, info};
-use tracing_subscriber;
 
 #[tokio::main]
 async fn main() {

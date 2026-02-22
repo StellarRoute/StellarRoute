@@ -1,12 +1,12 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HorizonPriceR {
     pub n: i64,
     pub d: i64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HorizonOffer {
     pub id: String,
     pub paging_token: Option<String>,
@@ -22,23 +22,23 @@ pub struct HorizonOffer {
     pub last_modified_ledger: i64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HorizonEmbedded<T> {
     pub records: Vec<T>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HorizonLinks {
     #[serde(rename = "next")]
     pub next: Option<HorizonLink>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HorizonLink {
     pub href: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HorizonPage<T> {
     #[serde(rename = "_embedded")]
     pub embedded: HorizonEmbedded<T>,

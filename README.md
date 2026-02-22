@@ -245,6 +245,8 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
 
 ### Quick Start
 
+#### Backend Setup
+
 1. **Clone the repository**
    ```bash
    git clone https://github.com/yourusername/StellarRoute.git
@@ -268,6 +270,26 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    ```bash
    cargo test
    ```
+
+#### Frontend Setup
+
+1. **Navigate to frontend directory**
+   ```bash
+   cd frontend
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open browser**
+   Navigate to `http://localhost:3000`
 
 For detailed setup instructions, see the [Development Setup Guide](docs/development/SETUP.md).
 

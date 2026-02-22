@@ -111,7 +111,11 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
             let _ = cache
-                .set(&cache::keys::pairs_list(), &response, Duration::from_secs(10))
+                .set(
+                    &cache::keys::pairs_list(),
+                    &response,
+                    Duration::from_secs(10),
+                )
                 .await;
         }
     }

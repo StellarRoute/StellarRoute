@@ -12,11 +12,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    cache::CacheManager,
-    docs::ApiDoc,
-    error::Result,
-    middleware::RateLimitLayer,
-    routes,
+    cache::CacheManager, docs::ApiDoc, error::Result, middleware::RateLimitLayer, routes,
     state::AppState,
 };
 

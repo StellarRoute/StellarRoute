@@ -16,7 +16,7 @@ impl CacheManager {
     pub async fn new(redis_url: &str) -> Result<Self, RedisError> {
         let client = redis::Client::open(redis_url)?;
         let conn = ConnectionManager::new(client).await?;
-        
+
         debug!("Redis cache manager initialized");
         Ok(Self { client: conn })
     }
@@ -73,7 +73,10 @@ impl CacheManager {
 
     /// Check if cache is healthy
     pub async fn is_healthy(&mut self) -> bool {
-        self.client.get::<_, Option<String>>("_health").await.is_ok()
+        self.client
+            .get::<_, Option<String>>("_health")
+            .await
+            .is_ok()
     }
 }
 
@@ -102,13 +105,7 @@ mod tests {
     #[test]
     fn test_cache_keys() {
         assert_eq!(keys::pairs_list(), "pairs:list");
-        assert_eq!(
-            keys::orderbook("XLM", "USDC"),
-            "orderbook:XLM:USDC"
-        );
-        assert_eq!(
-            keys::quote("XLM", "USDC", "100"),
-            "quote:XLM:USDC:100"
-        );
+        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:XLM:USDC");
+        assert_eq!(keys::quote("XLM", "USDC", "100"), "quote:XLM:USDC:100");
     }
 }

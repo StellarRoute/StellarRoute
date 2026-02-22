@@ -42,8 +42,9 @@ pub async fn get_orderbook(
     // Try to get from cache first
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
-            if let Some(cached) =
-                cache.get::<OrderbookResponse>(&cache::keys::orderbook(&base, &quote)).await
+            if let Some(cached) = cache
+                .get::<OrderbookResponse>(&cache::keys::orderbook(&base, &quote))
+                .await
             {
                 debug!("Returning cached orderbook for {}/{}", base, quote);
                 return Ok(Json(cached));
@@ -92,7 +93,11 @@ pub async fn get_orderbook(
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
             let _ = cache
-                .set(&cache::keys::orderbook(&base, &quote), &response, Duration::from_secs(5))
+                .set(
+                    &cache::keys::orderbook(&base, &quote),
+                    &response,
+                    Duration::from_secs(5),
+                )
                 .await;
         }
     }

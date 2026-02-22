@@ -72,8 +72,9 @@ pub async fn get_quote(
     let amount_str = format!("{:.7}", amount);
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
-            if let Some(cached) =
-                cache.get::<QuoteResponse>(&cache::keys::quote(&base, &quote, &amount_str)).await
+            if let Some(cached) = cache
+                .get::<QuoteResponse>(&cache::keys::quote(&base, &quote, &amount_str))
+                .await
             {
                 debug!("Returning cached quote for {}/{}", base, quote);
                 return Ok(Json(cached));
@@ -108,7 +109,11 @@ pub async fn get_quote(
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
             let _ = cache
-                .set(&cache::keys::quote(&base, &quote, &amount_str), &response, Duration::from_secs(2))
+                .set(
+                    &cache::keys::quote(&base, &quote, &amount_str),
+                    &response,
+                    Duration::from_secs(2),
+                )
                 .await;
         }
     }

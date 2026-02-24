@@ -35,6 +35,22 @@ services:
     networks:
       - stellarroute-network
 
+  # Uncomment to run frontend in Docker
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: stellarroute-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   networks:
+  #     - stellarroute-network
+
 volumes:
   postgres_data:
   redis_data:

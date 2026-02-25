@@ -33,9 +33,8 @@ export default function RootLayout({
       >
         <Providers>
           <AppShell>
-          <Header />
-          <main className="flex-1">{children}</AppShell>
-        </main>
+            <main className="flex-1">{children}</main>
+          </AppShell>
         </Providers>
         <Toaster position="top-right" richColors />
       </body>

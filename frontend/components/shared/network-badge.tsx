@@ -14,7 +14,7 @@ export function NetworkBadge() {
   return (
     <Badge
       variant={network === "mainnet" ? "default" : "secondary"}
-      className="hidden sm:inline-flex"
+      className="inline-flex"
       aria-label={`Network: ${network}`}
     >
       {network === "mainnet" ? "Mainnet" : "Testnet"}

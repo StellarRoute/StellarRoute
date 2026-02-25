@@ -10,9 +10,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { WalletButton } from "@/components/shared/wallet-button"
-import { ThemeToggle } from "@/components/shared/theme-toggle"
 import { NetworkBadge } from "@/components/shared/network-badge"
 import { cn } from "@/lib/utils"
+import { ThemeToggle } from "../ThemeToggle"
 
 interface NavItem {
   label: string

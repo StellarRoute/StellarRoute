@@ -3,7 +3,6 @@
 import { ReactNode } from 'react';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
 
-import { ThemeProvider } from '@/components/providers/theme-provider';
 import { WalletProvider } from '@/components/providers/wallet-provider';
 
 interface ProvidersProps {
@@ -18,13 +17,9 @@ export function Providers({ children, defaultTheme = 'dark' }: ProvidersProps) {
       defaultTheme={defaultTheme}
       enableSystem
       disableTransitionOnChange
-    >
+    > <WalletProvider defaultNetwork="testnet">
       {children}
+      </WalletProvider>
     </NextThemesProvider>
   );
 }
-//  <ThemeProvider defaultTheme="system" storageKey="stellarroute-theme">
-//       <WalletProvider defaultNetwork="testnet">
-//         {children}
-//       </WalletProvider>
-//     </ThemeProvider>

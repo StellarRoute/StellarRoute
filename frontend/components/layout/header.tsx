@@ -7,10 +7,10 @@ import { Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { WalletButton } from "@/components/shared/wallet-button"
-import { ThemeToggle } from "@/components/shared/theme-toggle"
 import { NetworkBadge } from "@/components/shared/network-badge"
 import { MobileNav } from "./mobile-nav"
 import { cn } from "@/lib/utils"
+import { ThemeToggle } from "../ThemeToggle"
 
 interface NavItem {
   label: string
@@ -21,6 +21,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Swap", href: "/" },
   { label: "Orderbook", href: "/orderbook" },
+  { label: "History", href: "/history" },
   // Future routes - disabled for now
   // { label: "Analytics", href: "/analytics", disabled: true },
   // { label: "Docs", href: "/docs", disabled: true },
@@ -84,8 +85,10 @@ export function Header() {
 
         {/* Right Side Actions */}
         <div className="flex items-center gap-2">
-          <NetworkBadge />
-          <ThemeToggle />
+          <div className="max-sm:hidden">
+            <NetworkBadge />
+            <ThemeToggle />
+          </div>
           <div className="hidden md:block">
             <WalletButton />
           </div>

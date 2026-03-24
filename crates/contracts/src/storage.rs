@@ -31,6 +31,28 @@ pub enum StorageKey {
     TotalFeesCollected(Asset),
     TotalFeesBurned(Asset),
     DistributionHistory(Asset),
+    // ── Governance and upgrade keys ──────────────────────────────────────────
+    IsMultiSig,
+    Governance,
+    Guardian,
+    ProposalCounter,
+    ProposalEntry(u64),
+    ContractVersionKey,
+    PendingUpgradeKey,
+    VersionHistory(u64),
+    MigrationDone(u32, u32, u32),
+    // ── Token + MEV keys ─────────────────────────────────────────────────────
+    AllowedToken(Asset),
+    TokenCount,
+    MevConfig,
+}
+
+#[derive(Clone, Debug)]
+pub struct InstanceConfig {
+    pub admin: Address,
+    pub fee_rate: u32,
+    pub fee_to: Option<Address>,
+    pub paused: bool,
 }
 
 // ── TTL Constants (in ledger sequences, ~5s per ledger) ──────────────────
@@ -153,6 +175,24 @@ pub fn is_supported_pool(e: &Env, pool: Address) -> bool {
     e.storage()
         .persistent()
         .has(&StorageKey::SupportedPool(pool))
+}
+
+pub fn batch_check_pools(e: &Env, pools: &Vec<Address>) -> bool {
+    for i in 0..pools.len() {
+        if !is_supported_pool(e, pools.get(i).unwrap()) {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn get_instance_config(e: &Env) -> InstanceConfig {
+    InstanceConfig {
+        admin: get_admin(e),
+        fee_rate: get_fee_rate(e),
+        fee_to: get_fee_to_optional(e),
+        paused: get_paused(e),
+    }
 }
 
 /// Get the list of all registered pool addresses (for TTL enumeration).

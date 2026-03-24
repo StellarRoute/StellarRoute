@@ -468,10 +468,100 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000003"
               },
               {
-                "symbol": "extend_storage_ttl"
+                "symbol": "validate"
               }
             ],
-            "data": "void"
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "estimated_output"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 990
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "expires_at"
+                  },
+                  "val": {
+                    "u64": 99999
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "hops"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "destination"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "symbol": "Native"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "pool"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "pool_type"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "symbol": "AmmConstProd"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "source"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "symbol": "Native"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "min_output"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 900
+                    }
+                  }
+                }
+              ]
+            }
           }
         }
       },
@@ -489,13 +579,16 @@
                 "symbol": "StellarRoute"
               },
               {
-                "symbol": "ttl_ext"
+                "symbol": "rt_val"
               }
             ],
             "data": {
               "vec": [
                 {
                   "u32": 1
+                },
+                {
+                  "u64": 99999
                 },
                 {
                   "u32": 0
@@ -519,7 +612,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "extend_storage_ttl"
+                "symbol": "validate"
               }
             ],
             "data": "void"

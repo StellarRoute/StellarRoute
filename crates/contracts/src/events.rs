@@ -45,6 +45,55 @@ pub fn swap_executed(
     );
 }
 
+pub fn route_validated(e: &Env, hop_count: u32, expires_at: u64) {
+    let topics = (Symbol::new(e, "StellarRoute"), symbol_short!("rt_val"));
+    e.events()
+        .publish(topics, (hop_count, expires_at, e.ledger().sequence()));
+}
+
+pub fn quote_generated(
+    e: &Env,
+    amount_in: i128,
+    expected_output: i128,
+    fee_amount: i128,
+    price_impact_bps: u32,
+    hop_count: u32,
+    valid_until: u64,
+) {
+    let topics = (Symbol::new(e, "StellarRoute"), symbol_short!("quote"));
+    e.events().publish(
+        topics,
+        (
+            amount_in,
+            expected_output,
+            fee_amount,
+            price_impact_bps,
+            hop_count,
+            valid_until,
+            e.ledger().sequence(),
+        ),
+    );
+}
+
+pub fn execution_requested(e: &Env, sender: Address, amount_in: i128, hop_count: u32, deadline: u64) {
+    let topics = (
+        Symbol::new(e, "StellarRoute"),
+        symbol_short!("exe_req"),
+        sender,
+    );
+    e.events()
+        .publish(topics, (amount_in, hop_count, deadline, e.ledger().sequence()));
+}
+
+pub fn execution_failed(e: &Env, sender: Address, error_code: u32) {
+    let topics = (
+        Symbol::new(e, "StellarRoute"),
+        symbol_short!("exe_fail"),
+        sender,
+    );
+    e.events().publish(topics, (error_code, e.ledger().sequence()));
+}
+
 // ─── Multi-sig governance events ─────────────────────────────────────────────
 
 pub fn governance_migrated(e: &Env, old_admin: Address, signer_count: u32, threshold: u32) {
@@ -162,6 +211,21 @@ pub fn commitment_created(
     );
     e.events()
         .publish(topics, (commitment_hash, deposit_amount));
+}
+
+pub fn commitment_revealed(e: &Env, sender: Address, commitment_hash: BytesN<32>) {
+    let topics = (
+        Symbol::new(e, "StellarRoute"),
+        symbol_short!("cmt_rvl"),
+        sender,
+    );
+    e.events()
+        .publish(topics, (commitment_hash, e.ledger().sequence()));
+}
+
+pub fn ttl_extended(e: &Env, pools_extended: u32, ledger: u32) {
+    let topics = (Symbol::new(e, "StellarRoute"), symbol_short!("ttl_ext"));
+    e.events().publish(topics, (pools_extended, ledger));
 }
 
 pub fn ttl_warning(e: &Env, estimated_remaining: u64, threshold: u32) {

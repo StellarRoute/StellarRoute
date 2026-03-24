@@ -211,3 +211,24 @@ pub struct PendingUpgrade {
     pub execute_after: u64,
     pub proposer: Address,
 }
+
+// ─── MEV Protection ──────────────────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct MevConfig {
+    pub commit_threshold: i128,
+    pub commit_window_ledgers: u32,
+    pub max_swaps_per_window: u32,
+    pub rate_limit_window: u32,
+    pub high_impact_threshold_bps: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommitmentData {
+    pub sender: Address,
+    pub deposit_amount: i128,
+    pub created_at: u32,
+    pub expires_at: u32,
+}

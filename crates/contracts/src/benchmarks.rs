@@ -16,7 +16,16 @@ fn bench_initialize() {
     let client = StellarRouteClient::new(&env, &contract_id);
 
     // Benchmark initialize
-    client.initialize(&admin, &30, &fee_to);
+    client.initialize(
+        &admin,
+        &30,
+        &fee_to,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+    );
 
     // Assert: Should complete without exceeding budget
     assert!(env.budget().cpu_instruction_cost() < 10_000_000);
@@ -108,6 +117,9 @@ fn bench_execute_swap_1_hop() {
         min_amount_out: 900_000,
         recipient: sender.clone(),
         deadline: 1000,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
     };
 
     // Benchmark execute_swap with 1 hop
@@ -134,6 +146,9 @@ fn bench_execute_swap_4_hops() {
         min_amount_out: 800_000,
         recipient: sender.clone(),
         deadline: 1000,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
     };
 
     // Benchmark execute_swap with 4 hops
@@ -180,6 +195,9 @@ fn stress_test_max_complexity() {
         min_amount_out: 1,
         recipient: sender.clone(),
         deadline: 10000,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
     };
 
     let result = client.try_execute_swap(&sender, &params);

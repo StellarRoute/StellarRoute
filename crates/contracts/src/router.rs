@@ -4,9 +4,13 @@ use crate::storage::{
     self, batch_check_pools, extend_instance_ttl, get_fee_rate, get_instance_config,
     increment_nonce, transfer_asset, StorageKey,
 };
+use crate::storage::{
+    INSTANCE_TTL_EXTEND_TO, INSTANCE_TTL_THRESHOLD, POOL_TTL_EXTEND_TO, POOL_TTL_THRESHOLD,
+};
 use crate::types::{
     CommitmentData, ContractVersion, DistributionRecord, FeeConfig, GovernanceConfig, MevConfig,
-    Proposal, ProposalAction, QuoteResult, Route, SwapParams, SwapResult, TokenCategory, TokenInfo,
+    Proposal, ProposalAction, QuoteResult, Route, SwapParams, SwapResult, TTLStatus, TokenCategory,
+    TokenInfo,
 };
 use crate::{governance, tokens, upgrade};
 use soroban_sdk::{
@@ -604,22 +608,10 @@ impl StellarRoute {
 
     /// Public entry point for users to get quotes
     pub fn get_quote(e: Env, amount_in: i128, route: Route) -> Result<QuoteResult, ContractError> {
-        if amount_in <= 0 || route.hops.is_empty() || route.hops.len() > MAX_HOPS {
+        if amount_in <= 0 {
             return Err(ContractError::InvalidRoute);
         }
-        // Validate every asset in the route is on the allowlist.
-        tokens::validate_route_assets(&e, &route)?;
-
-        // Pre-allocate with known capacity to avoid reallocation
-        let mut pools = Vec::new(&e);
-        for i in 0..route.hops.len() {
-            pools.push_back(route.hops.get(i).unwrap().pool.clone());
-        }
-
-        // Batch check all pools at once
-        if !batch_check_pools(&e, &pools) {
-            return Err(ContractError::PoolNotSupported);
-        }
+        Self::validate_route_internal(&e, &route)?;
 
         let mut current_amount = amount_in;
         let mut total_impact_bps: u32 = 0;
@@ -649,13 +641,37 @@ impl StellarRoute {
         let fee_amount = (current_amount * fee_rate as i128) / 10000;
         let final_output = current_amount - fee_amount;
 
-        Ok(QuoteResult {
+        let quote = QuoteResult {
             expected_output: final_output,
             price_impact_bps: total_impact_bps,
             fee_amount,
             route: route.clone(),
             valid_until: (e.ledger().sequence() + 120) as u64,
-        })
+        };
+
+        events::quote_generated(
+            &e,
+            amount_in,
+            quote.expected_output,
+            quote.fee_amount,
+            quote.price_impact_bps,
+            route.hops.len(),
+            quote.valid_until,
+        );
+
+        Ok(quote)
+    }
+
+    /// Interface alias for external integrators: returns the best-effort quote.
+    pub fn quote(e: Env, amount_in: i128, route: Route) -> Result<QuoteResult, ContractError> {
+        Self::get_quote(e, amount_in, route)
+    }
+
+    /// Preflight route validation used by indexers, relayers, and debuggers.
+    pub fn validate(e: Env, route: Route) -> Result<(), ContractError> {
+        Self::validate_route_internal(&e, &route)?;
+        events::route_validated(&e, route.hops.len(), route.expires_at);
+        Ok(())
     }
 
     pub fn execute_swap(
@@ -676,6 +692,24 @@ impl StellarRoute {
         }
 
         Self::execute_swap_internal(&e, &sender, &params)
+    }
+
+    /// Interface alias for external integrators: execute a validated route.
+    pub fn execute(e: Env, sender: Address, params: SwapParams) -> Result<SwapResult, ContractError> {
+        events::execution_requested(
+            &e,
+            sender.clone(),
+            params.amount_in,
+            params.route.hops.len(),
+            params.deadline,
+        );
+
+        let result = Self::execute_swap(e.clone(), sender.clone(), params);
+        if let Err(err) = result {
+            events::execution_failed(&e, sender, err as u32);
+            return Err(err);
+        }
+        result
     }
 
     // --- Internal swap execution (shared by execute_swap and reveal_and_execute) ---
@@ -912,6 +946,27 @@ impl StellarRoute {
             route: params.route.clone(),
             executed_at: e.ledger().sequence() as u64,
         })
+    }
+
+    fn validate_route_internal(e: &Env, route: &Route) -> Result<(), ContractError> {
+        if route.hops.is_empty() || route.hops.len() > MAX_HOPS {
+            return Err(ContractError::InvalidRoute);
+        }
+        if route.expires_at > 0 && (e.ledger().sequence() as u64) > route.expires_at {
+            return Err(ContractError::RouteExpired);
+        }
+
+        // Validate every asset in the route is on the allowlist.
+        tokens::validate_route_assets(e, route)?;
+
+        let mut pools = Vec::new(e);
+        for i in 0..route.hops.len() {
+            pools.push_back(route.hops.get(i).unwrap().pool.clone());
+        }
+        if !batch_check_pools(e, &pools) {
+            return Err(ContractError::PoolNotSupported);
+        }
+        Ok(())
     }
 
     // --- TTL Management ---

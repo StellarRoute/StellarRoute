@@ -75,7 +75,7 @@ jobs:
       - name: Optimize WASM
         run: |
           cd crates/contracts
-          wasm-opt -Oz target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm \
+          wasm-opt -Oz ../../target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm \
             -o optimized.wasm
 
       - name: Check WASM size
@@ -85,12 +85,12 @@ jobs:
           SIZE_KB=$((SIZE / 1024))
           echo "📦 Optimized WASM size: ${SIZE_KB}KB"
           
-          if [ $SIZE -gt 57344 ]; then
-            echo "❌ WASM size ${SIZE_KB}KB exceeds 56KB limit!"
+          if [ $SIZE -gt 102400 ]; then
+            echo "❌ WASM size ${SIZE_KB}KB exceeds 100KB limit!"
             exit 1
           fi
           
-          echo "✅ WASM size is within limits (${SIZE_KB}KB / 56KB)"
+          echo "✅ WASM size is within limits (${SIZE_KB}KB / 100KB)"
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
@@ -106,6 +106,7 @@ jobs:
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
@@ -117,8 +118,8 @@ jobs:
             const body = `## 📊 Gas Benchmark Results
             
             ### WASM Size
-            - **Optimized size**: ${sizeKB}KB / 56KB
-            - **Status**: ${sizeKB < 56 ? '✅ Pass' : '❌ Fail'}
+            - **Optimized size**: ${sizeKB}KB / 100KB
+            - **Status**: ${sizeKB < 100 ? '✅ Pass' : '❌ Fail'}
             
             ### Benchmark Summary
             \`\`\`

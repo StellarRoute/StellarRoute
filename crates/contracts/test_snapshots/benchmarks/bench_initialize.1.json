@@ -79,6 +79,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "LastTtlExtension"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 0
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Paused"
                             }
                           ]
@@ -94,7 +106,7 @@
             },
             "ext": "v0"
           },
-          120960
+          518400
         ]
       ],
       [
@@ -115,7 +127,7 @@
             },
             "ext": "v0"
           },
-          120960
+          518400
         ]
       ]
     ]
@@ -149,7 +161,12 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void",
+                "void",
+                "void",
+                "void",
+                "void"
               ]
             }
           }

@@ -1,17 +1,38 @@
 "use client";
 
-import { Loader2, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TransactionConfirmationModal } from "@/components/shared/TransactionConfirmationModal";
 import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
 import { usePairs } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
 import { useTransactionHistory } from "@/hooks/useTransactionHistory";
+import { usePairs, useQuote } from "@/hooks/useApi";
+import { useWallet } from "@/components/providers/wallet-provider";
+import { TransactionStatus } from "@/types/transaction";
+import { toast } from "sonner";
+import type { PathStep, TradingPair } from "@/types";
+import {
+  formatMaxAmountForInput,
+  maxDecimalsForSellAsset,
+  parseSellAmount,
+} from "@/lib/amount-input";
+
+const MOCK_WALLET = "GBSU...XYZ9";
+
+function pairKey(p: TradingPair): string {
+  return `${p.base_asset}__${p.counter_asset}`;
+}
+
 import { QUOTE_AUTO_REFRESH_INTERVAL_MS } from "@/lib/quote-stale";
 import { PathStep } from "@/types";
 import { TransactionStatus } from "@/types/transaction";
@@ -51,8 +72,16 @@ const mockRoute: PathStep[] = [
 ];
 
 export function DemoSwap() {
+  const { data: pairs, loading: pairsLoading, error: pairsError } = usePairs();
+  const { isConnected, stubSpendableBalance } = useWallet();
+
+  const [selectedKey, setSelectedKey] = useState<string>("");
+  const [sellRaw, setSellRaw] = useState<string>("");
+
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [txStatus, setTxStatus] = useState<TransactionStatus | "review">("review");
+  const [txStatus, setTxStatus] = useState<TransactionStatus | "review">(
+    "review",
+  );
   const [errorMessage, setErrorMessage] = useState<string>();
   const [txHash, setTxHash] = useState<string>();
   const [sellAmount, setSellAmount] = useState("100");
@@ -60,18 +89,32 @@ export function DemoSwap() {
   const { addTransaction } = useTransactionHistory(MOCK_WALLET);
   const { data: pairs, loading: pairsLoading, error: pairsError } = usePairs();
 
-  const [pairIndex, setPairIndex] = useState(0);
+  useEffect(() => {
+    if (!pairs?.length) return;
+    setSelectedKey((current) => {
+      if (current && pairs.some((p) => pairKey(p) === current)) {
+        return current;
+      }
+      return pairKey(pairs[0]);
+    });
+  }, [pairs]);
 
-  const effectivePairIndex = useMemo(() => {
-    if (!pairs?.length) return 0;
-    return Math.min(Math.max(0, pairIndex), pairs.length - 1);
-  }, [pairs, pairIndex]);
+  const selectedPair = useMemo(
+    () => pairs?.find((p) => pairKey(p) === selectedKey) ?? null,
+    [pairs, selectedKey],
+  );
 
-  const selectedPair = pairs?.[effectivePairIndex];
+  const sellMaxDecimals = selectedPair
+    ? maxDecimalsForSellAsset(
+        selectedPair.base_asset,
+        selectedPair.base_decimals,
+      )
+    : maxDecimalsForSellAsset("native");
 
-  const parseResult = useMemo(() => parseDemoSellAmount(sellAmount), [sellAmount]);
+  const parseResult = parseSellAmount(sellRaw, sellMaxDecimals);
 
-  const numericForQuote = parseResult.ok ? parseResult.n : undefined;
+  const numericForQuote =
+    parseResult.status === "ok" ? parseResult.numeric : undefined;
 
   const quoteBase = selectedPair?.base_asset ?? "";
   const quoteCounter = selectedPair?.counter_asset ?? "";
@@ -80,23 +123,38 @@ export function DemoSwap() {
     data: quote,
     loading: quoteLoading,
     error: quoteError,
-    refresh,
-    manualRefreshCoolingDown,
-    autoRefreshEnabled,
-    setAutoRefreshEnabled,
-    isStale,
-  } = useQuoteRefresh(quoteBase, quoteCounter, numericForQuote, "sell");
+  } = useQuote(quoteBase, quoteCounter, numericForQuote, "sell");
 
-  const refreshDisabled =
-    !quoteBase ||
-    !quoteCounter ||
-    numericForQuote === undefined ||
-    quoteLoading ||
-    manualRefreshCoolingDown;
+  const amountInputInvalid =
+    sellRaw.trim() !== "" &&
+    parseResult.status !== "ok" &&
+    parseResult.status !== "empty";
+
+  const maxButtonTitle = !isConnected
+    ? "Connect wallet to use your maximum balance"
+    : undefined;
+
+  const applyMax = useCallback(() => {
+    if (!isConnected || stubSpendableBalance == null) return;
+    setSellRaw(formatMaxAmountForInput(stubSpendableBalance, sellMaxDecimals));
+  }, [isConnected, stubSpendableBalance, sellMaxDecimals]);
+
+  const mockRoute: PathStep[] = [
+    {
+      from_asset: { asset_type: "native" },
+      to_asset: {
+        asset_type: "credit_alphanum4",
+        asset_code: "USDC",
+        asset_issuer: "GA5Z...",
+      },
+      price: "0.105",
+      source: "sdex",
+    },
+  ];
 
   const handleSwapClick = () => {
-    if (!quote && !parseResult.ok) {
-      toast.error("Enter a valid amount and wait for a quote.");
+    if (parseResult.status !== "ok" || !selectedPair) {
+      toast.error("Enter a valid sell amount and select a pair.");
       return;
     }
     setTxStatus("review");
@@ -116,25 +174,28 @@ export function DemoSwap() {
 
         setTimeout(() => {
           const isSuccess = Math.random() > 0.2;
+          const fromAmt =
+            parseResult.status === "ok" ? parseResult.normalized : "0";
+          const toAmt = quote?.total ?? "10.5";
 
           if (isSuccess) {
             const mockHash = "mock_tx_" + Math.random().toString(36).substring(7);
             setTxHash(mockHash);
             setTxStatus("success");
             toast.success("Transaction Successful!", {
-              description: "Demo swap completed (simulated).",
+              description: `Swapped ${fromAmt} ${selectedPair?.base ?? ""} for ${toAmt} ${selectedPair?.counter ?? ""}`,
             });
 
             addTransaction({
               id: mockHash,
               timestamp: Date.now(),
               fromAsset: selectedPair?.base ?? "XLM",
-              fromAmount: sellAmount,
+              fromAmount: fromAmt,
               toAsset: selectedPair?.counter ?? "USDC",
-              toAmount: quote?.total ?? "—",
-              exchangeRate: quote?.price ?? "—",
+              toAmount: toAmt,
+              exchangeRate: quote?.price ?? "0.105",
               priceImpact: "0.1%",
-              minReceived: quote?.total ?? "—",
+              minReceived: toAmt,
               networkFee: "0.00001",
               routePath: quote?.path?.length ? quote.path : mockRoute,
               status: "success",
@@ -154,12 +215,12 @@ export function DemoSwap() {
               id: "failed_" + Date.now(),
               timestamp: Date.now(),
               fromAsset: selectedPair?.base ?? "XLM",
-              fromAmount: sellAmount,
+              fromAmount: fromAmt,
               toAsset: selectedPair?.counter ?? "USDC",
-              toAmount: quote?.total ?? "—",
-              exchangeRate: quote?.price ?? "—",
+              toAmount: toAmt,
+              exchangeRate: quote?.price ?? "0.105",
               priceImpact: "0.1%",
-              minReceived: quote?.total ?? "—",
+              minReceived: toAmt,
               networkFee: "0.00001",
               routePath: quote?.path?.length ? quote.path : mockRoute,
               status: "failed",
@@ -176,8 +237,8 @@ export function DemoSwap() {
     setTxStatus("review");
   };
 
-  const routeForModal: PathStep[] =
-    quote?.path?.length ? quote.path : mockRoute;
+  const receivePreview =
+    quote && parseResult.status === "ok" ? quote.total : "—";
 
   return (
     <Card className="p-6 max-w-lg mx-auto shadow-lg mt-8 border-primary/20 bg-background/50 backdrop-blur-sm">
@@ -185,63 +246,112 @@ export function DemoSwap() {
         <div>
           <h2 className="text-xl font-bold mb-1">Swap Tokens</h2>
           <p className="text-sm text-muted-foreground">
-            Live quotes with refresh, optional auto-refresh, and stale detection
+            Demo swap with sell amount validation and debounced quotes
           </p>
         </div>
 
-        {pairsLoading && (
-          <p className="text-sm text-muted-foreground">Loading pairs…</p>
-        )}
-        {pairsError && (
-          <p className="text-sm text-destructive">
-            Could not load pairs: {pairsError.message}
-          </p>
-        )}
-
-        {pairs && pairs.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="pair-select">
-              Pair
-            </label>
-            <select
-              id="pair-select"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={effectivePairIndex}
-              onChange={(e) => setPairIndex(Number(e.target.value))}
-            >
-              {pairs.map((p, i) => (
-                <option key={`${p.base_asset}-${p.counter_asset}-${i}`} value={i}>
-                  {p.base} / {p.counter}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="sell-amount">
-            Sell amount ({selectedPair?.base ?? "—"})
-          </label>
-          <Input
-            id="sell-amount"
-            inputMode="decimal"
-            value={sellAmount}
-            onChange={(e) => setSellAmount(e.target.value)}
-            placeholder="0.0"
-            aria-invalid={!parseResult.ok}
-          />
-          {!parseResult.ok && sellAmount.trim() !== "" && (
-            <p className="text-sm text-destructive">{parseResult.message}</p>
+          <span className="text-sm font-medium">Pair</span>
+          {pairsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading pairs…</p>
+          ) : pairsError ? (
+            <p className="text-sm text-destructive">
+              Could not load pairs. Start the API to select a market.
+            </p>
+          ) : pairs && pairs.length > 0 ? (
+            <Select value={selectedKey} onValueChange={setSelectedKey}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select pair" />
+              </SelectTrigger>
+              <SelectContent>
+                {pairs.map((p) => (
+                  <SelectItem key={pairKey(p)} value={pairKey(p)}>
+                    {p.base} / {p.counter}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No pairs from the indexer yet. You can still try amount validation
+              (sell asset defaults to native precision).
+            </p>
           )}
         </div>
 
-        {isStale && quote && (
-          <div
-            className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100"
-            role="status"
-          >
-            Quote may be outdated (older than server cache window). Refresh for
-            the latest price.
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">
+              Sell amount
+              {selectedPair ? ` (${selectedPair.base})` : " (XLM)"}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8"
+              disabled={!isConnected}
+              title={maxButtonTitle}
+              onClick={applyMax}
+            >
+              Max
+            </Button>
+          </div>
+          <Input
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0.0"
+            value={sellRaw}
+            aria-invalid={amountInputInvalid}
+            onChange={(e) => setSellRaw(e.target.value)}
+            className="text-lg font-medium"
+          />
+          <div className="min-h-[1.25rem] text-xs">
+            {parseResult.status === "precision_exceeded" && (
+              <span className="text-destructive">{parseResult.message}</span>
+            )}
+            {parseResult.status === "invalid" && (
+              <span className="text-destructive">{parseResult.message}</span>
+            )}
+            {parseResult.status === "ok" && (
+              <span className="text-muted-foreground">
+                Up to {sellMaxDecimals} decimals for this asset. Quotes update
+                after you stop typing.
+              </span>
+            )}
+            {parseResult.status === "empty" && sellRaw.trim() === "" && (
+              <span className="text-muted-foreground">
+                Paste amounts with US (1,234.56) or EU (1.234,56) grouping.
+                Scientific notation is not supported.
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4 bg-muted/20 p-4 rounded-lg border">
+          <div>
+            <span className="text-sm font-medium">Estimated receive</span>
+            <div className="text-2xl font-bold mt-1 text-success">
+              {quoteLoading && numericForQuote !== undefined ? (
+                "~ …"
+              ) : (
+                <>
+                  {receivePreview}
+                  {selectedPair ? ` ${selectedPair.counter}` : ""}
+                </>
+              )}
+            </div>
+            {quoteError && numericForQuote !== undefined && (
+              <p className="text-xs text-destructive mt-1">
+                Quote failed: {quoteError.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <span className="text-sm font-medium text-muted-foreground">
+              Reference price
+            </span>
+            <div className="text-sm mt-1">{quote?.price ?? "—"}</div>
           </div>
         )}
 
@@ -273,46 +383,10 @@ export function DemoSwap() {
           </label>
         </div>
 
-        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">You receive</span>
-            <span className="font-medium">
-              {quoteLoading && numericForQuote !== undefined ? (
-                <span className="inline-flex items-center gap-1">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  …
-                </span>
-              ) : (
-                (quote?.total ?? "—")
-              )}{" "}
-              {selectedPair?.counter ?? ""}
-            </span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Price</span>
-            <span>{quote?.price ?? "—"}</span>
-          </div>
-          {quoteError && numericForQuote !== undefined && (
-            <p className="text-sm text-destructive">
-              Quote failed: {quoteError.message}
-            </p>
-          )}
-          <TradeRouteDisplay
-            quote={quote ?? null}
-            isLoading={quoteLoading && numericForQuote !== undefined}
-            error={quoteError?.message}
-          />
-        </div>
-
         <Button
           className="w-full text-lg h-12"
           onClick={handleSwapClick}
-          disabled={
-            !selectedPair ||
-            !parseResult.ok ||
-            quoteLoading ||
-            !quote
-          }
+          disabled={!selectedPair || parseResult.status !== "ok"}
         >
           Review Swap
         </Button>
@@ -321,15 +395,17 @@ export function DemoSwap() {
       <TransactionConfirmationModal
         isOpen={isModalOpen}
         onOpenChange={setIsModalOpen}
-        fromAsset={selectedPair?.base ?? "—"}
-        fromAmount={sellAmount}
-        toAsset={selectedPair?.counter ?? "—"}
+        fromAsset={selectedPair?.base ?? "XLM"}
+        fromAmount={
+          parseResult.status === "ok" ? parseResult.normalized : sellRaw || "0"
+        }
+        toAsset={selectedPair?.counter ?? "USDC"}
         toAmount={quote?.total ?? "—"}
         exchangeRate={quote?.price ?? "—"}
         priceImpact="0.1%"
         minReceived={quote?.total ?? "—"}
         networkFee="0.00001"
-        routePath={routeForModal}
+        routePath={quote?.path?.length ? quote.path : mockRoute}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
         status={txStatus}

@@ -15,6 +15,11 @@ interface WalletContextValue {
   connect: () => Promise<void>
   disconnect: () => void
   setNetwork: (network: "testnet" | "mainnet") => void
+  /**
+   * Spendable balance for the sell asset (normalized decimal string), or null when
+   * disconnected. Stub until wallet + Horizon integration; used by swap Max.
+   */
+  stubSpendableBalance: string | null
 }
 
 const WalletContext = React.createContext<WalletContextValue | undefined>(
@@ -68,6 +73,10 @@ export function WalletProvider({
     }))
   }, [])
 
+  const stubSpendableBalance = state.isConnected
+    ? "10000.0000000"
+    : null
+
   const value: WalletContextValue = {
     address: state.address,
     isConnected: state.isConnected,
@@ -75,6 +84,7 @@ export function WalletProvider({
     connect,
     disconnect,
     setNetwork,
+    stubSpendableBalance,
   }
 
   return (

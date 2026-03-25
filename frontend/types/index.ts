@@ -15,6 +15,10 @@ export interface TradingPair {
   counter_asset: string;
   offer_count: number;
   last_updated?: string;
+  /** Horizon / ledger numDecimals for base when provided by API */
+  base_decimals?: number;
+  /** Horizon / ledger numDecimals for counter when provided by API */
+  counter_decimals?: number;
 }
 
 export interface PairsResponse {

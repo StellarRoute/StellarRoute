@@ -22,6 +22,15 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 
 /// Maximum number of tokens per `add_tokens_batch` call.
 const MAX_BATCH: u32 = 10;
+/// Maximum token decimals — Stellar uses 7, but allow up to 19 for Soroban tokens.
+const MAX_DECIMALS: u32 = 19;
+
+fn validate_token_info(info: &TokenInfo) -> Result<(), ContractError> {
+    if info.decimals > MAX_DECIMALS {
+        return Err(ContractError::InvalidAmount);
+    }
+    Ok(())
+}
 
 // ─── Category index helpers ───────────────────────────────────────────────────
 // We maintain a per-category sequential index so that callers can retrieve all
@@ -96,6 +105,7 @@ pub fn add_token(e: &Env, caller: Address, info: TokenInfo) -> Result<(), Contra
 /// Internal add — called by both `add_token` and `add_tokens_batch` (and by
 /// governance dispatch for `ProposalAction::AddToken`).
 pub fn add_token_internal(e: &Env, caller: Address, info: TokenInfo) -> Result<(), ContractError> {
+    validate_token_info(&info)?;
     if st::is_token_allowed(e, &info.asset) {
         return Err(ContractError::TokenAlreadyAdded);
     }
@@ -186,6 +196,11 @@ pub fn update_token_internal(
     if !st::is_token_allowed(e, &asset) {
         return Err(ContractError::TokenNotAllowed);
     }
+    // updated.asset must match the asset being updated — prevent silent asset swap.
+    if updated.asset != asset {
+        return Err(ContractError::InvalidAmount);
+    }
+    validate_token_info(&updated)?;
     st::save_token_info(e, &updated);
     events::token_updated(e, asset, caller);
     extend_instance_ttl(e);

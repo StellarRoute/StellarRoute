@@ -166,6 +166,25 @@ pub fn init_governance(
     if signers.len() > MAX_SIGNERS {
         return Err(ContractError::SignerLimitReached);
     }
+    // A zero TTL makes every proposal immediately expired on creation.
+    if proposal_ttl == 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+    // Reject duplicate signers.
+    for i in 0..signers.len() {
+        for j in (i + 1)..signers.len() {
+            if signers.get(i).unwrap() == signers.get(j).unwrap() {
+                return Err(ContractError::InvalidAmount);
+            }
+        }
+    }
+    // Reject the contract itself as a signer.
+    let contract = e.current_contract_address();
+    for i in 0..signers.len() {
+        if signers.get(i).unwrap() == contract {
+            return Err(ContractError::InvalidRecipient);
+        }
+    }
 
     let config = GovernanceConfig {
         signers,

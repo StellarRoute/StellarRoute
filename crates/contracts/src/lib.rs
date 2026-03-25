@@ -20,3 +20,5 @@ pub mod upgrade;
 mod benchmarks;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod e2e_harness;

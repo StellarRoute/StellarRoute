@@ -639,7 +639,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'mock: pool unavailable' from contract function 'Symbol(obj#169)'"
+                  "string": "caught panic 'mock: pool unavailable' from contract function 'Symbol(obj#171)'"
                 },
                 {
                   "vec": [

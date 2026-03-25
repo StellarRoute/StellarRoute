@@ -149,90 +149,15 @@ export function useQuoteRefresh(
   useEffect(() => {
     if (!autoRefreshEnabled || !canRequest) return;
 
-    let ws: WebSocket | null = null;
-    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
-
-    const startFallback = () => {
-      if (fallbackInterval) return;
-      fallbackInterval = setInterval(() => {
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-          return;
-        }
-        setTick((n) => n + 1);
-      }, autoRefreshIntervalMs);
-    };
-
-    const stopFallback = () => {
-      if (fallbackInterval) {
-        clearInterval(fallbackInterval);
-        fallbackInterval = null;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
       }
-    };
+      setTick((n) => n + 1);
+    }, autoRefreshIntervalMs);
 
-    const connectWs = () => {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const wsUrl = baseUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws';
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          stopFallback();
-          ws?.send(JSON.stringify({
-            action: 'subscribe',
-            subscription: {
-              type: 'quote',
-              base,
-              quote: quoteAsset,
-              amount: debouncedAmount,
-              quote_type: type,
-            }
-          }));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            if (message.type === 'quote_update' && message.data) {
-              if (
-                message.subscription?.base === base &&
-                message.subscription?.quote === quoteAsset
-              ) {
-                setLastQuotedAtMs(message.timestamp || Date.now());
-                setState((prev) => ({
-                  ...prev,
-                  data: message.data,
-                  loading: false,
-                  error: null,
-                }));
-              }
-            }
-          } catch (err) {
-            // ignore
-          }
-        };
-
-        ws.onclose = () => {
-          startFallback();
-        };
-
-        ws.onerror = () => {
-          startFallback();
-        };
-      } catch (err) {
-        startFallback();
-      }
-    };
-
-    startFallback();
-    connectWs();
-
-    return () => {
-      stopFallback();
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [autoRefreshEnabled, autoRefreshIntervalMs, canRequest, base, quoteAsset, debouncedAmount, type]);
+    return () => clearInterval(id);
+  }, [autoRefreshEnabled, autoRefreshIntervalMs, canRequest]);
 
   const manualRefreshCoolingDown =
     manualCooldownUntil > 0 && nowMs < manualCooldownUntil;

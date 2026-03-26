@@ -267,8 +267,6 @@ pub struct ExclusionDiagnostics {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExcludedVenueInfo {
     pub venue_ref: String,
-    pub score: f64,
-    pub signals: serde_json::Value,
     pub reason: ExclusionReason,
 }
 

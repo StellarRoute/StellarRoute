@@ -62,7 +62,15 @@ pub async fn get_quote(
     State(state): State<Arc<AppState>>,
     Path((base, quote)): Path<(String, String)>,
     Query(params): Query<QuoteParams>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<QuoteResponse>> {
+    let explain_header = headers
+        .get("x-explain")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let explain = explain_header || params.explain.unwrap_or(false);
+
     let request_id = uuid::Uuid::new_v4();
     let start_time = std::time::Instant::now();
 
@@ -77,7 +85,7 @@ pub async fn get_quote(
     );
 
     async move {
-        let res = get_quote_inner(state, base, quote, params).await;
+        let res = get_quote_inner(state, base, quote, params, explain).await;
 
         let error_class = match &res {
             Ok(_) => "none",
@@ -109,6 +117,7 @@ async fn get_quote_inner(
     base: String,
     quote: String,
     params: QuoteParams,
+    explain: bool,
 ) -> Result<Json<QuoteResponse>> {
     debug!(
         "Getting quote for {}/{} with params: {:?}",
@@ -151,23 +160,14 @@ async fn get_quote_inner(
 
     // Try to get from cache first
     let amount_str = format!("{:.7}", amount);
-    let quote_cache_key = cache::keys::quote(&base, &quote, &amount_str, slippage_bps, quote_type);
-
-    let result_arc = state
-        .quote_single_flight
-        .execute(&quote_cache_key, || async {
-            // Try to get from cache first
-            if let Some(cache) = &state.cache {
-                if let Ok(mut cache) = cache.try_lock() {
-                    if let Some(cached) = cache.get::<QuoteResponse>(&quote_cache_key).await {
-                        state.cache_metrics.inc_quote_hit();
-                        tracing::Span::current().record("cache_hit", true);
-                        debug!("Returning cached quote for {}/{}", base, quote);
-                        return Arc::new(Ok(cached));
-                    }
-
-                    state.cache_metrics.inc_quote_miss();
-                }
+    let quote_cache_key = cache::keys::quote(&base, &quote, &amount_str, slippage_bps, quote_type, explain);
+    if let Some(cache) = &state.cache {
+        if let Ok(mut cache) = cache.try_lock() {
+            if let Some(cached) = cache.get::<QuoteResponse>(&quote_cache_key).await {
+                state.cache_metrics.inc_quote_hit();
+                tracing::Span::current().record("cache_hit", true);
+                debug!("Returning cached quote for {}/{}", base, quote);
+                return Ok(Json(cached));
             }
 
             // For now, implement simple direct path (SDEX only)
@@ -314,8 +314,13 @@ pub async fn get_route(
         quote_asset: asset_path_to_info(&quote_asset),
         amount: format!("{:.7}", amount),
         path,
-        slippage_bps,
-        timestamp: chrono::Utc::now().timestamp_millis(),
+        timestamp,
+        expires_at,
+        source_timestamp,
+        ttl_seconds,
+        rationale: if explain { Some(rationale) } else { None },
+        exclusion_diagnostics: if explain { Some(api_diagnostics) } else { None },
+        data_freshness,
     };
 
     Ok(Json(response))
@@ -462,10 +467,6 @@ async fn find_best_price(
         .filter_map(|&idx| candidates.get(idx))
         .map(|candidate| ApiExcludedVenueInfo {
             venue_ref: candidate.venue_ref.clone(),
-            score: 0.0,
-            signals: serde_json::json!({
-                "source": candidate.comparison_source(),
-            }),
             reason: ApiExclusionReason::StaleData,
         })
         .collect();
@@ -521,8 +522,6 @@ async fn find_best_price(
         .iter()
         .map(|v| ApiExcludedVenueInfo {
             venue_ref: v.venue_ref.clone(),
-            score: v.score,
-            signals: v.signals.clone(),
             reason: match &v.reason {
                 stellarroute_routing::health::policy::ExclusionReason::PolicyThreshold {
                     threshold,

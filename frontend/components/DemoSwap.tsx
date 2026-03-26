@@ -1,9 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,14 +14,14 @@ import {
 } from "@/components/ui/select";
 
 import { TransactionConfirmationModal } from "@/components/shared/TransactionConfirmationModal";
-import { usePairs, useQuote } from "@/hooks/useApi";
+import { usePairs } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
 import { useTransactionHistory } from "@/hooks/useTransactionHistory";
 import { useWallet } from "@/components/providers/wallet-provider";
-
-import type { PathStep, TradingPair } from "@/types";
+import { useSettings } from "@/components/providers/settings-provider";
 import { TransactionStatus } from "@/types/transaction";
-import { QUOTE_AUTO_REFRESH_INTERVAL_MS } from "@/lib/quote-stale";
+import { toast } from "sonner";
+import type { PathStep, TradingPair, PriceQuote } from "@/types";
 import {
   formatMaxAmountForInput,
   maxDecimalsForSellAsset,
@@ -110,19 +108,6 @@ export function DemoSwap() {
   } = useQuoteRefresh(quoteBase, quoteCounter, numericForQuote, "sell");
 
   const refreshDisabled = quoteLoading || manualRefreshCoolingDown || !numericForQuote;
-
-  const {
-    refresh,
-    refreshDisabled,
-    autoRefreshEnabled,
-    setAutoRefreshEnabled,
-  } = useQuoteRefresh({
-    baseAsset: quoteBase,
-    counterAsset: quoteCounter,
-    amount: numericForQuote,
-    side: "sell",
-    enabled: Boolean(selectedPair && numericForQuote !== undefined),
-  });
 
   const amountInputInvalid =
     sellRaw.trim() !== "" &&
@@ -437,35 +422,34 @@ export function DemoSwap() {
               </p>
             )}
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={refreshDisabled}
-            onClick={() => refresh()}
-            className="gap-2"
-          >
-            {quoteLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <RefreshCw className="h-4 w-4" aria-hidden />
-            )}
-            Refresh quote
-          </Button>
-
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-input"
-              checked={autoRefreshEnabled}
-              onChange={(e) => setAutoRefreshEnabled(e.target.checked)}
-            />
-            Auto-refresh (~{Math.round(QUOTE_AUTO_REFRESH_INTERVAL_MS / 1000)}s,
-            pauses when tab hidden)
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={refreshDisabled}
+              onClick={() => refresh()}
+              className="gap-2"
+            >
+              {quoteLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-4 w-4" aria-hidden />
+              )}
+              Refresh quote
+            </Button>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={autoRefreshEnabled}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAutoRefreshEnabled(e.target.checked)}
+              />
+              Auto-refresh (~{Math.round(QUOTE_AUTO_REFRESH_INTERVAL_MS / 1000)}s,
+              pauses when tab hidden)
+            </label>
+          </div>
         </div>
 
         <Button
@@ -492,8 +476,8 @@ export function DemoSwap() {
         toAsset={selectedPair?.counter ?? "USDC"}
         toAmount={quote?.total ?? "—"}
         exchangeRate={quote?.price ?? "—"}
-        priceImpact={priceImpactDisplay}
-        slippageTolerancePct={slippage ?? 0}
+        priceImpact="0.1%"
+        slippageTolerancePct={settings.slippageTolerance}
         networkFee="0.00001"
         routePath={quote?.path?.length ? quote.path : mockRoute}
         onConfirm={handleConfirm}

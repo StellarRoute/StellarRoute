@@ -19,12 +19,12 @@ export function SlippageControl({ slippage, onChange }: SlippageControlProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full">
           <Settings className="h-4 w-4 text-muted-foreground" />
           <span className="sr-only">Settings</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" avoidCollisions className="w-[calc(100vw-24px)] max-w-[240px]">
         <DropdownMenuLabel>Transaction Settings</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="p-3">
@@ -35,7 +35,7 @@ export function SlippageControl({ slippage, onChange }: SlippageControlProps) {
                 key={val}
                 variant={slippage === val ? "default" : "outline"}
                 size="sm"
-                className="flex-1"
+                className="flex-1 min-h-[44px]"
                 onClick={() => onChange(val)}
               >
                 {val}%

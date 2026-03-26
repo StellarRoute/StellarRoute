@@ -112,7 +112,7 @@ export function TransactionConfirmationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] w-[90vw] sm:w-auto">
         {/* REVIEW STATE */}
         {status === "review" && (
           <>
@@ -123,6 +123,7 @@ export function TransactionConfirmationModal({
               </DialogDescription>
             </DialogHeader>
 
+            <div className="overflow-y-auto max-h-[70vh]">
             <div className="space-y-4 py-4">
               {/* Swap Summary */}
               <div className="p-4 rounded-lg bg-muted/30 border space-y-3">
@@ -214,9 +215,9 @@ export function TransactionConfirmationModal({
                           className="inline-flex items-center gap-0.5"
                           aria-hidden="true"
                         >
-                          {idx === 0 && <span>{from}</span>}
+                          {idx === 0 && <span className="break-words">{from}</span>}
                           <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
-                          <span>{to}</span>
+                          <span className="break-words">{to}</span>
                         </span>
                       );
                     })}
@@ -227,15 +228,16 @@ export function TransactionConfirmationModal({
                 Demo mode: signing and submission are simulated — not yet on-chain.
               </div>
             </div>
+            </div>
 
             <DialogFooter className="flex-col sm:flex-col gap-2">
-              <Button onClick={onConfirm} className="w-full" size="lg">
+              <Button onClick={onConfirm} className="w-full min-h-[48px]" size="lg">
                 Confirm Swap
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="w-full min-h-[48px]"
                 onClick={() => handleOpenChange(false)}
               >
                 Cancel
@@ -302,14 +304,16 @@ export function TransactionConfirmationModal({
             </div>
             
             {txHash && (
-              <a
-                href={`https://stellar.expert/explorer/public/tx/${txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                View on Stellar Expert <ExternalLink className="w-4 h-4" />
-              </a>
+              <div className="min-h-[44px] flex items-center">
+                <a
+                  href={`https://stellar.expert/explorer/public/tx/${txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  View on Stellar Expert <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
             )}
 
             <Button onClick={() => handleOpenChange(false)} className="w-full mt-4">

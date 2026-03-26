@@ -37,7 +37,7 @@ export function AppShell({ children }: AppShellProps) {
           "flex-1",
           isFullWidth
             ? "w-full"
-            : "container mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
+            : "container mx-auto w-full max-w-7xl px-3 py-8 sm:px-6 lg:px-8"
         )}
       >
         {children}

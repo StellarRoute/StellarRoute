@@ -97,7 +97,7 @@ export function Header() {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className="md:hidden h-11 w-11 flex items-center justify-center"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open mobile menu"
             aria-expanded={mobileMenuOpen}

@@ -8,6 +8,7 @@ pub mod db;
 pub mod error;
 pub mod horizon;
 pub mod models;
+pub mod reconciliation;
 pub mod telemetry;
 
 // Legacy placeholders (kept for now; will be replaced as Phase 1.2 progresses)

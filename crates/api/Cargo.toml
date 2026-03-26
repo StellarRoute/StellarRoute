@@ -37,6 +37,9 @@ stellarroute-routing = { path = "../routing" }
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "6", features = ["axum"] }
 
+# Concurrency utilities
+parking_lot = "0.12"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tower = { version = "0.4", features = ["util"] }

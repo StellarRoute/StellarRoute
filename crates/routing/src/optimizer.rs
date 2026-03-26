@@ -1,0 +1,408 @@
+//! Hybrid route optimizer combining latency and execution quality
+
+use crate::error::{Result, RoutingError};
+use crate::impact::{AmmQuoteCalculator, OrderbookImpactCalculator};
+use crate::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig, SwapPath};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::Instant;
+
+/// Configuration for optimization policies
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimizerPolicy {
+    /// Weight for output amount (0.0 to 1.0)
+    pub output_weight: f64,
+    /// Weight for price impact (0.0 to 1.0)  
+    pub impact_weight: f64,
+    /// Weight for compute cost/latency (0.0 to 1.0)
+    pub latency_weight: f64,
+    /// Maximum acceptable price impact in basis points
+    pub max_impact_bps: u32,
+    /// Maximum computation time in milliseconds
+    pub max_compute_time_ms: u64,
+    /// Environment identifier for policy selection
+    pub environment: String,
+}
+
+impl Default for OptimizerPolicy {
+    fn default() -> Self {
+        Self {
+            output_weight: 0.5,
+            impact_weight: 0.3,
+            latency_weight: 0.2,
+            max_impact_bps: 500,       // 5%
+            max_compute_time_ms: 1000, // 1 second
+            environment: "production".to_string(),
+        }
+    }
+}
+
+impl OptimizerPolicy {
+    /// Validate policy weights sum to approximately 1.0
+    pub fn validate(&self) -> Result<()> {
+        let total = self.output_weight + self.impact_weight + self.latency_weight;
+        if (total - 1.0).abs() > 0.01 {
+            return Err(RoutingError::InvalidAmount(
+                "policy weights must sum to 1.0".to_string(),
+            ));
+        }
+
+        if self.output_weight < 0.0 || self.impact_weight < 0.0 || self.latency_weight < 0.0 {
+            return Err(RoutingError::InvalidAmount(
+                "policy weights must be non-negative".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+/// Predefined policies for different environments
+pub struct PolicyPresets;
+
+impl PolicyPresets {
+    /// High-quality, low-latency for production
+    pub fn production() -> OptimizerPolicy {
+        OptimizerPolicy {
+            output_weight: 0.5,
+            impact_weight: 0.3,
+            latency_weight: 0.2,
+            max_impact_bps: 300,
+            max_compute_time_ms: 500,
+            environment: "production".to_string(),
+        }
+    }
+
+    /// Maximum output quality for analysis
+    pub fn analysis() -> OptimizerPolicy {
+        OptimizerPolicy {
+            output_weight: 0.7,
+            impact_weight: 0.25,
+            latency_weight: 0.05,
+            max_impact_bps: 1000,
+            max_compute_time_ms: 5000,
+            environment: "analysis".to_string(),
+        }
+    }
+
+    /// Fast response for real-time trading
+    pub fn realtime() -> OptimizerPolicy {
+        OptimizerPolicy {
+            output_weight: 0.3,
+            impact_weight: 0.2,
+            latency_weight: 0.5,
+            max_impact_bps: 500,
+            max_compute_time_ms: 100,
+            environment: "realtime".to_string(),
+        }
+    }
+
+    /// Balanced for testing
+    pub fn testing() -> OptimizerPolicy {
+        OptimizerPolicy {
+            output_weight: 0.4,
+            impact_weight: 0.3,
+            latency_weight: 0.3,
+            max_impact_bps: 400,
+            max_compute_time_ms: 2000,
+            environment: "testing".to_string(),
+        }
+    }
+}
+
+/// Route scoring metrics
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RouteMetrics {
+    /// Estimated output amount
+    pub output_amount: i128,
+    /// Total price impact in basis points
+    pub impact_bps: u32,
+    /// Computation time in microseconds
+    pub compute_time_us: u64,
+    /// Number of hops in the route
+    pub hop_count: usize,
+    /// Normalized score (0.0 to 1.0)
+    pub score: f64,
+}
+
+/// Optimizer diagnostics for selected route
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimizerDiagnostics {
+    /// Selected route path
+    pub selected_path: SwapPath,
+    /// Route metrics
+    pub metrics: RouteMetrics,
+    /// Alternative routes considered
+    pub alternatives: Vec<(SwapPath, RouteMetrics)>,
+    /// Policy used for optimization
+    pub policy: OptimizerPolicy,
+    /// Total computation time
+    pub total_compute_time_ms: u64,
+}
+
+/// Hybrid route optimizer with configurable policies
+pub struct HybridOptimizer {
+    pathfinder: Pathfinder,
+    amm_calculator: AmmQuoteCalculator,
+    orderbook_calculator: OrderbookImpactCalculator,
+    policies: HashMap<String, OptimizerPolicy>,
+    active_policy: String,
+}
+
+impl HybridOptimizer {
+    /// Create new optimizer with default policies
+    pub fn new(config: PathfinderConfig) -> Self {
+        let mut policies = HashMap::new();
+        policies.insert("production".to_string(), PolicyPresets::production());
+        policies.insert("analysis".to_string(), PolicyPresets::analysis());
+        policies.insert("realtime".to_string(), PolicyPresets::realtime());
+        policies.insert("testing".to_string(), PolicyPresets::testing());
+
+        Self {
+            pathfinder: Pathfinder::new(config),
+            amm_calculator: AmmQuoteCalculator,
+            orderbook_calculator: OrderbookImpactCalculator,
+            policies,
+            active_policy: "production".to_string(),
+        }
+    }
+
+    /// Add custom policy
+    pub fn add_policy(&mut self, policy: OptimizerPolicy) -> Result<()> {
+        policy.validate()?;
+        self.policies.insert(policy.environment.clone(), policy);
+        Ok(())
+    }
+
+    /// Set active policy by environment name
+    pub fn set_active_policy(&mut self, environment: &str) -> Result<()> {
+        if !self.policies.contains_key(environment) {
+            return Err(RoutingError::InvalidAmount(format!(
+                "policy '{}' not found",
+                environment
+            )));
+        }
+        self.active_policy = environment.to_string();
+        Ok(())
+    }
+
+    /// Get current active policy
+    pub fn active_policy(&self) -> &OptimizerPolicy {
+        &self.policies[&self.active_policy]
+    }
+
+    /// Find optimal routes using hybrid scoring
+    pub fn find_optimal_routes(
+        &self,
+        from: &str,
+        to: &str,
+        edges: &[LiquidityEdge],
+        amount_in: i128,
+    ) -> Result<OptimizerDiagnostics> {
+        let start_time = Instant::now();
+        let policy = self.active_policy();
+
+        // Find all possible paths
+        let paths = self.pathfinder.find_paths(from, to, edges, amount_in)?;
+
+        if paths.is_empty() {
+            return Err(RoutingError::NoRoute(from.to_string(), to.to_string()));
+        }
+
+        // Calculate metrics for each path
+        let mut scored_paths = Vec::new();
+        for path in &paths {
+            let metrics = self.calculate_route_metrics(path, edges, amount_in)?;
+
+            // Check if route meets policy constraints
+            if metrics.impact_bps <= policy.max_impact_bps
+                && metrics.compute_time_us <= policy.max_compute_time_ms * 1000
+            {
+                scored_paths.push((path.clone(), metrics));
+            }
+        }
+
+        if scored_paths.is_empty() {
+            return Err(RoutingError::NoRoute(
+                "".to_string(),
+                "no routes meet policy constraints".to_string(),
+            ));
+        }
+
+        // Sort by score (descending)
+        scored_paths.sort_by(|a, b| b.1.score.partial_cmp(&a.1.score).unwrap());
+
+        let (selected_path, selected_metrics) = scored_paths[0].clone();
+        let alternatives: Vec<(SwapPath, RouteMetrics)> =
+            scored_paths.into_iter().skip(1).collect();
+
+        Ok(OptimizerDiagnostics {
+            selected_path,
+            metrics: selected_metrics,
+            alternatives,
+            policy: policy.clone(),
+            total_compute_time_ms: start_time.elapsed().as_millis() as u64,
+        })
+    }
+
+    /// Calculate comprehensive route metrics
+    fn calculate_route_metrics(
+        &self,
+        path: &SwapPath,
+        edges: &[LiquidityEdge],
+        amount_in: i128,
+    ) -> Result<RouteMetrics> {
+        let start_time = Instant::now();
+
+        let mut total_output = amount_in;
+        let mut total_impact_bps = 0u32;
+
+        // Simulate execution through each hop
+        for hop in &path.hops {
+            // Find corresponding edge
+            let edge = edges
+                .iter()
+                .find(|e| e.from == hop.source_asset && e.to == hop.destination_asset)
+                .ok_or_else(|| {
+                    RoutingError::NoRoute(hop.source_asset.clone(), hop.destination_asset.clone())
+                })?;
+
+            // Calculate impact based on venue type
+            let (output, impact_bps) = if edge.venue_type == "amm" {
+                // Simulate AMM calculation (simplified)
+                let estimated_output = (total_output * 9970) / 10000; // 0.3% fee
+                (estimated_output, 30) // Simplified impact
+            } else {
+                // Simulate orderbook calculation
+                let estimated_output = (total_output * 9980) / 10000; // 0.2% fee
+                (estimated_output, 20) // Simplified impact
+            };
+
+            total_output = output;
+            total_impact_bps = total_impact_bps.saturating_add(impact_bps);
+        }
+
+        let compute_time_us = start_time.elapsed().as_micros() as u64;
+        let score = self.calculate_score(total_output, total_impact_bps, compute_time_us);
+
+        Ok(RouteMetrics {
+            output_amount: total_output,
+            impact_bps: total_impact_bps,
+            compute_time_us,
+            hop_count: path.hops.len(),
+            score,
+        })
+    }
+
+    /// Calculate normalized score using policy weights
+    fn calculate_score(&self, output: i128, impact_bps: u32, compute_time_us: u64) -> f64 {
+        let policy = self.active_policy();
+
+        // Normalize metrics (simplified normalization)
+        // Higher output is better (normalize by input amount assumption)
+        let output_score = (output as f64 / 1_000_000_000.0).min(1.0); // Normalize to ~1B
+
+        // Lower impact is better
+        let impact_score = 1.0 - (impact_bps as f64 / 1000.0).min(1.0); // Normalize to 1000 bps
+
+        // Lower compute time is better
+        let latency_score = 1.0 - (compute_time_us as f64 / 1_000_000.0).min(1.0); // Normalize to 1ms
+
+        // Weighted combination
+        policy.output_weight * output_score
+            + policy.impact_weight * impact_score
+            + policy.latency_weight * latency_score
+    }
+
+    /// Benchmark different policies for comparison
+    pub fn benchmark_policies(
+        &mut self,
+        from: &str,
+        to: &str,
+        edges: &[LiquidityEdge],
+        amount_in: i128,
+    ) -> Result<Vec<(String, OptimizerDiagnostics)>> {
+        let mut results = Vec::new();
+        let original_policy = self.active_policy.clone();
+        let policy_names: Vec<String> = self.policies.keys().cloned().collect();
+
+        for env_name in policy_names {
+            self.set_active_policy(&env_name)?;
+            let diagnostics = self.find_optimal_routes(from, to, edges, amount_in)?;
+            results.push((env_name.clone(), diagnostics));
+        }
+
+        // Restore original policy
+        self.set_active_policy(&original_policy)?;
+        Ok(results)
+    }
+}
+
+impl Default for HybridOptimizer {
+    fn default() -> Self {
+        Self::new(PathfinderConfig::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_validation() {
+        let valid_policy = OptimizerPolicy::default();
+        assert!(valid_policy.validate().is_ok());
+
+        let mut invalid_policy = OptimizerPolicy::default();
+        invalid_policy.output_weight = 0.8;
+        invalid_policy.impact_weight = 0.8;
+        invalid_policy.latency_weight = 0.2; // Sum = 1.8
+        assert!(invalid_policy.validate().is_err());
+    }
+
+    #[test]
+    fn test_policy_presets() {
+        let prod = PolicyPresets::production();
+        assert!(prod.validate().is_ok());
+        assert_eq!(prod.environment, "production");
+
+        let analysis = PolicyPresets::analysis();
+        assert!(analysis.output_weight > prod.output_weight);
+        assert!(analysis.max_compute_time_ms > prod.max_compute_time_ms);
+    }
+
+    #[test]
+    fn test_optimizer_creation() {
+        let optimizer = HybridOptimizer::default();
+        assert_eq!(optimizer.active_policy().environment, "production");
+        assert!(optimizer.policies.contains_key("realtime"));
+        assert!(optimizer.policies.contains_key("analysis"));
+    }
+
+    #[test]
+    fn test_policy_switching() {
+        let mut optimizer = HybridOptimizer::default();
+
+        assert!(optimizer.set_active_policy("realtime").is_ok());
+        assert_eq!(optimizer.active_policy().environment, "realtime");
+
+        assert!(optimizer.set_active_policy("invalid").is_err());
+    }
+
+    #[test]
+    fn test_custom_policy() {
+        let mut optimizer = HybridOptimizer::default();
+
+        let custom_policy = OptimizerPolicy {
+            output_weight: 0.6,
+            impact_weight: 0.3,
+            latency_weight: 0.1,
+            max_impact_bps: 200,
+            max_compute_time_ms: 300,
+            environment: "custom".to_string(),
+        };
+
+        assert!(optimizer.add_policy(custom_policy).is_ok());
+        assert!(optimizer.set_active_policy("custom").is_ok());
+    }
+}

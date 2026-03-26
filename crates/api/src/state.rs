@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::cache::CacheManager;
+use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 
 /// Cache policy configuration
 #[derive(Debug, Clone)]
@@ -58,6 +59,8 @@ pub struct AppState {
     pub cache_policy: CachePolicy,
     /// Cache hit/miss counters
     pub cache_metrics: Arc<CacheMetrics>,
+    /// Route computation worker pool
+    pub worker_pool: Arc<RouteWorkerPool>,
 }
 
 impl AppState {
@@ -68,12 +71,15 @@ impl AppState {
 
     /// Create new application state with an explicit cache policy
     pub fn new_with_policy(db: PgPool, cache_policy: CachePolicy) -> Self {
+        let worker_pool = Self::create_worker_pool(db.clone());
+
         Self {
             db,
             cache: None,
             version: env!("CARGO_PKG_VERSION").to_string(),
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
+            worker_pool,
         }
     }
 
@@ -88,13 +94,23 @@ impl AppState {
         cache: CacheManager,
         cache_policy: CachePolicy,
     ) -> Self {
+        let worker_pool = Self::create_worker_pool(db.clone());
+
         Self {
             db,
             cache: Some(Arc::new(Mutex::new(cache))),
             version: env!("CARGO_PKG_VERSION").to_string(),
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
+            worker_pool,
         }
+    }
+
+    /// Create worker pool with configuration
+    fn create_worker_pool(db: PgPool) -> Arc<RouteWorkerPool> {
+        let queue = JobQueue::new(db);
+        let config = WorkerPoolConfig::default();
+        Arc::new(RouteWorkerPool::new(config, queue))
     }
 
     /// Wrap in Arc for sharing across handlers

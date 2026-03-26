@@ -1,6 +1,7 @@
 //! Pathfinding algorithms for swap routing with N-hop support and safety bounds
 
 use crate::error::{Result, RoutingError};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
 /// Configuration for path discovery
@@ -32,13 +33,13 @@ pub struct LiquidityEdge {
 }
 
 /// Represents a path through liquidity sources
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SwapPath {
     pub hops: Vec<PathHop>,
     pub estimated_output: i128,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PathHop {
     pub source_asset: String,
     pub destination_asset: String,

@@ -36,10 +36,19 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 reqwest = { version = "0.11", features = ["json"] }
 axum = { version = "0.7", features = ["macros", "ws"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "compression-gzip", "trace"] }
+tower-http = { version = "0.5", features = [
+    "cors",
+    "compression-gzip",
+    "trace",
+] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = [
+    "runtime-tokio-native-tls",
+    "postgres",
+    "chrono",
+    "uuid",
+] }
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
@@ -52,6 +61,9 @@ config = "0.13"
 
 # Caching
 redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Concurrency utilities
+parking_lot = "0.12"
 
 # Clippy and formatting
 [workspace.lints.clippy]

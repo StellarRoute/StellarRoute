@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useSettings } from '@/components/providers/settings-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,11 +11,23 @@ import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const { settings, updateSlippage, updateTheme, resetSettings } = useSettings();
+  const [localSlippage, setLocalSlippage] = useState(settings.slippageTolerance.toString());
+
+  useEffect(() => {
+    setLocalSlippage(settings.slippageTolerance.toString());
+  }, [settings.slippageTolerance]);
 
   const handleSlippageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseFloat(e.target.value);
+    setLocalSlippage(e.target.value);
+  };
+
+  const handleSlippageBlur = () => {
+    const value = parseFloat(localSlippage);
     if (!isNaN(value) && value >= 0 && value <= 50) {
       updateSlippage(value);
+    } else {
+      setLocalSlippage(settings.slippageTolerance.toString());
+      toast.error('Slippage must be between 0 and 50%');
     }
   };
 
@@ -44,8 +57,9 @@ export default function SettingsPage() {
                   step="0.1"
                   min="0"
                   max="50"
-                  value={settings.slippageTolerance}
+                  value={localSlippage}
                   onChange={handleSlippageChange}
+                  onBlur={handleSlippageBlur}
                   className="max-w-[150px]"
                 />
                 <span className="text-sm text-muted-foreground">

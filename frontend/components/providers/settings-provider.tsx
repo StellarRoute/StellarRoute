@@ -49,7 +49,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
+  const isValidSlippage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 50;
+
   const updateSlippage = (value: number) => {
+    if (!isValidSlippage(value)) {
+      console.warn(`Ignored invalid slippage value: ${value}`);
+      return;
+    }
+
     setSettings((prev) => ({ ...prev, slippageTolerance: value }));
   };
 

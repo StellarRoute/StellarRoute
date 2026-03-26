@@ -29,6 +29,9 @@ pub enum ApiError {
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
 
+    #[error("System overloaded: {0}")]
+    Overloaded(String),
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -51,6 +54,11 @@ impl IntoResponse for ApiError {
                 StatusCode::TOO_MANY_REQUESTS,
                 "rate_limit_exceeded",
                 "Too many requests. Please try again later.".to_string(),
+            ),
+            ApiError::Overloaded(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "overloaded",
+                msg,
             ),
             ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "unauthorized", msg),
             ApiError::InvalidAsset(msg) => (StatusCode::BAD_REQUEST, "invalid_asset", msg),

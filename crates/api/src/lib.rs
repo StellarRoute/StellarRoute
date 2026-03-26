@@ -6,12 +6,15 @@ pub mod cache;
 pub mod docs;
 pub mod error;
 pub mod handlers;
+pub mod load_test;
 pub mod middleware;
 pub mod models;
+pub mod regions;
 pub mod routes;
 pub mod server;
 pub mod state;
 pub mod telemetry;
+pub mod worker;
 
 pub use cache::CacheManager;
 pub use docs::ApiDoc;

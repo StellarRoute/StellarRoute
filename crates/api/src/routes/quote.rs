@@ -1,4 +1,14 @@
 //! Quote endpoint
+//! 
+//! # Dashboard-Ready Metrics
+//! 
+//! The quote pipeline emits structured tracing logs with the following metric fields:
+//! - `metric`: Always "stellarroute.quote.request" for request summaries.
+//! - `latency_ms`: Duration of the quote request in milliseconds.
+//! - `cache_hit`: Boolean indicating if the quote was served from cache.
+//! - `error_class`: Outcome category ("validation", "not_found", "stale_market_data", "internal", "none").
+//! 
+//! Request logs and decision stages include matching `request_id` values.
 
 use axum::{
     extract::{Path, Query, State},
@@ -6,7 +16,7 @@ use axum::{
 };
 use sqlx::Row;
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, info_span, Instrument};
 
 use stellarroute_routing::health::filter::GraphFilter;
 use stellarroute_routing::health::freshness::{FreshnessGuard, FreshnessOutcome};
@@ -56,6 +66,53 @@ pub async fn get_quote(
     Path((base, quote)): Path<(String, String)>,
     Query(params): Query<QuoteParams>,
 ) -> Result<Json<QuoteResponse>> {
+    let request_id = uuid::Uuid::new_v4();
+    let start_time = std::time::Instant::now();
+
+    let span = info_span!(
+        "quote_pipeline",
+        %request_id,
+        %base,
+        %quote,
+        cache_hit = false,
+        error_class = tracing::field::Empty,
+        latency_ms = tracing::field::Empty,
+    );
+
+    async move {
+        let res = get_quote_inner(state, base, quote, params).await;
+        
+        let error_class = match &res {
+            Ok(_) => "none",
+            Err(ApiError::Validation(_)) | Err(ApiError::InvalidAsset(_)) => "validation",
+            Err(ApiError::NotFound(_)) | Err(ApiError::NoRouteFound) => "not_found",
+            Err(ApiError::StaleMarketData { .. }) => "stale_market_data",
+            Err(_) => "internal",
+        };
+
+        let latency_ms = start_time.elapsed().as_millis() as u64;
+        
+        let span = tracing::Span::current();
+        span.record("error_class", error_class);
+        span.record("latency_ms", latency_ms);
+        
+        tracing::info!(
+            metric = "stellarroute.quote.request",
+            "Quote pipeline completed"
+        );
+        
+        res
+    }
+    .instrument(span)
+    .await
+}
+
+async fn get_quote_inner(
+    state: Arc<AppState>,
+    base: String,
+    quote: String,
+    params: QuoteParams,
+) -> Result<Json<QuoteResponse>> {
     debug!(
         "Getting quote for {}/{} with params: {:?}",
         base, quote, params
@@ -104,6 +161,7 @@ pub async fn get_quote(
         if let Ok(mut cache) = cache.try_lock() {
             if let Some(cached) = cache.get::<QuoteResponse>(&quote_cache_key).await {
                 state.cache_metrics.inc_quote_hit();
+                tracing::Span::current().record("cache_hit", true);
                 debug!("Returning cached quote for {}/{}", base, quote);
                 return Ok(Json(cached));
             }
@@ -174,6 +232,16 @@ pub async fn get_quote(
 }
 
 /// Find best price for a trading pair
+#[tracing::instrument(
+    name = "find_best_price",
+    skip(state, base_id, quote_id),
+    fields(
+        candidates_count = tracing::field::Empty,
+        stale_count = tracing::field::Empty,
+        fresh_count = tracing::field::Empty,
+        scored_count = tracing::field::Empty
+    )
+)]
 async fn find_best_price(
     state: &AppState,
     base: &AssetPath,
@@ -199,6 +267,13 @@ async fn find_best_price(
     .bind(quote_id)
     .fetch_all(&state.db)
     .await?;
+
+    tracing::Span::current().record("candidates_count", rows.len());
+    tracing::info!(
+        stage = "fetch_candidates",
+        count = rows.len(),
+        "Fetched candidate venues from DB"
+    );
 
     let candidates = rows
         .into_iter()
@@ -259,6 +334,15 @@ async fn find_best_price(
         &scorer_inputs,
         &state.health_config.freshness_threshold_secs,
         now,
+    );
+
+    tracing::Span::current().record("stale_count", freshness_outcome.stale.len());
+    tracing::Span::current().record("fresh_count", freshness_outcome.fresh.len());
+    tracing::info!(
+        stage = "freshness_filtering",
+        fresh = freshness_outcome.fresh.len(),
+        stale = freshness_outcome.stale.len(),
+        "Applied freshness guardrails"
     );
 
     // Collect stale exclusion entries before partitioning
@@ -332,6 +416,13 @@ async fn find_best_price(
         .collect();
     let scored = scorer.score_venues(&fresh_inputs_owned);
 
+    tracing::Span::current().record("scored_count", scored.len());
+    tracing::info!(
+        stage = "health_scoring",
+        scored = scored.len(),
+        "Applied local health scoring"
+    );
+
     // Build ExclusionPolicy from config
     let override_registry = OverrideRegistry::from_entries(
         state
@@ -355,6 +446,12 @@ async fn find_best_price(
     // Apply filter (pass empty edges — we just need diagnostics for this single-hop path)
     let filter = GraphFilter::new(&policy);
     let (_, routing_diagnostics) = filter.filter_edges(&[], &scored);
+
+    tracing::info!(
+        stage = "policy_filter",
+        excluded = routing_diagnostics.excluded_venues.len(),
+        "Applied policy and threshold filters"
+    );
 
     // Convert routing diagnostics to API types, then prepend stale exclusions (Req 6.2)
     let mut health_exclusion_entries: Vec<ApiExcludedVenueInfo> = routing_diagnostics

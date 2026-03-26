@@ -24,5 +24,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(orderbook::get_orderbook),
         )
         .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
+        .route("/api/v1/route/:base/:quote", get(quote::get_route))
         .with_state(state)
 }

@@ -219,6 +219,17 @@ pub struct PathStep {
     pub source: String, // "sdex" or "amm:{pool_address}"
 }
 
+/// Response for route-only endpoint
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RouteResponse {
+    pub base_asset: AssetInfo,
+    pub quote_asset: AssetInfo,
+    pub amount: String,
+    pub path: Vec<PathStep>,
+    pub slippage_bps: u32,
+    pub timestamp: i64,
+}
+
 /// Error response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {

@@ -69,12 +69,12 @@ pub async fn get_quote(
         ));
     }
 
-    let slippage_bps = params.slippage_bps.unwrap_or(50);
-    if slippage_bps > 10_000 {
-        return Err(ApiError::Validation(
-            "slippage_bps must be between 0 and 10000".to_string(),
-        ));
-    }
+    // Validate slippage bounds
+    params
+        .validate_slippage()
+        .map_err(ApiError::Validation)?;
+
+    let slippage_bps = params.slippage_bps();
     let quote_type = match params.quote_type {
         crate::models::request::QuoteType::Sell => "sell",
         crate::models::request::QuoteType::Buy => "buy",
@@ -136,6 +136,82 @@ pub async fn get_quote(
                 .await;
         }
     }
+
+    Ok(Json(response))
+}
+
+/// Get routing path for a trading pair
+///
+/// Returns only the optimal execution path without detailed pricing
+#[utoipa::path(
+    get,
+    path = "/api/v1/route/{base}/{quote}",
+    tag = "trading",
+    params(
+        ("base" = String, Path, description = "Base asset (e.g., 'native', 'USDC', or 'USDC:ISSUER')"),
+        ("quote" = String, Path, description = "Quote asset (e.g., 'native', 'USDC', or 'USDC:ISSUER')"),
+        ("amount" = Option<String>, Query, description = "Amount to trade (default: 1)"),
+        ("slippage_bps" = Option<u32>, Query, description = "Slippage tolerance in basis points (default: 50)"),
+        ("quote_type" = Option<String>, Query, description = "Type of quote: 'sell' or 'buy' (default: sell)"),
+    ),
+    responses(
+        (status = 200, description = "Trading route", body = RouteResponse),
+        (status = 400, description = "Invalid parameters", body = ErrorResponse),
+        (status = 404, description = "No route found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
+    )
+)]
+pub async fn get_route(
+    State(state): State<Arc<AppState>>,
+    Path((base, quote)): Path<(String, String)>,
+    Query(params): Query<QuoteParams>,
+) -> Result<Json<crate::models::RouteResponse>> {
+    debug!(
+        "Getting route for {}/{} with params: {:?}",
+        base, quote, params
+    );
+
+    // Parse asset identifiers
+    let base_asset = AssetPath::parse(&base)
+        .map_err(|e| ApiError::InvalidAsset(format!("Invalid base asset: {}", e)))?;
+    let quote_asset = AssetPath::parse(&quote)
+        .map_err(|e| ApiError::InvalidAsset(format!("Invalid quote asset: {}", e)))?;
+
+    // Parse amount (default to 1)
+    let amount: f64 = params
+        .amount
+        .as_deref()
+        .unwrap_or("1")
+        .parse()
+        .map_err(|_| ApiError::Validation("Invalid amount".to_string()))?;
+
+    if amount <= 0.0 {
+        return Err(ApiError::Validation(
+            "Amount must be greater than zero".to_string(),
+        ));
+    }
+
+    // Validate slippage bounds
+    params
+        .validate_slippage()
+        .map_err(ApiError::Validation)?;
+
+    let slippage_bps = params.slippage_bps();
+
+    let base_id = find_asset_id(&state, &base_asset).await?;
+    let quote_id = find_asset_id(&state, &quote_asset).await?;
+
+    // For route endpoint, we reuse the same logic but return a simplified response
+    let (_, path, _) = find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await?;
+
+    let response = crate::models::RouteResponse {
+        base_asset: asset_path_to_info(&base_asset),
+        quote_asset: asset_path_to_info(&quote_asset),
+        amount: format!("{:.7}", amount),
+        path,
+        slippage_bps,
+        timestamp: chrono::Utc::now().timestamp_millis(),
+    };
 
     Ok(Json(response))
 }

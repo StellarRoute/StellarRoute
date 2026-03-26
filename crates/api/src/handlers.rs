@@ -4,5 +4,5 @@
 
 pub use crate::routes::{
     health::health_check, metrics::cache_metrics, orderbook::get_orderbook, pairs::list_pairs,
-    quote::get_quote,
+    quote::{get_quote, get_route},
 };

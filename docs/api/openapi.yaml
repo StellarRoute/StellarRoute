@@ -230,6 +230,14 @@ paths:
           schema:
             type: string
             example: "100"
+        - name: slippage_bps
+          in: query
+          description: Slippage tolerance in basis points (e.g. `50` = 0.50%). Max `10000` (100%).
+          required: false
+          schema:
+            type: integer
+            default: 50
+            example: 100
         - name: quote_type
           in: query
           description: |
@@ -291,6 +299,75 @@ paths:
               example:
                 error: not_found
                 message: No route found for this trading pair
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/route/{base}/{quote}:
+    get:
+      operationId: get_route
+      summary: Get trading route
+      description: |
+        Returns only the optimal execution path and routing steps for trading
+        `amount` of the base asset for the quote asset.
+
+        Unlike the quote endpoint, this returns a simplified response without
+        detailed pricing breakdown or venue evaluations.
+      tags:
+        - trading
+      parameters:
+        - $ref: "#/components/parameters/BaseAsset"
+        - $ref: "#/components/parameters/QuoteAsset"
+        - name: amount
+          in: query
+          description: Amount of the base asset to trade (default `1`)
+          required: false
+          schema:
+            type: string
+            example: "100"
+        - name: slippage_bps
+          in: query
+          description: Slippage tolerance in basis points (e.g. `50` = 0.50%). Max `10000` (100%).
+          required: false
+          schema:
+            type: integer
+            default: 50
+            example: 100
+        - name: quote_type
+          in: query
+          description: |
+            Direction of the quote:
+            - `sell` — how much quote asset you receive when **selling** `amount` of the base asset
+            - `buy`  — how much base asset you must spend to **buy** `amount` of the quote asset
+          required: false
+          schema:
+            type: string
+            enum: [sell, buy]
+            default: sell
+      responses:
+        "200":
+          description: Optimal trading route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteResponse"
+        "400":
+          description: Invalid parameters (bad asset format or invalid slippage)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No trading route found for this pair
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -549,33 +626,55 @@ components:
           description: Unix timestamp when the quote was generated
           example: 1740312000
 
+    RouteResponse:
+      type: object
+      required: [base_asset, quote_asset, amount, path, slippage_bps, timestamp]
+      description: Optimal trading route without pricing details
+      properties:
+        base_asset:
+          $ref: "#/components/schemas/AssetInfo"
+        quote_asset:
+          $ref: "#/components/schemas/AssetInfo"
+        amount:
+          type: string
+          description: Amount of base asset being traded
+          example: "100.0000000"
+        path:
+          type: array
+          description: List of execution steps
+          items:
+            $ref: "#/components/schemas/PathStep"
+        slippage_bps:
+          type: integer
+          description: Slippage tolerance in basis points
+          example: 50
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp of the route calculation
+          example: 1740312000
+
     ErrorResponse:
       type: object
       required: [error, message]
-      description: |
-        Standard error envelope.
-
-        ## Error codes
-
-        | `error` | HTTP status | Meaning |
-        |---------|-------------|---------|
-        | `invalid_asset` | 400 | Asset identifier could not be parsed |
-        | `validation_error` | 400 | Request parameter failed validation |
-        | `not_found` | 404 | Requested resource does not exist |
-        | `rate_limit_exceeded` | 429 | Too many requests from this IP |
-        | `internal_error` | 500 | Unexpected server-side failure |
+      description: Standard API error format
       properties:
         error:
           type: string
           description: Machine-readable error code
-          example: not_found
+          example: validation_error
         message:
           type: string
           description: Human-readable error description
-          example: Asset not found in orderbook
+          example: "Amount must be greater than zero"
         details:
-          description: Optional structured context (present on validation errors)
+          type: object
           nullable: true
+          description: Optional structured context about the error
+          example:
+            parameter: slippage_bps
+            min: 0
+            max: 10000
 
   # Authentication is planned for a future release.
   # securitySchemes:

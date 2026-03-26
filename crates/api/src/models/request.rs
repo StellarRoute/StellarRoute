@@ -2,6 +2,11 @@
 
 use serde::Deserialize;
 
+/// Default slippage tolerance in basis points (0.50%)
+pub const DEFAULT_SLIPPAGE_BPS: u32 = 50;
+/// Maximum slippage tolerance in basis points (100.00%)
+pub const MAX_SLIPPAGE_BPS: u32 = 10_000;
+
 /// Query parameters for quote endpoint
 #[derive(Debug, Deserialize)]
 pub struct QuoteParams {
@@ -12,6 +17,25 @@ pub struct QuoteParams {
     /// Type of quote (buy or sell)
     #[serde(default = "default_quote_type")]
     pub quote_type: QuoteType,
+}
+
+impl QuoteParams {
+    /// Get the slippage tolerance in basis points, applying default if omitted
+    pub fn slippage_bps(&self) -> u32 {
+        self.slippage_bps.unwrap_or(DEFAULT_SLIPPAGE_BPS)
+    }
+
+    /// Validate the slippage tolerance bounds
+    pub fn validate_slippage(&self) -> std::result::Result<(), String> {
+        let bps = self.slippage_bps();
+        if bps > MAX_SLIPPAGE_BPS {
+            return Err(format!(
+                "slippage_bps must be between 0 and {} (100%)",
+                MAX_SLIPPAGE_BPS
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn default_quote_type() -> QuoteType {
@@ -99,6 +123,54 @@ mod tests {
         assert_eq!(
             asset.asset_issuer.as_deref(),
             Some("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5")
+        );
+    }
+
+    #[test]
+    fn test_quote_params_slippage_default() {
+        let params = QuoteParams {
+            amount: None,
+            slippage_bps: None,
+            quote_type: QuoteType::Sell,
+        };
+        assert_eq!(params.slippage_bps(), DEFAULT_SLIPPAGE_BPS);
+        assert!(params.validate_slippage().is_ok());
+    }
+
+    #[test]
+    fn test_quote_params_slippage_valid() {
+        let params = QuoteParams {
+            amount: None,
+            slippage_bps: Some(100),
+            quote_type: QuoteType::Sell,
+        };
+        assert_eq!(params.slippage_bps(), 100);
+        assert!(params.validate_slippage().is_ok());
+    }
+
+    #[test]
+    fn test_quote_params_slippage_boundary_max() {
+        let params = QuoteParams {
+            amount: None,
+            slippage_bps: Some(MAX_SLIPPAGE_BPS),
+            quote_type: QuoteType::Sell,
+        };
+        assert_eq!(params.slippage_bps(), MAX_SLIPPAGE_BPS);
+        assert!(params.validate_slippage().is_ok());
+    }
+
+    #[test]
+    fn test_quote_params_slippage_invalid_too_high() {
+        let params = QuoteParams {
+            amount: None,
+            slippage_bps: Some(MAX_SLIPPAGE_BPS + 1),
+            quote_type: QuoteType::Sell,
+        };
+        let result = params.validate_slippage();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            format!("slippage_bps must be between 0 and {} (100%)", MAX_SLIPPAGE_BPS)
         );
     }
 }

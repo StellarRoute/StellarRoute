@@ -20,6 +20,7 @@ import { usePairs, useQuote } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
 import { useTransactionHistory } from "@/hooks/useTransactionHistory";
 import { useWallet } from "@/components/providers/wallet-provider";
+import { useSettings } from "@/components/providers/settings-provider";
 
 import type { PathStep, TradingPair } from "@/types";
 import { TransactionStatus } from "@/types/transaction";

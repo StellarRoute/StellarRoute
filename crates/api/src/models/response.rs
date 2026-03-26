@@ -146,6 +146,9 @@ pub struct QuoteResponse {
     /// Rationale for quote venue selection
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rationale: Option<QuoteRationaleMetadata>,
+    /// Estimated price impact percentage
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_impact: Option<String>,
 }
 
 /// Response for a batch quote request

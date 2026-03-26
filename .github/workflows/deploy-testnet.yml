@@ -2,7 +2,8 @@ name: Deploy to Testnet
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       dry_run:
@@ -22,7 +23,7 @@ jobs:
   deploy:
     name: Build & Deploy Contract
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && (vars.DEPLOY_ENABLED == 'true' || github.event.inputs.dry_run == 'true')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.dry_run == 'true' || secrets.SOROBAN_DEPLOYER_SECRET != '') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -115,9 +116,9 @@ jobs:
   skip-deploy:
     name: Deployment Skipped
     runs-on: ubuntu-latest
-    if: ${{ !((github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && (vars.DEPLOY_ENABLED == 'true' || github.event.inputs.dry_run == 'true'))) }}
+    if: ${{ github.event_name == 'push' }}
     steps:
       - name: Notice
         run: |
           echo "## Deployment Skipped" >> $GITHUB_STEP_SUMMARY
-          echo "Set repository variable \`DEPLOY_ENABLED=true\` and configure \`SOROBAN_DEPLOYER_SECRET\` secret to enable deployment." >> $GITHUB_STEP_SUMMARY
+          echo "This workflow only deploys when manually dispatched." >> $GITHUB_STEP_SUMMARY

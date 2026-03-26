@@ -1,4 +1,7 @@
-import { vi } from "vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { expect, vi } from "vitest";
+
+expect.extend(matchers);
 
 /** jsdom does not implement matchMedia; components using prefers-reduced-motion need this. */
 Object.defineProperty(window, "matchMedia", {

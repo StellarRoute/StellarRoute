@@ -1,23 +1,23 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PairSelector } from "./PairSelector";
-import { QuoteSummary } from "./QuoteSummary";
-import { RouteDisplay } from "./RouteDisplay";
-import { SlippageControl } from "./SlippageControl";
-import { SwapCTA } from "./SwapCTA";
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState } from 'react';
+import { PairSelector } from './PairSelector';
+import { QuoteSummary } from './QuoteSummary';
+import { RouteDisplay } from './RouteDisplay';
+import { SlippageControl } from './SlippageControl';
+import { SwapCTA } from './SwapCTA';
 
 export function SwapCard() {
   // Mock states for the demo
-  const [payAmount, setPayAmount] = useState<string>("");
-  const [receiveAmount, setReceiveAmount] = useState<string>("");
+  const [payAmount, setPayAmount] = useState<string>('');
+  const [receiveAmount, setReceiveAmount] = useState<string>('');
   const [slippage, setSlippage] = useState<number>(0.5);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Derived state for the button
   const isValidAmount = parseFloat(payAmount) > 0;
-  
+
   // Simulate quote fetching
   const handlePayAmountChange = (amount: string) => {
     setPayAmount(amount);
@@ -28,7 +28,7 @@ export function SwapCard() {
         setIsLoading(false);
       }, 500);
     } else {
-      setReceiveAmount("");
+      setReceiveAmount('');
     }
   };
 
@@ -48,15 +48,21 @@ export function SwapCard() {
         />
         {isValidAmount && !isLoading && receiveAmount && (
           <>
+            <SimulationPanel
+              payAmount={payAmount}
+              expectedOutput={receiveAmount}
+              slippage={slippage}
+              isLoading={isLoading}
+            />
             <QuoteSummary rate="1 XLM ≈ 0.98 USDC" fee="0.01 XLM" priceImpact="< 0.1%" />
             <RouteDisplay amountOut={receiveAmount} />
           </>
         )}
-        <SwapCTA 
-          amount={payAmount} 
-          isLoading={isLoading} 
-          hasPair={true} 
-          onSwap={() => console.log("Swapping...")} 
+        <SwapCTA
+          amount={payAmount}
+          isLoading={isLoading}
+          hasPair={true}
+          onSwap={() => console.log('Swapping...')}
         />
       </CardContent>
     </Card>

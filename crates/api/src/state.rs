@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-use crate::cache::CacheManager;
+use crate::cache::{CacheManager, SingleFlight};
+use crate::models::QuoteResponse;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 
 /// Cache policy configuration
@@ -90,6 +91,8 @@ pub struct AppState {
     pub cache_metrics: Arc<CacheMetrics>,
     /// Route computation worker pool
     pub worker_pool: Arc<RouteWorkerPool>,
+    /// Single-flight manager for quotes to prevent stampedes
+    pub quote_single_flight: Arc<SingleFlight<crate::error::Result<QuoteResponse>>>,
 }
 
 impl AppState {
@@ -109,6 +112,7 @@ impl AppState {
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
+            quote_single_flight: Arc::new(SingleFlight::new()),
         }
     }
 
@@ -132,6 +136,7 @@ impl AppState {
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
+            quote_single_flight: Arc::new(SingleFlight::new()),
         }
     }
 

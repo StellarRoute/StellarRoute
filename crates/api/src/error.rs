@@ -9,10 +9,12 @@ use thiserror::Error;
 
 use crate::models::ErrorResponse;
 
-#[derive(Error, Debug)]
+use std::sync::Arc;
+
+#[derive(Error, Debug, Clone)]
 pub enum ApiError {
     #[error("Internal server error: {0}")]
-    Internal(#[from] anyhow::Error),
+    Internal(Arc<anyhow::Error>),
 
     #[error("Bad request: {0}")]
     BadRequest(String),
@@ -21,7 +23,7 @@ pub enum ApiError {
     NotFound(String),
 
     #[error("Database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(Arc<sqlx::Error>),
 
     #[error("Validation error: {0}")]
     Validation(String),
@@ -48,6 +50,18 @@ pub enum ApiError {
         threshold_secs_sdex: u64,
         threshold_secs_amm: u64,
     },
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Internal(Arc::new(err))
+    }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::Database(Arc::new(err))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ApiError>;

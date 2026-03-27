@@ -121,24 +121,16 @@ export function SwapCard() {
               slippage={slippage}
               isLoading={isLoading}
             />
-            <FeeBreakdownPanel
-              protocolFees={[
-                { name: 'Router Fee', amount: '0.001 XLM', description: 'Fee for using StellarRoute aggregator' },
-                { name: 'Pool Fee', amount: '0.003%', description: 'Liquidity provider fee for AQUA pool' },
-              ]}
-              networkCosts={[
-                { name: 'Base Fee', amount: '0.00001 XLM', description: 'Stellar network base transaction fee' },
-                { name: 'Operation Fee', amount: '0.00002 XLM', description: 'Fee for path payment operations' },
-              ]}
-              totalFee="0.01 XLM"
-              netOutput={`${(parseFloat(receiveAmount) * 0.99).toFixed(4)} USDC`}
+            <QuoteSummary 
+              fromAmount={1}
+              fromSymbol="XLM" 
+              toAmount={parseFloat(payAmount) * 0.98}
+              toSymbol="USDC"
+              feeAmount={0.01}
+              feeSymbol="XLM"
+              priceImpactValue={0.001}
             />
-            <QuoteSummary rate="1 XLM ≈ 0.98 USDC" fee="0.01 XLM" priceImpact="< 0.1%" />
-            <RouteDisplay
-              amountOut={receiveAmount}
-              confidenceScore={confidenceScore}
-              volatility={volatility}
-            />
+            <RouteDisplay amountOut={receiveAmount} />
           </>
         )}
         <SwapCTA

@@ -3,14 +3,30 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ArrowDown } from "lucide-react";
+import { useSettings } from '@/components/providers/settings-provider';
+import { formatAmount } from '@/lib/formatting';
 
 interface PairSelectorProps {
   payAmount: string;
   onPayAmountChange: (amount: string) => void;
   receiveAmount: string;
+  payBalance?: number;
+  receiveBalance?: number;
 }
 
-export function PairSelector({ payAmount, onPayAmountChange, receiveAmount }: PairSelectorProps) {
+export function PairSelector({ 
+  payAmount, 
+  onPayAmountChange, 
+  receiveAmount,
+  payBalance = 1000,
+  receiveBalance = 0
+}: PairSelectorProps) {
+  const { settings } = useSettings();
+  const locale = settings.locale;
+
+  const formattedPayBalance = formatAmount(payBalance, locale, 2);
+  const formattedReceiveBalance = formatAmount(receiveBalance, locale, 2);
+
   return (
     <div className="space-y-1 relative overflow-x-hidden">
       <div className="bg-muted/50 rounded-xl p-4 border border-border/50 transition-colors focus-within:border-primary/50">
@@ -35,7 +51,7 @@ export function PairSelector({ payAmount, onPayAmountChange, receiveAmount }: Pa
             </span>
           </Button>
         </div>
-        <div className="text-sm text-muted-foreground mt-2">Balance: 1,000.00</div>
+        <div className="text-sm text-muted-foreground mt-2">Balance: {formattedPayBalance}</div>
       </div>
 
       <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10">
@@ -64,7 +80,7 @@ export function PairSelector({ payAmount, onPayAmountChange, receiveAmount }: Pa
             </span>
           </Button>
         </div>
-        <div className="text-sm text-muted-foreground mt-2">Balance: 0.00</div>
+        <div className="text-sm text-muted-foreground mt-2">Balance: {formattedReceiveBalance}</div>
       </div>
     </div>
   );

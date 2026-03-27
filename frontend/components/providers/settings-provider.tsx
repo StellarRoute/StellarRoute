@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useTheme } from 'next-themes';
 import { Settings, DEFAULT_SETTINGS, ThemeSetting } from '@/types/settings';
+import { getUserLocale } from '@/lib/formatting';
 
 const STORAGE_KEY = 'stellar_route_settings';
 
@@ -10,6 +11,7 @@ interface SettingsContextType {
   settings: Settings;
   updateSlippage: (value: number) => void;
   updateTheme: (theme: ThemeSetting) => void;
+  updateLocale: (locale: Settings['locale']) => void;
   resetSettings: () => void;
 }
 
@@ -26,6 +28,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ...DEFAULT_SETTINGS,
         ...parsed,
         theme: (theme as ThemeSetting) || parsed.theme || DEFAULT_SETTINGS.theme,
+        locale: parsed.locale || getUserLocale(),
       };
     } catch (e) {
       console.error('Failed to load settings', e);
@@ -65,6 +68,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, theme: newTheme }));
   };
 
+  const updateLocale = (locale: Settings['locale']) => {
+    setSettings((prev) => ({ ...prev, locale }));
+  };
+
   const resetSettings = () => {
     setTheme(DEFAULT_SETTINGS.theme);
     setSettings(DEFAULT_SETTINGS);
@@ -76,6 +83,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         settings,
         updateSlippage,
         updateTheme,
+        updateLocale,
         resetSettings,
       }}
     >

@@ -8,6 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { maxDecimalsForSellAsset } from "@/lib/amount-input";
+import { SwapValidationSchema } from "@/lib/swap-validation";
 
 /**
  * Example component showing TokenPairSelector integrated with a swap form.
@@ -40,6 +42,40 @@ export function SwapWithPairSelector() {
   const selectedPair = pairs.find(
     (p) => p.base_asset === base && p.counter_asset === quote
   );
+  const maxDecimals = selectedPair
+    ? maxDecimalsForSellAsset(selectedPair.base_asset, selectedPair.base_decimals)
+    : undefined;
+  const inputValidation = selectedPair
+    ? SwapValidationSchema.validate(
+      {
+        amount,
+        maxDecimals,
+        sellAssetId: selectedPair.base_asset,
+        buyAssetId: selectedPair.counter_asset,
+        slippage: 0.5,
+      },
+      { mode: "input" },
+    )
+    : null;
+  const submitValidation = selectedPair
+    ? SwapValidationSchema.validate(
+      {
+        amount,
+        maxDecimals,
+        sellAssetId: selectedPair.base_asset,
+        buyAssetId: selectedPair.counter_asset,
+        slippage: 0.5,
+      },
+      { mode: "submit" },
+    )
+    : null;
+  const amountError =
+    amount.trim() !== "" &&
+    inputValidation &&
+    inputValidation.amountResult.status !== "ok" &&
+    inputValidation.amountResult.status !== "empty"
+      ? inputValidation.amountResult.message
+      : null;
 
   return (
     <div className="space-y-4 max-w-lg mx-auto">
@@ -72,7 +108,11 @@ export function SwapWithPairSelector() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="text-lg"
+                aria-invalid={!!amountError}
               />
+              {amountError && (
+                <p className="mt-2 text-xs text-destructive">{amountError}</p>
+              )}
             </div>
 
             <div className="rounded-lg bg-muted/50 p-4">
@@ -87,7 +127,11 @@ export function SwapWithPairSelector() {
               </p>
             </div>
 
-            <Button className="w-full" size="lg" disabled={!amount || isNaN(Number(amount))}>
+            <Button
+              className="w-full"
+              size="lg"
+              disabled={!submitValidation?.isValid}
+            >
               Review Swap
             </Button>
           </div>

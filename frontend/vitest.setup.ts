@@ -16,3 +16,34 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: vi.fn(() => false),
   }),
 });
+
+// Ensure localStorage is available in the test environment.
+if (
+  typeof window.localStorage === "undefined" ||
+  typeof window.localStorage.getItem !== "function"
+) {
+  const localStorageMock = (() => {
+    let store: Record<string, string> = {};
+    return {
+      getItem: (key: string) => (key in store ? store[key] : null),
+      setItem: (key: string, value: string) => {
+        store[key] = String(value);
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+      clear: () => {
+        store = {};
+      },
+    };
+  })();
+
+  Object.defineProperty(window, "localStorage", {
+    value: localStorageMock,
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "localStorage", {
+    value: localStorageMock,
+    configurable: true,
+  });
+}

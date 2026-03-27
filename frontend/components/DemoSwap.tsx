@@ -26,10 +26,10 @@ import { TransactionStatus } from "@/types/transaction";
 import {
   formatMaxAmountForInput,
   maxDecimalsForSellAsset,
-  parseSellAmount,
 } from "@/lib/amount-input";
 import { QUOTE_AUTO_REFRESH_INTERVAL_MS } from "@/lib/quote-stale";
 import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
+import { SwapValidationSchema } from "@/lib/swap-validation";
 
 const MOCK_WALLET = "GBSU...XYZ9";
 
@@ -90,10 +90,30 @@ export function DemoSwap() {
     )
     : maxDecimalsForSellAsset("native");
 
-  const parseResult = parseSellAmount(sellRaw, sellMaxDecimals);
+  const inputValidation = SwapValidationSchema.validate(
+    {
+      amount: sellRaw,
+      maxDecimals: sellMaxDecimals,
+      sellAssetId: selectedPair?.base_asset,
+      buyAssetId: selectedPair?.counter_asset,
+      slippage,
+    },
+    { mode: "input" },
+  );
+  const submitValidation = SwapValidationSchema.validate(
+    {
+      amount: sellRaw,
+      maxDecimals: sellMaxDecimals,
+      sellAssetId: selectedPair?.base_asset,
+      buyAssetId: selectedPair?.counter_asset,
+      slippage,
+    },
+    { mode: "submit" },
+  );
 
-  const numericForQuote =
-    parseResult.status === "ok" ? parseResult.numeric : undefined;
+  const parseResult = inputValidation.amountResult;
+
+  const numericForQuote = inputValidation.parsed.amount?.numeric;
 
   const quoteBase = selectedPair?.base_asset ?? "";
   const quoteCounter = selectedPair?.counter_asset ?? "";
@@ -127,13 +147,8 @@ export function DemoSwap() {
 
 
   const handleSwapClick = () => {
-    if (parseResult.status !== "ok" || !selectedPair) {
-      toast.error("Enter a valid sell amount and select a pair.");
-      return;
-    }
-
-    if (slippage === null || slippage < 0 || slippage > 50) {
-      toast.error("Enter a valid slippage tolerance between 0% and 50%.");
+    if (!submitValidation.isValid) {
+      toast.error(submitValidation.issues[0]?.message ?? "Invalid swap inputs.");
       return;
     }
 
@@ -227,10 +242,8 @@ export function DemoSwap() {
   const priceImpactDisplay =
     quote?.priceImpact != null ? `${quote.priceImpact}%` : "—";
 
-  const slippageTooLow = slippage !== null && slippage < 0.1;
-  const slippageTooHigh = slippage !== null && slippage > 1;
-  const slippageOutOfBounds =
-    slippage !== null && (slippage < 0 || slippage > 50);
+  const slippageWarning = inputValidation.warnings.slippage;
+  const slippageError = inputValidation.fieldErrors.slippage;
 
   return (
     <Card className="mx-auto mt-8 max-w-lg border-primary/20 bg-background/50 p-6 shadow-lg backdrop-blur-sm">
@@ -414,22 +427,14 @@ export function DemoSwap() {
               <span className="text-sm">%</span>
             </div>
 
-            {slippageOutOfBounds && (
+            {slippageError && (
               <p className="text-xs text-destructive">
-                Enter a slippage value between 0% and 50%.
+                {slippageError}
               </p>
             )}
 
-            {!slippageOutOfBounds && slippageTooLow && (
-              <p className="text-xs text-yellow-500">
-                Very low slippage may cause the swap to fail.
-              </p>
-            )}
-
-            {!slippageOutOfBounds && slippageTooHigh && (
-              <p className="text-xs text-yellow-500">
-                High slippage increases the risk of receiving a worse price.
-              </p>
+            {!slippageError && slippageWarning && (
+              <p className="text-xs text-yellow-500">{slippageWarning}</p>
             )}
           </div>
 
@@ -474,10 +479,7 @@ export function DemoSwap() {
           className="h-12 w-full text-lg"
           onClick={handleSwapClick}
           disabled={
-            !selectedPair ||
-            parseResult.status !== "ok" ||
-            slippage === null ||
-            slippageOutOfBounds
+            !submitValidation.isValid
           }
         >
           Review Swap

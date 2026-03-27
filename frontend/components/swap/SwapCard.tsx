@@ -12,6 +12,8 @@ import { SimulationPanel } from './SimulationPanel';
 import { FeeBreakdownPanel } from './FeeBreakdownPanel';
 import { useTradeFormStorage } from '@/hooks/useTradeFormStorage';
 import { useState } from 'react';
+import { STELLAR_NATIVE_MAX_DECIMALS } from '@/lib/amount-input';
+import { SwapValidationSchema } from '@/lib/swap-validation';
 
 export function SwapCard() {
   const {
@@ -28,8 +30,15 @@ export function SwapCard() {
   const [confidenceScore, setConfidenceScore] = useState<number>(85);
   const [volatility, setVolatility] = useState<'high' | 'medium' | 'low'>('low');
 
-  // Derived state for the button
-  const isValidAmount = parseFloat(payAmount) > 0;
+  const validation = SwapValidationSchema.validate(
+    {
+      amount: payAmount,
+      maxDecimals: STELLAR_NATIVE_MAX_DECIMALS,
+      slippage,
+    },
+    { mode: 'submit', requirePair: false },
+  );
+  const isValidAmount = validation.amountResult.status === 'ok';
 
   // Simulate quote fetching with confidence and volatility
   const handlePayAmountChange = (amount: string) => {
@@ -133,9 +142,8 @@ export function SwapCard() {
           </>
         )}
         <SwapCTA
-          amount={payAmount}
+          validation={validation}
           isLoading={isLoading}
-          hasPair={true}
           onSwap={() => console.log('Swapping...')}
         />
       </CardContent>

@@ -3,6 +3,7 @@ import {
   parseSlippageInput,
   isValidSlippage,
   getSlippageWarning,
+  getSlippageWarningLevel,
 } from "./slippage";
 
 describe("Slippage Utils", () => {
@@ -34,5 +35,11 @@ describe("Slippage Utils", () => {
 
   it("detects normal slippage", () => {
     expect(getSlippageWarning(0.5)).toBeNull();
+  });
+
+  it("reports warning levels", () => {
+    expect(getSlippageWarningLevel(0.05)).toBe("low");
+    expect(getSlippageWarningLevel(5)).toBe("high");
+    expect(getSlippageWarningLevel(0.5)).toBeNull();
   });
 });

@@ -2,25 +2,34 @@
 
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import type { SwapValidationResult } from "@/lib/swap-validation";
 
 interface SwapCTAProps {
-  amount: string;
+  validation: SwapValidationResult;
   isLoading: boolean;
-  hasPair: boolean;
   onSwap: () => void;
 }
 
-export function SwapCTA({ amount, isLoading, hasPair, onSwap }: SwapCTAProps) {
-  const numAmount = parseFloat(amount || "0");
-
+export function SwapCTA({ validation, isLoading, onSwap }: SwapCTAProps) {
   let label = "Review Swap";
   let disabled = false;
 
-  if (!hasPair) {
+  const hasPairIssue = validation.issues.some((issue) => issue.field === "pair");
+  const hasAmountIssue = validation.issues.some(
+    (issue) => issue.field === "amount",
+  );
+  const hasSlippageIssue = validation.issues.some(
+    (issue) => issue.field === "slippage",
+  );
+
+  if (hasPairIssue) {
     label = "Select tokens";
     disabled = true;
-  } else if (!amount || isNaN(numAmount) || numAmount <= 0) {
+  } else if (hasAmountIssue) {
     label = "Enter amount";
+    disabled = true;
+  } else if (hasSlippageIssue) {
+    label = "Invalid slippage";
     disabled = true;
   } else if (isLoading) {
     label = "Loading quote...";

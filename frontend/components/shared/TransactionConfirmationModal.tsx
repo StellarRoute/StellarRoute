@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { getAssetCode, parseSource } from "@/lib/route-helpers";
 import { cn } from "@/lib/utils";
+import { getSlippageWarningLevel } from "@/lib/slippage";
 
 interface TransactionConfirmationModalProps {
   isOpen: boolean;
@@ -83,8 +84,11 @@ export function TransactionConfirmationModal({
   const isHighPriceImpact = priceImpactValue >= 2;
   const isSeverePriceImpact = priceImpactValue >= 5;
 
-  const isHighSlippage = (slippageTolerancePct || 0) > 1;
-  const isLowSlippage = slippageTolerancePct !== undefined && slippageTolerancePct < 0.1;
+  const slippageWarningLevel = getSlippageWarningLevel(
+    slippageTolerancePct ?? null,
+  );
+  const isHighSlippage = slippageWarningLevel === "high";
+  const isLowSlippage = slippageWarningLevel === "low";
 
   const computedMinReceived = useMemo(() => {
     const toAmountN = parseMaybeNumber(toAmount);

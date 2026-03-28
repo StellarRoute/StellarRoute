@@ -299,6 +299,20 @@ paths:
               example:
                 error: not_found
                 message: No route found for this trading pair
+        "422":
+          description: Stale market data — all data sources are too old to provide a quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: stale_market_data
+                message: All market data inputs are stale
+                details:
+                  stale_count: 5
+                  fresh_count: 0
+                  threshold_secs_sdex: 60
+                  threshold_secs_amm: 120
         "500":
           description: Internal server error
           content:

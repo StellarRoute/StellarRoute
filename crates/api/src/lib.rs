@@ -10,11 +10,13 @@ pub mod load_test;
 pub mod middleware;
 pub mod models;
 pub mod regions;
+pub mod replay;
 pub mod routes;
 pub mod server;
 pub mod state;
 pub mod telemetry;
 pub mod worker;
+pub mod graph;
 
 pub use cache::CacheManager;
 pub use docs::ApiDoc;

@@ -64,7 +64,7 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
     )
     .fetch_all(&state.db)
     .await
-    .map_err(ApiError::Database)?;
+    .map_err(|e| ApiError::Database(Arc::new(e)))?;
 
     let mut pairs = Vec::new();
 

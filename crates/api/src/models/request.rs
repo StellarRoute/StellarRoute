@@ -8,7 +8,7 @@ pub const DEFAULT_SLIPPAGE_BPS: u32 = 50;
 pub const MAX_SLIPPAGE_BPS: u32 = 10_000;
 
 /// Query parameters for quote endpoint
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct QuoteParams {
     /// Amount to trade
     pub amount: Option<String>,
@@ -17,6 +17,8 @@ pub struct QuoteParams {
     /// Type of quote (buy or sell)
     #[serde(default = "default_quote_type")]
     pub quote_type: QuoteType,
+    /// Explain the route selection with decision diagnostics
+    pub explain: Option<bool>,
 }
 
 /// Request item for batch quotes
@@ -35,32 +37,51 @@ pub struct BatchQuoteRequest {
     pub quotes: Vec<QuoteRequestItem>,
 }
 
+/// Query parameters for the multiple-routes endpoint
+#[derive(Debug, Deserialize)]
+pub struct RoutesParams {
+    pub amount: Option<String>,
+    pub limit: Option<usize>,
+    pub max_hops: Option<usize>,
+    pub environment: Option<String>,
+}
+
 impl QuoteParams {
     /// Get the slippage tolerance in basis points, applying default if omitted
     pub fn slippage_bps(&self) -> u32 {
         self.slippage_bps.unwrap_or(DEFAULT_SLIPPAGE_BPS)
     }
 
-    /// Validate the slippage tolerance bounds
-    pub fn validate_slippage(&self) -> std::result::Result<(), String> {
-        let bps = self.slippage_bps();
-        if bps > MAX_SLIPPAGE_BPS {
-            return Err(format!(
-                "slippage_bps must be between 0 and {} (100%)",
-                MAX_SLIPPAGE_BPS
+    /// Validate the parameters for common requirements
+    pub fn validate(&self) -> std::result::Result<(), (String, String)> {
+        if let Some(ref amount_str) = self.amount {
+            let amount: f64 = amount_str.parse().map_err(|_| {
+                ("invalid_amount".to_string(), "Amount must be a numeric string".to_string())
+            })?;
+            if amount <= 0.0 {
+                return Err(("invalid_amount".to_string(), "Amount must be greater than zero".to_string()));
+            }
+        }
+        
+        if self.slippage_bps() > MAX_SLIPPAGE_BPS {
+            return Err((
+                "invalid_slippage".to_string(),
+                format!("slippage_bps must be between 0 and {} (100%)", MAX_SLIPPAGE_BPS)
             ));
         }
+
         Ok(())
     }
 }
-}
+
+
 
 fn default_quote_type() -> QuoteType {
     QuoteType::Sell
 }
 
 /// Type of quote requested
-#[derive(Debug, Deserialize, Clone, Copy)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum QuoteType {
     /// Selling the base asset
@@ -70,7 +91,7 @@ pub enum QuoteType {
 }
 
 /// Asset identifier in path parameters
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct AssetPath {
     /// Asset code (e.g., "XLM", "USDC", or "native" for XLM)
     pub asset_code: String,
@@ -81,7 +102,7 @@ pub struct AssetPath {
 impl AssetPath {
     /// Parse asset identifier from path segment
     /// Format: "native" or "CODE" or "CODE:ISSUER"
-    pub fn parse(s: &str) -> Result<Self, String> {
+    pub fn parse(s: &str) -> std::result::Result<Self, String> {
         if s == "native" {
             return Ok(Self {
                 asset_code: "native".to_string(),
@@ -91,14 +112,27 @@ impl AssetPath {
 
         let parts: Vec<&str> = s.split(':').collect();
         match parts.len() {
-            1 => Ok(Self {
-                asset_code: parts[0].to_uppercase(),
-                asset_issuer: None,
-            }),
-            2 => Ok(Self {
-                asset_code: parts[0].to_uppercase(),
-                asset_issuer: Some(parts[1].to_string()),
-            }),
+            1 => {
+                let code = parts[0].to_uppercase();
+                if code.is_empty() {
+                    return Err(format!("Asset code cannot be empty: {}", s));
+                }
+                Ok(Self {
+                    asset_code: code,
+                    asset_issuer: None,
+                })
+            }
+            2 => {
+                let code = parts[0].to_uppercase();
+                let issuer = parts[1];
+                if code.is_empty() || issuer.is_empty() {
+                    return Err(format!("Asset code and issuer cannot be empty: {}", s));
+                }
+                Ok(Self {
+                    asset_code: code,
+                    asset_issuer: Some(issuer.to_string()),
+                })
+            }
             _ => Err(format!("Invalid asset format: {}", s)),
         }
     }
@@ -109,6 +143,15 @@ impl AssetPath {
             "native".to_string()
         } else {
             "credit_alphanum4".to_string() // Simplified, would need to detect alphanum12
+        }
+    }
+
+    /// Canonical Stellar asset identifier: "native" or "CODE:ISSUER"
+    pub fn to_canonical(&self) -> String {
+        match (&self.asset_code.as_str(), &self.asset_issuer) {
+            (&"native", _) => "native".to_string(),
+            (code, Some(issuer)) => format!("{}:{}", code, issuer),
+            (code, None) => code.to_string(),
         }
     }
 }
@@ -149,9 +192,10 @@ mod tests {
             amount: None,
             slippage_bps: None,
             quote_type: QuoteType::Sell,
+            explain: None,
         };
         assert_eq!(params.slippage_bps(), DEFAULT_SLIPPAGE_BPS);
-        assert!(params.validate_slippage().is_ok());
+        assert!(params.validate().is_ok());
     }
 
     #[test]
@@ -160,9 +204,10 @@ mod tests {
             amount: None,
             slippage_bps: Some(100),
             quote_type: QuoteType::Sell,
+            explain: None,
         };
         assert_eq!(params.slippage_bps(), 100);
-        assert!(params.validate_slippage().is_ok());
+        assert!(params.validate().is_ok());
     }
 
     #[test]
@@ -171,9 +216,10 @@ mod tests {
             amount: None,
             slippage_bps: Some(MAX_SLIPPAGE_BPS),
             quote_type: QuoteType::Sell,
+            explain: None,
         };
         assert_eq!(params.slippage_bps(), MAX_SLIPPAGE_BPS);
-        assert!(params.validate_slippage().is_ok());
+        assert!(params.validate().is_ok());
     }
 
     #[test]
@@ -182,15 +228,36 @@ mod tests {
             amount: None,
             slippage_bps: Some(MAX_SLIPPAGE_BPS + 1),
             quote_type: QuoteType::Sell,
+            explain: None,
         };
-        let result = params.validate_slippage();
+        let result = params.validate();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            format!(
-                "slippage_bps must be between 0 and {} (100%)",
-                MAX_SLIPPAGE_BPS
-            )
-        );
+        assert_eq!(result.unwrap_err().0, "invalid_slippage");
+    }
+
+    #[test]
+    fn test_quote_params_invalid_amount() {
+        let params = QuoteParams {
+            amount: Some("abc".to_string()),
+            slippage_bps: None,
+            quote_type: QuoteType::Sell,
+            explain: None,
+        };
+        let result = params.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().0, "invalid_amount");
+    }
+
+    #[test]
+    fn test_quote_params_zero_amount() {
+        let params = QuoteParams {
+            amount: Some("0".to_string()),
+            slippage_bps: None,
+            quote_type: QuoteType::Sell,
+            explain: None,
+        };
+        let result = params.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().0, "invalid_amount");
     }
 }

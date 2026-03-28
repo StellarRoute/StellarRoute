@@ -1,6 +1,6 @@
 //! Data archival functionality
 
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tracing::{info, warn};
 
 use crate::error::Result;
@@ -101,6 +101,80 @@ impl ArchivalManager {
             .await?;
 
         info!("Orderbook summary refreshed");
+        Ok(())
+    }
+
+    /// Compact old orderbook snapshots
+    ///
+    /// # Arguments
+    /// * `threshold_hours` - Hours after which snapshots are compacted
+    /// * `retention_days` - Days after which snapshots are deleted
+    pub async fn compact_snapshots(
+        &self,
+        threshold_hours: i32,
+        retention_days: i32,
+    ) -> Result<i32> {
+        let start = std::time::Instant::now();
+        info!(
+            "Running snapshot compaction (threshold: {}h, retention: {}d)",
+            threshold_hours, retention_days
+        );
+
+        let result: (i32,) = sqlx::query_as(
+            r#"
+            select compact_orderbook_snapshots($1, $2)
+            "#,
+        )
+        .bind(threshold_hours)
+        .bind(retention_days)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let affected = result.0;
+        let duration_ms = start.elapsed().as_millis();
+
+        info!(
+            target: "stellarroute.indexer.maintenance",
+            metric = "stellarroute.indexer.snapshot_compaction",
+            deleted_count = affected,
+            duration_ms = duration_ms,
+            "Snapshot compaction completed"
+        );
+
+        Ok(affected)
+    }
+
+    /// Run general retention policies for various tables
+    pub async fn run_retention_cleanup(&self) -> Result<()> {
+        let start = std::time::Instant::now();
+        info!("Running general retention policies cleanup");
+
+        let rows = sqlx::query(
+            r#"
+            select table_name, deleted_count from apply_retention_policies()
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        for row in rows {
+            let table_name: String = row.get(0);
+            let deleted_count: i64 = row.get(1);
+
+            info!(
+                target: "stellarroute.indexer.maintenance",
+                metric = "stellarroute.indexer.retention_cleanup",
+                table = table_name,
+                deleted_count = deleted_count,
+                "Retention cleanup for table {} completed",
+                table_name
+            );
+        }
+
+        info!(
+            "General retention cleanup completed in {}ms",
+            start.elapsed().as_millis()
+        );
         Ok(())
     }
 }

@@ -119,7 +119,7 @@ describe("TokenPairSelector", () => {
       expect(screen.getByText("Select asset to sell")).toBeDefined();
     });
 
-    const searchInput = screen.getByPlaceholderText(/search by code/i);
+    const searchInput = screen.getByPlaceholderText(/search by symbol or address/i);
     fireEvent.change(searchInput, { target: { value: "USDC" } });
 
     await waitFor(() => {

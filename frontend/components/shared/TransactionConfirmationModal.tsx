@@ -25,8 +25,9 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { getSlippageWarningLevel } from "@/lib/slippage";
 
-interface BatchSwapItem {
+export interface BatchSwapItem {
   fromAsset: string;
   fromAmount: string;
   toAsset: string;
@@ -100,9 +101,11 @@ export function TransactionConfirmationModal({
   const isHighPriceImpact = priceImpactValue >= 2;
   const isSeverePriceImpact = priceImpactValue >= 5;
 
-  const isHighSlippage = (slippageTolerancePct || 0) > 1;
-  const isLowSlippage =
-    slippageTolerancePct !== undefined && slippageTolerancePct < 0.1;
+  const slippageWarningLevel = getSlippageWarningLevel(
+    slippageTolerancePct ?? null,
+  );
+  const isHighSlippage = slippageWarningLevel === "high";
+  const isLowSlippage = slippageWarningLevel === "low";
 
   const computedMinReceived = useMemo(() => {
     const toAmountN = parseMaybeNumber(toAmount);

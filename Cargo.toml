@@ -48,6 +48,7 @@ sqlx = { version = "0.8", features = [
     "postgres",
     "chrono",
     "uuid",
+    "rust_decimal",
 ] }
 
 # Time
@@ -64,6 +65,9 @@ redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
 
 # Concurrency utilities
 parking_lot = "0.12"
+arc-swap = "1.7"
+dashmap = "5.5"
+rand = "0.8"
 proptest = "1.5"
 
 # Clippy and formatting

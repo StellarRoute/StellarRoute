@@ -1,8 +1,7 @@
 use super::config::{RegionConfig, RegionId, RegionRegistry};
 use super::consistency::{ConsistencyConstraint, DataVersion, VersionTracker};
 use super::health::{HealthStatus, RegionalHealthManager};
-use crate::error::ApiError;
-use anyhow::Result;
+use crate::error::{ApiError, Result};
 use sqlx::{PgPool, Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -247,11 +246,10 @@ impl MultiRegionRouter {
         }
 
         // All regions failed
-        Err(ApiError::Internal(anyhow::anyhow!(
+        Err(ApiError::Internal(Arc::new(anyhow::anyhow!(
             "All regions exhausted: {}",
             last_error.unwrap_or_else(|| "Unknown error".to_string())
-        ))
-        .into())
+        ))))
     }
 
     /// Get routing metrics

@@ -34,8 +34,11 @@ function convertToSplitRoute(path: PathStep[]): SplitRouteData {
 
 function calculateMetrics(quote: PriceQuote): RouteMetrics {
   // Calculate metrics from quote data
-  const totalFees = '0.0001'; // Placeholder - would calculate from path
-  const totalPriceImpact = '0.1%'; // Placeholder - would calculate from path
+  const hops = Math.max(quote.path.length, 1);
+  const totalFees = `${(hops * 0.00001).toFixed(5)} XLM`;
+  const totalPriceImpact = quote.priceImpact != null
+    ? `${quote.priceImpact}${quote.priceImpact.includes('%') ? '' : '%'}`
+    : 'N/A';
   const netOutput = quote.total;
   const averageRate = quote.price;
 
@@ -54,6 +57,16 @@ export function TradeRouteDisplay({
   className,
 }: TradeRouteDisplayProps) {
   const [displayError, setDisplayError] = useState<string | undefined>(error);
+  const breakdown = quote
+    ? {
+        hops: quote.path.length,
+        totalFees: `${(Math.max(quote.path.length, 1) * 0.00001).toFixed(5)} XLM`,
+        priceImpact:
+          quote.priceImpact != null
+            ? `${quote.priceImpact}${quote.priceImpact.includes('%') ? '' : '%'}`
+            : 'N/A',
+      }
+    : undefined;
 
   useEffect(() => {
     setDisplayError(error);
@@ -96,7 +109,13 @@ export function TradeRouteDisplay({
   }
 
   // Regular single-path route
-  return <RouteVisualization path={quote.path} className={className} />;
+  return (
+    <RouteVisualization
+      path={quote.path}
+      className={className}
+      breakdown={breakdown}
+    />
+  );
 }
 
 /**

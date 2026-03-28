@@ -6,8 +6,17 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::cache::{CacheManager, SingleFlight};
-use crate::models::QuoteResponse;
+
+use crate::models::{QuoteResponse, RoutesResponse};
+use crate::replay::capture::CaptureHook;
+use crate::graph::GraphManager;
+use crate::routes::ws::WsState;
+use stellarroute_routing::health::circuit_breaker::CircuitBreakerRegistry;
+
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
+use crate::replay::capture::CaptureHook;
+use crate::routes::ws::WsState;
+use stellarroute_routing::health::circuit_breaker::{CircuitBreakerRegistry, BreakerConfig};
 
 /// Cache policy configuration
 #[derive(Debug, Clone)]
@@ -93,6 +102,18 @@ pub struct AppState {
     pub worker_pool: Arc<RouteWorkerPool>,
     /// Single-flight manager for quotes to prevent stampedes
     pub quote_single_flight: Arc<SingleFlight<crate::error::Result<QuoteResponse>>>,
+
+    /// Optional replay capture hook (None when REPLAY_CAPTURE_ENABLED=false)
+    pub replay_capture: Option<Arc<CaptureHook>>,
+
+    /// Single-flight manager for routes
+    pub routes_single_flight: Arc<SingleFlight<crate::error::Result<RoutesResponse>>>,
+    /// Persistent background synced graph manager
+    pub graph_manager: Arc<GraphManager>,
+    /// WebSocket shared state
+    pub ws: Option<Arc<WsState>>,
+    /// Shared circuit breaker registry for liquidity providers
+    pub circuit_breaker: Arc<CircuitBreakerRegistry>,
 }
 
 impl AppState {
@@ -101,9 +122,10 @@ impl AppState {
         Self::new_with_policy(db, CachePolicy::default())
     }
 
-    /// Create new application state with an explicit cache policy
     pub fn new_with_policy(db: PgPool, cache_policy: CachePolicy) -> Self {
         let worker_pool = Self::create_worker_pool(db.clone());
+        let graph_manager = Arc::new(GraphManager::new(db.clone()));
+        graph_manager.clone().start_sync();
 
         Self {
             db,
@@ -112,7 +134,14 @@ impl AppState {
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
-            quote_single_flight: Arc::new(SingleFlight::new()),
+            quote_single_flight: Arc::new(
+                SingleFlight::<crate::error::Result<QuoteResponse>>::new(),
+            ),
+            replay_capture: None,
+            routes_single_flight: Arc::new(SingleFlight::new()),
+            graph_manager,
+            ws: None,
+            circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
         }
     }
 
@@ -121,13 +150,14 @@ impl AppState {
         Self::with_cache_and_policy(db, cache, CachePolicy::default())
     }
 
-    /// Create new application state with cache and explicit cache policy
     pub fn with_cache_and_policy(
         db: PgPool,
         cache: CacheManager,
         cache_policy: CachePolicy,
     ) -> Self {
         let worker_pool = Self::create_worker_pool(db.clone());
+        let graph_manager = Arc::new(GraphManager::new(db.clone()));
+        graph_manager.clone().start_sync();
 
         Self {
             db,
@@ -136,7 +166,14 @@ impl AppState {
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
-            quote_single_flight: Arc::new(SingleFlight::new()),
+            quote_single_flight: Arc::new(
+                SingleFlight::<crate::error::Result<QuoteResponse>>::new(),
+            ),
+            replay_capture: None,
+            routes_single_flight: Arc::new(SingleFlight::new()),
+            graph_manager,
+            ws: None,
+            circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
         }
     }
 
@@ -155,5 +192,19 @@ impl AppState {
     /// Check if caching is enabled
     pub fn has_cache(&self) -> bool {
         self.cache.is_some()
+    }
+
+    /// Attach a replay capture hook to this state.
+    /// Returns a new `AppState` with the hook set.
+    pub fn with_replay_capture(mut self, hook: CaptureHook) -> Self {
+        self.replay_capture = Some(Arc::new(hook));
+        self
+    }
+
+    /// Attach WebSocket state to this state.
+    /// Returns a new `AppState` with the state set.
+    pub fn with_ws(mut self, ws: Arc<WsState>) -> Self {
+        self.ws = Some(ws);
+        self
     }
 }

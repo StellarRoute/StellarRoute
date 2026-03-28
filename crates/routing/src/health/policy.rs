@@ -60,9 +60,13 @@ impl OverrideRegistry {
 // ExclusionPolicy
 // ---------------------------------------------------------------------------
 
+use std::sync::Arc;
+use crate::health::circuit_breaker::CircuitBreakerRegistry;
+
 pub struct ExclusionPolicy {
     pub thresholds: ExclusionThresholds,
     pub overrides: OverrideRegistry,
+    pub circuit_breaker: Option<Arc<CircuitBreakerRegistry>>,
 }
 
 impl ExclusionPolicy {
@@ -101,6 +105,21 @@ impl ExclusionPolicy {
                     });
                 }
                 None => {
+                    // 1. Check Circuit Breaker first
+                    if let Some(registry) = &self.circuit_breaker {
+                        if registry.is_venue_excluded(&venue.venue_ref) {
+                            excluded.insert(venue.venue_ref.clone());
+                            excluded_venues.push(ExcludedVenueInfo {
+                                venue_ref: venue.venue_ref.clone(),
+                                score: venue.record.score,
+                                signals: venue.record.signals.clone(),
+                                reason: ExclusionReason::CircuitBreakerOpen,
+                            });
+                            continue;
+                        }
+                    }
+
+                    // 2. Check Static Threshold
                     let threshold = match venue.venue_type {
                         VenueType::Sdex => self.thresholds.sdex,
                         VenueType::Amm => self.thresholds.amm,
@@ -145,6 +164,7 @@ pub enum ExclusionReason {
     PolicyThreshold { threshold: f64 },
     Override,
     StaleData,
+    CircuitBreakerOpen,
 }
 
 #[cfg(test)]
@@ -174,6 +194,7 @@ mod tests {
                 amm: 0.5,
             },
             overrides: OverrideRegistry::default(),
+            circuit_breaker: None,
         }
     }
 
@@ -220,6 +241,7 @@ mod tests {
                 venue_ref: "venue:C".to_string(),
                 directive: OverrideDirective::ForceInclude,
             }]),
+            circuit_breaker: None,
         };
         let scored = vec![make_scored("venue:C", VenueType::Sdex, 0.0)];
         let (excluded, _) = policy.apply(&scored);
@@ -241,6 +263,7 @@ mod tests {
                 venue_ref: "venue:D".to_string(),
                 directive: OverrideDirective::ForceExclude,
             }]),
+            circuit_breaker: None,
         };
         let scored = vec![make_scored("venue:D", VenueType::Sdex, 1.0)];
         let (excluded, diagnostics) = policy.apply(&scored);
@@ -270,6 +293,7 @@ mod tests {
                 venue_ref: "venue:UNKNOWN".to_string(),
                 directive: OverrideDirective::ForceExclude,
             }]),
+            circuit_breaker: None,
         };
         // scored list does not contain "venue:UNKNOWN"
         let scored = vec![make_scored("venue:E", VenueType::Sdex, 0.8)];

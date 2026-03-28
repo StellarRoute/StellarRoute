@@ -139,7 +139,7 @@ pub struct DataFreshness {
 }
 
 /// Price quote response with expiry and staleness metadata
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteResponse {
     pub base_asset: AssetInfo,
     pub quote_asset: AssetInfo,
@@ -195,6 +195,37 @@ pub struct RouteResponse {
 }
 }
 
+/// A comprehensive set of multiple ranked execution routes
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RoutesResponse {
+    pub base_asset: AssetInfo,
+    pub quote_asset: AssetInfo,
+    pub amount: String,
+    pub routes: Vec<RouteCandidate>,
+    pub timestamp: i64,
+}
+
+/// A single proposed N-hop route with pricing metrics
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RouteCandidate {
+    pub estimated_output: String,
+    pub impact_bps: u32,
+    pub score: f64,
+    pub policy_used: String,
+    pub path: Vec<RouteHop>,
+}
+
+/// A specific swap execution step inside a RouteCandidate
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RouteHop {
+    pub from_asset: AssetInfo,
+    pub to_asset: AssetInfo,
+    pub price: String,
+    pub amount_out_of_hop: String,
+    pub fee_bps: u32,
+    pub source: String,
+}
+
 /// Configuration for quote staleness detection
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteStalenessConfig {
@@ -241,7 +272,7 @@ impl QuoteResponse {
 }
 
 /// Rationale metadata for quote venue selection
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteRationaleMetadata {
     pub strategy: String,
     pub selected_source: String,
@@ -249,7 +280,7 @@ pub struct QuoteRationaleMetadata {
 }
 
 /// Per-venue comparison details for direct route evaluation
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VenueEvaluation {
     pub source: String,
     pub price: String,
@@ -258,7 +289,7 @@ pub struct VenueEvaluation {
 }
 
 /// Step in a trading path
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PathStep {
     pub from_asset: AssetInfo,
     pub to_asset: AssetInfo,
@@ -280,8 +311,6 @@ pub struct ExclusionDiagnostics {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExcludedVenueInfo {
     pub venue_ref: String,
-    pub score: f64,
-    pub signals: serde_json::Value,
     pub reason: ExclusionReason,
 }
 
@@ -292,21 +321,65 @@ pub enum ExclusionReason {
     PolicyThreshold { threshold: f64 },
     Override,
     StaleData,
+    CircuitBreakerOpen,
+}
+
+/// Machine-readable error codes for API failures
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiErrorCode {
+    /// Unexpected server-side failure
+    InternalError,
+    /// Malformed request or invalid parameters
+    BadRequest,
+    /// Requested resource not found
+    NotFound,
+    /// Request parameters failed validation
+    ValidationError,
+    /// Client exceeded rate limits
+    RateLimitExceeded,
+    /// Server is temporarily overloaded
+    Overloaded,
+    /// Request lacks valid credentials
+    Unauthorized,
+    /// Invalid Stellar asset identifier
+    InvalidAsset,
+    /// No executable trading route found
+    NoRoute,
+    /// Underlying market data is too stale to provide a quote
+    StaleMarketData,
+}
+
+impl ApiErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::InternalError => "internal_error",
+            Self::BadRequest => "bad_request",
+            Self::NotFound => "not_found",
+            Self::ValidationError => "validation_error",
+            Self::RateLimitExceeded => "rate_limit_exceeded",
+            Self::Overloaded => "overloaded",
+            Self::Unauthorized => "unauthorized",
+            Self::InvalidAsset => "invalid_asset",
+            Self::NoRoute => "no_route",
+            Self::StaleMarketData => "stale_market_data",
+        }
+    }
 }
 
 /// Error response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
-    pub error: String,
+    pub error: ApiErrorCode,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
 
 impl ErrorResponse {
-    pub fn new(error: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(error: ApiErrorCode, message: impl Into<String>) -> Self {
         Self {
-            error: error.into(),
+            error,
             message: message.into(),
             details: None,
         }

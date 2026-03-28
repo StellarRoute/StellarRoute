@@ -14,6 +14,7 @@ import type {
   PairsResponse,
   PriceQuote,
   QuoteType,
+  ApiErrorCode,
 } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +24,7 @@ import type {
 export class StellarRouteApiError extends Error {
   constructor(
     public readonly status: number,
-    public readonly code: string,
+    public readonly code: ApiErrorCode,
     message: string,
     public readonly details?: unknown,
   ) {
@@ -106,13 +107,13 @@ export class StellarRouteClient {
 
       if (!response.ok) {
         // Try to parse the backend ErrorResponse body
-        let code = 'unknown_error';
+        let code: ApiErrorCode = 'unknown_error';
         let message = `HTTP ${response.status}`;
         let details: unknown;
 
         try {
           const body = await response.json();
-          code = body.error ?? code;
+          code = (body.error as ApiErrorCode) ?? code;
           message = body.message ?? message;
           details = body.details;
         } catch {
@@ -142,7 +143,7 @@ export class StellarRouteClient {
 
       const message =
         err instanceof Error ? err.message : 'Network error';
-      throw new StellarRouteApiError(0, 'network_error', message);
+      throw new StellarRouteApiError(0, 'network_error' as ApiErrorCode, message);
     } finally {
       clearTimeout(timer);
     }

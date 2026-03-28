@@ -49,6 +49,18 @@ pub struct IndexerConfig {
     /// Maximum lifetime of a pooled connection in seconds (env: `DB_MAX_LIFETIME`).
     #[serde(default = "default_max_lifetime_secs")]
     pub max_lifetime_secs: u64,
+
+    /// Maintenance interval in minutes (env: `MAINTENANCE_INTERVAL_MINS`).
+    #[serde(default = "default_maintenance_interval_mins")]
+    pub maintenance_interval_mins: u64,
+
+    /// Snapshot retention in days (env: `SNAPSHOT_RETENTION_DAYS`).
+    #[serde(default = "default_snapshot_retention_days")]
+    pub snapshot_retention_days: i32,
+
+    /// Snapshot compaction after threshold hours (env: `SNAPSHOT_COMPACTION_HOURS`).
+    #[serde(default = "default_snapshot_compaction_hours")]
+    pub snapshot_compaction_hours: i32,
 }
 
 fn default_poll_interval_secs() -> u64 {
@@ -85,6 +97,18 @@ fn default_idle_timeout_secs() -> u64 {
 
 fn default_max_lifetime_secs() -> u64 {
     1800
+}
+
+fn default_maintenance_interval_mins() -> u64 {
+    60
+}
+
+fn default_snapshot_retention_days() -> i32 {
+    90
+}
+
+fn default_snapshot_compaction_hours() -> i32 {
+    24
 }
 
 impl IndexerConfig {

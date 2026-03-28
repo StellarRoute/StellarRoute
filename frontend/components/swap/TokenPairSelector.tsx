@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ArrowLeftRight, Copy, Search, X } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TradingPair } from "@/types";
+import { TokenSearchModal } from "@/components/shared/TokenSearchModal";
+import { useRecentTokens } from "@/hooks/useRecentTokens";
 
 export interface TokenPairSelectorProps {
   /** Available trading pairs from the API */
@@ -90,111 +92,6 @@ function AssetButton({
   );
 }
 
-function AssetSelectionDialog({
-  isOpen,
-  onClose,
-  assets,
-  onSelect,
-  title,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  assets: AssetOption[];
-  onSelect: (asset: string) => void;
-  title: string;
-}) {
-  const [search, setSearch] = useState("");
-
-  const filteredAssets = useMemo(() => {
-    if (!search.trim()) return assets;
-    const query = search.toLowerCase();
-    return assets.filter(
-      (a) =>
-        a.code.toLowerCase().includes(query) ||
-        a.displayName.toLowerCase().includes(query) ||
-        a.issuer?.toLowerCase().includes(query)
-    );
-  }, [assets, search]);
-
-  const handleCopyIssuer = (issuer: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(issuer);
-    toast.success("Issuer copied to clipboard");
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by code, name, or issuer..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 pr-9"
-            aria-label="Search assets"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
-          {filteredAssets.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No assets found matching &quot;{search}&quot;
-            </p>
-          ) : (
-            filteredAssets.map((asset) => (
-              <button
-                key={asset.asset}
-                type="button"
-                onClick={() => {
-                  onSelect(asset.asset);
-                  onClose();
-                }}
-                className={cn(
-                  "w-full flex items-center justify-between gap-3 p-3 rounded-md transition-colors",
-                  "hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                )}
-              >
-                <div className="flex flex-col items-start gap-1 flex-1 min-w-0">
-                  <span className="font-semibold">{asset.code}</span>
-                  {asset.issuer && (
-                    <span className="text-xs text-muted-foreground font-mono truncate w-full">
-                      {asset.issuer}
-                    </span>
-                  )}
-                </div>
-                {asset.issuer && (
-                  <button
-                    type="button"
-                    className="p-1 rounded hover:bg-accent"
-                    onClick={(e) => handleCopyIssuer(asset.issuer!, e)}
-                    title="Copy issuer address"
-                    aria-label="Copy issuer address"
-                  >
-                    <Copy className="h-3 w-3" />
-                  </button>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function TokenPairSelector({
   pairs,
   selectedBase,
@@ -206,6 +103,7 @@ export function TokenPairSelector({
 }: TokenPairSelectorProps) {
   const [baseDialogOpen, setBaseDialogOpen] = useState(false);
   const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
+  const { addRecentToken } = useRecentTokens();
 
   const { baseAssets, quoteAssets, validPairs } = useMemo(() => {
     const baseSet = new Map<string, AssetOption>();
@@ -291,10 +189,12 @@ export function TokenPairSelector({
     } else {
       onPairChange(asset, selectedQuote || "");
     }
+    addRecentToken(asset);
   };
 
   const handleQuoteSelect = (asset: string) => {
     onPairChange(selectedBase || "", asset);
+    addRecentToken(asset);
   };
 
   return (
@@ -379,20 +279,22 @@ export function TokenPairSelector({
         )}
       </div>
 
-      <AssetSelectionDialog
+      <TokenSearchModal
         isOpen={baseDialogOpen}
         onClose={() => setBaseDialogOpen(false)}
         assets={baseAssets}
         onSelect={handleBaseSelect}
         title="Select asset to sell"
+        selectedAsset={selectedBase}
       />
 
-      <AssetSelectionDialog
+      <TokenSearchModal
         isOpen={quoteDialogOpen}
         onClose={() => setQuoteDialogOpen(false)}
         assets={availableQuoteAssets}
         onSelect={handleQuoteSelect}
         title="Select asset to buy"
+        selectedAsset={selectedQuote}
       />
     </Card>
   );

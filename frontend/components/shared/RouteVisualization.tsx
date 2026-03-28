@@ -8,6 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   describeTradeRoute,
   getAssetCode,
   parseSource,
@@ -18,6 +24,11 @@ interface RouteVisualizationProps {
   isLoading?: boolean;
   error?: string;
   className?: string;
+  breakdown?: {
+    totalFees?: string;
+    priceImpact?: string;
+    hops?: number;
+  };
 }
 
 interface RouteNode {
@@ -240,6 +251,7 @@ export function RouteVisualization({
   isLoading = false,
   error,
   className,
+  breakdown,
 }: RouteVisualizationProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
@@ -292,6 +304,9 @@ export function RouteVisualization({
   const { nodes, edges } = buildRouteGraph(path);
   const hopCount = path.length;
   const routeSummary = describeTradeRoute(path);
+  const breakdownHops = breakdown?.hops ?? hopCount;
+  const breakdownFees = breakdown?.totalFees ?? 'N/A';
+  const breakdownImpact = breakdown?.priceImpact ?? 'N/A';
 
   return (
     <Card className={cn('p-4 sm:p-6', className)}>
@@ -304,6 +319,36 @@ export function RouteVisualization({
             <Badge variant="outline">
               {hopCount} {hopCount === 1 ? 'Hop' : 'Hops'}
             </Badge>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Route breakdown details"
+                  >
+                    <Info className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="w-56">
+                  <div className="space-y-2 text-xs">
+                    <p className="font-semibold">Route breakdown</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Hops</span>
+                      <span>{breakdownHops}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Est. fees</span>
+                      <span>{breakdownFees}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Price impact</span>
+                      <span>{breakdownImpact}</span>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <button
             type="button"

@@ -56,6 +56,8 @@ mod tests {
             venue_type: "sdex".to_string(),
             venue_ref: venue_ref.to_string(),
             liquidity: 1_000_000_000,
+            price: 1.0,
+            fee_bps: 30,
         }
     }
 
@@ -66,6 +68,7 @@ mod tests {
                 amm: threshold,
             },
             overrides: OverrideRegistry::default(),
+            circuit_breaker: None,
         }
     }
 

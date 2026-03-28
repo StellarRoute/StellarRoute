@@ -26,6 +26,9 @@ async fn test_database_connection() {
         connection_timeout_secs: 30,
         idle_timeout_secs: 600,
         max_lifetime_secs: 1800,
+        maintenance_interval_mins: 60,
+        snapshot_retention_days: 90,
+        snapshot_compaction_hours: 24,
     };
 
     let db = Database::new(&config)
@@ -68,6 +71,9 @@ async fn test_amm_aggregator_initialization() {
         connection_timeout_secs: 30,
         idle_timeout_secs: 600,
         max_lifetime_secs: 1800,
+        maintenance_interval_mins: 60,
+        snapshot_retention_days: 90,
+        snapshot_compaction_hours: 24,
     };
 
     let db = Database::new(&config)

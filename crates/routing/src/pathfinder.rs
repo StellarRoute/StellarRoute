@@ -28,6 +28,8 @@ pub struct LiquidityEdge {
     pub venue_type: String,
     pub venue_ref: String,
     pub liquidity: i128,
+    pub price: f64,
+    pub fee_bps: u32,
 }
 
 /// Represents a path through liquidity sources
@@ -43,6 +45,8 @@ pub struct PathHop {
     pub destination_asset: String,
     pub venue_type: String,
     pub venue_ref: String,
+    pub price: f64,
+    pub fee_bps: u32,
 }
 
 /// N-hop pathfinder with safety bounds
@@ -168,6 +172,8 @@ impl Pathfinder {
                         destination_asset: edge.to.clone(),
                         venue_type: edge.venue_type.clone(),
                         venue_ref: edge.venue_ref.clone(),
+                        price: edge.price,
+                        fee_bps: edge.fee_bps,
                     };
 
                     // Simple output estimation (50bps slippage per hop)

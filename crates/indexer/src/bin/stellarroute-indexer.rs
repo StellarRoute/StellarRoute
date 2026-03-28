@@ -5,9 +5,10 @@
 use std::process;
 use tracing::{error, info};
 
+use std::time::Duration;
 use stellarroute_indexer::amm::{AmmAggregator, AmmConfig};
 use stellarroute_indexer::config::IndexerConfig;
-use stellarroute_indexer::db::Database;
+use stellarroute_indexer::db::{archival::ArchivalManager, Database};
 use stellarroute_indexer::horizon::HorizonClient;
 use stellarroute_indexer::sdex::SdexIndexer;
 use stellarroute_indexer::soroban::{SorobanRpcClient, StellarNetwork};
@@ -70,7 +71,7 @@ async fn main() {
         stale_threshold_secs: config.stale_threshold_secs,
         batch_size: 50,
     };
-    let amm_aggregator = AmmAggregator::new(amm_config, db, soroban);
+    let amm_aggregator = AmmAggregator::new(amm_config, db.clone(), soroban);
 
     // Start both indexers concurrently
     let sdex_handle = tokio::spawn(async move {
@@ -87,8 +88,49 @@ async fn main() {
         }
     });
 
-    // Wait for both to complete (they run indefinitely)
-    let (sdex_result, amm_result) = tokio::join!(sdex_handle, amm_handle);
+    // Create archival manager for maintenance tasks
+    let archival_manager = ArchivalManager::new(db.pool().clone());
+    let maintenance_config = config.clone();
+
+    let maintenance_handle = tokio::spawn(async move {
+        let interval = Duration::from_secs(maintenance_config.maintenance_interval_mins * 60);
+        info!(
+            "Starting maintenance loop with interval of {} minutes",
+            maintenance_config.maintenance_interval_mins
+        );
+
+        loop {
+            // Wait first, or run immediately? Usually wait first to avoid thundering herd on startup
+            tokio::time::sleep(interval).await;
+
+            info!("Triggering scheduled maintenance tasks");
+
+            // 1. Snapshot compaction
+            if let Err(e) = archival_manager
+                .compact_snapshots(
+                    maintenance_config.snapshot_compaction_hours,
+                    maintenance_config.snapshot_retention_days,
+                )
+                .await
+            {
+                error!("Maintenance error during snapshot compaction: {}", e);
+            }
+
+            // 2. Retention policy cleanup
+            if let Err(e) = archival_manager.run_retention_cleanup().await {
+                error!("Maintenance error during retention cleanup: {}", e);
+            }
+
+            // 3. Refresh materialized views
+            if let Err(e) = archival_manager.refresh_orderbook_summary().await {
+                error!("Maintenance error during orderbook summary refresh: {}", e);
+            }
+        }
+    });
+
+    // Wait for indexers and maintenance task
+    let (sdex_result, amm_result, maintenance_result) =
+        tokio::join!(sdex_handle, amm_handle, maintenance_handle);
 
     if let Err(e) = sdex_result {
         error!("SDEX indexer task failed: {}", e);
@@ -96,6 +138,10 @@ async fn main() {
 
     if let Err(e) = amm_result {
         error!("AMM aggregator task failed: {}", e);
+    }
+
+    if let Err(e) = maintenance_result {
+        error!("Maintenance task failed: {}", e);
     }
 
     process::exit(1);

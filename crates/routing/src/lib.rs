@@ -8,6 +8,7 @@ pub mod health;
 pub mod impact;
 pub mod normalization;
 pub mod optimizer;
+pub mod simulator;
 pub mod pathfinder;
 pub mod policy;
 

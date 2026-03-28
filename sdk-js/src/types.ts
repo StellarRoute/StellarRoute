@@ -109,9 +109,24 @@ export interface PriceQuote {
   source_timestamp?: number;
   /** Time-to-live in seconds for client-side staleness detection */
   ttl_seconds?: number;
-<<<<<<< HEAD
   /** Estimated price impact percentage */
   price_impact?: string;
+  /** Rationale for quote venue selection. */
+  rationale?: {
+    /** The selection strategy used (e.g., "highest_liquidity", "best_price") */
+    strategy: string;
+    /** Comparison across different liquidity venues */
+    compared_venues: Array<{
+      /** Source identifier (e.g., "sdex", "amm:...") */
+      source: string;
+      /** Quote price from this source */
+      price: string;
+      /** Total depth available at this price */
+      available_amount: string;
+      /** Whether the quote was considered executable */
+      executable: boolean;
+    }>;
+  };
 }
 
 /**
@@ -136,18 +151,6 @@ export interface BatchQuoteResponse {
   quotes: PriceQuote[];
   /** Total number of quotes successfully fetched. */
   total: number;
-=======
-  /** Rationale for quote venue selection. */
-  rationale?: {
-    strategy: string;
-    compared_venues: Array<{
-      source: string;
-      price: string;
-      available_amount: string;
-      executable: boolean;
-    }>;
-  };
->>>>>>> origin/main
 }
 
 /**
@@ -243,11 +246,16 @@ export interface ApiError {
  * Machine-readable error codes returned by the StellarRoute API.
  */
 export type ApiErrorCode =
-  | 'invalid_asset'
-  | 'validation_error'
-  | 'not_found'
-  | 'rate_limit_exceeded'
   | 'internal_error'
-  | 'network_error'
-  | 'unknown_error'
-  | (string & Record<never, never>); // allow unknown codes without losing autocomplete
+  | 'bad_request'
+  | 'not_found'
+  | 'validation_error'
+  | 'rate_limit_exceeded'
+  | 'overloaded'
+  | 'unauthorized'
+  | 'invalid_asset'
+  | 'no_route'
+  | 'stale_market_data'
+  | 'network_error' // SDK specific
+  | 'unknown_error' // SDK specific
+  | (string & Record<never, never>);

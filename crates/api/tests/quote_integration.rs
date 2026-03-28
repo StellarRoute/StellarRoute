@@ -91,3 +91,34 @@ fn rationale_venue_order_is_deterministic_in_json() {
         "venue order should remain deterministic"
     );
 }
+
+#[test]
+fn exclusion_diagnostics_venue_order_is_deterministic_in_json() {
+    use stellarroute_api::models::{ExcludedVenueInfo, ExclusionDiagnostics, ExclusionReason};
+
+    let diagnostics = ExclusionDiagnostics {
+        excluded_venues: vec![
+            ExcludedVenueInfo {
+                venue_ref: "venue:bad_amm".to_string(),
+                reason: ExclusionReason::StaleData,
+            },
+            ExcludedVenueInfo {
+                venue_ref: "venue:bad_sdex".to_string(),
+                reason: ExclusionReason::PolicyThreshold { threshold: 0.1 },
+            },
+        ],
+    };
+
+    let json = serde_json::to_string(&diagnostics).expect("serialization failed");
+    let amm_pos = json.find("venue:bad_amm").expect("missing amm source");
+    let sdex_pos = json.find("venue:bad_sdex").expect("missing sdex source");
+
+    assert!(
+        amm_pos < sdex_pos,
+        "exclusion order should remain deterministic"
+    );
+
+    // ensure sensitive internals are not leaked (score and signals)
+    assert!(!json.contains("score"));
+    assert!(!json.contains("signals"));
+}

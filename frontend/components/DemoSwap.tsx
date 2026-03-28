@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -245,7 +246,7 @@ export function DemoSwap() {
         <div className="space-y-2">
           <span className="text-sm font-medium">Pair</span>
           {pairsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading pairs…</p>
+            <Skeleton className="h-10 w-full rounded-md" />
           ) : pairsError ? (
             <p className="text-sm text-destructive">
               Could not load pairs. Start the API to select a market.
@@ -327,10 +328,9 @@ export function DemoSwap() {
             <span className="text-sm font-medium">Estimated receive</span>
             <div className="mt-1 text-2xl font-bold text-success">
               {quoteLoading && numericForQuote !== undefined ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  ~ …
-                </span>
+                <div className="flex items-center gap-2 h-8">
+                  <Skeleton className="h-7 w-32" />
+                </div>
               ) : (
                 <>
                   {receivePreview}

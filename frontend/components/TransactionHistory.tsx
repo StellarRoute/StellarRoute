@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useEffect } from "react"
 import { formatDistanceToNow } from "date-fns"
 import { ExternalLink, Trash2, ArrowRight } from "lucide-react"
 
@@ -25,6 +27,15 @@ export function TransactionHistory() {
   const { transactions, clearHistory } = useTransactionHistory(MOCK_WALLET)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
   const [sortKey, setSortKey] = useState<"date" | "amount">("date")
+  const [loading, setLoading] = useState(true)
+
+  // Simulated loading effect for premium feel
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoading(false)
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Filtering and Sorting
   const filteredTxs = transactions.filter((tx) => {
@@ -92,7 +103,53 @@ export function TransactionHistory() {
       </div>
 
       <ScrollArea className="flex-1">
-        {sortedTxs.length === 0 ? (
+        {loading ? (
+          <Table>
+            <TableHeader className="bg-muted/50 sticky top-0">
+              <TableRow>
+                <TableHead className="w-[180px]">Date</TableHead>
+                <TableHead>Swap</TableHead>
+                <TableHead>Rate</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Explorer</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-16" />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Skeleton className="h-4 w-12" />
+                        <Skeleton className="h-3 w-10" />
+                      </div>
+                      <Skeleton className="h-4 w-4 rounded-full" />
+                      <div className="flex flex-col gap-1">
+                        <Skeleton className="h-4 w-12" />
+                        <Skeleton className="h-3 w-10" />
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Skeleton className="h-4 w-12 ml-auto" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : sortedTxs.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center h-full">
             <div className="text-muted-foreground w-16 h-16 mb-4 opacity-50 bg-muted rounded-full flex items-center justify-center">
                <span className="text-2xl">📋</span>

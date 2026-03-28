@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, TrendingDown, TrendingUp } from "lucide-react";
 
 export interface SimulationPanelProps {
@@ -77,16 +78,16 @@ export function SimulationPanel({
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border/50 p-4 space-y-4">
+      <div className="rounded-xl border border-border/50 p-4 space-y-4 shadow-sm animate-in fade-in duration-500">
         <div className="flex items-center gap-2">
-          <div className="h-4 w-4 bg-muted animate-pulse rounded" />
-          <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+          <Skeleton className="h-4 w-4 animate-pulse rounded" />
+          <Skeleton className="h-4 w-24 animate-pulse rounded" />
         </div>
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="flex justify-between items-center">
-              <div className="h-3 w-20 bg-muted animate-pulse rounded" />
-              <div className="h-3 w-16 bg-muted animate-pulse rounded" />
+              <Skeleton className="h-3 w-20 animate-pulse rounded" />
+              <Skeleton className="h-3 w-16 animate-pulse rounded" />
             </div>
           ))}
         </div>

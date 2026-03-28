@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { PairSelector } from './PairSelector';
 import { QuoteSummary } from './QuoteSummary';
@@ -47,17 +48,25 @@ export function SwapCard() {
           onPayAmountChange={handlePayAmountChange}
           receiveAmount={receiveAmount}
         />
-        {isValidAmount && !isLoading && receiveAmount && (
-          <>
+        {isValidAmount && (
+          <div className="space-y-4">
             <SimulationPanel
               payAmount={payAmount}
               expectedOutput={receiveAmount}
               slippage={slippage}
               isLoading={isLoading}
             />
-            <QuoteSummary rate="1 XLM ≈ 0.98 USDC" fee="0.01 XLM" priceImpact="< 0.1%" />
-            <RouteDisplay amountOut={receiveAmount} />
-          </>
+            <QuoteSummary 
+              rate="1 XLM ≈ 0.98 USDC" 
+              fee="0.01 XLM" 
+              priceImpact="< 0.1%" 
+              isLoading={isLoading}
+            />
+            <RouteDisplay 
+              amountOut={receiveAmount} 
+              isLoading={isLoading}
+            />
+          </div>
         )}
         <SwapCTA
           amount={payAmount}

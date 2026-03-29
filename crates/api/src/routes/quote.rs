@@ -100,7 +100,7 @@ pub async fn get_quote(
 
         let error_class = match &res {
             Ok(_) => "none",
-            Err(ApiError::Validation { .. }) | Err(ApiError::InvalidAsset(_)) => "validation",
+            Err(ApiError::Validation(_)) | Err(ApiError::InvalidAsset(_)) => "validation",
             Err(ApiError::NotFound(_)) | Err(ApiError::NoRouteFound) => "not_found",
             Err(ApiError::StaleMarketData { .. }) => "stale_market_data",
             Err(_) => "internal",
@@ -117,10 +117,52 @@ pub async fn get_quote(
             "Quote pipeline completed"
         );
 
-        res
+        res.map(Json)
     }
     .instrument(span)
     .await
+}
+
+/// POST /api/v1/batch/quote
+pub async fn get_batch_quotes(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::models::request::BatchQuoteRequest>,
+) -> Result<Json<crate::models::response::BatchQuoteResponse>> {
+    debug!("Getting {} batch quotes", payload.quotes.len());
+
+    if payload.quotes.is_empty() {
+        return Err(ApiError::Validation("Empty batch request".to_string()));
+    }
+
+    if payload.quotes.len() > 25 {
+        return Err(ApiError::Validation(
+            "Batch size cannot exceed 25 items".to_string(),
+        ));
+    }
+
+    let mut quotes = Vec::with_capacity(payload.quotes.len());
+    for item in payload.quotes {
+        let params = QuoteParams {
+            amount: item.amount,
+            slippage_bps: item.slippage_bps,
+            quote_type: item.quote_type.unwrap_or(crate::models::request::QuoteType::Sell),
+            explain: None,
+        };
+        
+        let base_asset = AssetPath::parse(&item.base)
+            .map_err(|e| ApiError::InvalidAsset(format!("Invalid base asset: {}", e)))?;
+        let quote_asset = AssetPath::parse(&item.quote)
+            .map_err(|e| ApiError::InvalidAsset(format!("Invalid quote asset: {}", e)))?;
+            
+        let quote = get_quote_inner(state.clone(), base_asset, quote_asset, params, false).await?;
+        quotes.push(quote);
+    }
+
+    let total = quotes.len();
+    Ok(Json(crate::models::response::BatchQuoteResponse {
+        quotes,
+        total,
+    }))
 }
 
 async fn get_quote_inner(
@@ -129,14 +171,18 @@ async fn get_quote_inner(
     quote_asset: AssetPath,
     params: QuoteParams,
     explain: bool,
-) -> Result<Json<QuoteResponse>> {
+) -> Result<QuoteResponse> {
     let base = base_asset.to_canonical();
     let quote = quote_asset.to_canonical();
 
     debug!(
-        "Getting quote for {}/{} with params: {:?}",
-        base, quote, params
+        "Getting data quote for {}/{} (amount: {:?}, type: {:?})",
+        base,
+        quote,
+        params.amount,
+        params.quote_type
     );
+
 
     // Parse amount (default to 1)
     let amount: f64 = params
@@ -147,24 +193,24 @@ async fn get_quote_inner(
         .unwrap_or(1.0); // Already validated in extractor
 
     let slippage_bps = params.slippage_bps();
-    let quote_type = match params.quote_type {
+    let quote_type_str = match params.quote_type {
         crate::models::request::QuoteType::Sell => "sell",
         crate::models::request::QuoteType::Buy => "buy",
     };
 
-    let base_id = find_asset_id(&state, &base_asset).await?;
-    let quote_id = find_asset_id(&state, &quote_asset).await?;
+    let base_id = find_asset_id(state, &base_asset).await?;
+    let quote_id = find_asset_id(state, &quote_asset).await?;
 
-    maybe_invalidate_quote_cache(&state, &base, &quote, base_id, quote_id).await?;
+    maybe_invalidate_quote_cache(state, base, quote, base_id, quote_id).await?;
 
-    // Try to get from cache first
+    // Use single flight for quote computation
     let amount_str = format!("{:.7}", amount);
     let quote_cache_key = cache::keys::quote(
         &base,
         &quote,
         &amount_str,
         slippage_bps,
-        quote_type,
+        quote_type_str,
         explain,
     );
 
@@ -195,18 +241,17 @@ async fn get_quote_inner(
                 }
             }
 
-            // For now, implement simple direct path (SDEX only)
-            // TODO: Implement multi-hop routing in Phase 2
+            // Compute best price with freshness scoring
             let compute_res =
-                find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await;
+                find_best_price(state, &base_asset, &quote_asset, base_id, quote_id, amount).await;
 
-            let (price, path, rationale, api_diagnostics, freshness_outcome, fresh_timestamps) =
+            let (price, path, rationale, api_diagnostics, freshness_outcome, fresh_timestamps, liquidity_snapshot) =
                 match compute_res {
                     Ok(res) => res,
                     Err(e) => return Arc::new(Err(e)),
                 };
 
-            // Req 4.2: increment stale_inputs_excluded counter when stale inputs were excluded
+            // Increment stale inputs metrics
             let stale_count = freshness_outcome.stale.len();
             if stale_count > 0 {
                 state
@@ -215,20 +260,17 @@ async fn get_quote_inner(
             }
 
             let total = amount * price;
-            // Keep timestamps in milliseconds to match API docs and frontend staleness logic.
             let timestamp = chrono::Utc::now().timestamp_millis();
             let ttl_seconds = u32::try_from(state.cache_policy.quote_ttl.as_secs()).ok();
             let expires_at = i64::try_from(state.cache_policy.quote_ttl.as_millis())
                 .ok()
                 .map(|ttl_ms| timestamp + ttl_ms);
 
-            // Req 3.1: source_timestamp = oldest last_updated_at among fresh candidates (Unix ms)
             let source_timestamp = fresh_timestamps
                 .iter()
                 .min()
                 .map(|ts| ts.timestamp_millis());
 
-            // Req 3.2, 3.3: data_freshness populated from FreshnessOutcome
             let data_freshness = Some(crate::models::DataFreshness {
                 fresh_count: freshness_outcome.fresh.len(),
                 stale_count: freshness_outcome.stale.len(),
@@ -241,7 +283,7 @@ async fn get_quote_inner(
                 amount: format!("{:.7}", amount),
                 price: format!("{:.7}", price),
                 total: format!("{:.7}", total),
-                quote_type: quote_type.to_string(),
+                quote_type: quote_type_str.to_string(),
                 path,
                 timestamp,
                 expires_at,
@@ -250,9 +292,10 @@ async fn get_quote_inner(
                 rationale: Some(rationale),
                 exclusion_diagnostics: Some(api_diagnostics),
                 data_freshness,
+                price_impact: None, // Will be computed in Phase 3
             };
 
-            // Cache the response (TTL: 2 seconds for quote data)
+            // Cache the response
             if let Some(cache) = &state.cache {
                 if let Ok(mut cache) = cache.try_lock() {
                     let _ = cache
@@ -261,13 +304,36 @@ async fn get_quote_inner(
                 }
             }
 
+            // [Replay] Non-blocking capture — fire-and-forget, zero latency impact
+            if let Some(hook) = &state.replay_capture {
+                use stellarroute_routing::health::scorer::HealthScoringConfig;
+                let hc = HealthScoringConfig::default();
+                let health_config = crate::replay::artifact::HealthConfigSnapshot {
+                    freshness_threshold_secs_sdex: hc.freshness_threshold_secs.sdex,
+                    freshness_threshold_secs_amm: hc.freshness_threshold_secs.amm,
+                    staleness_threshold_secs: hc.staleness_threshold_secs,
+                    min_tvl_threshold_e7: hc.min_tvl_threshold_e7,
+                };
+                hook.capture(
+                    &base,
+                    &quote,
+                    &format!("{:.7}", amount),
+                    slippage_bps,
+                    quote_type,
+                    liquidity_snapshot,
+                    health_config,
+                    &response,
+                    None,
+                );
+            }
+
             Arc::new(Ok(response))
         })
         .await;
 
     match Arc::try_unwrap(result_arc) {
-        Ok(res) => res.map(Json),
-        Err(arc_res) => (*arc_res).clone().map(Json),
+        Ok(res) => res,
+        Err(arc_res) => (*arc_res).clone(),
     }
 }
 
@@ -286,7 +352,7 @@ async fn get_quote_inner(
         ("quote_type" = Option<String>, Query, description = "Type of quote: 'sell' or 'buy' (default: sell)"),
     ),
     responses(
-        (status = 200, description = "Trading route", body = RouteResponse),
+        (status = 200, description = "Trading route", body = crate::models::RouteResponse),
         (status = 400, description = "Invalid parameters", body = ErrorResponse),
         (status = 404, description = "No route found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
@@ -321,7 +387,7 @@ pub async fn get_route(
     let quote_id = find_asset_id(&state, &quote_asset).await?;
 
     // For route endpoint, we reuse the same logic but return a simplified response
-    let (_, path, _, _, _, _) =
+    let (_, path, _, _, _, _, _) =
         find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await?;
 
     let response = crate::models::RouteResponse {
@@ -344,6 +410,7 @@ type FindBestPriceResult = (
     ApiExclusionDiagnostics,
     FreshnessOutcome,
     Vec<chrono::DateTime<chrono::Utc>>,
+    Vec<crate::replay::artifact::LiquidityCandidate>, // snapshot for replay capture
 );
 
 #[tracing::instrument(
@@ -506,6 +573,7 @@ async fn find_best_price(
     let policy = ExclusionPolicy {
         thresholds: health_config.thresholds.clone(),
         overrides: OverrideRegistry::from_entries(health_config.overrides.clone()),
+        circuit_breaker: Some(state.circuit_breaker.clone()),
     };
 
     // Apply filter (pass empty edges — we just need diagnostics for this single-hop path)
@@ -536,6 +604,9 @@ async fn find_best_price(
                 stellarroute_routing::health::policy::ExclusionReason::StaleData => {
                     ApiExclusionReason::StaleData
                 }
+                stellarroute_routing::health::policy::ExclusionReason::CircuitBreakerOpen => {
+                    ApiExclusionReason::CircuitBreakerOpen
+                }
             },
         })
         .collect();
@@ -555,6 +626,17 @@ async fn find_best_price(
         .filter_map(|&idx| scorer_inputs[idx].last_updated_at)
         .collect();
 
+    // Build liquidity snapshot for replay capture (all candidates, not just fresh)
+    let liquidity_snapshot: Vec<crate::replay::artifact::LiquidityCandidate> = candidates
+        .iter()
+        .map(|c| crate::replay::artifact::LiquidityCandidate {
+            venue_type: c.venue_type.clone(),
+            venue_ref: c.venue_ref.clone(),
+            price: format!("{:.7}", c.price),
+            available_amount: format!("{:.7}", c.available_amount),
+        })
+        .collect();
+
     let path = vec![PathStep {
         from_asset: asset_path_to_info(base),
         to_asset: asset_path_to_info(quote),
@@ -569,6 +651,7 @@ async fn find_best_price(
         api_diagnostics,
         freshness_outcome,
         fresh_timestamps,
+        liquidity_snapshot,
     ))
 }
 

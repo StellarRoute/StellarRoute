@@ -13,14 +13,18 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             to: "USDC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_xlm_usdc".to_string(),
-            liquidity: 1, price: 1.0, fee_bps: 30,_000_000_000, // 100 XLM
+            liquidity: 1_000_000_000,
+            price: 1.0,
+            fee_bps: 30, // 100 XLM
         },
         LiquidityEdge {
             from: "XLM".to_string(),
             to: "EURT".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book_xlm_eurt".to_string(),
-            liquidity: 500, price: 1.0, fee_bps: 30,_000_000, // 50 XLM
+            liquidity: 500_000_000,
+            price: 1.0,
+            fee_bps: 30, // 50 XLM
         },
         // Multi-hop paths
         LiquidityEdge {
@@ -28,21 +32,27 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             to: "EURT".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_usdc_eurt".to_string(),
-            liquidity: 800, price: 1.0, fee_bps: 30,_000_000, // 80 USDC
+            liquidity: 800_000_000,
+            price: 1.0,
+            fee_bps: 30, // 80 USDC
         },
         LiquidityEdge {
             from: "EURT".to_string(),
             to: "BTC".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book_eurt_btc".to_string(),
-            liquidity: 200, price: 1.0, fee_bps: 30,_000_000, // 20 EURT
+            liquidity: 200_000_000,
+            price: 1.0,
+            fee_bps: 30, // 20 EURT
         },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "BTC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_usdc_btc".to_string(),
-            liquidity: 300, price: 1.0, fee_bps: 30,_000_000, // 30 USDC
+            liquidity: 300_000_000,
+            price: 1.0,
+            fee_bps: 30, // 30 USDC
         },
         // Additional liquidity sources
         LiquidityEdge {
@@ -50,7 +60,9 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             to: "BTC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_xlm_btc".to_string(),
-            liquidity: 150, price: 1.0, fee_bps: 30,_000_000, // 15 XLM
+            liquidity: 150_000_000,
+            price: 1.0,
+            fee_bps: 30, // 15 XLM
         },
     ]
 }

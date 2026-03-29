@@ -13,35 +13,45 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             to: "USDC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool1".to_string(),
-            liquidity: 1, price: 1.0, fee_bps: 30,_000_000_000, // 100 XLM
+            liquidity: 1_000_000_000,
+            price: 1.0,
+            fee_bps: 30, // 100 XLM
         },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "EURT".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book1".to_string(),
-            liquidity: 500, price: 1.0, fee_bps: 30,_000_000, // 50 USDC
+            liquidity: 500_000_000,
+            price: 1.0,
+            fee_bps: 30, // 50 USDC
         },
         LiquidityEdge {
             from: "XLM".to_string(),
             to: "EURT".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool2".to_string(),
-            liquidity: 200, price: 1.0, fee_bps: 30,_000_000, // 20 XLM
+            liquidity: 200_000_000,
+            price: 1.0,
+            fee_bps: 30, // 20 XLM
         },
         LiquidityEdge {
             from: "EURT".to_string(),
             to: "BTC".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book2".to_string(),
-            liquidity: 100, price: 1.0, fee_bps: 30,_000_000, // 10 EURT
+            liquidity: 100_000_000,
+            price: 1.0,
+            fee_bps: 30, // 10 EURT
         },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "BTC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool3".to_string(),
-            liquidity: 300, price: 1.0, fee_bps: 30,_000_000, // 30 USDC
+            liquidity: 300_000_000,
+            price: 1.0,
+            fee_bps: 30, // 30 USDC
         },
     ]
 }
@@ -135,7 +145,9 @@ fn bench_scalability(c: &mut Criterion) {
                 to: format!("ASSET{}", (i + 1) % 3),
                 venue_type: if i % 2 == 0 { "amm" } else { "orderbook" }.to_string(),
                 venue_ref: format!("venue{}", i),
-                liquidity: 100, price: 1.0, fee_bps: 30,_000_000 * (i + 1) as i128,
+                liquidity: 100_000_000 * (i + 1) as i128,
+                price: 1.0,
+                fee_bps: 30,
             });
         }
 

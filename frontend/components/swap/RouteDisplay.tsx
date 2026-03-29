@@ -1,5 +1,4 @@
-"use client";
-
+import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, ArrowDown, Info, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +61,6 @@ export function RouteDisplay({
           <span className="text-[10px] text-muted-foreground leading-none">Stellar</span>
         </div>
 
-        {/* Mobile: downward arrow; Desktop: rightward arrow */}
         <ArrowDown className="h-4 w-4 text-muted-foreground flex-shrink-0 sm:hidden" />
         <ArrowRight className="h-4 w-4 text-muted-foreground mx-auto flex-shrink-0 hidden sm:block" />
 
@@ -70,7 +68,6 @@ export function RouteDisplay({
           AQUA Pool
         </div>
 
-        {/* Mobile: downward arrow; Desktop: rightward arrow */}
         <ArrowDown className="h-4 w-4 text-muted-foreground flex-shrink-0 sm:hidden" />
         <ArrowRight className="h-4 w-4 text-muted-foreground mx-auto flex-shrink-0 hidden sm:block" />
 
@@ -80,7 +77,6 @@ export function RouteDisplay({
         </div>
       </div>
 
-      {/* Task 5.4: Alternative Routes — overflow-x-hidden on container, flex-wrap on inner row */}
       <div className="pt-3 border-t border-border/50 overflow-x-hidden">
         <h4 className="text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">Alternative Routes</h4>
         <button

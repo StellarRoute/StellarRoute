@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { RotateCcw } from 'lucide-react';
 import { PairSelector } from './PairSelector';
@@ -178,7 +179,7 @@ export function SwapCard() {
           receiveAmount={receiveAmount}
         />
         {isValidAmount && (
-          <>
+          <div className="space-y-4">
             <SimulationPanel
               payAmount={payAmount}
               expectedOutput={receiveAmount}

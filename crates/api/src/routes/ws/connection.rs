@@ -12,10 +12,10 @@ use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, WebSocket};
 use tokio::sync::{RwLock, mpsc};
-use tokio::time::{interval, sleep, timeout};
+use tokio::time::{interval, sleep};
 use uuid::Uuid;
 
-use super::messages::{ClientMessage, ServerMessage, ServerPayload, SubscriptionId};
+use super::messages::{ClientMessage, ServerMessage, ServerPayload};
 use super::rate_limit::MessageRateLimiter;
 use super::registry::{ConnId, Subscription, SubscriptionRegistry};
 
@@ -309,7 +309,7 @@ async fn handle_subscribe(
     quote: String,
     amount: Option<String>,
 ) {
-    let sub_id: SubscriptionId = Uuid::new_v4();
+    let sub_id: Uuid = Uuid::new_v4();
     let sub = Subscription {
         id: sub_id,
         base,

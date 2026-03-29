@@ -109,16 +109,48 @@ export interface PriceQuote {
   source_timestamp?: number;
   /** Time-to-live in seconds for client-side staleness detection */
   ttl_seconds?: number;
+  /** Estimated price impact percentage */
+  price_impact?: string;
   /** Rationale for quote venue selection. */
   rationale?: {
+    /** The selection strategy used (e.g., "highest_liquidity", "best_price") */
     strategy: string;
+    /** Comparison across different liquidity venues */
     compared_venues: Array<{
+      /** Source identifier (e.g., "sdex", "amm:...") */
       source: string;
+      /** Quote price from this source */
       price: string;
+      /** Total depth available at this price */
       available_amount: string;
+      /** Whether the quote was considered executable */
       executable: boolean;
     }>;
   };
+}
+
+/**
+ * A single request item for a batch quote.
+ */
+export interface QuoteRequestItem {
+  /** Base asset identifier: "native", "CODE", or "CODE:ISSUER". */
+  base: string;
+  /** Quote asset identifier. */
+  quote: string;
+  /** Amount to trade (optional). */
+  amount?: number;
+  /** Direction of the quote ("sell" or "buy"). Defaults to "sell". */
+  quote_type?: QuoteType;
+}
+
+/**
+ * Response from a batch quote request.
+ */
+export interface BatchQuoteResponse {
+  /** Array of quotes in the same order as requested. */
+  quotes: PriceQuote[];
+  /** Total number of quotes successfully fetched. */
+  total: number;
 }
 
 /**

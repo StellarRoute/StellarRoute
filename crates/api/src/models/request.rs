@@ -21,6 +21,22 @@ pub struct QuoteParams {
     pub explain: Option<bool>,
 }
 
+/// Request item for batch quotes
+#[derive(Debug, Deserialize)]
+pub struct QuoteRequestItem {
+    pub base: String,
+    pub quote: String,
+    pub amount: Option<String>,
+    pub slippage_bps: Option<u32>,
+    pub quote_type: Option<QuoteType>,
+}
+
+/// Batch quote request
+#[derive(Debug, Deserialize)]
+pub struct BatchQuoteRequest {
+    pub quotes: Vec<QuoteRequestItem>,
+}
+
 /// Query parameters for the multiple-routes endpoint
 #[derive(Debug, Deserialize)]
 pub struct RoutesParams {
@@ -36,18 +52,29 @@ impl QuoteParams {
         self.slippage_bps.unwrap_or(DEFAULT_SLIPPAGE_BPS)
     }
 
-    /// Validate the slippage tolerance bounds
-    pub fn validate_slippage(&self) -> std::result::Result<(), String> {
-        let bps = self.slippage_bps();
-        if bps > MAX_SLIPPAGE_BPS {
-            return Err(format!(
-                "slippage_bps must be between 0 and {} (100%)",
-                MAX_SLIPPAGE_BPS
+    /// Validate the parameters for common requirements
+    pub fn validate(&self) -> std::result::Result<(), (String, String)> {
+        if let Some(ref amount_str) = self.amount {
+            let amount: f64 = amount_str.parse().map_err(|_| {
+                ("invalid_amount".to_string(), "Amount must be a numeric string".to_string())
+            })?;
+            if amount <= 0.0 {
+                return Err(("invalid_amount".to_string(), "Amount must be greater than zero".to_string()));
+            }
+        }
+        
+        if self.slippage_bps() > MAX_SLIPPAGE_BPS {
+            return Err((
+                "invalid_slippage".to_string(),
+                format!("slippage_bps must be between 0 and {} (100%)", MAX_SLIPPAGE_BPS)
             ));
         }
+
         Ok(())
     }
 }
+
+
 
 fn default_quote_type() -> QuoteType {
     QuoteType::Sell
@@ -126,48 +153,6 @@ impl AssetPath {
             (code, Some(issuer)) => format!("{}:{}", code, issuer),
             (code, None) => code.to_string(),
         }
-    }
-}
-
-impl QuoteParams {
-    /// Get the slippage tolerance in basis points, applying default if omitted
-    pub fn slippage_bps(&self) -> u32 {
-        self.slippage_bps.unwrap_or(DEFAULT_SLIPPAGE_BPS)
-    }
-
-    /// Validate the quote parameters
-    /// Returns (error_code, error_message) if invalid
-    pub fn validate(&self) -> std::result::Result<(), (String, String)> {
-        // Validate amount if present
-        if let Some(amount_str) = &self.amount {
-            let amount: f64 = amount_str.parse().map_err(|_| {
-                (
-                    "invalid_amount".to_string(),
-                    format!("Amount must be a valid number: {}", amount_str),
-                )
-            })?;
-
-            if amount <= 0.0 {
-                return Err((
-                    "invalid_amount".to_string(),
-                    "Amount must be greater than zero".to_string(),
-                ));
-            }
-        }
-
-        // Validate slippage bounds
-        let bps = self.slippage_bps();
-        if bps > MAX_SLIPPAGE_BPS {
-            return Err((
-                "invalid_slippage".to_string(),
-                format!(
-                    "slippage_bps must be between 0 and {} (100%)",
-                    MAX_SLIPPAGE_BPS
-                ),
-            ));
-        }
-
-        Ok(())
     }
 }
 

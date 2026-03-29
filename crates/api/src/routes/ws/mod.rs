@@ -22,11 +22,12 @@ use axum::Json;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
-use crate::models::ErrorResponse;
 use crate::state::AppState;
+use crate::{
+    models::{ApiErrorCode, ErrorResponse},
+    routes::ws::registry::SubscriptionRegistry,
+};
 use connection::run_connection;
-
-use registry::SubscriptionRegistry;
 
 /// Configuration and shared state for the WebSocket endpoint.
 pub struct WsState {
@@ -108,7 +109,7 @@ pub async fn ws_handler(
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(ErrorResponse::new(
-                    "service_unavailable",
+                    ApiErrorCode::Overloaded,
                     "WebSocket endpoint is not enabled.",
                 )),
             )
@@ -122,7 +123,7 @@ pub async fn ws_handler(
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse::new(
-                "connection_limit_exceeded",
+                ApiErrorCode::Overloaded,
                 format!(
                     "Server has reached the maximum of {} concurrent connections.",
                     ws_state.max_connections
@@ -147,7 +148,7 @@ pub async fn ws_handler(
             return (
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(ErrorResponse::new(
-                    "rate_limit_exceeded",
+                    ApiErrorCode::RateLimitExceeded,
                     "Too many new WebSocket connections from this IP. Try again later.",
                 )),
             )

@@ -44,9 +44,7 @@ use crate::models::{ApiErrorCode, ErrorResponse};
 
 // ---------------------------------------------------------------------------
 // Configuration
-// ---------------------------------------------------------------------------
-
-/// Rate limit configuration for a single endpoint group.
+// -----------------------------------------------------------------------/// Rate limit configuration for a single endpoint group.
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
     /// Maximum requests allowed within the window.
@@ -65,15 +63,14 @@ impl Default for RateLimitConfig {
 }
 
 /// Per-endpoint rate limit configurations.
-///
-/// Build one with [`EndpointConfig::from_env`] to read limits from environment
-/// variables, or use [`EndpointConfig::default`] for the documented defaults.
 #[derive(Debug, Clone)]
 pub struct EndpointConfig {
     pub pairs: RateLimitConfig,
     pub orderbook: RateLimitConfig,
     pub quote: RateLimitConfig,
     pub default: RateLimitConfig,
+    /// Optional overrides for specific tenant IDs (e.g. from API Keys)
+    pub tenant_overrides: HashMap<String, RateLimitConfig>,
 }
 
 impl Default for EndpointConfig {
@@ -111,13 +108,20 @@ impl Default for EndpointConfig {
                 max_requests: 200,
                 window,
             },
+            tenant_overrides: HashMap::new(),
         }
     }
 }
 
 impl EndpointConfig {
-    /// Return the config that matches `path`.
-    pub fn for_path<'a>(&'a self, path: &str) -> &'a RateLimitConfig {
+    /// Return the config that matches `path`, potentially overridden by `tenant_id`.
+    pub fn for_path<'a>(&'a self, path: &str, tenant_id: Option<&str>) -> &'a RateLimitConfig {
+        if let Some(tid) = tenant_id {
+            if let Some(over) = self.tenant_overrides.get(tid) {
+                return over;
+            }
+        }
+
         if path.starts_with("/api/v1/pairs") {
             &self.pairs
         } else if path.starts_with("/api/v1/orderbook") {
@@ -151,7 +155,7 @@ pub struct RateLimitInfo {
 
 #[derive(Default)]
 struct InMemoryStore {
-    /// IP+endpoint → (count, window_start)
+    /// Identity+endpoint → (count, window_start)
     windows: HashMap<String, (u32, Instant)>,
 }
 
@@ -300,6 +304,18 @@ impl RateLimitLayer {
             endpoint_config: Arc::new(endpoint_config),
         }
     }
+
+    /// Add a tenant-specific rate limit override.
+    pub fn with_override(mut self, tenant_id: impl Into<String>, config: RateLimitConfig) -> Self {
+        if let Some(cfg) = Arc::get_mut(&mut self.endpoint_config) {
+            cfg.tenant_overrides.insert(tenant_id.into(), config);
+        } else {
+            // Fallback: we can't mutate if there are multiple Arcs, 
+            // but in initialization there should only be one.
+            warn!("Could not set rate limit override: EndpointConfig is shared");
+        }
+        self
+    }
 }
 
 impl Default for RateLimitLayer {
@@ -353,10 +369,10 @@ where
 
         Box::pin(async move {
             let path = req.uri().path().to_owned();
-            let ip = extract_ip(&req);
-            let config = endpoint_config.for_path(&path);
+            let identity = extract_identity(&req);
+            let config = endpoint_config.for_path(&path, Some(&identity));
             let endpoint_slug = path_to_slug(&path);
-            let key = format!("rate_limit:{}:{}", endpoint_slug, ip);
+            let key = format!("rate_limit:{}:{}", endpoint_slug, identity);
 
             debug!("Rate limit check: key={}", key);
 
@@ -394,6 +410,32 @@ where
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Extract consumer identity from auth headers or fallback to IP.
+fn extract_identity(req: &Request<Body>) -> String {
+    // 1. Check X-API-Key
+    if let Some(key) = req
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+    {
+        return format!("apikey:{}", key);
+    }
+
+    // 2. Check Authorization Header (Bearer)
+    if let Some(auth) = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+    {
+        if auth.starts_with("Bearer ") {
+            return format!("token:{}", &auth[7..]);
+        }
+    }
+
+    // 3. Fallback to IP
+    format!("ip:{}", extract_ip(req))
+}
 
 /// Extract client IP from common forwarding headers, falling back to loopback.
 fn extract_ip(req: &Request<Body>) -> IpAddr {
@@ -501,11 +543,11 @@ mod tests {
     #[test]
     fn endpoint_config_selects_correct_limit() {
         let cfg = EndpointConfig::default();
-        assert_eq!(cfg.for_path("/api/v1/pairs").max_requests, 60);
-        assert_eq!(cfg.for_path("/api/v1/orderbook/XLM/USDC").max_requests, 30);
-        assert_eq!(cfg.for_path("/api/v1/quote/XLM/USDC").max_requests, 100);
-        assert_eq!(cfg.for_path("/health").max_requests, 200);
-        assert_eq!(cfg.for_path("/swagger-ui").max_requests, 200);
+        assert_eq!(cfg.for_path("/api/v1/pairs", None).max_requests, 60);
+        assert_eq!(cfg.for_path("/api/v1/orderbook/XLM/USDC", None).max_requests, 30);
+        assert_eq!(cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests, 100);
+        assert_eq!(cfg.for_path("/health", None).max_requests, 200);
+        assert_eq!(cfg.for_path("/swagger-ui", None).max_requests, 200);
     }
 
     #[test]
@@ -604,5 +646,48 @@ mod tests {
         let info = backend.check("over_key", &config).await;
         assert!(info.denied);
         assert_eq!(info.remaining, 0);
+    }
+
+    #[test]
+    fn extract_identity_prefers_api_key() {
+        use axum::http::Request;
+        let req = Request::builder()
+            .header("x-api-key", "secret-key-123")
+            .header("authorization", "Bearer should-be-ignored")
+            .body(Body::empty())
+            .unwrap();
+        let identity = extract_identity(&req);
+        assert_eq!(identity, "apikey:secret-key-123");
+    }
+
+    #[test]
+    fn extract_identity_falls_back_to_bearer() {
+        use axum::http::Request;
+        let req = Request::builder()
+            .header("authorization", "Bearer my-token")
+            .body(Body::empty())
+            .unwrap();
+        let identity = extract_identity(&req);
+        assert_eq!(identity, "token:my-token");
+    }
+
+    #[test]
+    fn tenant_override_applied_correctly() {
+        let mut cfg = EndpointConfig::default();
+        let tenant_id = "apikey:vip-tenant";
+        
+        cfg.tenant_overrides.insert(
+            tenant_id.to_string(),
+            RateLimitConfig {
+                max_requests: 1000,
+                window: Duration::from_secs(60),
+            },
+        );
+
+        // Path-based remains the same for others
+        assert_eq!(cfg.for_path("/api/v1/quote", None).max_requests, 100);
+        
+        // Override applied for the specific tenant
+        assert_eq!(cfg.for_path("/api/v1/quote", Some(tenant_id)).max_requests, 1000);
     }
 }

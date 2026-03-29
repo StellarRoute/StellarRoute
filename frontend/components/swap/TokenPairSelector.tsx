@@ -4,6 +4,14 @@ import React, { useMemo, useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TradingPair } from "@/types";
@@ -194,13 +202,17 @@ export function TokenPairSelector({
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <AssetButton
-              label="You sell"
-              code={selectedBaseInfo?.code || ""}
-              issuer={selectedBaseInfo?.issuer}
-              onClick={() => setBaseDialogOpen(true)}
-              disabled={loading || pairs.length === 0}
-            />
+            {loading ? (
+              <Skeleton className="h-[74px] w-full rounded-lg" />
+            ) : (
+              <AssetButton
+                label="You sell"
+                code={selectedBaseInfo?.code || ""}
+                issuer={selectedBaseInfo?.issuer}
+                onClick={() => setBaseDialogOpen(true)}
+                disabled={loading || pairs.length === 0}
+              />
+            )}
           </div>
 
           <Button
@@ -219,13 +231,17 @@ export function TokenPairSelector({
           </Button>
 
           <div className="flex-1">
-            <AssetButton
-              label="You buy"
-              code={selectedQuoteInfo?.code || ""}
-              issuer={selectedQuoteInfo?.issuer}
-              onClick={() => setQuoteDialogOpen(true)}
-              disabled={loading || pairs.length === 0 || !selectedBase}
-            />
+            {loading ? (
+              <Skeleton className="h-[74px] w-full rounded-lg" />
+            ) : (
+              <AssetButton
+                label="You buy"
+                code={selectedQuoteInfo?.code || ""}
+                issuer={selectedQuoteInfo?.issuer}
+                onClick={() => setQuoteDialogOpen(true)}
+                disabled={loading || pairs.length === 0 || !selectedBase}
+              />
+            )}
           </div>
         </div>
 

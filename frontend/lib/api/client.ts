@@ -60,6 +60,7 @@ interface FetchOptions {
 
 export class StellarRouteClient {
   private readonly baseUrl: string;
+  private readonly retries: number = 2;
 
   constructor(baseUrl?: string) {
     this.baseUrl =
@@ -76,6 +77,8 @@ export class StellarRouteClient {
     path: string,
     opts: FetchOptions = {},
     retries = 2,
+    method: 'GET' | 'POST' = 'GET',
+    body?: unknown,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
@@ -88,10 +91,19 @@ export class StellarRouteClient {
     opts.signal?.addEventListener('abort', () => controller.abort());
 
     try {
-      const response = await fetch(url, {
+      const fetchOptions: RequestInit = {
+        method,
         headers: { Accept: 'application/json' },
         signal: controller.signal,
-      });
+      };
+
+      if (body) {
+        fetchOptions.body = JSON.stringify(body);
+        (fetchOptions.headers as Record<string, string>)['Content-Type'] =
+          'application/json';
+      }
+
+      const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
         // Try to parse the backend ErrorResponse body
@@ -113,7 +125,7 @@ export class StellarRouteClient {
           const retryAfter =
             Number(response.headers.get('Retry-After') ?? 1) * 1_000;
           await sleep(retryAfter || 1_000 * (3 - retries));
-          return this.request<T>(path, opts, retries - 1);
+          return this.request<T>(path, opts, retries - 1, method, body);
         }
 
         throw new StellarRouteApiError(response.status, code, message, details);
@@ -126,7 +138,7 @@ export class StellarRouteClient {
       // Network error / timeout
       if (retries > 0) {
         await sleep(500 * (3 - retries));
-        return this.request<T>(path, opts, retries - 1);
+        return this.request<T>(path, opts, retries - 1, method, body);
       }
 
       const message =
@@ -186,6 +198,41 @@ export class StellarRouteClient {
     const path = `/api/v1/quote/${encodeURIComponent(base)}/${encodeURIComponent(quote)}?${params}`;
     return this.request<PriceQuote>(path, opts);
   }
+
+  /**
+   * POST /api/v1/batch/quote — fetch multiple price quotes in a single request.
+   *
+   * @param requests Array of quote requests to fetch.
+   *
+   * @throws {StellarRouteApiError} when the batch request fails.
+   */
+  async getQuotesBatch(
+    requests: QuoteRequestItem[],
+    opts?: FetchOptions,
+  ): Promise<BatchQuoteResponse> {
+    const path = '/api/v1/batch/quote';
+    return this.request<BatchQuoteResponse>(
+      path,
+      opts,
+      this.retries,
+      'POST',
+      requests,
+    );
+  }
+}
+
+/** Single request item for a batch quote. */
+export interface QuoteRequestItem {
+  base: string;
+  quote: string;
+  amount?: number;
+  quote_type?: QuoteType;
+}
+
+/** Response from a batch quote request. */
+export interface BatchQuoteResponse {
+  quotes: PriceQuote[];
+  total: number;
 }
 
 // ---------------------------------------------------------------------------

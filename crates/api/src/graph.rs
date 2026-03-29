@@ -1,15 +1,15 @@
 //! Background graph manager for routing caching
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use sqlx::{PgPool, Row};
-use tracing::{info, error};
+use arc_swap::ArcSwap;
+use sqlx::{PgPool, Row, postgres::PgListener};
+use tracing::{info, error, debug, warn};
 
 use stellarroute_routing::pathfinder::LiquidityEdge;
 
 /// Daemon that maintains an active in-memory cache of the routing graph
 pub struct GraphManager {
     db: PgPool,
-    edges: Arc<RwLock<Vec<LiquidityEdge>>>,
+    edges: Arc<ArcSwap<Vec<LiquidityEdge>>>,
 }
 
 impl GraphManager {
@@ -17,35 +17,90 @@ impl GraphManager {
     pub fn new(db: PgPool) -> Self {
         Self {
             db,
-            edges: Arc::new(RwLock::new(Vec::new())),
+            edges: Arc::new(ArcSwap::from_pointee(Vec::new())),
         }
     }
 
-    /// Retrieve the current live copy of the routing graph
-    pub async fn get_edges(&self) -> Vec<LiquidityEdge> {
-        self.edges.read().await.clone()
+    /// Retrieve the current live copy of the routing graph.
+    /// Returns an Arc to the vector for zero-copy sharing.
+    pub fn get_edges(&self) -> Arc<Vec<LiquidityEdge>> {
+        self.edges.load_full()
     }
 
     /// Spawn a background task to keep the graph updated
     pub fn start_sync(self: Arc<Self>) {
-        info!("Starting background routing graph sync task");
+        info!("Starting event-driven routing graph sync task");
         let manager = self.clone();
+        
         tokio::spawn(async move {
             // Initial sync immediately
             if let Err(e) = manager.sync_graph().await {
                 error!("Failed initial sync for routing graph: {}", e);
             }
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+            // Setup Postgres listener for incremental updates
+            let mut listener = match PgListener::connect_with(&manager.db).await {
+                Ok(l) => l,
+                Err(e) => {
+                    error!("Failed to connect PgListener: {}. Falling back to 10s polling.", e);
+                    manager.run_polling_fallback().await;
+                    return;
+                }
+            };
+
+            if let Err(e) = listener.listen("liquidity_update").await {
+                error!("Failed to listen on 'liquidity_update': {}. Falling back to 10s polling.", e);
+                manager.run_polling_fallback().await;
+                return;
+            }
+
+            info!("GraphManager successfully subscribed to 'liquidity_update' notifications");
+
             loop {
-                interval.tick().await;
-                if let Err(e) = manager.sync_graph().await {
-                    error!("Failed to sync routing graph: {}", e);
+                match listener.recv().await {
+                    Ok(notification) => {
+                        debug!("Received liquidity update notification: protocol={}", notification.payload());
+                        if let Err(e) = manager.sync_graph().await {
+                            error!("Failed to sync routing graph after notification: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("PgListener connection lost: {}. Reconnecting...", e);
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        
+                        // Attempt one reconnection then fallback if it fails again
+                        if let Ok(mut l) = PgListener::connect_with(&manager.db).await {
+                            if l.listen("liquidity_update").await.is_ok() {
+                                listener = l;
+                                info!("PgListener reconnected successfully");
+                                continue;
+                            }
+                        }
+                        error!("PgListener reconnection failed. Switching to polling fallback.");
+                        manager.run_polling_fallback().await;
+                        break;
+                    }
                 }
             }
         });
     }
 
-    async fn sync_graph(&self) -> Result<(), sqlx::Error> {
+    /// Fallback loop that polls the database every 10 seconds if notifications are unavailable.
+    async fn run_polling_fallback(&self) {
+        warn!("Starting fallback polling sync task (10s interval)");
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            if let Err(e) = self.sync_graph().await {
+                error!("Failed to sync routing graph (polling fallback): {}", e);
+            }
+        }
+    }
+
+    /// Pulls the latest liquidity data from the database and performs a swap of the in-memory graph.
+    pub async fn sync_graph(&self) -> Result<(), sqlx::Error> {
+        debug!("Syncing routing graph from database...");
+        
         let assets = sqlx::query("SELECT id, asset_type, asset_code, asset_issuer FROM assets")
             .fetch_all(&self.db).await?;
             
@@ -107,7 +162,120 @@ impl GraphManager {
             }
         }
         
-        *self.edges.write().await = next_edges;
+        info!("Graph sync complete: swapped {} edges atomically", next_edges.len());
+        self.edges.store(Arc::new(next_edges));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio;
+
+    #[tokio::test]
+    async fn test_graph_manager_snapshot_consistency() {
+        // Mock pool - we won't actually query it in this unit test
+        // but we need it for the struct.
+        let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
+        let manager = GraphManager::new(pool);
+
+        let initial_edges = vec![
+            LiquidityEdge {
+                from: "XLM".to_string(),
+                to: "USDC".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "1".to_string(),
+                liquidity: 100,
+                price: 1.0,
+                fee_bps: 30,
+            }
+        ];
+
+        // Set initial state
+        manager.edges.store(Arc::new(initial_edges.clone()));
+
+        // Obtain a snapshot
+        let snapshot1 = manager.get_edges();
+        assert_eq!(snapshot1.len(), 1);
+        assert_eq!(snapshot1[0].from, "XLM");
+
+        // Update the manager with new data
+        let new_edges = vec![
+            LiquidityEdge {
+                from: "USDC".to_string(),
+                to: "XLM".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "2".to_string(),
+                liquidity: 200,
+                price: 0.99,
+                fee_bps: 30,
+            }
+        ];
+        manager.edges.store(Arc::new(new_edges));
+
+        // Obtain a second snapshot
+        let snapshot2 = manager.get_edges();
+        assert_eq!(snapshot2.len(), 1);
+        assert_eq!(snapshot2[0].from, "USDC");
+
+        // Verify snapshot1 is STILL valid and unchanged
+        assert_eq!(snapshot1.len(), 1);
+        assert_eq!(snapshot1[0].from, "XLM");
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_reads() {
+        let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
+        let manager = Arc::new(GraphManager::new(pool));
+        
+        let initial_edges = vec![
+            LiquidityEdge {
+                from: "A".to_string(),
+                to: "B".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "1".to_string(),
+                liquidity: 100,
+                price: 1.0,
+                fee_bps: 30,
+            }
+        ];
+        manager.edges.store(Arc::new(initial_edges));
+
+        let mut handles = vec![];
+        for _ in 0..10 {
+            let m = manager.clone();
+            handles.push(tokio::spawn(async move {
+                for _ in 0..100 {
+                    let edges = m.get_edges();
+                    assert!(!edges.is_empty());
+                    tokio::task::yield_now().await;
+                }
+            }));
+        }
+
+        let m2 = manager.clone();
+        let updater = tokio::spawn(async move {
+            for i in 0..50 {
+                let edges = vec![
+                    LiquidityEdge {
+                        from: format!("A{}", i),
+                        to: "B".to_string(),
+                        venue_type: "sdex".to_string(),
+                        venue_ref: "1".to_string(),
+                        liquidity: 100,
+                        price: 1.0,
+                        fee_bps: 30,
+                    }
+                ];
+                m2.edges.store(Arc::new(edges));
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        });
+
+        for h in handles {
+            h.await.unwrap();
+        }
+        updater.await.unwrap();
     }
 }

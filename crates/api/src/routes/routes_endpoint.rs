@@ -120,7 +120,7 @@ pub async fn get_routes(
         .routes_single_flight
         .execute(&sf_key, || async move {
             // Read the pre-built in-memory liquidity graph — zero DB hit
-            let edges = state_c.graph_manager.get_edges().await;
+            let edges = state_c.graph_manager.get_edges();
 
             if edges.is_empty() {
                 return Arc::new(Err(ApiError::NoRouteFound));

@@ -62,6 +62,14 @@ export interface PriceQuote {
   priceImpact?: string;
   /** Unix timestamp (seconds) */
   timestamp: number;
+  /** Unix timestamp (ms) when this quote expires */
+  expires_at?: number;
+  /** Unix timestamp (ms) of the underlying data source */
+  source_timestamp?: number;
+  /** Time-to-live in seconds for client-side staleness detection */
+  ttl_seconds?: number;
+  /** Estimated price impact percentage */
+  price_impact?: string;
 }
 
 export interface HealthStatus {

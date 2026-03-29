@@ -180,6 +180,25 @@ export function useQuote(
 }
 
 // ---------------------------------------------------------------------------
+// useBatchQuote — fetch multiple quotes at once
+// ---------------------------------------------------------------------------
+
+import type { QuoteRequestItem, BatchQuoteResponse } from '@/lib/api/client';
+
+export function useBatchQuote(
+  requests: QuoteRequestItem[],
+  skip = false,
+  refreshIntervalMs?: number,
+): UseApiState<BatchQuoteResponse> & { refresh: () => void } {
+  return useFetch(
+    (signal) => stellarRouteClient.getQuotesBatch(requests, { signal }),
+    [JSON.stringify(requests)],
+    refreshIntervalMs,
+    skip || requests.length === 0,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // useHealth — API health status
 // ---------------------------------------------------------------------------
 

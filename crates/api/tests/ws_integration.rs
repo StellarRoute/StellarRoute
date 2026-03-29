@@ -255,7 +255,8 @@ mod live {
     use futures_util::{SinkExt, StreamExt};
     use serde_json::{Value, json};
     use sqlx::PgPool;
-    use stellarroute_api::{AppState, Server, ServerConfig};
+    use stellarroute_api::state::AppState;
+    use stellarroute_api::server::{Server, ServerConfig};
     use stellarroute_api::routes::ws::WsState;
     use tokio::net::TcpListener;
     use tokio_tungstenite::{connect_async, tungstenite::Message};

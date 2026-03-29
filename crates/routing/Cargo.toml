@@ -14,8 +14,12 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
 
 # Routing-specific dependencies here
+rand = "0.8"
+rand_chacha = "0.3"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -1,0 +1,28 @@
+{
+  "global_defaults": {
+    "max_exposure": 1000000000000,
+    "max_impact_bps": 500,
+    "liquidity_floor": 1000000,
+    "blacklisted": false
+  },
+  "per_asset": {
+    "USDC": {
+      "max_exposure": 10000000000000,
+      "max_impact_bps": 100,
+      "liquidity_floor": 10000000,
+      "blacklisted": false
+    },
+    "XLM": {
+      "max_exposure": 100000000000000,
+      "max_impact_bps": 300,
+      "liquidity_floor": 1000000,
+      "blacklisted": false
+    },
+    "EURC": {
+      "max_exposure": 5000000000000,
+      "max_impact_bps": 150,
+      "liquidity_floor": 5000000,
+      "blacklisted": false
+    }
+  }
+}

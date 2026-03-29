@@ -26,8 +26,8 @@ use reqwest::{header, Url};
 use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
-        ErrorResponse, HealthResponse, OrderbookResponse, PairsResponse, QuoteRequest,
-        QuoteResponse,
+        BatchQuoteRequest, BatchQuoteResponse, ErrorResponse, HealthResponse, OrderbookResponse,
+        PairsResponse, QuoteRequest, QuoteResponse,
     },
 };
 
@@ -155,6 +155,15 @@ impl StellarRouteClient {
         }
         req = req.query(&[("quote_type", request.quote_type.as_str())]);
 
+        self.execute(req).await
+    }
+
+    /// `POST /api/v1/batch/quote` — fetch multiple price quotes in a single request.
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] if any
+    /// request item is malformed or the batch is too large.
+    pub async fn batch_quote(&self, request: BatchQuoteRequest) -> Result<BatchQuoteResponse> {
+        let req = self.http.post(self.url("api/v1/batch/quote")?).json(&request);
         self.execute(req).await
     }
 

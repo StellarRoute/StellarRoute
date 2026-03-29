@@ -5,6 +5,8 @@ import type {
   PairsResponse,
   PathStep,
   PriceQuote,
+  QuoteRequestItem,
+  BatchQuoteResponse,
   QuoteStalenessConfig,
   QuoteType,
   RouteResponse,
@@ -272,12 +274,35 @@ export class StellarRouteClient {
     return response.path;
   }
 
+  /**
+   * `POST /api/v1/batch/quote` — fetch multiple price quotes in a single request.
+   *
+   * @param requests Array of quote requests to fetch.
+   *
+   * @throws {@link StellarRouteApiError} when the batch request fails.
+   */
+  async getQuotesBatch(
+    requests: QuoteRequestItem[],
+    signal?: AbortSignal,
+  ): Promise<BatchQuoteResponse> {
+    const path = '/api/v1/batch/quote';
+    return this.request<BatchQuoteResponse>(
+      path,
+      signal,
+      this.retries,
+      'POST',
+      requests,
+    );
+  }
+
   // ── Internal helpers ────────────────────────────────────────────────────────
 
   private async request<T>(
     path: string,
     signal?: AbortSignal,
     attemptsLeft = this.retries,
+    method: 'GET' | 'POST' = 'GET',
+    body?: unknown,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
@@ -287,13 +312,22 @@ export class StellarRouteClient {
     signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
     try {
-      const response = await fetch(url, {
+      const fetchOptions: RequestInit = {
+        method,
         headers: {
           Accept: 'application/json',
           ...this.extraHeaders,
         },
         signal: controller.signal,
-      });
+      };
+
+      if (body) {
+        fetchOptions.body = JSON.stringify(body);
+        (fetchOptions.headers as Record<string, string>)['Content-Type'] =
+          'application/json';
+      }
+
+      const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
         // Parse the structured error body when available.
@@ -321,7 +355,7 @@ export class StellarRouteClient {
             ? retryAfterSec * 1_000
             : backoffMs(this.retries - attemptsLeft);
           await sleep(delayMs);
-          return this.request<T>(path, signal, attemptsLeft - 1);
+          return this.request<T>(path, signal, attemptsLeft - 1, method, body);
         }
 
         throw new StellarRouteApiError(response.status, code, message, details);
@@ -334,7 +368,7 @@ export class StellarRouteClient {
       // Retry on network errors.
       if (attemptsLeft > 0) {
         await sleep(backoffMs(this.retries - attemptsLeft));
-        return this.request<T>(path, signal, attemptsLeft - 1);
+        return this.request<T>(path, signal, attemptsLeft - 1, method, body);
       }
 
       const message = err instanceof Error ? err.message : 'Network error';

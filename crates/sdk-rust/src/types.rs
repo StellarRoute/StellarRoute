@@ -180,6 +180,15 @@ pub struct QuoteResponse {
     pub timestamp: i64,
 }
 
+/// Response from `POST /api/v1/batch/quote`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchQuoteResponse {
+    /// Array of quotes in the same order as requested.
+    pub quotes: Vec<QuoteResponse>,
+    /// Total number of quotes successfully fetched.
+    pub total: usize,
+}
+
 // ── Request types ─────────────────────────────────────────────────────────────
 
 /// Parameters for `GET /api/v1/quote/{base}/{quote}`.
@@ -215,6 +224,23 @@ impl<'a> QuoteRequest<'a> {
             quote_type: QuoteType::Buy,
         }
     }
+}
+
+/// A request item for a batch quote.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuoteRequestItem {
+    pub base: String,
+    pub quote: String,
+    pub amount: Option<String>,
+    pub slippage_bps: Option<u32>,
+    pub quote_type: Option<QuoteType>,
+}
+
+/// Parameters for `POST /api/v1/batch/quote`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchQuoteRequest {
+    /// Array of quote requests to fetch.
+    pub quotes: Vec<QuoteRequestItem>,
 }
 
 // ── Internal error response ───────────────────────────────────────────────────

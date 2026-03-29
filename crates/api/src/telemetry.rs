@@ -1,46 +1,37 @@
 //! Structured logging initialisation for the API server.
 //!
-//! Reads `RUST_LOG` for the filter and `LOG_FORMAT` to choose the output
-//! format.  Both environment variables are optional.
+//! This module provides backwards-compatible `init()` that delegates to
+//! the new `tracing_config` module for distributed tracing support.
 //!
 //! # Environment variables
 //!
-//! | Variable     | Values              | Default  |
-//! |-------------|---------------------|----------|
-//! | `RUST_LOG`  | tracing filter spec | `info`   |
-//! | `LOG_FORMAT`| `json` \| `pretty`  | `pretty` |
+//! | Variable                      | Values              | Default        |
+//! |------------------------------|---------------------|----------------|
+//! | `RUST_LOG`                   | tracing filter spec | `info`         |
+//! | `LOG_FORMAT`                 | `json` \| `pretty`  | `pretty`       |
+//! | `OTEL_EXPORTER_OTLP_ENDPOINT`| OTLP collector URL  | (disabled)     |
+//! | `OTEL_SERVICE_NAME`          | Service name        | `stellarroute` |
+//! | `OTEL_SAMPLING_RATIO`        | 0.0 to 1.0          | `1.0`          |
 //!
 //! ## Examples
 //!
 //! ```bash
-//! # Development — human-readable output, debug level for this crate
+//! # Development
 //! RUST_LOG=stellarroute_api=debug ./stellarroute-api
 //!
-//! # Production — structured JSON, info level
-//! RUST_LOG=info LOG_FORMAT=json ./stellarroute-api
+//! # Production with OTLP export
+//! RUST_LOG=info LOG_FORMAT=json OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 ./stellarroute-api
 //! ```
 
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+pub use crate::tracing_config::{init, init_with_config, shutdown, TracingConfig};
 
-/// Initialise the global tracing subscriber.
-///
-/// Call **once** at the very start of `main`, before any other code runs,
-/// so that every log event is captured by the configured subscriber.
-pub fn init() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    match std::env::var("LOG_FORMAT")
-        .unwrap_or_default()
-        .to_lowercase()
-        .as_str()
-    {
-        "json" => tracing_subscriber::registry()
-            .with(filter)
-            .with(fmt::layer().json())
-            .init(),
-        _ => tracing_subscriber::registry()
-            .with(filter)
-            .with(fmt::layer())
-            .init(),
+    #[test]
+    fn test_config_defaults() {
+        let config = TracingConfig::default();
+        assert_eq!(config.service_name, "stellarroute");
     }
 }

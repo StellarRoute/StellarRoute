@@ -162,12 +162,24 @@ pub struct QuoteResponse {
     /// Rationale for quote venue selection
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rationale: Option<QuoteRationaleMetadata>,
+    /// Estimated price impact percentage
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_impact: Option<String>,
     /// Venues excluded from routing and the reason for each exclusion
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclusion_diagnostics: Option<ExclusionDiagnostics>,
     /// Freshness metadata about the data sources used to compute this quote
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_freshness: Option<DataFreshness>,
+}
+
+/// Response for a batch quote request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchQuoteResponse {
+    /// Array of quotes in the same order as requested
+    pub quotes: Vec<QuoteResponse>,
+    /// Total number of quotes successfully fetched
+    pub total: usize,
 }
 
 /// Trading route response (path only, no pricing)
@@ -180,6 +192,7 @@ pub struct RouteResponse {
     pub slippage_bps: u32,
     /// Unix timestamp (ms) when this route was generated
     pub timestamp: i64,
+}
 }
 
 /// A comprehensive set of multiple ranked execution routes
@@ -308,6 +321,7 @@ pub enum ExclusionReason {
     PolicyThreshold { threshold: f64 },
     Override,
     StaleData,
+    CircuitBreakerOpen,
 }
 
 /// Machine-readable error codes for API failures

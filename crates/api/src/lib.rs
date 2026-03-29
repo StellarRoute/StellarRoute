@@ -10,10 +10,12 @@ pub mod load_test;
 pub mod middleware;
 pub mod models;
 pub mod regions;
+pub mod replay;
 pub mod routes;
 pub mod server;
 pub mod state;
 pub mod telemetry;
+pub mod tracing_config;
 pub mod worker;
 pub mod graph;
 
@@ -22,3 +24,4 @@ pub use docs::ApiDoc;
 pub use error::{ApiError, Result};
 pub use server::{Server, ServerConfig};
 pub use state::AppState;
+pub use tracing_config::{TracingConfig, TraceContext};

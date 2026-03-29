@@ -8,6 +8,7 @@ use crate::risk::{RiskLimitConfig, RiskValidator, RouteExclusion};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
+use tracing::instrument;
 
 /// Configuration for optimization policies
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -300,6 +301,12 @@ impl HybridOptimizer {
         let (selected_path, selected_metrics) = scored_paths[0].clone();
         let alternatives: Vec<(SwapPath, RouteMetrics)> =
             scored_paths.into_iter().skip(1).collect();
+
+        let total_compute_time_ms = start_time.elapsed().as_millis() as u64;
+
+        let span = tracing::Span::current();
+        span.record("route.paths_evaluated", paths.len());
+        span.record("route.compute_time_ms", total_compute_time_ms);
 
         Ok(OptimizerDiagnostics {
             selected_path,

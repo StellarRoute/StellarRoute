@@ -1,14 +1,20 @@
 //! Redis caching layer
 
+pub mod adaptive_ttl;
 pub mod invalidation;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, warn};
+use tracing::{debug, instrument, warn};
 
 pub use invalidation::{CacheInvalidationManager, LiquidityUpdateEvent};
+
+pub use adaptive_ttl::{
+    AdaptiveTtlConfig, AdaptiveTtlEngine, AdaptiveTtlStats, DepthAggregator, MarketMetrics,
+    TtlDecision, TtlReason, VolatilityCalculator,
+};
 
 /// Cache manager for Redis operations
 #[derive(Clone)]
@@ -27,19 +33,23 @@ impl CacheManager {
     }
 
     /// Get a cached value
+    #[instrument(skip(self), fields(cache.hit = tracing::field::Empty))]
     pub async fn get<T: DeserializeOwned>(&mut self, key: &str) -> Option<T> {
         match self.client.get::<_, String>(key).await {
             Ok(json) => match serde_json::from_str(&json) {
                 Ok(value) => {
+                    tracing::Span::current().record("cache.hit", true);
                     debug!("Cache hit for key: {}", key);
                     Some(value)
                 }
                 Err(e) => {
+                    tracing::Span::current().record("cache.hit", false);
                     warn!("Failed to deserialize cached value for {}: {}", key, e);
                     None
                 }
             },
             Err(_) => {
+                tracing::Span::current().record("cache.hit", false);
                 debug!("Cache miss for key: {}", key);
                 None
             }
@@ -47,6 +57,7 @@ impl CacheManager {
     }
 
     /// Set a cached value with TTL
+    #[instrument(skip(self, value), fields(cache.ttl_ms = ttl.as_millis() as u64))]
     pub async fn set<T: Serialize>(
         &mut self,
         key: &str,

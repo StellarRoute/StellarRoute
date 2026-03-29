@@ -15,6 +15,7 @@ pub mod routes;
 pub mod server;
 pub mod state;
 pub mod telemetry;
+pub mod tracing_config;
 pub mod worker;
 pub mod graph;
 
@@ -23,3 +24,4 @@ pub use docs::ApiDoc;
 pub use error::{ApiError, Result};
 pub use server::{Server, ServerConfig};
 pub use state::AppState;
+pub use tracing_config::{TracingConfig, TraceContext};

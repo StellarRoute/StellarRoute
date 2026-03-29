@@ -5,18 +5,24 @@
 pub mod amm;
 pub mod config;
 pub mod db;
+pub mod deduplication;
 pub mod error;
 pub mod horizon;
 pub mod models;
 pub mod reconciliation;
 pub mod telemetry;
 
-// Legacy placeholders (kept for now; will be replaced as Phase 1.2 progresses)
 pub mod sdex;
 pub mod soroban;
 
 use sqlx::PgPool;
 use crate::reconciliation::BackfillManager;
+
+pub use deduplication::{
+    DeduplicationConfig, DeduplicationResult, DeduplicatorState, DeduplicatorStats,
+    EventDeduplicator, EventStatus, IdempotencyKey, OrderingStrategy, ProcessedEvent,
+    SequenceError, StreamState,
+};
 
 /// Indexer service
 pub struct Indexer {

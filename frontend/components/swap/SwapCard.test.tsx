@@ -116,4 +116,42 @@ describe("SwapCard network resilience and states", () => {
       expect(balanceButton).toBeDisabled();
     }, { timeout: 3000 });
   });
+
+  it("shows RateLimitBanner on 429 response instead of raw error", async () => {
+    // Mock fetch to return 429 with Retry-After header
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'Retry-After': '5' }),
+        json: () =>
+          Promise.resolve({
+            error: 'rate_limit_exceeded',
+            message: 'Too many requests',
+          }),
+      })
+    ) as Mock;
+
+    const user = userEvent.setup();
+    render(<SwapCard />);
+
+    // Connect and enter amount to trigger a quote fetch
+    await user.click(screen.getByRole("button", { name: /connect wallet/i }));
+    const payInput = screen.getByLabelText(/you pay/i);
+    await user.type(payInput, "10");
+
+    // Wait for the rate-limit banner to appear
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText(/rate limit reached/i)).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    // Should NOT show raw "429" or stack traces
+    const alertEl = screen.getByRole("alert");
+    expect(alertEl.textContent).not.toMatch(/HTTP 429/);
+    expect(alertEl.textContent).not.toMatch(/Error:/);
+
+    // Should show Retry Now button
+    expect(screen.getByRole("button", { name: /retry now/i })).toBeInTheDocument();
+  });
 });

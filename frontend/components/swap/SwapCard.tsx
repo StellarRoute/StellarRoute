@@ -9,7 +9,9 @@ import { TokenSelector } from './TokenSelector';
 import { PriceInfoPanel } from './PriceInfoPanel';
 import { RouteDisplay } from './RouteDisplay';
 import { SwapButton, SwapButtonState } from './SwapButton';
+import { RateLimitBanner } from '@/components/shared/RateLimitBanner';
 import { useSwapState } from '@/hooks/useSwapState';
+import { useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -31,6 +33,9 @@ export function SwapCard() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
+
+  // Rate-limit retry UX
+  const rateLimit = useRateLimitRetry(quote.error, quote.refresh);
   
   // Mock balance
   const fromBalance = "100.00"; 
@@ -171,11 +176,16 @@ export function SwapCard() {
           </div>
           
           {/* Status/Error Messages */}
-          {quote.error && (
+          {rateLimit.isRateLimited ? (
+            <RateLimitBanner
+              secondsRemaining={rateLimit.secondsRemaining}
+              retry={rateLimit.retry}
+            />
+          ) : quote.error ? (
             <p className="text-center text-xs font-medium text-destructive animate-pulse">
               {quote.error.message}
             </p>
-          )}
+          ) : null}
         </CardContent>
       </Card>
       

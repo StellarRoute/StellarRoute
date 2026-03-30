@@ -22,14 +22,19 @@ import type {
 // ---------------------------------------------------------------------------
 
 export class StellarRouteApiError extends Error {
+  /** Seconds the client should wait before retrying (from Retry-After header). */
+  public readonly retryAfterSeconds: number | undefined;
+
   constructor(
     public readonly status: number,
     public readonly code: ApiErrorCode,
     message: string,
     public readonly details?: unknown,
+    retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'StellarRouteApiError';
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 
   get isRateLimit(): boolean {
@@ -120,15 +125,35 @@ export class StellarRouteClient {
           // Body was not JSON — keep defaults
         }
 
+        // Parse Retry-After (seconds) from response header
+        const rawRetryAfter = response.headers.get('Retry-After');
+        const retryAfterSec = rawRetryAfter ? Number(rawRetryAfter) : undefined;
+
         // Retry on rate-limit (429) and server errors (5xx) with backoff
         if ((response.status === 429 || response.status >= 500) && retries > 0) {
-          const retryAfter =
-            Number(response.headers.get('Retry-After') ?? 1) * 1_000;
-          await sleep(retryAfter || 1_000 * (3 - retries));
+          const retryMs =
+            (retryAfterSec !== undefined && retryAfterSec > 0)
+              ? retryAfterSec * 1_000
+              : 1_000 * (3 - retries);
+          await sleep(retryMs);
           return this.request<T>(path, opts, retries - 1, method, body);
         }
 
-        throw new StellarRouteApiError(response.status, code, message, details);
+        // Surface retryAfterSeconds on the error so the UI can show a countdown
+        const retryAfterForError =
+          response.status === 429 && retryAfterSec !== undefined && retryAfterSec > 0
+            ? retryAfterSec
+            : undefined;
+
+        throw new StellarRouteApiError(
+          response.status,
+          code,
+          response.status === 429
+            ? 'Too many requests — please wait a moment and try again'
+            : message,
+          details,
+          retryAfterForError,
+        );
       }
 
       return response.json() as Promise<T>;

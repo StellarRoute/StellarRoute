@@ -11,6 +11,7 @@ export const ArrowRight = Icon;
 export const ArrowUp = Icon;
 export const CheckCircle2 = Icon;
 export const CheckIcon = Icon;
+export const Clock = Icon;
 export const ChevronDown = Icon;
 export const ChevronDownIcon = Icon;
 export const ChevronRight = Icon;

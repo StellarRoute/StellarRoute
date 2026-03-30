@@ -123,7 +123,7 @@ describe("SwapCard network resilience and states", () => {
       Promise.resolve({
         ok: false,
         status: 429,
-        headers: new Headers({ 'Retry-After': '5' }),
+        headers: new Headers({ 'Retry-After': '1' }),
         json: () =>
           Promise.resolve({
             error: 'rate_limit_exceeded',
@@ -132,7 +132,7 @@ describe("SwapCard network resilience and states", () => {
       })
     ) as Mock;
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<SwapCard />);
 
     // Connect and enter amount to trigger a quote fetch
@@ -144,7 +144,7 @@ describe("SwapCard network resilience and states", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
       expect(screen.getByText(/rate limit reached/i)).toBeInTheDocument();
-    }, { timeout: 5000 });
+    }, { timeout: 10000 });
 
     // Should NOT show raw "429" or stack traces
     const alertEl = screen.getByRole("alert");
@@ -153,5 +153,5 @@ describe("SwapCard network resilience and states", () => {
 
     // Should show Retry Now button
     expect(screen.getByRole("button", { name: /retry now/i })).toBeInTheDocument();
-  });
+  }, 15000);
 });

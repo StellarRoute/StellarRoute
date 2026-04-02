@@ -92,3 +92,8 @@ export function useSettings() {
   }
   return context;
 }
+
+/** Returns undefined when used outside SettingsProvider instead of throwing. */
+export function useOptionalSettings(): SettingsContextType | undefined {
+  return useContext(SettingsContext);
+}

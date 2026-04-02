@@ -71,13 +71,10 @@ export function useWallet() {
   };
 
   // 🔹 Disconnect wallet
-  const disconnect = async () => {
-    try {
-      await disconnectWallet();
-    } finally {
-      setSession(initialState);
-      setError(null);
-    }
+  const disconnect = () => {
+    disconnectWallet();
+    setSession(initialState);
+    setError(null);
   };
 
   // 🔹 Short address (GABC...WXYZ)

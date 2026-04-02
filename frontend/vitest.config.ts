@@ -14,6 +14,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "."),
       "lucide-react": path.resolve(__dirname, "__mocks__/lucide-react.tsx"),
+      "@stellar/freighter-api": path.resolve(__dirname, "__mocks__/@stellar/freighter-api.ts"),
     },
   },
 });

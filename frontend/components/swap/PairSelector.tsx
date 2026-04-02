@@ -35,7 +35,7 @@ export function PairSelector({
           <Input 
             type="number" 
             placeholder="0.00" 
-            className="text-3xl font-medium p-0 border-0 shadow-none focus-visible:ring-0 bg-transparent h-auto max-w-[180px]"
+            className="text-3xl font-medium p-0 border-0 shadow-none focus-visible:ring-ring/50 focus-visible:ring-[3px] bg-transparent h-auto max-w-[180px]"
             value={payAmount}
             onChange={(e) => onPayAmountChange(e.target.value)}
             inputMode="decimal"
@@ -66,7 +66,7 @@ export function PairSelector({
           <Input 
             type="text" 
             placeholder="0.00" 
-            className="text-3xl font-medium p-0 border-0 shadow-none focus-visible:ring-0 bg-transparent h-auto max-w-[180px]"
+            className="text-3xl font-medium p-0 border-0 shadow-none focus-visible:ring-ring/50 focus-visible:ring-[3px] bg-transparent h-auto max-w-[180px]"
             value={receiveAmount}
             readOnly
             aria-readonly="true"
@@ -74,7 +74,7 @@ export function PairSelector({
           />
           <Button variant="secondary" className="rounded-full shadow-sm pr-2 pl-3 h-9" aria-label="Select token to receive">
             <span className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-xs text-blue-500">U</div>
+              <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center text-xs text-primary">U</div>
               <span className="font-semibold text-sm">USDC</span>
               <ChevronDown className="h-4 w-4 opacity-50" />
             </span>

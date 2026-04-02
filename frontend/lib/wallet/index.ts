@@ -3,30 +3,36 @@ import {
   getAddress,
   getNetworkDetails,
   isAllowed,
+  signTransaction,
 } from "@stellar/freighter-api";
 
-import type { SupportedWallet, WalletSession } from "./types";
+import type { AvailableWallet, SupportedWallet, WalletSession } from "./types";
 
 export const WALLET_LABELS: Record<SupportedWallet, string> = {
   freighter: "Freighter",
   xbull: "xBull",
 };
 
-export async function getAvailableWallets() {
-  const wallets: { id: SupportedWallet; label: string }[] = [];
+export async function getAvailableWallets(): Promise<AvailableWallet[]> {
+  const wallets: AvailableWallet[] = [];
 
+  // Freighter
   try {
-    const allowed = await isAllowed();
-    if (allowed) {
-      wallets.push({ id: "freighter", label: "Freighter" });
-    }
+    const res = await isAllowed();
+    wallets.push({
+      id: "freighter",
+      label: "Freighter",
+      installed: res.isAllowed,
+    });
   } catch {
-    // Freighter not available
+    wallets.push({ id: "freighter", label: "Freighter", installed: false });
   }
 
-  if (typeof window !== "undefined" && (window as any).xbull) {
-    wallets.push({ id: "xbull", label: "xBull" });
-  }
+  // xBull — detected via window.xbull
+  const xbullInstalled =
+    typeof window !== "undefined" &&
+    !!(window as unknown as Record<string, unknown>).xbull;
+  wallets.push({ id: "xbull", label: "xBull", installed: xbullInstalled });
 
   return wallets;
 }
@@ -38,11 +44,18 @@ export async function connectWallet(
     const access = await requestAccess();
 
     if (access.error) {
-      throw new Error(access.error);
+      throw new Error(access.error.message ?? "Freighter access denied");
     }
 
     const addressRes = await getAddress();
+    if (addressRes.error) {
+      throw new Error(addressRes.error.message ?? "Failed to get address");
+    }
+
     const networkRes = await getNetworkDetails();
+    if (networkRes.error) {
+      throw new Error(networkRes.error.message ?? "Failed to get network");
+    }
 
     return {
       walletId,
@@ -52,10 +65,28 @@ export async function connectWallet(
     };
   }
 
-  throw new Error("xBull not implemented yet");
+  if (walletId === "xbull") {
+    const xbull = (window as unknown as Record<string, unknown>).xbull as
+      | { connect: () => Promise<{ publicKey: string }> }
+      | undefined;
+
+    if (!xbull) {
+      throw new Error("xBull not installed");
+    }
+
+    const result = await xbull.connect();
+    return {
+      walletId,
+      address: result.publicKey,
+      network: "testnet",
+      isConnected: true,
+    };
+  }
+
+  throw new Error(`Unsupported wallet: ${walletId}`);
 }
 
-export async function disconnectWallet(): Promise<WalletSession> {
+export function disconnectWallet(): WalletSession {
   return {
     walletId: null,
     address: null,
@@ -64,6 +95,23 @@ export async function disconnectWallet(): Promise<WalletSession> {
   };
 }
 
+export async function signTransactionWithWallet(
+  xdr: string,
+  walletId: SupportedWallet,
+  networkPassphrase?: string
+): Promise<string> {
+  if (walletId === "freighter") {
+    const res = await signTransaction(xdr, { networkPassphrase });
+    if (res.error) {
+      throw new Error(res.error.message ?? "Transaction signing failed");
+    }
+    return res.signedTxXdr;
+  }
+
+  throw new Error(`Transaction signing not supported for wallet: ${walletId}`);
+}
+
+/** Stub for callers that only need the XDR echoed back (e.g. tests / out-of-scope flows) */
 export async function signTransactionStub(xdr: string) {
   return {
     ok: false,

@@ -26,7 +26,7 @@ export function SettingsPanel() {
           <span className="sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[320px] p-6 rounded-[24px] shadow-2xl border-border/40 bg-background/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+      <PopoverContent align="end" data-testid="settings-panel" className="w-[320px] p-6 rounded-[24px] shadow-2xl border-border/40 bg-background/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold tracking-tight">Settings</h3>
           <Button 

@@ -78,7 +78,7 @@ export function SwapCard() {
   }, [switchTokens]);
 
   return (
-    <div className="w-full max-w-[480px] mx-auto perspective-1000">
+    <div data-testid="swap-card" className="w-full max-w-[480px] mx-auto perspective-1000">
       <Card className="relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px] transition-all duration-500 hover:shadow-primary/5">
         {/* Animated Background Gradients */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-primary/10 rounded-full blur-3xl animate-pulse" />

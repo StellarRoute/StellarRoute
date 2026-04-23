@@ -8,6 +8,7 @@ import { AmountInput } from './AmountInput';
 import { TokenSelector } from './TokenSelector';
 import { PriceInfoPanel } from './PriceInfoPanel';
 import { RouteDisplay } from './RouteDisplay';
+import type { AlternativeRoute } from './RouteDisplay';
 import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
@@ -33,6 +34,7 @@ export function SwapCard() {
   const [isConnected, setIsConnected] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(null);
   
   // Mock balance
   const fromBalance = "100.00"; 
@@ -45,9 +47,10 @@ export function SwapCard() {
     if (!fromAmount || parseFloat(fromAmount) === 0) return "no_amount";
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return "insufficient_balance";
     if (quote.priceImpact > 10) return "high_impact_warning";
+    if (quote.isStale) return "error";
     if (quote.error) return "error";
     return "ready";
-  }, [isConnected, fromAmount, fromBalance, quote.priceImpact, quote.error, isSwapping]);
+  }, [isConnected, fromAmount, fromBalance, quote.priceImpact, quote.isStale, quote.error, isSwapping]);
 
   const executeSwap = useCallback(async () => {
     setIsSwapping(true);
@@ -69,6 +72,11 @@ export function SwapCard() {
     setFromAmount(fromBalance);
   }, [fromBalance, setFromAmount]);
 
+  const handleSwitchTokens = useCallback(() => {
+    setSelectedRoute(null);
+    switchTokens();
+  }, [switchTokens]);
+
   return (
     <div className="w-full max-w-[480px] mx-auto perspective-1000">
       <Card className="relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px] transition-all duration-500 hover:shadow-primary/5">
@@ -89,6 +97,7 @@ export function SwapCard() {
                 size="icon" 
                 onClick={() => quote.refresh()} 
                 disabled={quote.loading}
+                aria-label="Refresh quote"
                 className="h-9 w-9 rounded-xl hover:bg-muted/80"
               >
                 <RefreshCw className={cn("h-4.5 w-4.5 text-muted-foreground", quote.loading && "animate-spin")} />
@@ -122,7 +131,7 @@ export function SwapCard() {
             <Button
               variant="outline"
               size="icon"
-              onClick={switchTokens}
+              onClick={handleSwitchTokens}
               className="absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 hover:scale-110 active:scale-95 transition-all duration-300 group"
             >
               <ArrowUpDown className="h-4 w-4 text-primary group-hover:rotate-180 transition-transform duration-500" />
@@ -135,7 +144,7 @@ export function SwapCard() {
               <div className="flex justify-between items-start mb-1">
                 <AmountInput
                   label="You Receive"
-                  value={toAmount}
+                  value={selectedRoute?.expectedAmount ?? toAmount}
                   readOnly
                   placeholder="0.00"
                   className="flex-1"
@@ -161,11 +170,29 @@ export function SwapCard() {
                 isLoading={quote.loading}
               />
               <RouteDisplay
-                route={quote.route}
-                amountOut={toAmount}
+                amountOut={selectedRoute?.expectedAmount ?? toAmount}
                 isLoading={quote.loading}
+                onSelect={setSelectedRoute}
               />
             </div>
+          )}
+
+          {/* Stale / Recovering Indicators */}
+          {quote.isStale && (
+            <span
+              data-testid="stale-indicator"
+              className="text-xs text-amber-500 font-medium"
+            >
+              Quote outdated — refresh for latest price
+            </span>
+          )}
+          {quote.isRecovering && (
+            <span
+              data-testid="recovering-indicator"
+              className="text-xs text-blue-500 font-medium"
+            >
+              Retrying quote...
+            </span>
           )}
 
           {/* Action Button */}

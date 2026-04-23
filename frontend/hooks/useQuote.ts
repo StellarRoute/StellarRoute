@@ -20,7 +20,10 @@ export interface QuoteResult {
   loading: boolean;
   error: Error | null;
   isStale: boolean;
+  isRecovering: boolean;
+  retryAttempt: number;
   refresh: () => void;
+  data: import('@/types').PriceQuote | undefined;
 }
 
 /**
@@ -29,7 +32,7 @@ export interface QuoteResult {
  * Adapts the robust useQuoteRefresh hook to the specific swap interface requirements.
  */
 export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuoteProps): QuoteResult {
-  const { data, loading, error, isStale, refresh } = useQuoteRefresh(
+  const { data, loading, error, isStale, isRecovering, retryAttempt, refresh } = useQuoteRefresh(
     fromToken,
     toToken,
     amount,
@@ -87,6 +90,9 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     loading,
     error: error instanceof Error ? error : error ? new Error(String(error)) : null,
     isStale,
+    isRecovering,
+    retryAttempt,
     refresh,
+    data,
   };
 }

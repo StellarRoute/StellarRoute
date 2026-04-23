@@ -23,6 +23,8 @@ interface RouteDisplayProps {
   isLoading?: boolean;
   /** Optional alternative route fixture data */
   alternativeRoutes?: AlternativeRoute[];
+  /** Callback when an alternative route is selected */
+  onSelect?: (route: AlternativeRoute) => void;
 }
 
 const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
@@ -40,13 +42,27 @@ function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
   }));
 }
 
-function AlternativeRouteButton({ route }: { route: AlternativeRoute }) {
+function AlternativeRouteButton({
+  route,
+  isSelected = false,
+  onSelect,
+}: {
+  route: AlternativeRoute;
+  isSelected?: boolean;
+  onSelect?: (route: AlternativeRoute) => void;
+}) {
   return (
     <button
       type="button"
       data-testid={`alternative-route-${route.id}`}
-      className="w-full flex flex-wrap items-center justify-between opacity-60 hover:opacity-100 focus:opacity-100 transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99]"
-      onClick={() => console.log("Selecting alternative route...")}
+      aria-pressed={isSelected}
+      data-selected={isSelected ? "true" : undefined}
+      className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
+        isSelected
+          ? "opacity-100 ring-2 ring-primary/40 bg-muted/50"
+          : "opacity-60 hover:opacity-100 focus:opacity-100"
+      }`}
+      onClick={() => onSelect?.(route)}
     >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span className="font-medium">XLM</span>
@@ -70,10 +86,17 @@ export function RouteDisplay({
   volatility = "low",
   isLoading = false,
   alternativeRoutes,
+  onSelect,
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const handleSelect = (route: AlternativeRoute) => {
+    setSelectedRouteId(route.id);
+    onSelect?.(route);
+  };
   const shouldVirtualize = routes.length > ROUTE_VIRTUALIZATION_THRESHOLD;
   const virtualWindow = useVirtualWindow({
     containerRef: scrollRef,
@@ -179,7 +202,11 @@ export function RouteDisplay({
                       height: ROUTE_ROW_HEIGHT,
                     }}
                   >
-                    <AlternativeRouteButton route={route} />
+                    <AlternativeRouteButton
+                      route={route}
+                      isSelected={selectedRouteId === route.id}
+                      onSelect={handleSelect}
+                    />
                   </div>
                 );
               })}
@@ -187,7 +214,12 @@ export function RouteDisplay({
           ) : (
             <div className="space-y-1">
               {visibleRoutes.map((route) => (
-                <AlternativeRouteButton key={route.id} route={route} />
+                <AlternativeRouteButton
+                  key={route.id}
+                  route={route}
+                  isSelected={selectedRouteId === route.id}
+                  onSelect={handleSelect}
+                />
               ))}
             </div>
           )}

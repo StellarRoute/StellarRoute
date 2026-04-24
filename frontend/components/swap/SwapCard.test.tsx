@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi, Mock } from "vitest";
 import { SwapCard } from "./SwapCard";
+import { SettingsProvider } from "@/components/providers/settings-provider";
 
 function setNavigatorOnline(value: boolean) {
   Object.defineProperty(window.navigator, "onLine", {
@@ -34,12 +35,12 @@ describe("SwapCard network resilience and states", () => {
   });
 
   it("should render successfully", () => {
-    render(<SwapCard />);
+    render(<SettingsProvider><SwapCard /></SettingsProvider>);
     expect(screen.getByRole("heading", { name: /swap/i })).toBeInTheDocument();
   });
 
   it("shows initial state requiring wallet connection", async () => {
-    render(<SwapCard />);
+    render(<SettingsProvider><SwapCard /></SettingsProvider>);
     
     // Check for "Connect Wallet" button
     const connectButton = screen.getByRole("button", { name: /connect wallet/i });
@@ -48,7 +49,7 @@ describe("SwapCard network resilience and states", () => {
 
   it("transitions states after wallet connection", async () => {
     const user = userEvent.setup();
-    render(<SwapCard />);
+    render(<SettingsProvider><SwapCard /></SettingsProvider>);
     
     // 1. Connect Wallet
     const connectButton = screen.getByRole("button", { name: /connect wallet/i });
@@ -85,7 +86,7 @@ describe("SwapCard network resilience and states", () => {
     ) as Mock;
 
     const user = userEvent.setup();
-    render(<SwapCard />);
+    render(<SettingsProvider><SwapCard /></SettingsProvider>);
     
     // Connect
     await user.click(screen.getByRole("button", { name: /connect wallet/i }));
@@ -103,7 +104,7 @@ describe("SwapCard network resilience and states", () => {
 
   it("shows insufficient balance state", async () => {
     const user = userEvent.setup();
-    render(<SwapCard />);
+    render(<SettingsProvider><SwapCard /></SettingsProvider>);
     
     // Connect
     await user.click(screen.getByRole("button", { name: /connect wallet/i }));

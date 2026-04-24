@@ -194,9 +194,7 @@ impl LoadTestHarness {
     {
         info!("Starting load test harness: {}", self.config.name);
         let start_time = Instant::now();
-        let (tx, mut _rx) = mpsc::channel::<()>(self.config.concurrent_users * 2);
-        drop(tx); // Unused for now, but keeping for future worker coordination
-        
+
         // Spawn workers
         let mut workers = vec![];
         for _ in 0..self.config.concurrent_users {
@@ -205,56 +203,44 @@ impl LoadTestHarness {
             let request_gen = request_gen.clone();
 
             let worker = tokio::spawn(async move {
-                let interval = Duration::from_secs_f64(1.0 / (config.requests_per_second as f64 / config.concurrent_users as f64));
+                let interval = Duration::from_secs_f64(
+                    1.0 / (config.requests_per_second as f64 / config.concurrent_users as f64),
+                );
                 let mut ticker = tokio::time::interval(interval);
 
                 for _ in 0..(config.total_requests / config.concurrent_users) {
                     ticker.tick().await;
-                    
+
                     let (traffic_type, amount) = {
                         let mut rng = rand::thread_rng();
                         (
                             select_traffic_type(&config.traffic_mix, &mut rng),
-                            generate_amount(&config.amount_distribution, &mut rng)
+                            generate_amount(&config.amount_distribution, &mut rng),
                         )
                     };
-                    
+
                     let req_start = Instant::now();
 
                     // Simulate degradation
                     if config.degradation.db_latency_ms > 0 {
-                        tokio::time::sleep(Duration::from_millis(config.degradation.db_latency_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(config.degradation.db_latency_ms))
+                            .await;
                     }
-                    
+
                     let should_fail = {
                         let mut rng = rand::thread_rng();
                         let mut fail = false;
-                        if config.degradation.db_error_rate > 0.0 && rng.gen::<f64>() < config.degradation.db_error_rate {
-                            fail = true;
-                        }
-                        if config.degradation.rpc_error_rate > 0.0 && rng.gen::<f64>() < config.degradation.rpc_error_rate {
-                            fail = true;
-                        }
-                        fail
-                    };
-
-                    let (traffic_type, amount, should_fail) = {
-                        let mut rng = rand::thread_rng();
-                        let traffic_type = select_traffic_type(&config.traffic_mix, &mut rng);
-                        let amount = generate_amount(&config.amount_distribution, &mut rng);
-
-                        let mut should_fail = false;
                         if config.degradation.db_error_rate > 0.0
                             && rng.gen::<f64>() < config.degradation.db_error_rate
                         {
-                            should_fail = true;
+                            fail = true;
                         }
                         if config.degradation.rpc_error_rate > 0.0
                             && rng.gen::<f64>() < config.degradation.rpc_error_rate
                         {
-                            should_fail = true;
+                            fail = true;
                         }
-                        (traffic_type, amount, should_fail)
+                        fail
                     };
 
                     let result = if should_fail {

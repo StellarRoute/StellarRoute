@@ -9,6 +9,16 @@ export default function Home() {
       </p>
 
       <DemoSwap />
+
+      <div className="mt-12 text-center">
+        <a 
+          href="/quote-inspector" 
+          className="text-primary hover:underline font-medium flex items-center justify-center gap-2"
+        >
+          View Cross-Venue Quote Inspector Demo
+          <span className="text-xs bg-primary/10 px-2 py-0.5 rounded-full">New</span>
+        </a>
+      </div>
     </div>
   );
 }

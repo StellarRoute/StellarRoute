@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { QuoteSummary } from "./QuoteSummary";
 
 describe("QuoteSummary", () => {
@@ -80,5 +81,39 @@ describe("QuoteSummary", () => {
     );
 
     expect(screen.getByText("1 XLM ≈ 0.98 USDC")).toBeInTheDocument();
+  });
+
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
+
+    const { rerender } = render(
+      <QuoteSummary
+        rate="1 XLM ≈ 0.98 USDC"
+        fee="0.01 XLM"
+        priceImpact="< 0.1%"
+        isLoading={true}
+      />
+    );
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+
+    rerender(
+      <QuoteSummary
+        rate="1 XLM ≈ 0.98 USDC"
+        fee="0.01 XLM"
+        priceImpact="< 0.1%"
+        isLoading={false}
+      />
+    );
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("1 XLM ≈ 0.98 USDC")).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    expect(screen.getByText("1 XLM ≈ 0.98 USDC")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

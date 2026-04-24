@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown, RefreshCw } from 'lucide-react';
@@ -18,6 +18,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { emitRouteEvent, getPriceImpactTier } from '@/lib/telemetry';
 
 export function SwapCard() {
   const {
@@ -87,6 +88,48 @@ export function SwapCard() {
     setSelectedRoute(null);
     switchTokens();
   }, [switchTokens]);
+
+  const telemetryPayload = useMemo(() => {
+    const hasDex = quote.data?.path.some(step => step.source === 'sdex') ?? false;
+    const hasAmm = quote.data?.path.some(step => step.source === 'soroban' || step.source === 'amm') ?? false;
+    return {
+      fromAssetCode: fromSymbol,
+      toAssetCode: toSymbol,
+      routeLength: Math.max(1, quote.data?.path.length ?? 1),
+      priceImpactTier: getPriceImpactTier(quote.priceImpact),
+      hasDex,
+      hasAmm,
+    };
+  }, [fromSymbol, toSymbol, quote.data?.path, quote.priceImpact]);
+
+  // Emit route_view when a new quote is successfully loaded
+  useEffect(() => {
+    if (quote.data && !quote.loading && parseFloat(fromAmount) > 0) {
+      emitRouteEvent('route_view', telemetryPayload);
+    }
+  }, [quote.data, quote.loading, fromAmount, telemetryPayload]);
+
+  const handleRouteSelect = useCallback((route: AlternativeRoute) => {
+    setSelectedRoute(route);
+    emitRouteEvent('route_select', {
+      ...telemetryPayload,
+      hasDex: route.venue.includes('SDEX'),
+      hasAmm: route.venue.includes('Pool') || route.venue.includes('AMM'),
+    });
+  }, [telemetryPayload]);
+
+  const executeSwapWithTelemetry = useCallback(async () => {
+    emitRouteEvent('route_confirm', telemetryPayload);
+    await executeSwap();
+  }, [executeSwap, telemetryPayload]);
+
+  const handleSwapWithTelemetry = useCallback(async () => {
+    if (quote.priceImpact > 5) {
+      setIsConfirmModalOpen(true);
+      return;
+    }
+    await executeSwapWithTelemetry();
+  }, [quote.priceImpact, executeSwapWithTelemetry]);
 
   return (
     <div data-testid="swap-card" className="w-full max-w-[480px] mx-auto perspective-1000">
@@ -184,7 +227,7 @@ export function SwapCard() {
               <RouteDisplay
                 amountOut={selectedRoute?.expectedAmount ?? toAmount}
                 isLoading={quote.loading}
-                onSelect={setSelectedRoute}
+                onSelect={handleRouteSelect}
               />
             </div>
           )}
@@ -203,7 +246,7 @@ export function SwapCard() {
           <div className="pt-2">
             <SwapButton
               state={buttonState}
-              onSwap={handleSwap}
+              onSwap={handleSwapWithTelemetry}
               onConnectWallet={() => setIsConnected(true)}
               isLoading={quote.loading}
             />
@@ -222,7 +265,7 @@ export function SwapCard() {
       <HighImpactConfirmModal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
-        onConfirm={executeSwap}
+        onConfirm={executeSwapWithTelemetry}
         priceImpact={quote.priceImpact}
         fromAmount={fromAmount}
         fromSymbol={fromSymbol}

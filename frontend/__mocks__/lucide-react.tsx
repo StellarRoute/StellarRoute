@@ -54,6 +54,8 @@ export const HelpCircle = Icon;
 export const ArrowUpDown = Icon;
 export const Settings2 = Icon;
 export const Route = Icon;
+export const Pin = Icon;
+export const PinOff = Icon;
 
 // Sonner "Toaster" icon set
 export const CircleCheckIcon = Icon;

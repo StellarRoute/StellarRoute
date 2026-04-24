@@ -1,5 +1,6 @@
-import { ArrowDown, ArrowRight, ChevronDown, Info } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowDown, ArrowRight, ChevronDown, Info, Pin, PinOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { useVirtualWindow } from "@/hooks/useVirtualWindow";
@@ -24,7 +25,7 @@ interface RouteDisplayProps {
   /** Optional alternative route fixture data */
   alternativeRoutes?: AlternativeRoute[];
   /** Callback when an alternative route is selected */
-  onSelect?: (route: AlternativeRoute) => void;
+  onSelect?: (route: AlternativeRoute | null) => void;
 }
 
 const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
@@ -45,25 +46,30 @@ function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
 function AlternativeRouteButton({
   route,
   isSelected = false,
+  isPinned = false,
   onSelect,
+  onTogglePin,
 }: {
   route: AlternativeRoute;
   isSelected?: boolean;
+  isPinned?: boolean;
   onSelect?: (route: AlternativeRoute) => void;
+  onTogglePin?: (route: AlternativeRoute, e: React.MouseEvent) => void;
 }) {
   return (
-    <button
-      type="button"
-      data-testid={`alternative-route-${route.id}`}
-      aria-pressed={isSelected}
-      data-selected={isSelected ? "true" : undefined}
-      className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
-        isSelected
-          ? "opacity-100 ring-2 ring-primary/40 bg-muted/50"
-          : "opacity-60 hover:opacity-100 focus:opacity-100"
-      }`}
-      onClick={() => onSelect?.(route)}
-    >
+    <div className="relative group w-full">
+      <button
+        type="button"
+        data-testid={`alternative-route-${route.id}`}
+        aria-pressed={isSelected}
+        data-selected={isSelected ? "true" : undefined}
+        className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
+          isSelected
+            ? "opacity-100 ring-2 ring-primary/40 bg-muted/50"
+            : "opacity-60 hover:opacity-100 focus:opacity-100"
+        } pr-8`}
+        onClick={() => onSelect?.(route)}
+      >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span className="font-medium">XLM</span>
         <ArrowRight className="h-3 w-3" />
@@ -76,7 +82,19 @@ function AlternativeRouteButton({
       <span className="text-xs font-medium text-muted-foreground">
         {route.expectedAmount}
       </span>
-    </button>
+      </button>
+      <button
+        type="button"
+        data-testid={`pin-route-${route.id}`}
+        onClick={(e) => onTogglePin?.(route, e)}
+        className={`absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-muted/80 transition-opacity focus:opacity-100 ${
+          isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-muted-foreground'
+        }`}
+        title={isPinned ? "Unpin route" : "Pin this route"}
+      >
+        {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+      </button>
+    </div>
   );
 }
 
@@ -90,12 +108,39 @@ export function RouteDisplay({
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
+  const [pinnedRouteId, setPinnedRouteId] = useState<string | null>(null);
+  
+  const routes = useMemo(() => alternativeRoutes ?? buildAlternativeRoutes(amountOut), [alternativeRoutes, amountOut]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (pinnedRouteId && !isLoading) {
+      const isValid = routes.some((r) => r.id === pinnedRouteId);
+      if (!isValid) {
+        setPinnedRouteId(null);
+        setSelectedRouteId(null);
+        onSelect?.(null);
+        toast.error("Pinned route is no longer available. Reverted to best route.");
+      }
+    }
+  }, [routes, pinnedRouteId, isLoading, onSelect]);
 
   const handleSelect = (route: AlternativeRoute) => {
     setSelectedRouteId(route.id);
     onSelect?.(route);
+  };
+
+  const handleTogglePin = (route: AlternativeRoute, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pinnedRouteId === route.id) {
+      setPinnedRouteId(null);
+      toast.info("Route unpinned");
+    } else {
+      setPinnedRouteId(route.id);
+      setSelectedRouteId(route.id);
+      onSelect?.(route);
+      toast.success("Route pinned");
+    }
   };
   const shouldVirtualize = routes.length > ROUTE_VIRTUALIZATION_THRESHOLD;
   const virtualWindow = useVirtualWindow({
@@ -205,7 +250,9 @@ export function RouteDisplay({
                     <AlternativeRouteButton
                       route={route}
                       isSelected={selectedRouteId === route.id}
+                      isPinned={pinnedRouteId === route.id}
                       onSelect={handleSelect}
+                      onTogglePin={handleTogglePin}
                     />
                   </div>
                 );
@@ -218,7 +265,9 @@ export function RouteDisplay({
                   key={route.id}
                   route={route}
                   isSelected={selectedRouteId === route.id}
+                  isPinned={pinnedRouteId === route.id}
                   onSelect={handleSelect}
+                  onTogglePin={handleTogglePin}
                 />
               ))}
             </div>

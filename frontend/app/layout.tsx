@@ -34,7 +34,7 @@ export default function RootLayout({
         <ErrorBoundary>
         <Providers>
           <AppShell>
-            <main className="flex-1">{children}</main>
+            {children}
           </AppShell>
         </Providers>
         </ErrorBoundary>

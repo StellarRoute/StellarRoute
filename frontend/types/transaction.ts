@@ -2,10 +2,10 @@ import { PathStep } from './index';
 
 export type TransactionStatus =
   | 'pending'
-  | 'submitting'
-  | 'processing'
-  | 'success'
-  | 'failed';
+  | 'submitted'
+  | 'confirmed'
+  | 'failed'
+  | 'dropped';
 
 export interface TransactionRecord {
   id: string; // unique identifier (could be hash if known)

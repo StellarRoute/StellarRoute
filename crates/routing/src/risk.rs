@@ -16,6 +16,7 @@ pub enum ExclusionReason {
     MaxImpactExceeded,
     LiquidityBelowFloor,
     AssetBlacklisted,
+    LiquidityAnomaly,
 }
 
 impl std::fmt::Display for ExclusionReason {
@@ -25,6 +26,7 @@ impl std::fmt::Display for ExclusionReason {
             ExclusionReason::MaxImpactExceeded => write!(f, "max_impact_exceeded"),
             ExclusionReason::LiquidityBelowFloor => write!(f, "liquidity_below_floor"),
             ExclusionReason::AssetBlacklisted => write!(f, "asset_blacklisted"),
+            ExclusionReason::LiquidityAnomaly => write!(f, "liquidity_anomaly"),
         }
     }
 }

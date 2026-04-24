@@ -27,7 +27,7 @@ function createTransactions(count: number): TransactionRecord[] {
     minReceived: "0.97",
     networkFee: "0.001",
     routePath: [],
-    status: "success",
+    status: "confirmed",
     hash: `hash-${index}`,
     walletAddress: "GBSU...XYZ9",
   }));

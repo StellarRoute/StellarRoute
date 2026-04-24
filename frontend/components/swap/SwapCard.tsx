@@ -12,7 +12,10 @@ import type { AlternativeRoute } from './RouteDisplay';
 import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
+import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { useSwapState } from '@/hooks/useSwapState';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { StaleQuoteBanner } from './StaleQuoteBanner';
@@ -36,6 +39,14 @@ export function SwapCard() {
   const [isSwapping, setIsSwapping] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(null);
+
+  // Connection status indicator
+  const { isOnline } = useOnlineStatus();
+  const { status: streamStatus, mode: streamMode } = useQuoteStreamStatus({
+    isRecovering: quote.isRecovering,
+    error: quote.error,
+    isOnline,
+  });
   
   // Mock balance
   const fromBalance = "100.00"; 
@@ -92,6 +103,7 @@ export function SwapCard() {
               Swap
             </h2>
             <div className="flex items-center gap-1">
+              <QuoteStreamStatusIndicator status={streamStatus} mode={streamMode} />
               <SettingsPanel />
               <Button 
                 variant="ghost" 

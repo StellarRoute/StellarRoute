@@ -125,6 +125,10 @@ pub struct RouteMetrics {
     pub hop_count: usize,
     /// Normalized score (0.0 to 1.0)
     pub score: f64,
+    /// Aggregate anomaly score (0.0 to 1.0)
+    pub anomaly_score: f64,
+    /// Reasons for detected anomalies
+    pub anomaly_reasons: Vec<String>,
 }
 
 /// Optimizer diagnostics for selected route
@@ -143,6 +147,9 @@ pub struct OptimizerDiagnostics {
     /// Routes excluded due to risk limits
     #[serde(default)]
     pub excluded_routes: Vec<RouteExclusion>,
+    /// Venues flagged with anomalies but still included
+    #[serde(default)]
+    pub flagged_venues: Vec<crate::health::anomaly::AnomalyResult>,
 }
 
 /// Hybrid route optimizer with configurable policies
@@ -334,6 +341,8 @@ impl HybridOptimizer {
 
         let mut total_output = amount_in;
         let mut total_impact_bps = 0u32;
+        let mut max_anomaly_score = 0.0f64;
+        let mut all_anomaly_reasons = Vec::new();
 
         // Simulate execution through each hop
         for hop in &path.hops {
@@ -358,6 +367,8 @@ impl HybridOptimizer {
 
             total_output = output;
             total_impact_bps = total_impact_bps.saturating_add(impact_bps);
+            max_anomaly_score = max_anomaly_score.max(hop.anomaly_score);
+            all_anomaly_reasons.extend(hop.anomaly_reasons.clone());
         }
 
         let compute_time_us = start_time.elapsed().as_micros() as u64;
@@ -369,6 +380,8 @@ impl HybridOptimizer {
             compute_time_us,
             hop_count: path.hops.len(),
             score,
+            anomaly_score: max_anomaly_score,
+            anomaly_reasons: all_anomaly_reasons,
         })
     }
 

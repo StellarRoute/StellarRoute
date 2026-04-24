@@ -240,7 +240,7 @@ async fn check_multi_hop_support() -> CheckResult {
     // Check if the RoutingEngine can handle multiple hops in config
     let engine = stellarroute_routing::RoutingEngine::new();
     let policy = engine.routing_policy();
-    
+
     if policy.max_hops >= 2 {
         CheckResult {
             name: "Multi-hop Support".to_string(),

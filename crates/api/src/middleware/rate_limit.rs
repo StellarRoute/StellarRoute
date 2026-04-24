@@ -540,8 +540,15 @@ mod tests {
     fn endpoint_config_selects_correct_limit() {
         let cfg = EndpointConfig::default();
         assert_eq!(cfg.for_path("/api/v1/pairs", None).max_requests, 60);
-        assert_eq!(cfg.for_path("/api/v1/orderbook/XLM/USDC", None).max_requests, 60);
-        assert_eq!(cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests, 20);
+        assert_eq!(
+            cfg.for_path("/api/v1/orderbook/XLM/USDC", None)
+                .max_requests,
+            60
+        );
+        assert_eq!(
+            cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests,
+            20
+        );
         assert_eq!(cfg.for_path("/health", None).max_requests, 120);
         assert_eq!(cfg.for_path("/swagger-ui", None).max_requests, 120);
     }
@@ -682,7 +689,7 @@ mod tests {
 
         // Path-based remains the same for others
         assert_eq!(cfg.for_path("/api/v1/quote", None).max_requests, 20);
-        
+
         // Override applied for the specific tenant
         assert_eq!(
             cfg.for_path("/api/v1/quote", Some(tenant_id)).max_requests,

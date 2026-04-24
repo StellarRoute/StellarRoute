@@ -50,28 +50,32 @@ async fn test_harness_mixed_traffic_profile() {
     let harness = LoadTestHarness::new(config);
 
     let router_clone = router.clone();
-    let results = harness.run(move |traffic_type, amount| {
-        let router = router_clone.clone();
-        async move {
-            // Select pairs based on traffic type
-            let (base, quote) = match traffic_type {
-                TrafficType::Sdex => ("native", "USDC"), // Typical SDEX pair
-                TrafficType::Amm => ("native", "XLM"),  // Typical AMM pair (demo)
-                TrafficType::Mixed => ("USDC", "XLM"),
-            };
+    let results = harness
+        .run(move |traffic_type, amount| {
+            let router = router_clone.clone();
+            async move {
+                // Select pairs based on traffic type
+                let (base, quote) = match traffic_type {
+                    TrafficType::Sdex => ("native", "USDC"), // Typical SDEX pair
+                    TrafficType::Amm => ("native", "XLM"),   // Typical AMM pair (demo)
+                    TrafficType::Mixed => ("USDC", "XLM"),
+                };
 
-            let uri = format!("/api/v1/quote/{}/{}?amount={}", base, quote, amount);
-            let request = Request::builder()
-                .uri(uri)
-                .body(Body::empty())
-                .unwrap();
+                let uri = format!("/api/v1/quote/{}/{}?amount={}", base, quote, amount);
+                let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
 
-            let response = (*router).clone().oneshot(request).await.map_err(|e| e.to_string())?;
-            
-            if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND {
-                Ok(())
-            } else {
-                Err(format!("Unexpected status: {}", response.status()))
+                let response = (*router)
+                    .clone()
+                    .oneshot(request)
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND
+                {
+                    Ok(())
+                } else {
+                    Err(format!("Unexpected status: {}", response.status()))
+                }
             }
         })
         .await;
@@ -121,19 +125,26 @@ async fn test_harness_degradation_scenario() {
     let harness = LoadTestHarness::new(config);
 
     let router_clone = router.clone();
-    let results = harness.run(move |_, _| {
-        let router = router_clone.clone();
-        async move {
-            let request = Request::builder()
-                .uri("/api/v1/quote/native/USDC?amount=1")
-                .body(Body::empty())
-                .unwrap();
+    let results = harness
+        .run(move |_, _| {
+            let router = router_clone.clone();
+            async move {
+                let request = Request::builder()
+                    .uri("/api/v1/quote/native/USDC?amount=1")
+                    .body(Body::empty())
+                    .unwrap();
 
-            let response = (*router).clone().oneshot(request).await.map_err(|e| e.to_string())?;
-            if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND {
-                Ok(())
-            } else {
-                Err(format!("Unexpected status: {}", response.status()))
+                let response = (*router)
+                    .clone()
+                    .oneshot(request)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND
+                {
+                    Ok(())
+                } else {
+                    Err(format!("Unexpected status: {}", response.status()))
+                }
             }
         })
         .await;

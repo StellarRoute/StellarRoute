@@ -39,8 +39,9 @@ fn test_quote_response_conformance() {
         "price_impact": "0.01"
     }"#;
 
-    let response: QuoteResponse = serde_json::from_str(json).expect("Failed to deserialize reference quote response");
-    
+    let response: QuoteResponse =
+        serde_json::from_str(json).expect("Failed to deserialize reference quote response");
+
     // Validate required fields
     assert_eq!(response.base_asset.display_name(), "XLM");
     assert_eq!(response.quote_asset.display_name(), "USDC");
@@ -63,7 +64,8 @@ fn test_quote_response_minimal_conformance() {
         "timestamp": 1700000000000
     }"#;
 
-    let response: QuoteResponse = serde_json::from_str(json).expect("Failed to deserialize minimal quote response");
+    let response: QuoteResponse =
+        serde_json::from_str(json).expect("Failed to deserialize minimal quote response");
     assert_eq!(response.amount, "1");
 }
 
@@ -74,5 +76,8 @@ fn test_quote_response_missing_fields_fail() {
     }"#;
 
     let result: Result<QuoteResponse, _> = serde_json::from_str(json);
-    assert!(result.is_err(), "Should have failed due to missing required fields");
+    assert!(
+        result.is_err(),
+        "Should have failed due to missing required fields"
+    );
 }

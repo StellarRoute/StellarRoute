@@ -285,12 +285,20 @@ pub mod keys {
 
     /// Key used to track the latest liquidity revision observed for a pair
     pub fn liquidity_revision(base: &str, quote: &str) -> String {
-        format!("liquidity:revision:{}:{}", normalize_asset(base), normalize_asset(quote))
+        format!(
+            "liquidity:revision:{}:{}",
+            normalize_asset(base),
+            normalize_asset(quote)
+        )
     }
 
     /// Pattern that matches all cached quotes for a pair
     pub fn quote_pair_pattern(base: &str, quote: &str) -> String {
-        format!("*quote:{}:{}:*", normalize_asset(base), normalize_asset(quote))
+        format!(
+            "*quote:{}:{}:*",
+            normalize_asset(base),
+            normalize_asset(quote)
+        )
     }
 }
 
@@ -311,7 +319,10 @@ mod tests {
             keys::liquidity_revision("xlm", "USDC"),
             "liquidity:revision:native:USDC"
         );
-        assert_eq!(keys::quote_pair_pattern("XLM", "usdc"), "*quote:native:USDC:*");
+        assert_eq!(
+            keys::quote_pair_pattern("XLM", "usdc"),
+            "*quote:native:USDC:*"
+        );
     }
 
     #[tokio::test]
@@ -320,7 +331,7 @@ mod tests {
         let key1 = keys::quote("XLM", "USDC", "100", 50, "sell", false);
         let key2 = keys::quote("xlm", "usdc", "100.000", 50, "sell", false);
         let key3 = keys::quote("native", "USDC", "100.0000000", 50, "sell", false);
-        
+
         assert_eq!(key1, "v2:quote:native:USDC:100.0000000:50:sell:false");
         assert_eq!(key1, key2);
         assert_eq!(key2, key3);

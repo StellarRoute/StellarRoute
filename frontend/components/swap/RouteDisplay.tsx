@@ -117,7 +117,9 @@ export function RouteDisplay({
     if (pinnedRouteId && !isLoading) {
       const isValid = routes.some((r) => r.id === pinnedRouteId);
       if (!isValid) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPinnedRouteId(null);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedRouteId(null);
         onSelect?.(null);
         toast.error("Pinned route is no longer available. Reverted to best route.");

@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PriceImpactIndicator } from "./PriceImpactIndicator";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
 
 interface PriceInfoPanelProps {
   rate?: string;
@@ -26,7 +27,9 @@ export function PriceInfoPanel({
   networkFee,
   isLoading = false,
 }: PriceInfoPanelProps) {
-  if (isLoading) {
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
+
+  if (showSkeleton) {
     return (
       <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3">
         <Skeleton className="h-4 w-full opacity-50" />
@@ -37,7 +40,7 @@ export function PriceInfoPanel({
   }
 
   return (
-    <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20">
+    <div className={`rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20 ${contentClassName}`.trim()}>
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
           <span>Exchange Rate</span>

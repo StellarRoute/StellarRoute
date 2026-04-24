@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { useVirtualWindow } from "@/hooks/useVirtualWindow";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
 
 import { ConfidenceIndicator } from "./ConfidenceIndicator";
 import { RouteDisplaySkeleton } from "./RouteDisplaySkeleton";
@@ -90,6 +91,7 @@ export function RouteDisplay({
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
   const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -111,12 +113,15 @@ export function RouteDisplay({
     ? routes.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     : routes;
 
-  if (isLoading) {
+  if (showSkeleton) {
     return <RouteDisplaySkeleton />;
   }
 
   return (
-    <div data-testid="route-display" className="rounded-xl border border-border/50 p-4 space-y-4 transition-all duration-200 hover:border-border hover:shadow-sm focus-within:ring-2 focus-within:ring-primary/20">
+    <div
+      data-testid="route-display"
+      className={`rounded-xl border border-border/50 p-4 space-y-4 transition-all duration-200 hover:border-border hover:shadow-sm focus-within:ring-2 focus-within:ring-primary/20 ${contentClassName}`.trim()}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium">Best Route</h4>

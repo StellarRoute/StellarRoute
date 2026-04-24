@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RouteDisplay } from "./RouteDisplay";
 
@@ -76,5 +77,25 @@ describe("RouteDisplay", () => {
     });
 
     expect(screen.queryByTestId("alternative-route-route-0")).not.toBeInTheDocument();
+  });
+
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
+
+    const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+
+    rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Best Route")).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    expect(screen.getByText("Best Route")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

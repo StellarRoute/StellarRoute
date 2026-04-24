@@ -17,6 +17,7 @@ use crate::{models::CacheMetricsResponse, state::AppState};
 pub async fn cache_metrics(State(state): State<Arc<AppState>>) -> Json<CacheMetricsResponse> {
     let (quote_hits, quote_misses) = state.cache_metrics.snapshot();
     let (stale_quote_rejections, stale_inputs_excluded) = state.cache_metrics.snapshot_staleness();
+    let consistency_violations = state.cache_metrics.snapshot_consistency();
 
     let hit_ratio = if quote_hits + quote_misses > 0 {
         quote_hits as f64 / (quote_hits + quote_misses) as f64
@@ -30,5 +31,6 @@ pub async fn cache_metrics(State(state): State<Arc<AppState>>) -> Json<CacheMetr
         hit_ratio,
         stale_quote_rejections,
         stale_inputs_excluded,
+        consistency_violations,
     })
 }

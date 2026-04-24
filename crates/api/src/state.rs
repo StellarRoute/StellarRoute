@@ -59,6 +59,7 @@ pub struct CacheMetrics {
     quote_misses: AtomicU64,
     stale_quote_rejections: AtomicU64,
     stale_inputs_excluded: AtomicU64,
+    consistency_violations: AtomicU64,
 }
 
 impl Default for CacheMetrics {
@@ -68,6 +69,7 @@ impl Default for CacheMetrics {
             quote_misses: AtomicU64::new(0),
             stale_quote_rejections: AtomicU64::new(0),
             stale_inputs_excluded: AtomicU64::new(0),
+            consistency_violations: AtomicU64::new(0),
         }
     }
 }
@@ -91,6 +93,11 @@ impl CacheMetrics {
         self.stale_inputs_excluded.fetch_add(n, Ordering::Relaxed);
     }
 
+    /// Increment the snapshot-consistency-violations counter by one.
+    pub fn inc_consistency_violation(&self) {
+        self.consistency_violations.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn snapshot(&self) -> (u64, u64) {
         (
             self.quote_hits.load(Ordering::Relaxed),
@@ -103,6 +110,10 @@ impl CacheMetrics {
             self.stale_quote_rejections.load(Ordering::Relaxed),
             self.stale_inputs_excluded.load(Ordering::Relaxed),
         )
+    }
+
+    pub fn snapshot_consistency(&self) -> u64 {
+        self.consistency_violations.load(Ordering::Relaxed)
     }
 }
 

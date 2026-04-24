@@ -41,6 +41,8 @@ pub struct CacheMetricsResponse {
     pub stale_quote_rejections: u64,
     /// Total stale inputs excluded across all successful quotes
     pub stale_inputs_excluded: u64,
+    /// Total quote requests where mixed-snapshot candidates were detected
+    pub consistency_violations: u64,
 }
 
 /// Trading pair information — matches GET /api/v1/pairs spec

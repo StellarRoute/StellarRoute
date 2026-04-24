@@ -55,6 +55,14 @@ lazy_static! {
         &["outcome", "cache_hit"]
     )
     .expect("Can't create QUOTE_REQUESTS counter");
+
+    /// Snapshot consistency violations by pair
+    pub static ref CONSISTENCY_VIOLATIONS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_quote_consistency_violations_total",
+        "Total number of quote continuity guard violations",
+        &["pair"]
+    )
+    .expect("Can't create CONSISTENCY_VIOLATIONS counter");
 }
 
 /// Record quote latency metric
@@ -89,6 +97,12 @@ pub fn record_cache_hit(cache_type: &str) {
 /// Record cache miss
 pub fn record_cache_miss(cache_type: &str) {
     CACHE_MISSES.with_label_values(&[cache_type]).inc();
+}
+
+/// Record snapshot consistency violation for a trading pair.
+pub fn record_consistency_violation(base: &str, quote: &str) {
+    let pair = format!("{}/{}", base, quote);
+    CONSISTENCY_VIOLATIONS.with_label_values(&[&pair]).inc();
 }
 
 /// Get cache hit ratio for a given cache type

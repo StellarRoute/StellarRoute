@@ -31,6 +31,10 @@ pub struct LiquidityEdge {
     pub liquidity: i128,
     pub price: f64,
     pub fee_bps: u32,
+    #[serde(default)]
+    pub anomaly_score: f64,
+    #[serde(default)]
+    pub anomaly_reasons: Vec<String>,
 }
 
 /// Represents a path through liquidity sources
@@ -48,6 +52,10 @@ pub struct PathHop {
     pub venue_ref: String,
     pub price: f64,
     pub fee_bps: u32,
+    #[serde(default)]
+    pub anomaly_score: f64,
+    #[serde(default)]
+    pub anomaly_reasons: Vec<String>,
 }
 
 /// N-hop pathfinder with safety bounds
@@ -191,6 +199,9 @@ impl Pathfinder {
                     let estimated_after_hop = (estimated_output * 9950) / 10000;
 
                     let mut new_hops = path_hops.clone();
+                    let mut hop = hop;
+                    hop.anomaly_score = edge.anomaly_score;
+                    hop.anomaly_reasons = edge.anomaly_reasons.clone();
                     new_hops.push(hop);
 
                     queue.push_back((edge.to.clone(), new_hops, new_visited, estimated_after_hop));

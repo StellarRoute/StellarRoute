@@ -42,17 +42,24 @@ pub struct OverrideEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct OverrideRegistry {
-    pub entries: HashMap<String, OverrideDirective>,
+    pub venue_entries: HashMap<String, OverrideDirective>,
+    pub source_entries: HashMap<VenueType, OverrideDirective>,
 }
 
 impl OverrideRegistry {
     pub fn from_entries(entries: Vec<OverrideEntry>) -> Self {
         Self {
-            entries: entries
+            venue_entries: entries
                 .into_iter()
                 .map(|e| (e.venue_ref, e.directive))
                 .collect(),
+            source_entries: HashMap::new(),
         }
+    }
+
+    pub fn with_source_overrides(mut self, sources: HashMap<VenueType, OverrideDirective>) -> Self {
+        self.source_entries = sources;
+        self
     }
 }
 
@@ -76,7 +83,7 @@ impl ExclusionPolicy {
         let scored_refs: HashSet<&str> = scored.iter().map(|v| v.venue_ref.as_str()).collect();
 
         // Warn about override entries that don't match any known venue.
-        for venue_ref in self.overrides.entries.keys() {
+        for venue_ref in self.overrides.venue_entries.keys() {
             if !scored_refs.contains(venue_ref.as_str()) {
                 tracing::warn!(
                     venue_ref = %venue_ref,
@@ -89,13 +96,27 @@ impl ExclusionPolicy {
         let mut excluded_venues = Vec::new();
 
         for venue in scored {
-            let directive = self.overrides.entries.get(&venue.venue_ref);
+            // 1. Check Source Override first
+            let source_directive = self.overrides.source_entries.get(&venue.venue_type);
+            if let Some(OverrideDirective::ForceExclude) = source_directive {
+                excluded.insert(venue.venue_ref.clone());
+                excluded_venues.push(ExcludedVenueInfo {
+                    venue_ref: venue.venue_ref.clone(),
+                    score: venue.record.score,
+                    signals: venue.record.signals.clone(),
+                    reason: ExclusionReason::Override,
+                });
+                continue;
+            }
 
-            match directive {
-                Some(OverrideDirective::ForceInclude) => {
+            // 2. Check Venue Override
+            let venue_directive = self.overrides.venue_entries.get(&venue.venue_ref);
+
+            match (source_directive, venue_directive) {
+                (_, Some(OverrideDirective::ForceInclude)) | (Some(OverrideDirective::ForceInclude), _) => {
                     // Skip threshold check entirely — always included.
                 }
-                Some(OverrideDirective::ForceExclude) => {
+                (_, Some(OverrideDirective::ForceExclude)) => {
                     excluded.insert(venue.venue_ref.clone());
                     excluded_venues.push(ExcludedVenueInfo {
                         venue_ref: venue.venue_ref.clone(),
@@ -104,7 +125,7 @@ impl ExclusionPolicy {
                         reason: ExclusionReason::Override,
                     });
                 }
-                None => {
+                (None, None) => {
                     // 1. Check Circuit Breaker first
                     if let Some(registry) = &self.circuit_breaker {
                         if registry.is_venue_excluded(&venue.venue_ref) {
@@ -139,6 +160,31 @@ impl ExclusionPolicy {
 
         (excluded, ExclusionDiagnostics { excluded_venues })
     }
+
+    /// Quick check if a venue/source is explicitly excluded (overrides + circuit breaker)
+    pub fn is_excluded(&self, venue_ref: &str, venue_type: &VenueType) -> bool {
+        // 1. Check Source Override
+        let source_directive = self.overrides.source_entries.get(venue_type);
+        if let Some(OverrideDirective::ForceExclude) = source_directive {
+            return true;
+        }
+
+        // 2. Check Venue Override
+        let venue_directive = self.overrides.venue_entries.get(venue_ref);
+        match (source_directive, venue_directive) {
+            (_, Some(OverrideDirective::ForceInclude))
+            | (Some(OverrideDirective::ForceInclude), _) => false,
+            (_, Some(OverrideDirective::ForceExclude)) => true,
+            (None, None) => {
+                if let Some(registry) = &self.circuit_breaker {
+                    if registry.is_venue_excluded(venue_ref) {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +211,7 @@ pub enum ExclusionReason {
     Override,
     StaleData,
     CircuitBreakerOpen,
+    LiquidityAnomaly { score: f64, reasons: Vec<String> },
 }
 
 #[cfg(test)]

@@ -16,12 +16,11 @@ import { TransactionConfirmationModal } from "@/components/shared/TransactionCon
 import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
 import { usePairs } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
-import { useTransactionHistory } from "@/hooks/useTransactionHistory";
+import { useTransactionLifecycle } from "@/hooks/useTransactionLifecycle";
 import { useWallet } from "@/components/providers/wallet-provider";
 import { useSettings } from "@/components/providers/settings-provider";
-import { TransactionStatus } from "@/types/transaction";
 import { toast } from "sonner";
-import type { PathStep, TradingPair, PriceQuote } from "@/types";
+import type { PathStep, TradingPair } from "@/types";
 import {
   formatMaxAmountForInput,
   maxDecimalsForSellAsset,
@@ -34,25 +33,6 @@ const MOCK_WALLET = "GBSU...XYZ9";
 
 function pairKey(p: TradingPair): string {
   return `${p.base_asset}__${p.counter_asset}`;
-}
-
-/** Basic sell-side amount check for demo (7 dp max, typical for XLM). */
-function parseDemoSellAmount(raw: string): { ok: true; n: number } | { ok: false; message: string } {
-  const t = raw.trim().replace(/\s+/g, "");
-  if (!t) return { ok: false, message: "Enter an amount" };
-  if (/[eE][+-]?\d/.test(t)) {
-    return { ok: false, message: "Scientific notation is not supported" };
-  }
-  if (!/^\d*\.?\d+$/.test(t)) return { ok: false, message: "Invalid number" };
-  const parts = t.split(".");
-  if (parts.length === 2 && parts[1].length > 7) {
-    return { ok: false, message: "Too many decimal places (max 7)" };
-  }
-  const n = Number(t);
-  if (!Number.isFinite(n) || n <= 0) {
-    return { ok: false, message: "Enter a positive amount" };
-  }
-  return { ok: true, n };
 }
 
 const mockRoute: PathStep[] = [
@@ -75,16 +55,18 @@ export function DemoSwap() {
 
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [sellRaw, setSellRaw] = useState<string>("");
-
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [txStatus, setTxStatus] = useState<TransactionStatus | "review">(
-    "review",
-  );
-  const [errorMessage, setErrorMessage] = useState<string>();
-  const [txHash, setTxHash] = useState<string>();
-  const [sellAmount, setSellAmount] = useState("100");
 
-  const { addTransaction } = useTransactionHistory(MOCK_WALLET);
+  const {
+    status: txStatus,
+    txHash,
+    errorMessage,
+    initiateSwap,
+    cancel,
+    resubmit,
+    tryAgain,
+    dismiss,
+  } = useTransactionLifecycle();
 
   useEffect(() => {
     if (!pairs?.length) return;
@@ -142,91 +124,55 @@ export function DemoSwap() {
     setSellRaw(formatMaxAmountForInput(stubSpendableBalance, sellMaxDecimals));
   }, [isConnected, stubSpendableBalance, sellMaxDecimals]);
 
-
-
   const handleSwapClick = () => {
     if (parseResult.status !== "ok" || !selectedPair) {
       toast.error("Enter a valid sell amount and select a pair.");
       return;
     }
-    setTxStatus("review");
-    setErrorMessage(undefined);
-    setTxHash(undefined);
     setIsModalOpen(true);
   };
 
   const handleConfirm = () => {
-    setTxStatus("pending");
+    if (parseResult.status !== "ok" || !selectedPair) return;
+    const fromAmt = parseResult.normalized;
+    const toAmt = quote?.total ?? "10.5";
 
-    setTimeout(() => {
-      setTxStatus("submitting");
-
-      setTimeout(() => {
-        setTxStatus("processing");
-
-        setTimeout(() => {
-          const isSuccess = Math.random() > 0.2;
-          const fromAmt =
-            parseResult.status === "ok" ? parseResult.normalized : "0";
-          const toAmt = quote?.total ?? "10.5";
-
-          if (isSuccess) {
-            const mockHash = "mock_tx_" + Math.random().toString(36).substring(7);
-            setTxHash(mockHash);
-            setTxStatus("success");
-            toast.success("Transaction Successful!", {
-              description: `Swapped ${fromAmt} ${selectedPair?.base ?? ""} for ${toAmt} ${selectedPair?.counter ?? ""}`,
-            });
-
-            addTransaction({
-              id: mockHash,
-              timestamp: Date.now(),
-              fromAsset: selectedPair?.base ?? "XLM",
-              fromAmount: fromAmt,
-              toAsset: selectedPair?.counter ?? "USDC",
-              toAmount: toAmt,
-              exchangeRate: quote?.price ?? "0.105",
-              priceImpact: "0.1%",
-              minReceived: toAmt,
-              networkFee: "0.00001",
-              routePath: quote?.path?.length ? quote.path : mockRoute,
-              status: "success",
-              hash: mockHash,
-              walletAddress: MOCK_WALLET,
-            });
-          } else {
-            setTxStatus("failed");
-            setErrorMessage(
-              "Insufficient balance or network congestion. Please try again.",
-            );
-            toast.error("Transaction Failed", {
-              description: "Insufficient balance or network congestion.",
-            });
-
-            addTransaction({
-              id: "failed_" + Date.now(),
-              timestamp: Date.now(),
-              fromAsset: selectedPair?.base ?? "XLM",
-              fromAmount: fromAmt,
-              toAsset: selectedPair?.counter ?? "USDC",
-              toAmount: toAmt,
-              exchangeRate: quote?.price ?? "0.105",
-              priceImpact: "0.1%",
-              minReceived: toAmt,
-              networkFee: "0.00001",
-              routePath: quote?.path?.length ? quote.path : mockRoute,
-              status: "failed",
-              errorMessage: "Insufficient balance.",
-              walletAddress: MOCK_WALLET,
-            });
-          }
-        }, 2000);
-      }, 1000);
-    }, 2000);
+    initiateSwap({
+      fromAsset: selectedPair.base ?? "XLM",
+      fromAmount: fromAmt,
+      toAsset: selectedPair.counter ?? "USDC",
+      toAmount: toAmt,
+      exchangeRate: quote?.price ?? "0.105",
+      priceImpact: "0.1%",
+      minReceived: toAmt,
+      networkFee: "0.00001",
+      routePath: quote?.path?.length ? quote.path : mockRoute,
+      walletAddress: MOCK_WALLET,
+    }).then(() => {
+      if (txStatus === "confirmed") {
+        toast.success("Transaction Successful!", {
+          description: `Swapped ${fromAmt} ${selectedPair.base ?? ""} for ${toAmt} ${selectedPair.counter ?? ""}`,
+        });
+      }
+    });
   };
 
-  const handleCancel = () => {
-    setTxStatus("review");
+  const handleDismiss = () => {
+    dismiss();
+    setIsModalOpen(false);
+  };
+
+  const handleDone = () => {
+    dismiss();
+    setIsModalOpen(false);
+  };
+
+  const handleTryAgain = () => {
+    tryAgain();
+  };
+
+  const handleResubmit = () => {
+    resubmit();
   };
 
   const receivePreview =
@@ -386,6 +332,33 @@ export function DemoSwap() {
           Review Swap
         </Button>
       </div>
+
+      <TransactionConfirmationModal
+        isOpen={isModalOpen}
+        onOpenChange={(open) => {
+          if (!open && txStatus !== "pending" && txStatus !== "submitted") {
+            setIsModalOpen(false);
+          }
+        }}
+        fromAsset={selectedPair?.base ?? "XLM"}
+        fromAmount={parseResult.status === "ok" ? parseResult.normalized : ""}
+        toAsset={selectedPair?.counter ?? "USDC"}
+        toAmount={quote?.total ?? "—"}
+        exchangeRate={quote?.price ?? "—"}
+        priceImpact="0.1%"
+        networkFee="0.00001"
+        slippageTolerancePct={settings?.slippageTolerance}
+        routePath={quote?.path?.length ? quote.path : mockRoute}
+        status={txStatus}
+        txHash={txHash}
+        errorMessage={errorMessage}
+        onConfirm={handleConfirm}
+        onCancel={cancel}
+        onTryAgain={handleTryAgain}
+        onResubmit={handleResubmit}
+        onDismiss={handleDismiss}
+        onDone={handleDone}
+      />
     </Card>
   );
 }

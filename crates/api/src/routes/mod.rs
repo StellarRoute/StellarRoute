@@ -1,6 +1,7 @@
 //! API routes
 
 pub mod health;
+pub mod kill_switch;
 pub mod metrics;
 pub mod orderbook;
 pub mod pairs;
@@ -53,5 +54,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/routes/:base/:quote",
             get(routes_endpoint::get_routes),
         )
+        // Admin routes
+        .route("/api/v1/admin/kill-switch", get(kill_switch::get_kill_switch))
+        .route("/api/v1/admin/kill-switch", post(kill_switch::update_kill_switch))
         .with_state(state)
 }

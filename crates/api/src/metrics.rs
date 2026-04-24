@@ -7,8 +7,8 @@
 
 use lazy_static::lazy_static;
 use prometheus::{
-    register_histogram_vec, register_int_counter_vec, Encoder, HistogramVec, IntCounterVec,
-    TextEncoder,
+    register_histogram_vec, register_int_counter_vec, register_int_gauge_vec, Encoder,
+    HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder,
 };
 use std::time::Duration;
 

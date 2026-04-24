@@ -15,6 +15,7 @@ import { HighImpactConfirmModal } from './HighImpactConfirmModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { StaleQuoteBanner } from './StaleQuoteBanner';
 
 export function SwapCard() {
   const {
@@ -178,14 +179,11 @@ export function SwapCard() {
           )}
 
           {/* Stale / Recovering Indicators */}
-          {quote.isStale && (
-            <span
-              data-testid="stale-indicator"
-              className="text-xs text-amber-500 font-medium"
-            >
-              Quote outdated — refresh for latest price
-            </span>
-          )}
+          <StaleQuoteBanner 
+            isStale={quote.isStale} 
+            onRefresh={() => quote.refresh()} 
+            isLoading={quote.loading} 
+          />
           {quote.isRecovering && (
             <span
               data-testid="recovering-indicator"

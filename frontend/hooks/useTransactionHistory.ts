@@ -4,12 +4,33 @@ import { TransactionRecord, TransactionStatus } from '@/types/transaction';
 
 const STORAGE_KEY = 'stellar_route_tx_history';
 
+/**
+ * Downgrades any `pending` or `submitted` records to `dropped`.
+ *
+ * Called when records are first loaded from localStorage (on page load or
+ * wallet-address change) because in-flight state cannot be recovered after a
+ * page reload.
+ *
+ * Property 2: Reload downgrades in-flight statuses to `dropped`
+ * Validates: Requirements 6.3
+ */
+export function downgradePendingOnReload(
+  records: TransactionRecord[]
+): TransactionRecord[] {
+  return records.map((tx) =>
+    tx.status === 'pending' || tx.status === 'submitted'
+      ? { ...tx, status: 'dropped' as TransactionStatus }
+      : tx
+  );
+}
+
 export function useTransactionHistory(walletAddress: string | null) {
   const [transactions, setTransactions] = useState<TransactionRecord[]>(() => {
     if (typeof window === 'undefined' || !walletAddress) return [];
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}_${walletAddress}`);
-      return stored ? JSON.parse(stored) : [];
+      const parsed: TransactionRecord[] = stored ? JSON.parse(stored) : [];
+      return downgradePendingOnReload(parsed);
     } catch (e) {
       console.error('Failed to parse transaction history', e);
       toast.error('Failed to load transaction history from local storage');
@@ -26,7 +47,8 @@ export function useTransactionHistory(walletAddress: string | null) {
     }
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}_${walletAddress}`);
-      setTransactions(stored ? JSON.parse(stored) : []);
+      const parsed: TransactionRecord[] = stored ? JSON.parse(stored) : [];
+      setTransactions(downgradePendingOnReload(parsed));
     } catch (e) {
       console.error('Failed to load transaction history', e);
       toast.error('Failed to load transaction history');

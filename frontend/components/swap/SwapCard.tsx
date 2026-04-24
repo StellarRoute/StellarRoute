@@ -12,7 +12,10 @@ import type { AlternativeRoute } from './RouteDisplay';
 import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
+import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { useSwapState } from '@/hooks/useSwapState';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -35,6 +38,14 @@ export function SwapCard() {
   const [isSwapping, setIsSwapping] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(null);
+
+  // Connection status indicator
+  const { isOnline } = useOnlineStatus();
+  const { status: streamStatus, mode: streamMode } = useQuoteStreamStatus({
+    isRecovering: quote.isRecovering,
+    error: quote.error,
+    isOnline,
+  });
   
   // Mock balance
   const fromBalance = "100.00"; 
@@ -91,6 +102,7 @@ export function SwapCard() {
               Swap
             </h2>
             <div className="flex items-center gap-1">
+              <QuoteStreamStatusIndicator status={streamStatus} mode={streamMode} />
               <SettingsPanel />
               <Button 
                 variant="ghost" 
@@ -177,21 +189,13 @@ export function SwapCard() {
             </div>
           )}
 
-          {/* Stale / Recovering Indicators */}
+          {/* Stale Indicator */}
           {quote.isStale && (
             <span
               data-testid="stale-indicator"
               className="text-xs text-amber-500 font-medium"
             >
               Quote outdated — refresh for latest price
-            </span>
-          )}
-          {quote.isRecovering && (
-            <span
-              data-testid="recovering-indicator"
-              className="text-xs text-blue-500 font-medium"
-            >
-              Retrying quote...
             </span>
           )}
 

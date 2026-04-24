@@ -5,6 +5,7 @@ use crate::impact::{AmmQuoteCalculator, OrderbookImpactCalculator};
 use crate::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig, SwapPath};
 use crate::policy::RoutingPolicy;
 use crate::risk::{RiskLimitConfig, RiskValidator, RouteExclusion};
+use crate::scorer::{BenchmarkHarness, BenchmarkReport, ScorerInput, ScorerRegistry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -24,6 +25,9 @@ pub struct OptimizerPolicy {
     pub max_compute_time_ms: u64,
     /// Environment identifier for policy selection
     pub environment: String,
+    /// Scorer name to activate. None means use the registry default.
+    #[serde(default)]
+    pub scorer: Option<String>,
 }
 
 impl Default for OptimizerPolicy {
@@ -35,6 +39,7 @@ impl Default for OptimizerPolicy {
             max_impact_bps: 500,       // 5%
             max_compute_time_ms: 1000, // 1 second
             environment: "production".to_string(),
+            scorer: None,
         }
     }
 }
@@ -57,6 +62,16 @@ impl OptimizerPolicy {
 
         Ok(())
     }
+
+    /// Build a policy from environment variables.
+    /// Reads `ROUTING_SCORER` into the `scorer` field.
+    pub fn from_env() -> Self {
+        let mut policy = Self::default();
+        if let Ok(scorer) = std::env::var("ROUTING_SCORER") {
+            policy.scorer = Some(scorer);
+        }
+        policy
+    }
 }
 
 /// Predefined policies for different environments
@@ -72,6 +87,7 @@ impl PolicyPresets {
             max_impact_bps: 300,
             max_compute_time_ms: 500,
             environment: "production".to_string(),
+            scorer: None,
         }
     }
 
@@ -84,6 +100,7 @@ impl PolicyPresets {
             max_impact_bps: 1000,
             max_compute_time_ms: 5000,
             environment: "analysis".to_string(),
+            scorer: None,
         }
     }
 
@@ -96,6 +113,7 @@ impl PolicyPresets {
             max_impact_bps: 500,
             max_compute_time_ms: 100,
             environment: "realtime".to_string(),
+            scorer: None,
         }
     }
 
@@ -108,6 +126,7 @@ impl PolicyPresets {
             max_impact_bps: 400,
             max_compute_time_ms: 2000,
             environment: "testing".to_string(),
+            scorer: None,
         }
     }
 }
@@ -143,6 +162,8 @@ pub struct OptimizerDiagnostics {
     /// Routes excluded due to risk limits
     #[serde(default)]
     pub excluded_routes: Vec<RouteExclusion>,
+    /// Name of the scorer used to rank routes in this response.
+    pub active_scorer_name: String,
 }
 
 /// Hybrid route optimizer with configurable policies
@@ -155,6 +176,7 @@ pub struct HybridOptimizer {
     policies: HashMap<String, OptimizerPolicy>,
     active_policy: String,
     risk_validator: Option<RiskValidator>,
+    scorer_registry: ScorerRegistry,
 }
 
 impl HybridOptimizer {
@@ -173,6 +195,7 @@ impl HybridOptimizer {
             policies,
             active_policy: "production".to_string(),
             risk_validator: None,
+            scorer_registry: ScorerRegistry::new(),
         }
     }
 
@@ -180,6 +203,13 @@ impl HybridOptimizer {
     pub fn with_risk_limits(config: PathfinderConfig, risk_config: RiskLimitConfig) -> Self {
         let mut optimizer = Self::new(config);
         optimizer.risk_validator = Some(RiskValidator::new(risk_config));
+        optimizer
+    }
+
+    /// Create optimizer with a custom `ScorerRegistry`.
+    pub fn with_scorer_registry(config: PathfinderConfig, registry: ScorerRegistry) -> Self {
+        let mut optimizer = Self::new(config);
+        optimizer.scorer_registry = registry;
         optimizer
     }
 
@@ -215,6 +245,21 @@ impl HybridOptimizer {
     /// Get current active policy
     pub fn active_policy(&self) -> &OptimizerPolicy {
         &self.policies[&self.active_policy]
+    }
+
+    /// Change the active scorer. Takes effect for all subsequent find_optimal_routes calls.
+    pub fn set_scorer(&mut self, name: &str) -> crate::error::Result<()> {
+        self.scorer_registry.set_active(name)
+    }
+
+    /// Run all registered scorers against the provided candidate set and return a comparison report.
+    pub fn benchmark_scorers(
+        &self,
+        paths: &[crate::pathfinder::SwapPath],
+        edges: &[crate::pathfinder::LiquidityEdge],
+        amount_in: i128,
+    ) -> BenchmarkReport {
+        BenchmarkHarness::run(paths, edges, amount_in, &self.scorer_registry)
     }
 
     /// Find optimal routes using hybrid scoring with risk limit enforcement
@@ -314,6 +359,7 @@ impl HybridOptimizer {
             policy: policy.clone(),
             total_compute_time_ms: start_time.elapsed().as_millis() as u64,
             excluded_routes,
+            active_scorer_name: self.scorer_registry.active_scorer_name().to_string(),
         })
     }
 
@@ -355,7 +401,16 @@ impl HybridOptimizer {
         }
 
         let compute_time_us = start_time.elapsed().as_micros() as u64;
-        let score = self.calculate_score(total_output, total_impact_bps, compute_time_us);
+
+        let scorer_input = ScorerInput {
+            output_amount: total_output,
+            impact_bps: total_impact_bps,
+            compute_time_us,
+            hop_count: path.hops.len(),
+            policy: self.active_policy().clone(),
+        };
+        let scorer_output = self.scorer_registry.score(&scorer_input);
+        let score = scorer_output.score;
 
         Ok(RouteMetrics {
             output_amount: total_output,
@@ -364,26 +419,6 @@ impl HybridOptimizer {
             hop_count: path.hops.len(),
             score,
         })
-    }
-
-    /// Calculate normalized score using policy weights
-    fn calculate_score(&self, output: i128, impact_bps: u32, compute_time_us: u64) -> f64 {
-        let policy = self.active_policy();
-
-        // Normalize metrics (simplified normalization)
-        // Higher output is better (normalize by input amount assumption)
-        let output_score = (output as f64 / 1_000_000_000.0).min(1.0); // Normalize to ~1B
-
-        // Lower impact is better
-        let impact_score = 1.0 - (impact_bps as f64 / 1000.0).min(1.0); // Normalize to 1000 bps
-
-        // Lower compute time is better
-        let latency_score = 1.0 - (compute_time_us as f64 / 1_000_000.0).min(1.0); // Normalize to 1ms
-
-        // Weighted combination
-        policy.output_weight * output_score
-            + policy.impact_weight * impact_score
-            + policy.latency_weight * latency_score
     }
 
     /// Benchmark different policies for comparison
@@ -431,6 +466,7 @@ mod tests {
             output_weight: 0.8,
             impact_weight: 0.8,
             latency_weight: 0.2, // Sum = 1.8
+            scorer: None,
             ..Default::default()
         };
         assert!(invalid_policy.validate().is_err());
@@ -476,9 +512,86 @@ mod tests {
             max_impact_bps: 200,
             max_compute_time_ms: 300,
             environment: "custom".to_string(),
+            scorer: None,
         };
 
         assert!(optimizer.add_policy(custom_policy).is_ok());
         assert!(optimizer.set_active_policy("custom").is_ok());
+    }
+
+    #[test]
+    fn test_set_scorer_delegates_to_registry() {
+        let mut optimizer = HybridOptimizer::default();
+        assert!(optimizer.set_scorer("fee_minimizing").is_ok());
+        assert_eq!(optimizer.scorer_registry.active_scorer_name(), "fee_minimizing");
+        assert!(optimizer.set_scorer("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_with_scorer_registry_constructor() {
+        let mut registry = ScorerRegistry::new();
+        registry.set_active("output_maximizing").unwrap();
+        let optimizer = HybridOptimizer::with_scorer_registry(PathfinderConfig::default(), registry);
+        assert_eq!(optimizer.scorer_registry.active_scorer_name(), "output_maximizing");
+    }
+
+    #[test]
+    fn test_policy_from_env_no_var() {
+        // Ensure ROUTING_SCORER is not set for this test
+        std::env::remove_var("ROUTING_SCORER");
+        let policy = OptimizerPolicy::from_env();
+        assert!(policy.scorer.is_none());
+    }
+
+    #[test]
+    fn test_policy_from_env_with_var() {
+        std::env::set_var("ROUTING_SCORER", "fee_minimizing");
+        let policy = OptimizerPolicy::from_env();
+        assert_eq!(policy.scorer, Some("fee_minimizing".to_string()));
+        std::env::remove_var("ROUTING_SCORER");
+    }
+
+    #[test]
+    fn test_find_optimal_routes_includes_active_scorer_name() {
+        use crate::pathfinder::LiquidityEdge;
+        use crate::policy::RoutingPolicy;
+
+        let optimizer = HybridOptimizer::default();
+        let edges = vec![LiquidityEdge {
+            from: "XLM".to_string(),
+            to: "USDC".to_string(),
+            venue_type: "amm".to_string(),
+            venue_ref: "pool1".to_string(),
+            liquidity: 10_000_000,
+            price: 0.1,
+            fee_bps: 30,
+        }];
+        let policy = RoutingPolicy::default();
+        let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 1_000_000, &policy);
+        assert!(result.is_ok());
+        let diag = result.unwrap();
+        assert_eq!(diag.active_scorer_name, "default");
+    }
+
+    #[test]
+    fn test_benchmark_scorers_returns_report() {
+        use crate::pathfinder::{LiquidityEdge, PathHop, SwapPath};
+
+        let optimizer = HybridOptimizer::default();
+        let paths = vec![SwapPath {
+            hops: vec![PathHop {
+                source_asset: "XLM".to_string(),
+                destination_asset: "USDC".to_string(),
+                venue_type: "amm".to_string(),
+                venue_ref: "pool1".to_string(),
+                price: 0.1,
+                fee_bps: 30,
+            }],
+            estimated_output: 900_000,
+        }];
+        let edges: Vec<LiquidityEdge> = vec![];
+        let report = optimizer.benchmark_scorers(&paths, &edges, 1_000_000);
+        // Should have 3 built-in scorers
+        assert_eq!(report.scorer_results.len(), 3);
     }
 }

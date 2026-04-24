@@ -16,7 +16,6 @@ pub struct KillSwitchState {
     pub venues: HashMap<String, OverrideDirective>,
 }
 
-
 pub struct KillSwitchManager {
     cache: Option<Arc<Mutex<CacheManager>>>,
     /// In-memory cache of the kill switch state for fast access

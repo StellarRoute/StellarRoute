@@ -140,7 +140,6 @@ impl Pathfinder {
         Ok(paths)
     }
 
-
     fn bfs_paths_compacted(
         &self,
         graph: &crate::compaction::CompactedGraph,

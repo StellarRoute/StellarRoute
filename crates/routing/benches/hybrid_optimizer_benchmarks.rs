@@ -17,8 +17,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 100 XLM
             anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
-                },
+            anomaly_reasons: vec![],
+        },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "EURT".to_string(),
@@ -28,8 +28,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 50 USDC
             anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
-                },
+            anomaly_reasons: vec![],
+        },
         LiquidityEdge {
             from: "XLM".to_string(),
             to: "EURT".to_string(),
@@ -39,8 +39,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 20 XLM
             anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
-                },
+            anomaly_reasons: vec![],
+        },
         LiquidityEdge {
             from: "EURT".to_string(),
             to: "BTC".to_string(),
@@ -50,8 +50,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 10 EURT
             anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
-                },
+            anomaly_reasons: vec![],
+        },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "BTC".to_string(),
@@ -61,8 +61,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 30 USDC
             anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
-                },
+            anomaly_reasons: vec![],
+        },
     ]
 }
 
@@ -159,8 +159,8 @@ fn bench_scalability(c: &mut Criterion) {
                 price: 1.0,
                 fee_bps: 30,
                 anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
-                });
+                anomaly_reasons: vec![],
+            });
         }
 
         let optimizer = HybridOptimizer::new(PathfinderConfig::default());

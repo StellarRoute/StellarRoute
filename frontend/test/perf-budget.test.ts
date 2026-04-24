@@ -322,9 +322,9 @@ describe("loadConfig — example-based unit tests", () => {
     const tmpFile = writeTempJson(cfg);
     try {
       const result = loadConfig(tmpFile);
-      expect(result.version).toBe("1");
-      expect(result.bundleSizeKb).toBe(250);
-      expect(result.ttiMs).toBe(3000);
+      expect((result as any).version).toBe("1");
+      expect((result as any).bundleSizeKb).toBe(250);
+      expect((result as any).ttiMs).toBe(3000);
     } finally {
       fs.unlinkSync(tmpFile);
     }
@@ -545,9 +545,9 @@ describe("loadBaseline — example-based unit tests", () => {
     try {
       const result = loadBaseline(tmpFile);
       expect(result).not.toBeNull();
-      expect(result!.bundleSizeKb).toBe(198.4);
-      expect(result!.ttiMs).toBe(1820);
-      expect(result!.commitSha).toBe("a3f9c12");
+      expect((result as any).bundleSizeKb).toBe(198.4);
+      expect((result as any).ttiMs).toBe(1820);
+      expect((result as any).commitSha).toBe("a3f9c12");
     } finally {
       fs.unlinkSync(tmpFile);
     }

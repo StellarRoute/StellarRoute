@@ -16,7 +16,8 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDistanceToNow } from "date-fns"
-import { ExternalLink, Trash2, ArrowRight } from "lucide-react"
+import { ExternalLink, Trash2, ArrowRight, Info } from "lucide-react"
+import { TransactionStatusDrawer } from "@/components/shared"
 
 // Hardcode mock wallet to match DemoSwap
 const MOCK_WALLET = "GBSU...XYZ9"
@@ -25,6 +26,13 @@ export function TransactionHistory() {
   const { transactions, clearHistory } = useTransactionHistory(MOCK_WALLET)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
   const [sortKey, setSortKey] = useState<"date" | "amount">("date")
+  const [selectedTx, setSelectedTx] = useState<TransactionRecord | null>(null)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+
+  const handleRowClick = (tx: TransactionRecord) => {
+    setSelectedTx(tx)
+    setIsDrawerOpen(true)
+  }
 
   // Filtering and Sorting
   const filteredTxs = transactions.filter((tx) => {
@@ -115,7 +123,11 @@ export function TransactionHistory() {
             </TableHeader>
             <TableBody>
               {sortedTxs.map((tx) => (
-                <TableRow key={tx.id}>
+                <TableRow 
+                  key={tx.id} 
+                  className="cursor-pointer hover:bg-muted/50 transition-colors group"
+                  onClick={() => handleRowClick(tx)}
+                >
                   <TableCell className="font-medium">
                     <div className="flex flex-col">
                       <span>{new Date(tx.timestamp).toLocaleDateString()}</span>
@@ -150,15 +162,26 @@ export function TransactionHistory() {
                   </TableCell>
                   <TableCell className="text-right">
                     {tx.hash ? (
-                      <a
-                        href={`https://stellar.expert/explorer/public/tx/${tx.hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline group"
-                      >
-                        <span className="hidden sm:inline">View</span>
-                        <ExternalLink className="w-3 h-3 group-hover:translate-x-px group-hover:-translate-y-px transition-transform" />
-                      </a>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 gap-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Info className="w-3 h-3" />
+                          Details
+                        </Button>
+                        <a
+                          href={`https://stellar.expert/explorer/public/tx/${tx.hash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline group/link"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="hidden sm:inline">View</span>
+                          <ExternalLink className="w-3 h-3 group-hover/link:translate-x-px group-hover/link:-translate-y-px transition-transform" />
+                        </a>
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>
                     )}
@@ -169,6 +192,12 @@ export function TransactionHistory() {
           </Table>
         )}
       </ScrollArea>
+
+      <TransactionStatusDrawer 
+        transaction={selectedTx}
+        isOpen={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+      />
     </Card>
   )
 }

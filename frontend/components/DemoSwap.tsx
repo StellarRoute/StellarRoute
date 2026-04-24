@@ -30,7 +30,6 @@ import {
   parseSellAmount,
 } from "@/lib/amount-input";
 
-import { QUOTE_AUTO_REFRESH_INTERVAL_MS } from "@/lib/quote-stale";
 
 const MOCK_WALLET = "GBSU...XYZ9";
 
@@ -54,7 +53,6 @@ const mockRoute: PathStep[] = [
 export function DemoSwap() {
   const { data: pairs, loading: pairsLoading, error: pairsError } = usePairs();
   const { isConnected, stubSpendableBalance } = useWallet();
-  const { settings } = useSettings();
 
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [sellRaw, setSellRaw] = useState<string>("");
@@ -111,19 +109,6 @@ export function DemoSwap() {
 
   const refreshDisabled = quoteLoading || manualRefreshCoolingDown || !numericForQuote;
 
-  const {
-    refresh,
-    refreshDisabled,
-    autoRefreshEnabled,
-    setAutoRefreshEnabled,
-  } = useQuoteRefresh({
-    baseAsset: quoteBase,
-    counterAsset: quoteCounter,
-    amount: numericForQuote,
-    side: "sell",
-    enabled: Boolean(selectedPair && numericForQuote !== undefined),
-  });
-
   const amountInputInvalid =
     sellRaw.trim() !== "" &&
     parseResult.status !== "ok" &&
@@ -138,11 +123,6 @@ export function DemoSwap() {
     setSellRaw(formatMaxAmountForInput(stubSpendableBalance, sellMaxDecimals));
   }, [isConnected, stubSpendableBalance, sellMaxDecimals]);
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 3dd66dcbab93f5d07cae58afda851a9fdc7ebb35
   const handleSwapClick = () => {
     if (parseResult.status !== "ok" || !selectedPair) {
       toast.error("Enter a valid sell amount and select a pair.");

@@ -18,6 +18,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { StaleQuoteBanner } from './StaleQuoteBanner';
 
 export function SwapCard() {
   const {
@@ -189,13 +190,18 @@ export function SwapCard() {
             </div>
           )}
 
-          {/* Stale Indicator */}
-          {quote.isStale && (
+          {/* Stale / Recovering Indicators */}
+          <StaleQuoteBanner 
+            isStale={quote.isStale} 
+            onRefresh={() => quote.refresh()} 
+            isLoading={quote.loading} 
+          />
+          {quote.isRecovering && (
             <span
-              data-testid="stale-indicator"
-              className="text-xs text-amber-500 font-medium"
+              data-testid="recovering-indicator"
+              className="text-xs text-blue-500 font-medium"
             >
-              Quote outdated — refresh for latest price
+              Retrying quote...
             </span>
           )}
 

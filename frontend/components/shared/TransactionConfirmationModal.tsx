@@ -127,7 +127,7 @@ export function TransactionConfirmationModal({
   const resubmitBtnRef = useRef<HTMLButtonElement>(null);
 
   // Focus trap while modal is open
-  useFocusTrap(containerRef, isOpen);
+  useFocusTrap(containerRef as any, isOpen);
 
   const priceImpactValue = useMemo(() => {
     if (swaps && swaps.length > 0) {

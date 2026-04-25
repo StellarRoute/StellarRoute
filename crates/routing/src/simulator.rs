@@ -148,6 +148,8 @@ mod tests {
                 liquidity: 1_000_000_000,
                 price: 0.12,
                 fee_bps: 0,
+                anomaly_score: 0.0,
+                anomaly_reasons: vec![],
             },
             LiquidityEdge {
                 from: "XLM".to_string(),
@@ -157,6 +159,8 @@ mod tests {
                 liquidity: 1_000_000_000,
                 price: 0.121,
                 fee_bps: 30,
+                anomaly_score: 0.0,
+                anomaly_reasons: vec![],
             },
         ]
     }

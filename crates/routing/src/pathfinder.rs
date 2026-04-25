@@ -193,15 +193,14 @@ impl Pathfinder {
                         venue_ref: edge.venue_ref.clone(),
                         price: edge.price,
                         fee_bps: edge.fee_bps,
+                        anomaly_score: edge.anomaly_score,
+                        anomaly_reasons: edge.anomaly_reasons.clone(),
                     };
 
                     // Simple output estimation (50bps slippage per hop)
                     let estimated_after_hop = (estimated_output * 9950) / 10000;
 
                     let mut new_hops = path_hops.clone();
-                    let mut hop = hop;
-                    hop.anomaly_score = edge.anomaly_score;
-                    hop.anomaly_reasons = edge.anomaly_reasons.clone();
                     new_hops.push(hop);
 
                     queue.push_back((edge.to.clone(), new_hops, new_visited, estimated_after_hop));

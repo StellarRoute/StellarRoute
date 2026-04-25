@@ -7,8 +7,8 @@
 
 use lazy_static::lazy_static;
 use prometheus::{
-    register_histogram_vec, register_int_counter_vec, Encoder, HistogramVec, IntCounterVec,
-    TextEncoder,
+    register_histogram_vec, register_int_counter_vec, register_int_gauge_vec, Encoder,
+    HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder,
 };
 use std::time::Duration;
 
@@ -55,6 +55,22 @@ lazy_static! {
         &["outcome", "cache_hit"]
     )
     .expect("Can't create QUOTE_REQUESTS counter");
+
+    /// Kill switch status gauge
+    pub static ref KILL_SWITCH_STATUS: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_kill_switch_status",
+        "Kill switch status (1 for disabled, 0 for enabled)",
+        &["type", "name"]
+    )
+    .expect("Can't create KILL_SWITCH_STATUS gauge");
+}
+
+/// Record kill switch status
+pub fn record_kill_switch_status(ks_type: &str, name: &str, disabled: bool) {
+    let value = if disabled { 1 } else { 0 };
+    KILL_SWITCH_STATUS
+        .with_label_values(&[ks_type, name])
+        .set(value);
 }
 
 /// Record quote latency metric

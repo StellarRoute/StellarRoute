@@ -57,6 +57,10 @@ pub struct DegradationScenario {
     pub rpc_latency_ms: u64,
     /// Percentage of RPC requests that fail (0.0 to 1.0)
     pub rpc_error_rate: f64,
+    /// Percentage of Horizon dependency requests that fail (0.0 to 1.0)
+    pub horizon_error_rate: f64,
+    /// Percentage of Soroban RPC dependency requests that fail (0.0 to 1.0)
+    pub soroban_error_rate: f64,
 }
 
 /// Comprehensive Load Test Configuration
@@ -194,8 +198,6 @@ impl LoadTestHarness {
     {
         info!("Starting load test harness: {}", self.config.name);
         let start_time = Instant::now();
-        let (tx, mut _rx) = mpsc::channel::<()>(self.config.concurrent_users * 2);
-        drop(tx); // Unused for now, but keeping for future worker coordination
 
         // Spawn workers
         let mut workers = vec![];
@@ -212,15 +214,6 @@ impl LoadTestHarness {
 
                 for _ in 0..(config.total_requests / config.concurrent_users) {
                     ticker.tick().await;
-
-                    let (traffic_type, amount) = {
-                        let mut rng = rand::thread_rng();
-                        (
-                            select_traffic_type(&config.traffic_mix, &mut rng),
-                            generate_amount(&config.amount_distribution, &mut rng),
-                        )
-                    };
-
                     let req_start = Instant::now();
 
                     // Simulate degradation
@@ -229,43 +222,41 @@ impl LoadTestHarness {
                             .await;
                     }
 
-                    let should_fail = {
-                        let mut rng = rand::thread_rng();
-                        let mut fail = false;
-                        if config.degradation.db_error_rate > 0.0
-                            && rng.gen::<f64>() < config.degradation.db_error_rate
-                        {
-                            fail = true;
-                        }
-                        if config.degradation.rpc_error_rate > 0.0
-                            && rng.gen::<f64>() < config.degradation.rpc_error_rate
-                        {
-                            fail = true;
-                        }
-                        fail
-                    };
-
-                    let (traffic_type, amount, should_fail) = {
+                    let (traffic_type, amount, failed_dependency) = {
                         let mut rng = rand::thread_rng();
                         let traffic_type = select_traffic_type(&config.traffic_mix, &mut rng);
                         let amount = generate_amount(&config.amount_distribution, &mut rng);
 
-                        let mut should_fail = false;
+                        let mut failed_dependency: Option<&'static str> = None;
                         if config.degradation.db_error_rate > 0.0
                             && rng.gen::<f64>() < config.degradation.db_error_rate
                         {
-                            should_fail = true;
+                            failed_dependency = Some("database");
                         }
-                        if config.degradation.rpc_error_rate > 0.0
-                            && rng.gen::<f64>() < config.degradation.rpc_error_rate
-                        {
-                            should_fail = true;
+                        let horizon_error_rate = if config.degradation.horizon_error_rate > 0.0 {
+                            config.degradation.horizon_error_rate
+                        } else {
+                            config.degradation.rpc_error_rate
+                        };
+                        if horizon_error_rate > 0.0 && rng.gen::<f64>() < horizon_error_rate {
+                            failed_dependency = Some("horizon");
                         }
-                        (traffic_type, amount, should_fail)
+                        let soroban_error_rate = if config.degradation.soroban_error_rate > 0.0 {
+                            config.degradation.soroban_error_rate
+                        } else {
+                            config.degradation.rpc_error_rate
+                        };
+                        if soroban_error_rate > 0.0 && rng.gen::<f64>() < soroban_error_rate {
+                            failed_dependency = Some("soroban_rpc");
+                        }
+                        (traffic_type, amount, failed_dependency)
                     };
 
-                    let result = if should_fail {
-                        Err("Simulated dependency failure".to_string())
+                    let result = if let Some(dependency) = failed_dependency {
+                        Err(format!(
+                            "Simulated dependency failure: {} unavailable",
+                            dependency
+                        ))
                     } else {
                         request_gen(traffic_type, amount).await
                     };
@@ -387,6 +378,89 @@ mod tests {
         let report = results_b.compare_with_baseline(&results_a);
         assert!(report.is_regression);
         assert!(report.latency_p95_delta_pct > 30.0);
+    }
+
+    #[tokio::test]
+    async fn horizon_partial_outage_produces_mixed_results() {
+        let config = HarnessConfig {
+            name: "horizon_partial_outage".to_string(),
+            concurrent_users: 2,
+            total_requests: 40,
+            requests_per_second: 200,
+            duration_secs: 1,
+            degradation: DegradationScenario {
+                horizon_error_rate: 0.5,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let harness = LoadTestHarness::new(config);
+        let results = harness.run(|_, _| async { Ok(()) }).await;
+        assert!(results.successful_requests > 0);
+        assert!(results.failed_requests > 0);
+    }
+
+    #[tokio::test]
+    async fn full_horizon_and_soroban_outage_fails_all_requests() {
+        let config = HarnessConfig {
+            name: "full_dependency_outage".to_string(),
+            concurrent_users: 2,
+            total_requests: 30,
+            requests_per_second: 200,
+            duration_secs: 1,
+            degradation: DegradationScenario {
+                horizon_error_rate: 1.0,
+                soroban_error_rate: 1.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let harness = LoadTestHarness::new(config);
+        let results = harness.run(|_, _| async { Ok(()) }).await;
+        assert_eq!(results.successful_requests, 0);
+        assert_eq!(results.failed_requests, results.total_requests);
+    }
+
+    #[tokio::test]
+    async fn dependency_recovery_restores_success_path() {
+        let outage = HarnessConfig {
+            name: "dependency_recovery_outage".to_string(),
+            concurrent_users: 2,
+            total_requests: 20,
+            requests_per_second: 200,
+            duration_secs: 1,
+            degradation: DegradationScenario {
+                horizon_error_rate: 1.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let recovered = HarnessConfig {
+            name: "dependency_recovery_healthy".to_string(),
+            degradation: DegradationScenario {
+                horizon_error_rate: 0.0,
+                soroban_error_rate: 0.0,
+                ..Default::default()
+            },
+            ..outage.clone()
+        };
+
+        let outage_results = LoadTestHarness::new(outage)
+            .run(|_, _| async { Ok(()) })
+            .await;
+        let recovered_results = LoadTestHarness::new(recovered)
+            .run(|_, _| async { Ok(()) })
+            .await;
+
+        assert!(outage_results.failed_requests > 0);
+        assert_eq!(recovered_results.failed_requests, 0);
+        assert_eq!(
+            recovered_results.successful_requests,
+            recovered_results.total_requests
+        );
     }
 }
 

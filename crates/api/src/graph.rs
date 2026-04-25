@@ -10,6 +10,7 @@ use stellarroute_routing::pathfinder::LiquidityEdge;
 pub struct GraphManager {
     db: PgPool,
     edges: Arc<ArcSwap<Vec<LiquidityEdge>>>,
+    anomaly_detector: Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
 }
 
 impl GraphManager {
@@ -18,6 +19,11 @@ impl GraphManager {
         Self {
             db,
             edges: Arc::new(ArcSwap::from_pointee(Vec::new())),
+            anomaly_detector: Arc::new(tokio::sync::Mutex::new(
+                stellarroute_routing::health::anomaly::LiquidityAnomalyDetector::new(
+                    stellarroute_routing::health::anomaly::AnomalyConfig::default(),
+                ),
+            )),
         }
     }
 
@@ -160,14 +166,30 @@ impl GraphManager {
                 if let (Some(p), Some(a)) = (price, avail) {
                     if p > 0.0 && a > 0.0 {
                         let is_amm = venue_type == "amm";
+                        let venue_ref = r.get::<String, _>("venue_ref");
+
+                        // Perform anomaly detection
+                        let mut detector = self.anomaly_detector.lock().await;
+                        let (reserves, depth) = if is_amm {
+                            // For AMM, we assume reserves are related to the available amount
+                            // This is a simplification; in a real app we'd fetch reserves directly
+                            (Some(( (a * 1e7) as i128, ( (a * p * 1e7) as i128))), None)
+                        } else {
+                            (None, Some((a * 1e7) as i128))
+                        };
+
+                        let anomaly_res = detector.update_and_detect(&venue_ref, reserves, depth);
+
                         next_edges.push(LiquidityEdge {
                             from: e_from.clone(),
                             to: e_to.clone(),
                             venue_type,
-                            venue_ref: r.get("venue_ref"),
+                            venue_ref,
                             liquidity: (a * 1e7) as i128,
                             price: p,
                             fee_bps: if is_amm { 30 } else { 20 },
+                            anomaly_score: anomaly_res.score,
+                            anomaly_reasons: anomaly_res.reasons,
                         });
                     }
                 }

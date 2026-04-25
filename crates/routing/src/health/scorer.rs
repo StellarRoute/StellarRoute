@@ -7,7 +7,7 @@ use crate::health::policy::{ExclusionThresholds, OverrideEntry};
 // VenueType
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VenueType {
     Sdex,
@@ -301,6 +301,8 @@ pub struct HealthScoringConfig {
     pub depth_levels: usize,
     #[serde(default)]
     pub freshness_threshold_secs: FreshnessThresholds,
+    #[serde(default)]
+    pub anomaly: crate::health::anomaly::AnomalyConfig,
 }
 
 impl Default for HealthScoringConfig {

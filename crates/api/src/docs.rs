@@ -20,6 +20,8 @@ use crate::models::{
         crate::routes::orderbook::get_orderbook,
         crate::routes::quote::get_quote,
         crate::routes::quote::get_route,
+        crate::routes::kill_switch::get_kill_switch,
+        crate::routes::kill_switch::update_kill_switch,
     ),
     components(schemas(
         HealthResponse,
@@ -36,10 +38,12 @@ use crate::models::{
         VenueEvaluation,
         PathStep,
         ErrorResponse,
+        crate::kill_switch::KillSwitchState,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "trading", description = "Trading and market data endpoints"),
+        (name = "admin", description = "Administrative endpoints"),
     ),
     info(
         title = "StellarRoute API",

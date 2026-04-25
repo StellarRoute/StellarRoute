@@ -9,6 +9,8 @@ use tracing::debug;
 
 use stellarroute_routing::optimizer::HybridOptimizer;
 use stellarroute_routing::policy::RoutingPolicy;
+use stellarroute_routing::health::policy::ExclusionPolicy;
+use stellarroute_routing::health::scorer::VenueType;
 
 use crate::{
     error::{ApiError, Result},
@@ -120,7 +122,32 @@ pub async fn get_routes(
         .routes_single_flight
         .execute(&sf_key, || async move {
             // Read the pre-built in-memory liquidity graph — zero DB hit
-            let edges = state_c.graph_manager.get_edges();
+            let all_edges = state_c.graph_manager.get_edges();
+
+            if all_edges.is_empty() {
+                return Arc::new(Err(ApiError::NoRouteFound));
+            }
+
+            // Apply kill switches to edges
+            let overrides = state_c.kill_switch.get_override_registry().await;
+            let policy = ExclusionPolicy {
+                thresholds: Default::default(),
+                overrides,
+                circuit_breaker: Some(state_c.circuit_breaker.clone()),
+            };
+
+            let edges: Vec<_> = all_edges
+                .iter()
+                .filter(|e| {
+                    let v_type = if e.venue_type == "amm" {
+                        VenueType::Amm
+                    } else {
+                        VenueType::Sdex
+                    };
+                    !policy.is_excluded(&e.venue_ref, &v_type)
+                })
+                .cloned()
+                .collect();
 
             if edges.is_empty() {
                 return Arc::new(Err(ApiError::NoRouteFound));

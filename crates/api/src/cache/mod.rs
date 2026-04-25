@@ -2,6 +2,7 @@
 
 pub mod adaptive_ttl;
 pub mod invalidation;
+pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
 use serde::{de::DeserializeOwned, Serialize};
@@ -14,6 +15,10 @@ pub use invalidation::{CacheInvalidationManager, LiquidityUpdateEvent};
 pub use adaptive_ttl::{
     AdaptiveTtlConfig, AdaptiveTtlEngine, AdaptiveTtlStats, DepthAggregator, MarketMetrics,
     TtlDecision, TtlReason, VolatilityCalculator,
+};
+
+pub use prewarmer::{
+    CachePrewarmer, DemandForecaster, KeyDemandEntry, PrewarmError, PrewarmMetrics,
 };
 
 /// Cache manager for Redis operations

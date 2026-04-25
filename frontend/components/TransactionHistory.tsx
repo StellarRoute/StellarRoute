@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react"
 import { formatDistanceToNow } from "date-fns"
-import { ArrowRight, ExternalLink, Trash2 } from "lucide-react"
+import { ArrowRight, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton"
 import { CopyButton } from "@/components/shared/CopyButton"
+import { ExplorerLink } from "@/components/shared/ExplorerLink"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
 import { TransactionRecord } from "@/types/transaction"
@@ -26,7 +27,7 @@ const MOCK_WALLET = "GBSU...XYZ9"
 const ACTIVITY_VIRTUALIZATION_THRESHOLD = 24
 const ACTIVITY_ROW_HEIGHT = 80
 
-export function TransactionHistory() {
+export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionRecord) => void } = {}) {
   const { transactions, clearHistory } = useTransactionHistory(MOCK_WALLET)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
   const [sortKey, setSortKey] = useState<"date" | "amount">("date")
@@ -67,16 +68,18 @@ export function TransactionHistory() {
 
   const getStatusBadge = (status: TransactionRecord["status"]) => {
     switch (status) {
-      case "success":
-        return <Badge className="bg-success">Success</Badge>
+      case "confirmed":
+        return <Badge className="bg-success" aria-label="Status: confirmed">Confirmed</Badge>
       case "failed":
-        return <Badge variant="destructive">Failed</Badge>
+        return <Badge variant="destructive" aria-label="Status: failed">Failed</Badge>
       case "pending":
-      case "submitting":
-      case "processing":
-        return <Badge variant="secondary">Processing</Badge>
+        return <Badge variant="secondary" aria-label="Status: pending">Pending</Badge>
+      case "submitted":
+        return <Badge variant="secondary" aria-label="Status: submitted">Submitted</Badge>
+      case "dropped":
+        return <Badge variant="outline" aria-label="Status: dropped">Dropped</Badge>
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge variant="outline" aria-label={`Status: ${status}`}>{status}</Badge>
     }
   }
 
@@ -141,13 +144,14 @@ export function TransactionHistory() {
                   <TableHead>Rate</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Explorer</TableHead>
+                  <TableHead className="text-right">Retry</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {shouldVirtualize && virtualWindow.topSpacerHeight > 0 && (
                   <TableRow aria-hidden="true">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="border-0 p-0"
                       style={{ height: virtualWindow.topSpacerHeight }}
                     />
@@ -194,18 +198,26 @@ export function TransactionHistory() {
                       {tx.hash ? (
                         <div className="inline-flex items-center gap-1 justify-end">
                           <CopyButton value={tx.hash} label="Copy transaction hash" />
-                          <a
-                            href={`https://stellar.expert/explorer/public/tx/${tx.hash}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline group"
-                          >
-                            <span className="hidden sm:inline">View</span>
-                            <ExternalLink className="w-3 h-3 group-hover:translate-x-px group-hover:-translate-y-px transition-transform" />
-                          </a>
+                          <ExplorerLink
+                            hash={tx.hash}
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          />
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {(tx.status === "failed" || tx.status === "dropped") ? (
+                        <button
+                          className="text-xs text-primary hover:underline"
+                          aria-label={`Retry ${tx.fromAsset}→${tx.toAsset} swap from ${new Date(tx.timestamp).toLocaleDateString()}`}
+                          onClick={() => onRetry?.(tx)}
+                        >
+                          Retry
+                        </button>
+                      ) : (
+                        <span />
                       )}
                     </TableCell>
                   </TableRow>
@@ -213,7 +225,7 @@ export function TransactionHistory() {
                 {shouldVirtualize && virtualWindow.bottomSpacerHeight > 0 && (
                   <TableRow aria-hidden="true">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="border-0 p-0"
                       style={{ height: virtualWindow.bottomSpacerHeight }}
                     />

@@ -65,7 +65,7 @@ fn endpoint_config_selects_orderbook_limit() {
     assert_eq!(
         cfg.for_path("/api/v1/orderbook/XLM/USDC", None)
             .max_requests,
-        30
+        60
     );
 }
 
@@ -79,7 +79,7 @@ fn endpoint_config_selects_quote_limit() {
     let cfg = EndpointConfig::default();
     assert_eq!(
         cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests,
-        100
+        20
     );
 }
 
@@ -91,7 +91,7 @@ fn endpoint_config_selects_default_for_health() {
     std::env::remove_var("RATE_LIMIT_WINDOW_SECS");
 
     let cfg = EndpointConfig::default();
-    assert_eq!(cfg.for_path("/health", None).max_requests, 200);
+    assert_eq!(cfg.for_path("/health", None).max_requests, 120);
 }
 
 // ---------------------------------------------------------------------------

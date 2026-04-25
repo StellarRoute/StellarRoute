@@ -135,6 +135,10 @@ pub struct AppState {
     pub ws: Option<Arc<WsState>>,
     /// Shared circuit breaker registry for liquidity providers
     pub circuit_breaker: Arc<CircuitBreakerRegistry>,
+    /// API-level kill switches for sources/venues
+    pub kill_switch: Arc<crate::kill_switch::KillSwitchManager>,
+    /// Shared liquidity anomaly detector
+    pub anomaly_detector: Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
 }
 
 impl AppState {
@@ -147,6 +151,8 @@ impl AppState {
         let worker_pool = Self::create_worker_pool(db.write_pool().clone());
         let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
         graph_manager.clone().start_sync();
+
+        let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(None));
 
         Self {
             db,
@@ -163,6 +169,8 @@ impl AppState {
             graph_manager,
             ws: None,
             circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
+            kill_switch,
+            anomaly_detector: graph_manager.anomaly_detector.clone(),
         }
     }
 
@@ -180,9 +188,21 @@ impl AppState {
         let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
         graph_manager.clone().start_sync();
 
+        let cache_arc = Arc::new(Mutex::new(cache));
+        let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(Some(
+            cache_arc.clone(),
+        )));
+
+        // Spawn a task to load initial state from Redis
+        let ks = kill_switch.clone();
+        tokio::spawn(async move {
+            ks.load().await;
+            ks.start_sync();
+        });
+
         Self {
             db,
-            cache: Some(Arc::new(Mutex::new(cache))),
+            cache: Some(cache_arc),
             version: env!("CARGO_PKG_VERSION").to_string(),
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
@@ -195,6 +215,8 @@ impl AppState {
             graph_manager,
             ws: None,
             circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
+            kill_switch,
+            anomaly_detector: graph_manager.anomaly_detector.clone(),
         }
     }
 

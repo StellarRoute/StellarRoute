@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@stellar/freighter-api": ["./node_modules/@stellar/freighter-api/build/@stellar/freighter-api/src/index.d.ts"],
+      "@shared/*": ["./node_modules/@stellar/freighter-api/build/@shared/*"]
     }
   },
   "include": [

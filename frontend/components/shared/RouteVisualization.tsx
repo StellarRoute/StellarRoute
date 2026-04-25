@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Info, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AssetIcon } from '@/components/shared/AssetIcon';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -126,7 +127,12 @@ function RouteNodeComponent({
         )}
         aria-hidden="true"
       >
-        <span className="text-sm font-semibold">{assetCode.substring(0, 3)}</span>
+        <AssetIcon
+          symbol={assetCode}
+          className="size-full border-0 bg-transparent text-sm"
+          fallbackClassName="font-semibold"
+          maxCharacters={3}
+        />
       </div>
       <span
         className="text-xs font-medium text-center max-w-[6rem] truncate"

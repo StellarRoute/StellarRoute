@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSettings } from '@/components/providers/settings-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,10 +13,6 @@ import { LocaleSelector } from '@/components/settings/LocaleSelector';
 export default function SettingsPage() {
   const { settings, updateSlippage, updateTheme, resetSettings } = useSettings();
   const [localSlippage, setLocalSlippage] = useState(settings.slippageTolerance.toString());
-
-  useEffect(() => {
-    setLocalSlippage(settings.slippageTolerance.toString());
-  }, [settings.slippageTolerance]);
 
   const handleSlippageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalSlippage(e.target.value);

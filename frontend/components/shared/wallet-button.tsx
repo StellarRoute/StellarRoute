@@ -1,120 +1,107 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Copy, LogOut, Wallet } from "lucide-react"
+import { useWallet } from "@/hooks/useWallet";
 
-import { Button } from "@/components/ui/button"
-import { useWallet } from "@/components/providers/wallet-provider"
-import { shortenAddress } from "@/lib/wallet"
+const APP_NETWORK = "TESTNET";
 
 export function WalletButton() {
   const {
-    address,
-    isConnected,
+    session,
+    availableWallets,
+    loading,
+    error,
+    shortAddress,
     connect,
     disconnect,
-    availableWallets,
-    isLoading,
-    error,
-    network,
-    walletNetwork,
-    networkMismatch,
-    walletId,
-  } = useWallet()
+    copyAddress,
+  } = useWallet();
 
-  const [copied, setCopied] = React.useState(false)
+  const mismatch =
+    session.network &&
+    session.network.toUpperCase() !== APP_NETWORK.toUpperCase();
 
-  const handleCopy = async () => {
-    if (!address) return
-    await navigator.clipboard.writeText(address)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
-  }
-
-  if (isConnected && address) {
+  if (!session.isConnected) {
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => void handleCopy()}
-            className="gap-2"
-            aria-label="Copy wallet address"
-          >
-            <Copy className="h-4 w-4" />
-            <span>{copied ? "Copied" : shortenAddress(address)}</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={disconnect}
-            className="gap-2"
-            aria-label="Disconnect wallet"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Disconnect</span>
-          </Button>
+        <div className="flex gap-2">
+          {availableWallets.length > 0 ? (
+            availableWallets.map((wallet) => (
+              <button
+                key={wallet.id}
+                onClick={() => connect(wallet.id)}
+                disabled={loading}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                {loading ? "Connecting..." : `Connect ${wallet.label}`}
+              </button>
+            ))
+          ) : (
+            <div className="text-sm">
+              No supported wallet found. Install Freighter or xBull.
+            </div>
+          )}
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          {walletId ? `${walletId} connected` : "Wallet connected"} • App: {network}
-          {" • "}Wallet: {walletNetwork ?? "unknown"}
-        </div>
-
-        {networkMismatch && (
-          <div className="text-xs text-yellow-600">
-            Wallet network does not match the app network.
+        {availableWallets.length === 0 && (
+          <div className="text-xs">
+            <a
+              href="https://www.freighter.app/"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Install Freighter
+            </a>{" "}
+            |{" "}
+            <a
+              href="https://wallet.xbull.app/"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Install xBull
+            </a>
           </div>
         )}
 
-        {error && <div className="text-xs text-red-500">{error.message}</div>}
+        {error && <p className="text-sm text-red-500">{error}</p>}
       </div>
-    )
+    );
   }
-
-  const noWalletInstalled =
-    availableWallets.length > 0 &&
-    availableWallets.every((wallet) => !wallet.installed)
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        {availableWallets.map((wallet) => (
-          <Button
-            key={wallet.id}
-            onClick={() => void connect(wallet.id)}
-            disabled={isLoading || !wallet.installed}
-            variant={wallet.installed ? "default" : "outline"}
-            className="gap-2"
-            aria-label={`Connect ${wallet.label}`}
-          >
-            <Wallet className="h-4 w-4" />
-            <span>{wallet.label}</span>
-          </Button>
-        ))}
+      <div className="flex items-center gap-2">
+        <span className="rounded-md border px-3 py-2 text-sm">
+          {shortAddress}
+        </span>
+
+        <button
+          onClick={copyAddress}
+          className="rounded-md border px-3 py-2 text-sm"
+        >
+          Copy
+        </button>
+
+        <button
+          onClick={disconnect}
+          className="rounded-md border px-3 py-2 text-sm"
+        >
+          Disconnect
+        </button>
       </div>
 
-      {noWalletInstalled && (
-        <div className="text-xs text-muted-foreground">
-          No supported wallet found. Install{" "}
-          {availableWallets.map((wallet, index) => (
-            <React.Fragment key={wallet.id}>
-              {index > 0 ? " or " : ""}
-              <a
-                href={wallet.installUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                {wallet.label}
-              </a>
-            </React.Fragment>
-          ))}
-          .
+      <div className="text-sm">
+        Wallet network: {session.network ?? "Unknown"}
+      </div>
+
+      {mismatch && (
+        <div className="text-sm text-yellow-600">
+          Network mismatch: app is {APP_NETWORK}, wallet is {session.network}
         </div>
       )}
 
-      {error && <div className="text-xs text-red-500">{error.message}</div>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
     </div>
-  )
+  );
 }

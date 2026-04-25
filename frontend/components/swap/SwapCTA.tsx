@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import type { SwapValidationResult } from "@/lib/swap-validation";
+import { useSwapI18n } from "@/lib/swap-i18n";
 
 interface SwapCTAProps {
   validation: SwapValidationResult;
@@ -17,7 +18,8 @@ export function SwapCTA({
   isOnline = true,
   onSwap,
 }: SwapCTAProps) {
-  let label = "Review Swap";
+  const { t } = useSwapI18n();
+  let label = t("swap.cta.reviewSwap");
   let disabled = false;
 
   const hasPairIssue = validation.issues.some((issue) => issue.field === "pair");
@@ -29,19 +31,19 @@ export function SwapCTA({
   );
 
   if (!isOnline) {
-    label = "Offline";
+    label = t("swap.cta.offline");
     disabled = true;
   } else if (hasPairIssue) {
-    label = "Select tokens";
+    label = t("swap.cta.selectTokens");
     disabled = true;
   } else if (hasAmountIssue) {
-    label = "Enter amount";
+    label = t("swap.cta.enterAmount");
     disabled = true;
   } else if (hasSlippageIssue) {
-    label = "Invalid slippage";
+    label = t("swap.cta.invalidSlippage");
     disabled = true;
   } else if (isLoading) {
-    label = "Loading quote...";
+    label = t("swap.cta.loadingQuote");
     disabled = true;
   }
 

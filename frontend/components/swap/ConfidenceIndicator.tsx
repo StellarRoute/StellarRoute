@@ -45,17 +45,17 @@ export function ConfidenceIndicator({
   const config = {
     high: {
       label: "High",
-      className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+      className: "bg-success/10 text-success border-success/20",
       icon: TrendingUp,
     },
     medium: {
       label: "Medium",
-      className: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+      className: "bg-warning/10 text-warning border-warning/20",
       icon: Minus,
     },
     low: {
       label: "Low",
-      className: "bg-red-500/10 text-red-600 border-red-500/20",
+      className: "bg-destructive/10 text-destructive border-destructive/20",
       icon: TrendingDown,
     },
   };
@@ -77,7 +77,7 @@ export function ConfidenceIndicator({
             {isHighVolatility && (
               <Badge
                 variant="outline"
-                className="text-xs bg-orange-500/10 text-orange-600 border-orange-500/20 flex items-center gap-1 animate-pulse"
+                className="text-xs bg-warning/10 text-warning border-warning/20 flex items-center gap-1 animate-pulse"
               >
                 <AlertTriangle className="h-3 w-3" />
                 Volatile
@@ -90,20 +90,20 @@ export function ConfidenceIndicator({
             <p className="font-medium text-sm">Route Confidence: {score}%</p>
             <div className="text-xs space-y-1">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="w-2 h-2 rounded-full bg-success" />
                 <span>High (80-100%): Stable route</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="w-2 h-2 rounded-full bg-warning" />
                 <span>Medium (50-79%): Moderate stability</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="w-2 h-2 rounded-full bg-destructive" />
                 <span>Low (&lt;50%): Unstable route</span>
               </div>
             </div>
             {isHighVolatility && (
-              <p className="text-xs text-orange-500 mt-2 border-t pt-2">
+              <p className="mt-2 border-t border-border pt-2 text-xs text-warning">
                 ⚠️ High volatility detected. Route may change frequently.
               </p>
             )}

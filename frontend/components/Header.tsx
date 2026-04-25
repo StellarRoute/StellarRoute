@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
+import { WalletButton } from "@/components/shared/WalletButton";
 
 export function Header() {
   return (
@@ -7,22 +10,26 @@ export function Header() {
       <div className="container flex h-14 items-center mx-auto px-4">
         <div className="mr-4 flex">
           <Link href="/" className="mr-6 flex items-center space-x-2">
-             <span className="hidden font-bold sm:inline-block">
-                StellarRoute
-             </span>
+            <span className="hidden font-bold sm:inline-block">
+              StellarRoute
+            </span>
           </Link>
         </div>
+
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
           <div className="w-full flex-1 md:w-auto md:flex-none">
-             {/* Add any search or navigation items here if needed later */}
+            {/* future nav/search area */}
           </div>
+
           <nav className="flex items-center gap-4">
-            <Link href="/history" className="text-sm font-medium hover:text-primary transition-colors">
+            <Link
+              href="/history"
+              className="text-sm font-medium hover:text-primary transition-colors"
+            >
               History
             </Link>
-            <Link href="/settings" className="text-sm font-medium hover:text-primary transition-colors">
-              Settings
-            </Link>
+
+            <WalletButton />
             <ThemeToggle />
           </nav>
         </div>

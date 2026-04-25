@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { AssetIcon } from "@/components/shared/AssetIcon";
 import { useRecentTokens } from "@/hooks/useRecentTokens";
 
 export interface AssetOption {
@@ -133,6 +134,7 @@ export function TokenSearchModal({
             {search && (
               <button
                 onClick={() => setSearch("")}
+                aria-label="Clear search"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
@@ -155,6 +157,10 @@ export function TokenSearchModal({
                     className="h-8 py-1 px-3 gap-2"
                     onClick={() => handleSelect(asset.asset)}
                   >
+                    <AssetIcon
+                      symbol={asset.code}
+                      className="size-5 border-border/40 bg-primary/5 text-[0.55rem]"
+                    />
                     <span className="font-medium">{asset.code}</span>
                   </Button>
                 ))}
@@ -192,8 +198,12 @@ export function TokenSearchModal({
                       onClick={() => handleSelect(asset.asset)}
                       onMouseEnter={() => setSelectedIndex(index)}
                     >
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <AssetIcon
+                          symbol={asset.code}
+                          className="size-9 border-border/50 bg-primary/5 text-xs"
+                        />
+                        <div className="flex min-w-0 flex-col">
                           <span className="font-bold underline decoration-primary/20 decoration-2 underline-offset-2">
                             {asset.code}
                           </span>
@@ -203,12 +213,12 @@ export function TokenSearchModal({
                                 {asset.displayName}
                               </span>
                             )}
+                          {asset.issuer && (
+                            <span className="w-full max-w-[200px] truncate text-[10px] font-mono text-muted-foreground">
+                              {asset.issuer}
+                            </span>
+                          )}
                         </div>
-                        {asset.issuer && (
-                          <span className="text-[10px] font-mono text-muted-foreground truncate w-full max-w-[200px]">
-                            {asset.issuer}
-                          </span>
-                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {selectedAsset === asset.asset && (

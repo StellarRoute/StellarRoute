@@ -109,6 +109,19 @@ Run tests with:
 npm test TokenPairSelector
 ```
 
+## Performance Thresholds
+
+To keep the DOM small on low-end devices, long lists now switch to windowed rendering once they cross these thresholds:
+
+- alternative route list: virtualize when more than `8` items are present
+- transaction history activity list: virtualize when more than `24` rows are present
+
+Focused verification for the windowing behavior:
+
+```bash
+npm test -- components/swap/RouteDisplay.test.tsx components/TransactionHistory.test.tsx
+```
+
 ## Design Decisions
 
 1. **Two-Step Selection**: Users select base first, then quote. This ensures only valid pairs can be selected.

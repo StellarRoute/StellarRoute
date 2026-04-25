@@ -1,155 +1,89 @@
-import type {
-  AvailableWallet,
-  SupportedWallet,
-  WalletError,
-  WalletNetwork,
-  WalletSession,
-} from "./types"
+import {
+  requestAccess,
+  getAddress,
+  getNetworkDetails,
+  isAllowed,
+  signTransaction,
+} from "@stellar/freighter-api";
 
-declare global {
-  interface Window {
-    xBullSDK?: {
-      connect?: () => Promise<{ publicKey?: string }>
-      getNetwork?: () => Promise<string>
-    }
-  }
-}
+import type { AvailableWallet, SupportedWallet, WalletSession } from "./types";
 
-const FREIGHTER_INSTALL_URL = "https://www.freighter.app/"
-const XBULL_INSTALL_URL = "https://xbull.app/"
-
-function normalizeNetwork(network: string | null | undefined): WalletNetwork | null {
-  if (!network) return null
-
-  const value = network.toLowerCase()
-
-  if (value.includes("testnet")) return "testnet"
-  if (value.includes("mainnet") || value.includes("public")) return "mainnet"
-
-  return null
-}
-
-function mapWalletError(message: string): WalletError {
-  const lower = message.toLowerCase()
-
-  if (lower.includes("reject") || lower.includes("denied")) {
-    return {
-      code: "USER_REJECTED",
-      message: "Wallet connection request was rejected.",
-    }
-  }
-
-  if (lower.includes("lock")) {
-    return {
-      code: "WALLET_LOCKED",
-      message: "Wallet is locked. Please unlock it and try again.",
-    }
-  }
-
-  if (
-    lower.includes("not installed") ||
-    lower.includes("not found") ||
-    lower.includes("no wallet")
-  ) {
-    return {
-      code: "NO_WALLET",
-      message: "No supported wallet is installed.",
-    }
-  }
-
-  return {
-    code: "UNKNOWN",
-    message,
-  }
-}
+export const WALLET_LABELS: Record<SupportedWallet, string> = {
+  freighter: "Freighter",
+  xbull: "xBull",
+};
 
 export async function getAvailableWallets(): Promise<AvailableWallet[]> {
-  let freighterInstalled = false
+  const wallets: AvailableWallet[] = [];
 
+  // Freighter
   try {
-    const freighter = await import("@stellar/freighter-api")
-    const connection = await freighter.isConnected()
-    freighterInstalled = connection.isConnected
-  } catch {
-    freighterInstalled = false
-  }
-
-  const xbullInstalled =
-    typeof window !== "undefined" && typeof window.xBullSDK !== "undefined"
-
-  return [
-    {
+    const res = await isAllowed();
+    wallets.push({
       id: "freighter",
       label: "Freighter",
-      installed: freighterInstalled,
-      installUrl: FREIGHTER_INSTALL_URL,
-    },
-    {
-      id: "xbull",
-      label: "xBull",
-      installed: xbullInstalled,
-      installUrl: XBULL_INSTALL_URL,
-    },
-  ]
+      installed: res.isAllowed,
+    });
+  } catch {
+    wallets.push({ id: "freighter", label: "Freighter", installed: false });
+  }
+
+  // xBull — detected via window.xbull
+  const xbullInstalled =
+    typeof window !== "undefined" &&
+    !!(window as unknown as Record<string, unknown>).xbull;
+  wallets.push({ id: "xbull", label: "xBull", installed: xbullInstalled });
+
+  return wallets;
 }
 
 export async function connectWallet(
   walletId: SupportedWallet
 ): Promise<WalletSession> {
   if (walletId === "freighter") {
-    try {
-      const freighter = await import("@stellar/freighter-api")
+    const access = await requestAccess();
 
-      const installed = await freighter.isConnected()
-      if (!installed) {
-        throw new Error("Freighter not installed")
-      }
-
-      const addressResult = await freighter.getAddress()
-      const address = addressResult.address
-      const details =
-        typeof freighter.getNetworkDetails === "function"
-          ? await freighter.getNetworkDetails()
-          : null
-
-      return {
-        walletId: "freighter",
-        address,
-        network: normalizeNetwork(details?.network),
-        isConnected: true,
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to connect Freighter wallet."
-      throw mapWalletError(message)
+    if (access.error) {
+      throw new Error(access.error.message ?? "Freighter access denied");
     }
+
+    const addressRes = await getAddress();
+    if (addressRes.error) {
+      throw new Error(addressRes.error.message ?? "Failed to get address");
+    }
+
+    const networkRes = await getNetworkDetails();
+    if (networkRes.error) {
+      throw new Error(networkRes.error.message ?? "Failed to get network");
+    }
+
+    return {
+      walletId,
+      address: addressRes.address,
+      network: networkRes.network,
+      isConnected: true,
+    };
   }
 
   if (walletId === "xbull") {
-    try {
-      if (typeof window === "undefined" || !window.xBullSDK) {
-        throw new Error("xBull not installed")
-      }
+    const xbull = (window as unknown as Record<string, unknown>).xbull as
+      | { connect: () => Promise<{ publicKey: string }> }
+      | undefined;
 
-      const result = await window.xBullSDK.connect?.()
-      const rawNetwork = await window.xBullSDK.getNetwork?.()
-
-      return {
-        walletId: "xbull",
-        address: result?.publicKey ?? null,
-        network: normalizeNetwork(rawNetwork),
-        isConnected: Boolean(result?.publicKey),
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to connect xBull wallet."
-      throw mapWalletError(message)
+    if (!xbull) {
+      throw new Error("xBull not installed");
     }
+
+    const result = await xbull.connect();
+    return {
+      walletId,
+      address: result.publicKey,
+      network: "testnet",
+      isConnected: true,
+    };
   }
 
-  throw mapWalletError("Unsupported wallet")
+  throw new Error(`Unsupported wallet: ${walletId}`);
 }
 
 export function disconnectWallet(): WalletSession {
@@ -158,17 +92,30 @@ export function disconnectWallet(): WalletSession {
     address: null,
     network: null,
     isConnected: false,
+  };
+}
+
+export async function signTransactionWithWallet(
+  xdr: string,
+  walletId: SupportedWallet,
+  networkPassphrase?: string
+): Promise<string> {
+  if (walletId === "freighter") {
+    const res = await signTransaction(xdr, { networkPassphrase });
+    if (res.error) {
+      throw new Error(res.error.message ?? "Transaction signing failed");
+    }
+    return res.signedTxXdr;
   }
+
+  throw new Error(`Transaction signing not supported for wallet: ${walletId}`);
 }
 
-export async function signTransactionStub(xdr: string): Promise<string> {
-  void xdr
-  throw new Error("signTransactionStub is not implemented yet.")
-
-}
-
-export function shortenAddress(address: string | null): string {
-  if (!address) return ""
-  if (address.length <= 10) return address
-  return `${address.slice(0, 4)}...${address.slice(-5)}`
+/** Stub for callers that only need the XDR echoed back (e.g. tests / out-of-scope flows) */
+export async function signTransactionStub(xdr: string) {
+  return {
+    ok: false,
+    message: "Signing stub only (out of scope)",
+    xdr,
+  };
 }

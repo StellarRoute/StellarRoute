@@ -1,29 +1,21 @@
-export type WalletNetwork = "testnet" | "mainnet"
+export type SupportedWallet = "freighter" | "xbull";
 
-export type SupportedWallet = "freighter" | "xbull"
+export type WalletNetwork = "testnet" | "mainnet" | "futurenet" | string;
 
-export interface AvailableWallet {
-  id: SupportedWallet
-  label: string
-  installed: boolean
-  installUrl?: string
-}
+export type WalletSession = {
+  walletId: SupportedWallet | null;
+  address: string | null;
+  network: WalletNetwork | null;
+  isConnected: boolean;
+};
 
-export interface WalletSession {
-  walletId: SupportedWallet | null
-  address: string | null
-  network: WalletNetwork | null
-  isConnected: boolean
-}
+export type AvailableWallet = {
+  id: SupportedWallet;
+  label: string;
+  installed: boolean;
+};
 
-export type WalletErrorCode =
-  | "NO_WALLET"
-  | "USER_REJECTED"
-  | "WALLET_LOCKED"
-  | "NETWORK_MISMATCH"
-  | "UNKNOWN"
-
-export interface WalletError {
-  code: WalletErrorCode
-  message: string
-}
+export type WalletError = {
+  message: string;
+  code?: string;
+};

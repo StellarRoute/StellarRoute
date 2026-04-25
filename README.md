@@ -56,6 +56,9 @@ StellarRoute addresses these challenges by building open-source infrastructure t
 
 ### For Developers
 
+- Run component story snapshots with Ladle via frontend/ `npm run storybook:ci`
+
+
 - REST API for price quotes and orderbook data
 - WebSocket support for real-time updates
 - JavaScript/TypeScript SDK for web applications

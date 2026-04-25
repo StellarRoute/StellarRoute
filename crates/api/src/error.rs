@@ -7,7 +7,7 @@ use axum::{
 };
 use thiserror::Error;
 
-use crate::models::{ApiErrorCode, ErrorResponse};
+use crate::models::{ApiErrorCode, ApiResponse, ErrorResponse};
 
 use std::sync::Arc;
 
@@ -39,7 +39,12 @@ pub enum ApiError {
 
     #[error("Invalid asset: {0}")]
     InvalidAsset(String),
-
+    #[error("Invalid amount: {0}")]
+    InvalidAmount(String),
+    #[error("Invalid slippage: {0}")]
+    InvalidSlippage(String),
+    #[error("Invalid asset format: {0}")]
+    InvalidAssetFormat(String),
     #[error("No route found for trading pair")]
     NoRouteFound,
 
@@ -69,11 +74,11 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_type, message) = match self {
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request".to_string(), msg),
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found".to_string(), msg),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, ApiErrorCode::BadRequest, msg),
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, ApiErrorCode::NotFound, msg),
             ApiError::Validation(message) => (
                 StatusCode::BAD_REQUEST,
-                "validation_error".to_string(),
+                ApiErrorCode::ValidationError,
                 message,
             ),
             ApiError::RateLimitExceeded => (
@@ -86,14 +91,21 @@ impl IntoResponse for ApiError {
                 ApiErrorCode::Overloaded,
                 msg,
             ),
-            ApiError::Unauthorized(msg) => (
-                StatusCode::UNAUTHORIZED,
-                ApiErrorCode::Unauthorized,
-                msg,
-            ),
-            ApiError::InvalidAsset(msg) => (
+            ApiError::Unauthorized(msg) => {
+                (StatusCode::UNAUTHORIZED, ApiErrorCode::Unauthorized, msg)
+            }
+            ApiError::InvalidAsset(msg) => {
+                (StatusCode::BAD_REQUEST, ApiErrorCode::InvalidAsset, msg)
+            }
+            ApiError::InvalidAmount(msg) => {
+                (StatusCode::BAD_REQUEST, ApiErrorCode::InvalidAmount, msg)
+            }
+            ApiError::InvalidSlippage(msg) => {
+                (StatusCode::BAD_REQUEST, ApiErrorCode::InvalidSlippage, msg)
+            }
+            ApiError::InvalidAssetFormat(msg) => (
                 StatusCode::BAD_REQUEST,
-                ApiErrorCode::InvalidAsset,
+                ApiErrorCode::InvalidAssetFormat,
                 msg,
             ),
             ApiError::NoRouteFound => (
@@ -113,13 +125,12 @@ impl IntoResponse for ApiError {
                     "threshold_secs_sdex": threshold_secs_sdex,
                     "threshold_secs_amm": threshold_secs_amm,
                 });
-                let body = Json(
-                    ErrorResponse::new(
-                        ApiErrorCode::StaleMarketData,
-                        "All market data inputs are stale",
-                    )
-                    .with_details(details),
-                );
+                let payload = ErrorResponse::new(
+                    ApiErrorCode::StaleMarketData,
+                    "All market data inputs are stale",
+                )
+                .with_details(details);
+                let body = Json(ApiResponse::new(payload, "system"));
                 return (StatusCode::UNPROCESSABLE_ENTITY, body).into_response();
             }
             ApiError::Database(_) | ApiError::Internal(_) => (
@@ -129,21 +140,8 @@ impl IntoResponse for ApiError {
             ),
         };
 
-        let body = Json(ErrorResponse::new(
-            match error_type.as_str() {
-                "bad_request" => ApiErrorCode::BadRequest,
-                "not_found" => ApiErrorCode::NotFound,
-                "validation_error" => ApiErrorCode::ValidationError,
-                "rate_limit_exceeded" => ApiErrorCode::RateLimitExceeded,
-                "overloaded" => ApiErrorCode::Overloaded,
-                "unauthorized" => ApiErrorCode::Unauthorized,
-                "invalid_asset" => ApiErrorCode::InvalidAsset,
-                "no_route" => ApiErrorCode::NoRoute,
-                "stale_market_data" => ApiErrorCode::StaleMarketData,
-                _ => ApiErrorCode::InternalError,
-            },
-            message,
-        ));
+        let payload = ErrorResponse::new(error_type, message);
+        let body = Json(ApiResponse::new(payload, "system"));
         (status, body).into_response()
     }
 }
@@ -160,8 +158,8 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body");
-        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
-        (status, json)
+        let envelope: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        (status, envelope["data"].clone())
     }
 
     #[tokio::test]

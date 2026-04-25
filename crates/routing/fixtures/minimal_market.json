@@ -1,0 +1,63 @@
+{
+  "description": "Minimal viable market fixture: XLM → USDC via SDEX offer and AMM pool. No external network required.",
+  "assets": [
+    { "key": "native", "asset_type": "native" },
+    {
+      "key": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "asset_type": "credit_alphanum4",
+      "asset_code": "USDC",
+      "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+    }
+  ],
+  "sdex_offers": [
+    {
+      "offer_id": 1001,
+      "seller": "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN",
+      "selling_asset": "native",
+      "buying_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "amount": "10000.0000000",
+      "price": "0.1000000",
+      "last_modified_ledger": 50000000
+    }
+  ],
+  "amm_pools": [
+    {
+      "pool_address": "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001",
+      "selling_asset": "native",
+      "buying_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "reserve_selling": "500000.0000000",
+      "reserve_buying": "50000.0000000",
+      "fee_bps": 30,
+      "last_updated_ledger": 50000000
+    }
+  ],
+  "edges": [
+    {
+      "from": "native",
+      "to": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "venue_type": "sdex",
+      "venue_ref": "sdex:1001",
+      "liquidity": 100000000000,
+      "price": 0.1,
+      "fee_bps": 0
+    },
+    {
+      "from": "native",
+      "to": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "venue_type": "amm",
+      "venue_ref": "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001",
+      "liquidity": 5000000000000,
+      "price": 0.1,
+      "fee_bps": 30
+    },
+    {
+      "from": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "to": "native",
+      "venue_type": "amm",
+      "venue_ref": "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001",
+      "liquidity": 500000000000,
+      "price": 10.0,
+      "fee_bps": 30
+    }
+  ]
+}

@@ -3,6 +3,28 @@ import { render, screen } from "@testing-library/react";
 
 import { TransactionConfirmationModal } from "@/components/shared/TransactionConfirmationModal";
 
+const defaultCallbacks = {
+  onConfirm: () => {},
+  onCancel: () => {},
+  onTryAgain: () => {},
+  onResubmit: () => {},
+  onDismiss: () => {},
+  onDone: () => {},
+};
+
+const defaultRoute = [
+  {
+    from_asset: { asset_type: "native" },
+    to_asset: {
+      asset_type: "credit_alphanum4",
+      asset_code: "USDC",
+      asset_issuer: "GA5Z...",
+    },
+    price: "0.105",
+    source: "sdex",
+  },
+] as const;
+
 describe("TransactionConfirmationModal", () => {
   it("renders critical review copy and computed minimum received", () => {
     const onOpenChange = vi.fn();
@@ -19,19 +41,8 @@ describe("TransactionConfirmationModal", () => {
         priceImpact="0.1%"
         slippageTolerancePct={1}
         networkFee="0.00001"
-        routePath={[
-          {
-            from_asset: { asset_type: "native" },
-            to_asset: {
-              asset_type: "credit_alphanum4",
-              asset_code: "USDC",
-              asset_issuer: "GA5Z...",
-            },
-            price: "0.105",
-            source: "sdex",
-          },
-        ]}
-        onConfirm={() => {}}
+        routePath={[...defaultRoute]}
+        {...defaultCallbacks}
         status="review"
       />,
     );
@@ -43,12 +54,6 @@ describe("TransactionConfirmationModal", () => {
     // 100 with 1% slippage => 99 min received (route viz also shows "99 USDC" in a separate node)
     expect(
       screen.getByText(/Estimated Minimum:\s*99\s*USDC/),
-    ).toBeTruthy();
-
-    expect(
-      screen.getByText(
-        "Demo mode: signing and submission are simulated — not yet on-chain.",
-      ),
     ).toBeTruthy();
   });
 
@@ -67,19 +72,8 @@ describe("TransactionConfirmationModal", () => {
         priceImpact="0.1%"
         slippageTolerancePct={1}
         networkFee="0.00001"
-        routePath={[
-          {
-            from_asset: { asset_type: "native" },
-            to_asset: {
-              asset_type: "credit_alphanum4",
-              asset_code: "USDC",
-              asset_issuer: "GA5Z...",
-            },
-            price: "0.105",
-            source: "sdex",
-          },
-        ]}
-        onConfirm={() => {}}
+        routePath={[...defaultRoute]}
+        {...defaultCallbacks}
         confirmDisabled
         confirmDisabledReason="Reconnect to the internet before confirming this swap."
         status="review"

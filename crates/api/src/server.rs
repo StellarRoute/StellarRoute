@@ -1,12 +1,11 @@
 //! API server setup and configuration
 
-use axum::Router;
-use sqlx::PgPool;
+use axum::{http::Request, Router};
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    trace::{DefaultOnResponse, TraceLayer},
 };
 use tracing::{info, warn, Level};
 use utoipa::OpenApi;
@@ -16,13 +15,16 @@ use crate::{
     cache::CacheManager,
     docs::ApiDoc,
     error::Result,
-    middleware::{EndpointConfig, RateLimitLayer},
+    middleware::{
+        api_versioning_layer, request_id_layer, EndpointConfig, RateLimitLayer, RequestId,
+        REQUEST_ID_HEADER,
+    },
     routes,
-    state::{AppState, CachePolicy},
+    state::{AppState, CachePolicy, DatabasePools},
 };
 
 /// API server configuration
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServerConfig {
     /// Server host address
     pub host: String,
@@ -36,6 +38,19 @@ pub struct ServerConfig {
     pub redis_url: Option<String>,
     /// Quote cache TTL in seconds
     pub quote_cache_ttl_seconds: u64,
+}
+
+impl std::fmt::Debug for ServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("enable_cors", &self.enable_cors)
+            .field("enable_compression", &self.enable_compression)
+            .field("redis_url", &self.redis_url.as_ref().map(|_| "[REDACTED]"))
+            .field("quote_cache_ttl_seconds", &self.quote_cache_ttl_seconds)
+            .finish()
+    }
 }
 
 impl Default for ServerConfig {
@@ -59,7 +74,7 @@ pub struct Server {
 
 impl Server {
     /// Create a new API server
-    pub async fn new(config: ServerConfig, db: PgPool) -> Self {
+    pub async fn new(config: ServerConfig, db: DatabasePools) -> Self {
         let cache_policy = CachePolicy {
             quote_ttl: std::time::Duration::from_secs(config.quote_cache_ttl_seconds),
         };
@@ -149,12 +164,40 @@ impl Server {
         // Add rate limiting (innermost — runs before CORS/compression in the response path)
         app = app.layer(rate_limit);
 
-        // Add request logging — each request gets a unique span with method, URI, status, and latency
+        // Add request logging — each request gets a unique span with method, URI, status, and latency.
         app = app.layer(
             TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .make_span_with(|request: &Request<_>| {
+                    let request_id = request
+                        .extensions()
+                        .get::<RequestId>()
+                        .map(RequestId::as_str)
+                        .or_else(|| {
+                            request
+                                .headers()
+                                .get(REQUEST_ID_HEADER)
+                                .and_then(|value| value.to_str().ok())
+                        })
+                        .unwrap_or("missing");
+
+                    tracing::info_span!(
+                        "http.request",
+                        request_id = %request_id,
+                        http.method = %request.method(),
+                        http.target = %request.uri(),
+                        http.status_code = tracing::field::Empty,
+                        otel.kind = "server",
+                    )
+                })
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         );
+
+        // Add request ID propagation as the outermost wrapper so downstream layers reuse the
+        // same correlation ID in logs, spans, and responses.
+        app = app.layer(axum::middleware::from_fn(request_id_layer));
+
+        // Add API lifecycle headers (Deprecation/Sunset/Link) for /api/v1 routes.
+        app = app.layer(axum::middleware::from_fn(api_versioning_layer));
 
         app
     }
@@ -168,7 +211,8 @@ impl Server {
         info!("🚀 StellarRoute API server starting on http://{}", addr);
         info!("📊 Health check: http://{}/health", addr);
         info!("📈 Trading pairs: http://{}/api/v1/pairs", addr);
-        info!("📚 API Documentation: http://{}/swagger-ui", addr);
+        info!("� Prometheus metrics: http://{}/metrics", addr);
+        info!("�📚 API Documentation: http://{}/swagger-ui", addr);
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await

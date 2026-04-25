@@ -23,7 +23,7 @@ use crate::{
     tag = "trading",
     responses(
         (status = 200, description = "List of trading pairs", body = PairsResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::models::ErrorResponse),
     )
 )]
 pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<PairsResponse>> {
@@ -62,7 +62,7 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
         limit 100
         "#,
     )
-    .fetch_all(&state.db)
+    .fetch_all(state.db.read_pool())
     .await
     .map_err(|e| ApiError::Database(Arc::new(e)))?;
 
@@ -112,6 +112,9 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
     let response = PairsResponse {
         total: pairs.len(),
         pairs,
+        limit: None,
+        next_cursor: None,
+        prev_cursor: None,
     };
 
     // Cache the response for 10 s to keep latency well under the 100 ms SLA.
@@ -128,4 +131,19 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
     }
 
     Ok(Json(response))
+}
+
+/// Alias of `/api/v1/pairs` for backward compatibility.
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets",
+    tag = "trading",
+    responses(
+        (status = 200, description = "List of active markets", body = PairsResponse),
+        (status = 400, description = "Invalid pagination parameters", body = crate::models::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::models::ErrorResponse),
+    )
+)]
+pub async fn list_markets(State(state): State<Arc<AppState>>) -> Result<Json<PairsResponse>> {
+    list_pairs(State(state)).await
 }

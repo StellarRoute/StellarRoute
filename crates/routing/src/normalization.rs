@@ -58,7 +58,7 @@ pub fn normalize_sdex_levels(inputs: &[SdexLevelInput]) -> Result<Vec<Normalized
         });
     }
 
-    normalized.sort_by(|a, b| a.price_e7.cmp(&b.price_e7));
+    normalized.sort_by_key(|a| a.price_e7);
     Ok(normalized)
 }
 
@@ -122,7 +122,7 @@ pub fn normalize_liquidity(
     for reserve in amm_reserves {
         levels.push(normalize_amm_reserve(reserve)?);
     }
-    levels.sort_by(|a, b| a.price_e7.cmp(&b.price_e7));
+    levels.sort_by_key(|a| a.price_e7);
     Ok(levels)
 }
 

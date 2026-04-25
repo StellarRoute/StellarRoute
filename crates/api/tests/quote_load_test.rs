@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use serde_json::Value;
-use stellarroute_api::{Server, ServerConfig};
+use stellarroute_api::{state::DatabasePools, Server, ServerConfig};
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -20,7 +20,7 @@ async fn test_quote_request_coalescing_under_load() {
         .expect("Failed to connect to database");
 
     // Start with a clean server and router
-    let server = Server::new(ServerConfig::default(), pool).await;
+    let server = Server::new(ServerConfig::default(), DatabasePools::new(pool, None)).await;
     let router = server.into_router();
 
     // Fire 30 concurrent identical requests (reduced from 50 for local stability)

@@ -38,11 +38,15 @@ dist/
 build/
 *.wasm
 *.wasm.gz
+.next/
+*.bak
+*.bak.json
 
 # Node
 node_modules/
 .npm/
 frontend/node_modules/
+frontend/.next/
 sdk-js/node_modules/
 
 # Test coverage

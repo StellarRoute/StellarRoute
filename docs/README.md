@@ -9,6 +9,7 @@ This directory contains project documentation.
 - `development/` - Development guides
 - `deployment/` - Deployment guides
 - `contracts/` - Smart contract documentation
+- `monitoring.md` - Monitoring and metrics documentation
 
 ## Getting Started
 

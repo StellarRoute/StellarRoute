@@ -27,6 +27,7 @@ export class StellarRouteApiError extends Error {
     public readonly code: ApiErrorCode,
     message: string,
     public readonly details?: unknown,
+    public readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'StellarRouteApiError';
@@ -49,6 +50,24 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** Sleep for `ms` milliseconds. */
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+function parseRetryAfterMs(headerValue: string | null): number | null {
+  if (!headerValue) {
+    return null;
+  }
+
+  const seconds = Number(headerValue);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1_000;
+  }
+
+  const retryDateMs = Date.parse(headerValue);
+  if (Number.isNaN(retryDateMs)) {
+    return null;
+  }
+
+  return Math.max(0, retryDateMs - Date.now());
+}
 
 interface FetchOptions {
   signal?: AbortSignal;
@@ -106,6 +125,10 @@ export class StellarRouteClient {
       const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
+        const retryAfterMs = parseRetryAfterMs(
+          response.headers.get('Retry-After'),
+        );
+
         // Try to parse the backend ErrorResponse body
         let code: ApiErrorCode = 'unknown_error';
         let message = `HTTP ${response.status}`;
@@ -122,13 +145,17 @@ export class StellarRouteClient {
 
         // Retry on rate-limit (429) and server errors (5xx) with backoff
         if ((response.status === 429 || response.status >= 500) && retries > 0) {
-          const retryAfter =
-            Number(response.headers.get('Retry-After') ?? 1) * 1_000;
-          await sleep(retryAfter || 1_000 * (3 - retries));
+          await sleep(retryAfterMs ?? 1_000 * (3 - retries));
           return this.request<T>(path, opts, retries - 1, method, body);
         }
 
-        throw new StellarRouteApiError(response.status, code, message, details);
+        throw new StellarRouteApiError(
+          response.status,
+          code,
+          message,
+          details,
+          retryAfterMs,
+        );
       }
 
       return response.json() as Promise<T>;

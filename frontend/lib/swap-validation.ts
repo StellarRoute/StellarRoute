@@ -24,7 +24,7 @@ export interface SwapValidationInput {
   sellAssetId?: string | null;
   buyAssetId?: string | null;
   slippage: number | null;
-  [key: string]: any; // Allow for future extension
+  [key: string]: unknown; // Allow for future extension
 }
 
 export interface SwapValidationOptions {
@@ -52,7 +52,7 @@ export interface SwapValidationResult {
   parsed: {
     amount?: { normalized: string; numeric: number };
     slippage?: number;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 

@@ -1,18 +1,16 @@
 //! Quote endpoint
 
-use axum::{
-    extract::State,
-    Json,
-};
+use axum::{extract::State, Json};
 use sqlx::Row;
 use std::sync::Arc;
 use tracing::{debug, info_span, Instrument};
 use std::time::Duration;
 use tokio::time::timeout;
+use tracing::{debug, info_span, warn, Instrument};
 
 use stellarroute_routing::health::filter::GraphFilter;
 use stellarroute_routing::health::freshness::{FreshnessGuard, FreshnessOutcome};
-use stellarroute_routing::health::policy::{ExclusionPolicy, OverrideRegistry};
+use stellarroute_routing::health::policy::ExclusionPolicy;
 use stellarroute_routing::health::scorer::{
     AmmScorer, HealthScorer, HealthScoringConfig, SdexScorer, VenueScorerInput, VenueType,
 };
@@ -20,7 +18,7 @@ use stellarroute_routing::health::scorer::{
 use crate::{
     cache,
     error::{ApiError, Result},
-    middleware::validation::ValidatedQuoteRequest,
+    middleware::{validation::ValidatedQuoteRequest, RequestId},
     models::{
         request::{AssetPath, QuoteParams},
         AssetInfo, PathStep, QuoteRationaleMetadata, QuoteResponse, VenueEvaluation,
@@ -53,12 +51,11 @@ pub async fn get_quote(
 
     let explain = explain_header || params.explain.unwrap_or(false);
 
-    let request_id = uuid::Uuid::new_v4();
     let start_time = std::time::Instant::now();
 
     let span = info_span!(
         "quote_pipeline",
-        %request_id,
+        request_id = %request_id,
         %base,
         %quote,
         cache_hit = false,
@@ -67,28 +64,58 @@ pub async fn get_quote(
     );
 
     async move {
-        let res = get_quote_inner(state, base_asset, quote_asset, params, explain).await;
+        match get_quote_inner(state, base_asset, quote_asset, params, explain).await {
+            Ok((quote, cache_hit)) => {
+                let error_class = "none";
+                let latency_ms = start_time.elapsed().as_millis() as u64;
 
-        let error_class = match &res {
-            Ok(_) => "none",
-            Err(ApiError::Validation(_)) | Err(ApiError::InvalidAsset(_)) => "validation",
-            Err(ApiError::NotFound(_)) | Err(ApiError::NoRouteFound) => "not_found",
-            Err(ApiError::StaleMarketData { .. }) => "stale_market_data",
-            Err(_) => "internal",
-        };
+                let span = tracing::Span::current();
+                span.record("error_class", error_class);
+                span.record("latency_ms", latency_ms);
 
-        let latency_ms = start_time.elapsed().as_millis() as u64;
+                // Record Prometheus metrics
+                crate::metrics::record_quote_latency(
+                    std::time::Duration::from_millis(latency_ms),
+                    error_class,
+                    cache_hit,
+                );
 
-        let span = tracing::Span::current();
-        span.record("error_class", error_class);
-        span.record("latency_ms", latency_ms);
+                tracing::info!(
+                    metric = "stellarroute.quote.request",
+                    "Quote pipeline completed"
+                );
 
-        tracing::info!(
-            metric = "stellarroute.quote.request",
-            "Quote pipeline completed"
-        );
+                let envelope = crate::models::ApiResponse::new(quote, request_id.to_string());
+                Ok(Json(envelope))
+            }
+            Err(e) => {
+                let error_class = match &e {
+                    ApiError::Validation(_) | ApiError::InvalidAsset(_) => "validation",
+                    ApiError::NotFound(_) | ApiError::NoRouteFound => "not_found",
+                    ApiError::StaleMarketData { .. } => "stale_market_data",
+                    _ => "internal",
+                };
+                let latency_ms = start_time.elapsed().as_millis() as u64;
 
-        res.map(Json)
+                let span = tracing::Span::current();
+                span.record("error_class", error_class);
+                span.record("latency_ms", latency_ms);
+
+                // Record Prometheus metrics (errors always count as cache_hit=false)
+                crate::metrics::record_quote_latency(
+                    std::time::Duration::from_millis(latency_ms),
+                    error_class,
+                    false,
+                );
+
+                tracing::info!(
+                    metric = "stellarroute.quote.request",
+                    "Quote pipeline failed"
+                );
+
+                Err(e)
+            }
+        }
     }
     .instrument(span)
     .await
@@ -100,7 +127,7 @@ async fn get_quote_inner(
     quote_asset: AssetPath,
     params: QuoteParams,
     explain: bool,
-) -> Result<QuoteResponse> {
+) -> Result<(QuoteResponse, bool)> {
     let base = base_asset.to_canonical();
     let quote = quote_asset.to_canonical();
 
@@ -242,12 +269,12 @@ async fn get_quote_inner(
                 );
             }
 
-            Arc::new(Ok(response))
+            Arc::new(Ok((response, false)))
         })
         .await;
 
     match Arc::try_unwrap(result_arc) {
         Ok(res) => res,
-        Err(arc_res) => (*arc_res).clone(),
+        Err(arc_res) => arc_res.as_ref().clone(),
     }
 }

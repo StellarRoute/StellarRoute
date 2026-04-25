@@ -41,6 +41,7 @@ fn quote_response_includes_rationale_metadata() {
                 },
             ],
         }),
+        price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
     };

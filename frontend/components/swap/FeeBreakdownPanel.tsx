@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSwapI18n } from "@/lib/swap-i18n";
 
 interface FeeComponent {
   name: string;
@@ -39,15 +40,17 @@ export function FeeBreakdownPanel({
   totalFee,
   isDataAvailable = true,
 }: FeeBreakdownPanelProps) {
+  const { t } = useSwapI18n();
+
   if (!isDataAvailable) {
     return (
       <div className="rounded-xl border border-border/50 p-4 space-y-3 bg-muted/30">
         <div className="flex items-center gap-2 text-muted-foreground">
           <DollarSign className="h-4 w-4" />
-          <span className="text-sm font-medium">Fee Estimate</span>
+          <span className="text-sm font-medium">{t("swap.fees.unavailableTitle")}</span>
         </div>
         <p className="text-xs text-muted-foreground text-center py-4">
-          Fee estimates are currently unavailable. Please try again later.
+          {t("swap.fees.unavailableBody")}
         </p>
       </div>
     );
@@ -57,7 +60,7 @@ export function FeeBreakdownPanel({
     <div className="rounded-xl border border-border/50 p-4 space-y-4 bg-muted/30">
       <div className="flex items-center gap-2">
         <DollarSign className="h-4 w-4 text-primary" />
-        <span className="text-sm font-medium">Fee Breakdown</span>
+        <span className="text-sm font-medium">{t("swap.fees.title")}</span>
       </div>
 
       {/* Protocol Fees Section */}
@@ -65,7 +68,7 @@ export function FeeBreakdownPanel({
         <div className="flex items-center gap-1.5">
           <Layers className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Protocol Fees
+            {t("swap.fees.protocolSection")}
           </span>
         </div>
         <div className="space-y-1.5 pl-1">
@@ -95,7 +98,7 @@ export function FeeBreakdownPanel({
         <div className="flex items-center gap-1.5">
           <TrendingDown className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Network Costs
+            {t("swap.fees.networkSection")}
           </span>
         </div>
         <div className="space-y-1.5 pl-1">
@@ -123,11 +126,11 @@ export function FeeBreakdownPanel({
       {/* Total and Net Output */}
       <div className="pt-3 border-t border-border/50 space-y-2">
         <div className="flex justify-between items-center text-sm">
-          <span className="text-muted-foreground font-medium">Total Fees</span>
+          <span className="text-muted-foreground font-medium">{t("swap.fees.total")}</span>
           <span className="font-semibold text-amber-600">{totalFee}</span>
         </div>
         <div className="flex justify-between items-center text-sm">
-          <span className="text-muted-foreground font-medium">Net Output</span>
+          <span className="text-muted-foreground font-medium">{t("swap.fees.netOutput")}</span>
           <span className="font-semibold text-emerald-600">{netOutput}</span>
         </div>
       </div>

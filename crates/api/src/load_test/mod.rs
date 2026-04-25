@@ -2,6 +2,13 @@
 //!
 //! Demonstrates stable throughput under sustained load
 
+pub mod harness;
+
+pub use harness::{
+    AmountDistribution, DegradationScenario, HarnessConfig, HarnessResults, LoadTestHarness,
+    TrafficMix, TrafficType,
+};
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -145,7 +152,7 @@ impl Default for LoadTestMetrics {
 }
 
 /// Calculate percentile from sorted latencies
-fn percentile(sorted_latencies: &[u128], percentile: f64) -> u128 {
+pub fn percentile(sorted_latencies: &[u128], percentile: f64) -> u128 {
     if sorted_latencies.is_empty() {
         return 0;
     }
@@ -239,5 +246,23 @@ mod tests {
         assert_eq!(percentile(&latencies, 50.0), 5);
         assert_eq!(percentile(&latencies, 95.0), 10);
         assert_eq!(percentile(&latencies, 99.0), 10);
+    }
+
+    #[tokio::test]
+    async fn run_load_test_completes_without_hanging() {
+        let config = LoadTestConfig {
+            concurrent_requests: 4,
+            total_requests: 4,
+            requests_per_second: 1,
+            duration_secs: 1,
+        };
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            run_load_test(config, || {}),
+        )
+        .await;
+
+        assert!(result.is_ok(), "load test timed out unexpectedly");
     }
 }

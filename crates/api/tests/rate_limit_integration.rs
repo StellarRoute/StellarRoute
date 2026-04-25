@@ -51,7 +51,7 @@ fn endpoint_config_selects_pairs_limit() {
     std::env::remove_var("RATE_LIMIT_WINDOW_SECS");
 
     let cfg = EndpointConfig::default();
-    assert_eq!(cfg.for_path("/api/v1/pairs").max_requests, 60);
+    assert_eq!(cfg.for_path("/api/v1/pairs", None).max_requests, 60);
 }
 
 #[test]
@@ -62,7 +62,11 @@ fn endpoint_config_selects_orderbook_limit() {
     std::env::remove_var("RATE_LIMIT_WINDOW_SECS");
 
     let cfg = EndpointConfig::default();
-    assert_eq!(cfg.for_path("/api/v1/orderbook/XLM/USDC").max_requests, 30);
+    assert_eq!(
+        cfg.for_path("/api/v1/orderbook/XLM/USDC", None)
+            .max_requests,
+        60
+    );
 }
 
 #[test]
@@ -73,7 +77,10 @@ fn endpoint_config_selects_quote_limit() {
     std::env::remove_var("RATE_LIMIT_WINDOW_SECS");
 
     let cfg = EndpointConfig::default();
-    assert_eq!(cfg.for_path("/api/v1/quote/XLM/USDC").max_requests, 100);
+    assert_eq!(
+        cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests,
+        20
+    );
 }
 
 #[test]
@@ -84,7 +91,7 @@ fn endpoint_config_selects_default_for_health() {
     std::env::remove_var("RATE_LIMIT_WINDOW_SECS");
 
     let cfg = EndpointConfig::default();
-    assert_eq!(cfg.for_path("/health").max_requests, 200);
+    assert_eq!(cfg.for_path("/health", None).max_requests, 120);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +214,7 @@ async fn rate_limit_returns_429_after_limit_exceeded() {
             max_requests: 200,
             window: Duration::from_secs(60),
         },
+        tenant_overrides: std::collections::HashMap::new(),
     };
 
     let layer = RateLimitLayer::in_memory(cfg);
@@ -295,6 +303,7 @@ async fn rate_limit_429_content_type_is_json() {
             max_requests: 200,
             window: Duration::from_secs(60),
         },
+        tenant_overrides: std::collections::HashMap::new(),
     };
 
     let layer = RateLimitLayer::in_memory(cfg);
@@ -364,6 +373,7 @@ async fn different_ips_have_independent_limits() {
             max_requests: 200,
             window: Duration::from_secs(60),
         },
+        tenant_overrides: std::collections::HashMap::new(),
     };
 
     use axum::{routing::get, Router};

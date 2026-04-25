@@ -215,8 +215,10 @@ mod tests {
 
     #[test]
     fn test_sampling_ratio_clamped() {
-        let mut config = TracingConfig::default();
-        config.sampling_ratio = 1.5;
+        let config = TracingConfig {
+            sampling_ratio: 1.5,
+            ..Default::default()
+        };
         let clamped = config.sampling_ratio.clamp(0.0, 1.0);
         assert!((clamped - 1.0).abs() < f64::EPSILON);
     }

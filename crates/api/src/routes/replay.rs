@@ -62,7 +62,7 @@ pub async fn list_artifacts(
 ) -> Result<Json<ListResponse>> {
     let limit = params.limit.clamp(1, 100);
     let artifacts = ReplayArtifact::list(
-        &state.db,
+        state.db.read_pool(),
         params.incident_id.as_deref(),
         params.base.as_deref(),
         params.quote.as_deref(),
@@ -80,7 +80,7 @@ pub async fn get_artifact(
     Path(artifact_id): Path<String>,
 ) -> Result<Json<ReplayArtifact>> {
     let id = parse_uuid(&artifact_id)?;
-    let artifact = ReplayArtifact::fetch(&state.db, id).await?;
+    let artifact = ReplayArtifact::fetch(state.db.read_pool(), id).await?;
     Ok(Json(artifact))
 }
 
@@ -90,7 +90,7 @@ pub async fn run_replay(
     Path(artifact_id): Path<String>,
 ) -> Result<Json<ReplayOutput>> {
     let id = parse_uuid(&artifact_id)?;
-    let artifact = ReplayArtifact::fetch(&state.db, id).await?;
+    let artifact = ReplayArtifact::fetch(state.db.read_pool(), id).await?;
     let output = ReplayEngine::run(&artifact)?;
     Ok(Json(output))
 }
@@ -101,7 +101,7 @@ pub async fn diff_replay(
     Path(artifact_id): Path<String>,
 ) -> Result<Json<DiffReport>> {
     let id = parse_uuid(&artifact_id)?;
-    let artifact = ReplayArtifact::fetch(&state.db, id).await?;
+    let artifact = ReplayArtifact::fetch(state.db.read_pool(), id).await?;
     let output = ReplayEngine::run(&artifact)?;
     let report = DiffEngine::diff(&artifact, &output);
     Ok(Json(report))

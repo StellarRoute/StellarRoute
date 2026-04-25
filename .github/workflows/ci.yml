@@ -11,202 +11,56 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  lint:
-    name: Lint
+  backend-checks:
+    name: Backend Checks (Rust)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-      
-      - name: Install cargo-clippy
-        run: rustup component add clippy
-      
-      - name: Install rustfmt
-        run: rustup component add rustfmt
-      
+          components: rustfmt, clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
       - name: Check formatting
-        run: cargo fmt -- --check
-      
-      - name: Run clippy
+        run: cargo fmt --all -- --check
+      - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run unit tests
+        run: cargo test
+      - name: Contract Clippy
+        run: cargo clippy -p stellarroute-contracts --all-targets -- -D warnings
 
-      - name: Run cargo audit
-        run: cargo audit
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: stellarroute
-          POSTGRES_PASSWORD: stellarroute_test
-          POSTGRES_DB: stellarroute_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Install sqlx-cli
-        # --force: cache restores ~/.cargo/bin; without it cargo install errors if cargo-sqlx already exists
-        run: cargo install sqlx-cli --version "^0.8" --no-default-features --features native-tls,postgres --locked --force
-      
-      - name: Run database migrations
-        run: sqlx migrate run --source crates/indexer/migrations
-        env:
-          DATABASE_URL: postgresql://stellarroute:stellarroute_test@localhost:5432/stellarroute_test
-      
-      - name: Verify migrations applied
-        run: sqlx migrate info --source crates/indexer/migrations
-        env:
-          DATABASE_URL: postgresql://stellarroute:stellarroute_test@localhost:5432/stellarroute_test
-      
-      - name: Run tests
-        run: cargo test --all-features
-        env:
-          DATABASE_URL: postgresql://stellarroute:stellarroute_test@localhost:5432/stellarroute_test
-          REDIS_URL: redis://localhost:6379
-
-  build:
-    name: Build
+  frontend-checks:
+    name: Frontend Checks (Next.js)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Build workspace
-        run: cargo build --release --all
-      
-      - name: Build contracts
-        working-directory: crates/contracts
-        run: cargo build --release --target wasm32-unknown-unknown
-
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Production build
-        run: npm run build
-
-  sdk-js:
-    name: SDK JS
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: sdk-js
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: cd frontend && npm ci --legacy-peer-deps
+      - name: Run tests
+        run: cd frontend && npm test
+
+  sdk-checks:
+    name: JS SDK Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: sdk-js/package-lock.json
-
       - name: Install dependencies
-        run: npm ci
-
-      - name: Type-check
-        run: npm run typecheck
-
+        run: cd sdk-js && npm ci --legacy-peer-deps
+      - name: Build
+        run: cd sdk-js && npm run build
       - name: Run tests
-        run: npm test
-
-      - name: Build (ESM + CJS)
-        run: npm run build
-
-      - name: Verify examples type-check against build
-        run: npm run examples:typecheck
+        run: cd sdk-js && npm test

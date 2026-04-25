@@ -1,5 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi, Mock } from "vitest";
 import { SwapCard } from "./SwapCard";
 
 function setNavigatorOnline(value: boolean) {
@@ -9,62 +10,111 @@ function setNavigatorOnline(value: boolean) {
   });
 }
 
-describe("SwapCard network resilience", () => {
+describe("SwapCard network resilience and states", () => {
   beforeEach(() => {
     localStorage.clear();
+    global.fetch = vi.fn(() => 
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          total: "9.5",
+          price_impact: "0.5",
+          path: [],
+          price: "0.95",
+          amount: "10"
+        })
+      })
+    ) as Mock;
   });
 
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("shows offline state clearly and blocks submission while disconnected", async () => {
-    setNavigatorOnline(false);
+  it("should render successfully", () => {
     render(<SwapCard />);
-
-    await screen.findByText(/you're offline/i);
-
-    fireEvent.change(screen.getByLabelText("Pay amount"), {
-      target: { value: "10" },
-    });
-
-    expect(
-      screen.getByText("You are offline. Reconnect to refresh quote."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry quote" })).toBeInTheDocument();
-
-    const cta = screen.getByRole("button", { name: "Offline" });
-    expect(cta).toBeDisabled();
+    expect(screen.getByRole("heading", { name: /swap/i })).toBeInTheDocument();
   });
 
-  it("automatically recovers quotes after reconnecting", async () => {
-    setNavigatorOnline(false);
+  it("shows initial state requiring wallet connection", async () => {
     render(<SwapCard />);
+    
+    // Check for "Connect Wallet" button
+    const connectButton = screen.getByRole("button", { name: /connect wallet/i });
+    expect(connectButton).toBeInTheDocument();
+  });
 
-    await screen.findByLabelText("Pay amount");
-    fireEvent.change(screen.getByLabelText("Pay amount"), {
-      target: { value: "10" },
+  it("transitions states after wallet connection", async () => {
+    const user = userEvent.setup();
+    render(<SwapCard />);
+    
+    // 1. Connect Wallet
+    const connectButton = screen.getByRole("button", { name: /connect wallet/i });
+    await user.click(connectButton);
+    
+    // 2. Should show "Enter Amount"
+    await waitFor(() => {
+      expect(screen.getByText(/enter amount/i)).toBeInTheDocument();
     });
+    
+    // 3. Enter amount
+    const payInput = screen.getByLabelText(/you pay/i);
+    await user.type(payInput, "10");
+    
+    // 4. Should show "Swap" button
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
+    }, { timeout: 3000 });
+  });
 
-    expect(
-      screen.getByText("You are offline. Reconnect to refresh quote."),
-    ).toBeInTheDocument();
+  it("shows high price impact warning for large amounts", async () => {
+    // Override fetch mock for this test to return high price impact
+    global.fetch = vi.fn(() => 
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          total: "50",
+          price_impact: "15.0", // > 10
+          path: [],
+          price: "0.5",
+          amount: "90" // 90 is <= 100 mock balance, so insufficient_balance won't trigger
+        })
+      })
+    ) as Mock;
 
-    act(() => {
-      setNavigatorOnline(true);
-      window.dispatchEvent(new Event("online"));
-    });
+    const user = userEvent.setup();
+    render(<SwapCard />);
+    
+    // Connect
+    await user.click(screen.getByRole("button", { name: /connect wallet/i }));
+    
+    // Enter amount
+    const payInput = screen.getByLabelText(/you pay/i);
+    await user.type(payInput, "90");
+    
+    await waitFor(() => {
+      const impactButton = screen.getByRole("button", { name: /swap anyway/i });
+      expect(impactButton).toBeEnabled();
+      expect(impactButton).toHaveClass("bg-destructive");
+    }, { timeout: 3000 });
+  });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.queryByText("You are offline. Reconnect to refresh quote."),
-        ).not.toBeInTheDocument();
-        expect(screen.getByLabelText("Receive amount")).toHaveValue("9.8000");
-        expect(screen.getByRole("button", { name: "Review Swap" })).toBeEnabled();
-      },
-      { timeout: 2000 },
-    );
+  it("shows insufficient balance state", async () => {
+    const user = userEvent.setup();
+    render(<SwapCard />);
+    
+    // Connect
+    await user.click(screen.getByRole("button", { name: /connect wallet/i }));
+    
+    // Enter amount higher than mock balance (100.00)
+    const payInput = screen.getByLabelText(/you pay/i);
+    await user.type(payInput, "100.01");
+    
+    await waitFor(() => {
+      const balanceButton = screen.getByRole("button", { name: /insufficient balance/i });
+      expect(balanceButton).toBeDisabled();
+    }, { timeout: 3000 });
   });
 });

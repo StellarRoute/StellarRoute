@@ -10,7 +10,7 @@ use axum::{
 };
 use serde_json::Value;
 use sqlx::PgPool;
-use stellarroute_api::{Server, ServerConfig};
+use stellarroute_api::{state::DatabasePools, Server, ServerConfig};
 use tower::ServiceExt;
 
 // ---------------------------------------------------------------------------
@@ -54,6 +54,27 @@ fn health_response_serializes_to_spec_shape() {
     );
 }
 
+#[test]
+fn dependencies_health_response_serializes_to_spec_shape() {
+    use std::collections::HashMap;
+    use stellarroute_api::models::DependenciesHealthResponse;
+
+    let mut components = HashMap::new();
+    components.insert("database".to_string(), "healthy".to_string());
+    components.insert("horizon".to_string(), "degraded".to_string());
+
+    let response = DependenciesHealthResponse {
+        status: "degraded".to_string(),
+        timestamp: "2026-01-20T12:00:00+00:00".to_string(),
+        components,
+    };
+
+    let json = serde_json::to_value(&response).expect("serialization failed");
+    assert_eq!(json["status"], "degraded");
+    assert_eq!(json["components"]["database"], "healthy");
+    assert_eq!(json["components"]["horizon"], "degraded");
+}
+
 // ---------------------------------------------------------------------------
 // Live endpoint tests (require DATABASE_URL)
 // ---------------------------------------------------------------------------
@@ -69,7 +90,7 @@ async fn health_returns_200_when_db_is_up() {
         .await
         .expect("Failed to connect to database");
 
-    let router = Server::new(ServerConfig::default(), pool)
+    let router = Server::new(ServerConfig::default(), DatabasePools::new(pool, None))
         .await
         .into_router();
 
@@ -117,7 +138,7 @@ async fn health_has_json_content_type() {
         .await
         .expect("Failed to connect to database");
 
-    let router = Server::new(ServerConfig::default(), pool)
+    let router = Server::new(ServerConfig::default(), DatabasePools::new(pool, None))
         .await
         .into_router();
 

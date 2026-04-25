@@ -1,12 +1,6 @@
 //! Distributed tracing middleware for request context propagation.
 
-use axum::{
-    body::Body,
-    extract::Request,
-    http::HeaderMap,
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, extract::Request, http::HeaderMap, middleware::Next, response::Response};
 use opentelemetry::propagation::TextMapPropagator;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use std::collections::HashMap;
@@ -71,12 +65,15 @@ pub async fn trace_layer(request: Request<Body>, next: Next) -> Response {
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+    use opentelemetry::trace::TraceContextExt;
 
     #[test]
     fn test_extract_context_no_headers() {
         let headers = HeaderMap::new();
         let ctx = extract_context_from_headers(&headers);
-        assert!(ctx.span().span_context().trace_id().to_string() == "00000000000000000000000000000000");
+        assert!(
+            ctx.span().span_context().trace_id().to_string() == "00000000000000000000000000000000"
+        );
     }
 
     #[test]
@@ -87,7 +84,8 @@ mod tests {
             HeaderValue::from_static("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"),
         );
         let ctx = extract_context_from_headers(&headers);
-        let span_ctx = ctx.span().span_context();
+        let span = ctx.span();
+        let span_ctx = span.span_context();
         assert_eq!(
             span_ctx.trace_id().to_string(),
             "0af7651916cd43dd8448eb211c80319c"

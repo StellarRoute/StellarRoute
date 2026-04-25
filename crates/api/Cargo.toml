@@ -14,6 +14,10 @@ path = "src/bin/stellarroute-api.rs"
 name = "replay-cli"
 path = "src/bin/replay_cli.rs"
 
+[[bin]]
+name = "m2-readiness"
+path = "src/bin/m2_readiness.rs"
+
 [dependencies]
 # Workspace dependencies
 tokio.workspace = true
@@ -37,6 +41,8 @@ chrono.workspace = true
 uuid.workspace = true
 config.workspace = true
 redis.workspace = true
+reqwest.workspace = true
+rand.workspace = true
 
 # Internal dependencies
 stellarroute-indexer = { path = "../indexer" }
@@ -50,6 +56,10 @@ utoipa-swagger-ui = { version = "6", features = ["axum"] }
 parking_lot = "0.12"
 arc-swap = { workspace = true }
 dashmap = "5.5"
+
+# Metrics
+prometheus = "0.13"
+lazy_static = "1.4"
 
 # CLI argument parsing
 clap = { version = "4", features = ["derive"] }

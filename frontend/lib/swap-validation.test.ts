@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SwapValidationSchema, SWAP_VALIDATION_MESSAGES } from "./swap-validation";
+import { SwapValidationSchema, SWAP_VALIDATION_MESSAGES, type SwapValidationInput } from "./swap-validation";
 
 const BASE = "native";
 const COUNTER = "USDC:GA5Z...";
@@ -199,7 +199,7 @@ describe("SwapValidationSchema", () => {
       buyAssetId: COUNTER,
       slippage: 0.5,
       newField: "some value"
-    } as any);
+    } as unknown as SwapValidationInput);
 
     expect(result.isValid).toBe(true);
   });

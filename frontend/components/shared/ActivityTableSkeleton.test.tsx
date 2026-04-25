@@ -19,7 +19,7 @@ describe("ActivityTableSkeleton", () => {
   it("should render table header with all columns", () => {
     const { container } = render(<ActivityTableSkeleton />);
 
-    const headerRow = container.querySelector(".bg-muted\\/50.sticky");
+    const headerRow = container.querySelector(".sticky");
     
     // Should have 6 column headers (Date, Swap, Rate, Status, Amount, Explorer)
     expect(headerRow).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe("ActivityTableSkeleton", () => {
   it("should render alternating row colors for better visual separation", () => {
     const { container } = render(<ActivityTableSkeleton />);
 
-    const rows = container.querySelectorAll(".border-b.flex:not(.bg-muted\\/50)");
+    const rows = container.querySelectorAll(".border-b.flex:not(.sticky)");
     
     // All data rows should have hover state
     rows.forEach((row) => {

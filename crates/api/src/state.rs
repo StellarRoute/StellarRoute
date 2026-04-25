@@ -8,7 +8,6 @@ use tokio::sync::Mutex;
 use crate::cache::{CacheManager, SingleFlight};
 use crate::models::{QuoteResponse, RoutesResponse};
 use crate::replay::capture::CaptureHook;
-use crate::graph::GraphManager;
 use crate::routes::ws::WsState;
 use stellarroute_routing::health::circuit_breaker::{CircuitBreakerRegistry, BreakerConfig};
 
@@ -94,6 +93,17 @@ pub struct AppState {
     pub graph_manager: Arc<GraphManager>,
     pub ws: Option<Arc<WsState>>,
     pub circuit_breaker: Arc<CircuitBreakerRegistry>,
+    /// API-level kill switches for sources/venues
+    pub kill_switch: Arc<crate::kill_switch::KillSwitchManager>,
+    /// Shared liquidity anomaly detector
+    pub anomaly_detector:
+        Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
+    /// Canary configuration for side-by-side policy evaluation
+    pub canary_config: Arc<tokio::sync::RwLock<CanaryConfig>>,
+    /// Canary history buffer for operator reporting
+    pub canary_history: Arc<tokio::sync::RwLock<std::collections::VecDeque<CanaryEvaluation>>>,
+    /// Dynamic timeout controller for quote discovery
+    pub timeout_controller: Arc<TimeoutController>,
 }
 
 impl AppState {
@@ -101,10 +111,12 @@ impl AppState {
         Self::new_with_policy(db, CachePolicy::default())
     }
 
-    pub fn new_with_policy(db: PgPool, cache_policy: CachePolicy) -> Self {
-        let worker_pool = Self::create_worker_pool(db.clone());
-        let graph_manager = Arc::new(GraphManager::new(db.clone()));
+    pub fn new_with_policy(db: DatabasePools, cache_policy: CachePolicy) -> Self {
+        let worker_pool = Self::create_worker_pool(db.write_pool().clone());
+        let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
         graph_manager.clone().start_sync();
+
+        let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(None));
 
         Self {
             db,
@@ -116,9 +128,16 @@ impl AppState {
             quote_single_flight: Arc::new(SingleFlight::new()),
             replay_capture: None,
             routes_single_flight: Arc::new(SingleFlight::new()),
+            anomaly_detector: graph_manager.anomaly_detector.clone(),
             graph_manager,
             ws: None,
             circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
+            kill_switch,
+            canary_config: Arc::new(tokio::sync::RwLock::new(CanaryConfig::default())),
+            canary_history: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(1000),
+            )),
+            timeout_controller: Arc::new(TimeoutController::new(Default::default())),
         }
     }
 
@@ -127,17 +146,29 @@ impl AppState {
     }
 
     pub fn with_cache_and_policy(
-        db: PgPool,
+        db: DatabasePools,
         cache: CacheManager,
         cache_policy: CachePolicy,
     ) -> Self {
-        let worker_pool = Self::create_worker_pool(db.clone());
-        let graph_manager = Arc::new(GraphManager::new(db.clone()));
+        let worker_pool = Self::create_worker_pool(db.write_pool().clone());
+        let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
         graph_manager.clone().start_sync();
+
+        let cache_arc = Arc::new(Mutex::new(cache));
+        let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(Some(
+            cache_arc.clone(),
+        )));
+
+        // Spawn a task to load initial state from Redis
+        let ks = kill_switch.clone();
+        tokio::spawn(async move {
+            ks.load().await;
+            ks.start_sync();
+        });
 
         Self {
             db,
-            cache: Some(Arc::new(Mutex::new(cache))),
+            cache: Some(cache_arc),
             version: env!("CARGO_PKG_VERSION").to_string(),
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
@@ -145,9 +176,16 @@ impl AppState {
             quote_single_flight: Arc::new(SingleFlight::new()),
             replay_capture: None,
             routes_single_flight: Arc::new(SingleFlight::new()),
+            anomaly_detector: graph_manager.anomaly_detector.clone(),
             graph_manager,
             ws: None,
             circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
+            kill_switch,
+            canary_config: Arc::new(tokio::sync::RwLock::new(CanaryConfig::default())),
+            canary_history: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(1000),
+            )),
+            timeout_controller: Arc::new(TimeoutController::new(Default::default())),
         }
     }
 

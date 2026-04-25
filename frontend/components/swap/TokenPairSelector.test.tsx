@@ -240,11 +240,10 @@ describe("TokenPairSelector", () => {
       />
     );
 
-    const sellButtons = screen.getAllByText("You sell");
-    const buyButtons = screen.getAllByText("You buy");
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(2);
 
-    expect(sellButtons[0].closest("button")).toHaveProperty("disabled", true);
-    expect(buyButtons[0].closest("button")).toHaveProperty("disabled", true);
+    const swapButton = screen.getByTitle("Swap base and quote assets");
+    expect(swapButton).toHaveProperty("disabled", true);
   });
 
   it("filters quote assets based on selected base", async () => {

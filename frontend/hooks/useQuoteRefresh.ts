@@ -63,6 +63,8 @@ export type UseQuoteRefreshState = UseApiState<PriceQuote> & {
   isRecovering: boolean;
   /** Current transient retry attempt count for the active request context. */
   retryAttempt: number;
+  /** Remaining wait time from Retry-After, if the API is currently rate-limiting requests. */
+  rateLimitRemainingMs: number;
 };
 
 function isTransientQuoteError(err: Error): boolean {
@@ -108,6 +110,7 @@ export function useQuoteRefresh(
   const [isRecovering, setIsRecovering] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [rateLimitUntilMs, setRateLimitUntilMs] = useState(0);
 
   const hasValidInputs =
     Boolean(base) &&
@@ -126,6 +129,7 @@ export function useQuoteRefresh(
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional retry-state reset when request inputs change
     setRetryAttempt(0);
     setIsRecovering(false);
+    setRateLimitUntilMs(0);
   }, [base, quoteAsset, debouncedAmount, type]);
 
   useEffect(() => {
@@ -147,6 +151,7 @@ export function useQuoteRefresh(
           setLastQuotedAtMs(t);
           setRetryAttempt(0);
           setIsRecovering(false);
+          setRateLimitUntilMs(0);
           setState({ data, loading: false, error: null });
         }
       })
@@ -160,6 +165,15 @@ export function useQuoteRefresh(
             isOnline &&
             isTransientQuoteError(normalizedError) &&
             retryAttempt < maxAutoRetries;
+          const rateLimitDelayMs =
+            normalizedError instanceof StellarRouteApiError &&
+            normalizedError.isRateLimit
+              ? normalizedError.retryAfterMs
+              : null;
+
+          setRateLimitUntilMs(
+            rateLimitDelayMs ? Date.now() + rateLimitDelayMs : 0,
+          );
 
           setState((prev) => ({
             // Preserve last successful quote so users can still act on stale-but-visible data.
@@ -174,7 +188,7 @@ export function useQuoteRefresh(
             setIsRecovering(true);
             retryTimer = setTimeout(() => {
               setTick((n) => n + 1);
-            }, nextAttempt * retryBackoffMs);
+            }, rateLimitDelayMs ?? nextAttempt * retryBackoffMs);
             return;
           }
 
@@ -212,10 +226,16 @@ export function useQuoteRefresh(
   const refresh = useCallback(() => {
     if (!canRequest) return;
     const t = Date.now();
-    if (t < manualCooldownUntil) return;
+    if (t < manualCooldownUntil || t < rateLimitUntilMs) return;
     setManualCooldownUntil(t + manualRefreshCooldownMs);
+    setRateLimitUntilMs(0);
     setTick((n) => n + 1);
-  }, [canRequest, manualCooldownUntil, manualRefreshCooldownMs]);
+  }, [
+    canRequest,
+    manualCooldownUntil,
+    manualRefreshCooldownMs,
+    rateLimitUntilMs,
+  ]);
 
   useEffect(() => {
     if (!autoRefreshEnabled || !canRequest) return;
@@ -243,6 +263,8 @@ export function useQuoteRefresh(
 
   const isStale =
     data !== undefined && isQuoteStale(lastQuotedAtMs, nowMs, staleAfterMs);
+  const rateLimitRemainingMs =
+    rateLimitUntilMs > nowMs ? rateLimitUntilMs - nowMs : 0;
 
   return {
     data,
@@ -256,5 +278,6 @@ export function useQuoteRefresh(
     lastQuotedAtMs,
     isRecovering,
     retryAttempt,
+    rateLimitRemainingMs,
   };
 }

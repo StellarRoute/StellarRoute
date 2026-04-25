@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,8 +44,8 @@ pub struct VenueBreaker {
     pub last_transition_at: DateTime<Utc>,
 }
 
-impl VenueBreaker {
-    pub fn new() -> Self {
+impl Default for VenueBreaker {
+    fn default() -> Self {
         Self {
             state: BreakerState::Closed,
             consecutive_failures: 0,
@@ -53,6 +53,12 @@ impl VenueBreaker {
             last_failure_at: None,
             last_transition_at: Utc::now(),
         }
+    }
+}
+
+impl VenueBreaker {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn record_failure(&mut self, config: &BreakerConfig) {
@@ -68,10 +74,9 @@ impl VenueBreaker {
                 }
             }
             BreakerState::HalfOpen => {
-                // Any failure in HalfOpen trips it back to Open immediately
                 self.transition_to(BreakerState::Open);
             }
-            BreakerState::Open => {} // Already open
+            BreakerState::Open => {}
         }
     }
 
@@ -85,11 +90,8 @@ impl VenueBreaker {
                     self.transition_to(BreakerState::Closed);
                 }
             }
-            BreakerState::Open => {
-                // Successes while open shouldn't happen if we're excluding, 
-                // but if they do (manual probes), we might want to track them.
-            }
-            BreakerState::Closed => {} // Stays closed
+            BreakerState::Open => {}
+            BreakerState::Closed => {}
         }
     }
 
@@ -129,24 +131,26 @@ impl CircuitBreakerRegistry {
     }
 
     pub fn is_venue_excluded(&self, venue_ref: &str) -> bool {
-        let breaker_arc = self.breakers.entry(venue_ref.to_string()).or_insert_with(|| {
-            Arc::new(Mutex::new(VenueBreaker::new()))
-        });
-        
+        let breaker_arc = self
+            .breakers
+            .entry(venue_ref.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(VenueBreaker::new())));
+
         let mut breaker = breaker_arc.lock();
         breaker.check_and_transition(&self.config);
-        
-        // Exclude if state is Open. 
-        // HalfOpen should probably allow limited traffic, 
+
+        // Exclude if state is Open.
+        // HalfOpen should probably allow limited traffic,
         // but for now let's say it's "included" so it can be probed.
         breaker.state == BreakerState::Open
     }
 
     pub fn record_result(&self, venue_ref: &str, success: bool) {
-        let breaker_arc = self.breakers.entry(venue_ref.to_string()).or_insert_with(|| {
-            Arc::new(Mutex::new(VenueBreaker::new()))
-        });
-        
+        let breaker_arc = self
+            .breakers
+            .entry(venue_ref.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(VenueBreaker::new())));
+
         let mut breaker = breaker_arc.lock();
         if success {
             breaker.record_success(&self.config);
@@ -209,7 +213,7 @@ mod tests {
             recovery_timeout_secs: 1,
         };
         let mut breaker = VenueBreaker::new();
-        
+
         breaker.record_failure(&config);
         breaker.record_failure(&config);
         assert_eq!(breaker.state, BreakerState::Open);

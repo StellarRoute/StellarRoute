@@ -56,25 +56,32 @@ impl QuoteParams {
     pub fn validate(&self) -> std::result::Result<(), (String, String)> {
         if let Some(ref amount_str) = self.amount {
             let amount: f64 = amount_str.parse().map_err(|_| {
-                ("invalid_amount".to_string(), "Amount must be a numeric string".to_string())
+                (
+                    "invalid_amount".to_string(),
+                    "Amount must be a numeric string".to_string(),
+                )
             })?;
             if amount <= 0.0 {
-                return Err(("invalid_amount".to_string(), "Amount must be greater than zero".to_string()));
+                return Err((
+                    "invalid_amount".to_string(),
+                    "Amount must be greater than zero".to_string(),
+                ));
             }
         }
-        
+
         if self.slippage_bps() > MAX_SLIPPAGE_BPS {
             return Err((
                 "invalid_slippage".to_string(),
-                format!("slippage_bps must be between 0 and {} (100%)", MAX_SLIPPAGE_BPS)
+                format!(
+                    "slippage_bps must be between 0 and {} (100%)",
+                    MAX_SLIPPAGE_BPS
+                ),
             ));
         }
 
         Ok(())
     }
 }
-
-
 
 fn default_quote_type() -> QuoteType {
     QuoteType::Sell

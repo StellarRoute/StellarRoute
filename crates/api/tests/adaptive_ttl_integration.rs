@@ -1,6 +1,4 @@
-use stellarroute_api::cache::{
-    AdaptiveTtlConfig, AdaptiveTtlEngine, MarketMetrics, TtlReason,
-};
+use stellarroute_api::cache::{AdaptiveTtlConfig, AdaptiveTtlEngine, MarketMetrics, TtlReason};
 
 fn calm_market_config() -> AdaptiveTtlConfig {
     AdaptiveTtlConfig {
@@ -45,7 +43,10 @@ async fn test_calm_market_fixture() {
 
     let decision = engine.compute_ttl("XLM/USDC").await;
 
-    assert!(decision.ttl_ms > 10_000, "Calm market should have longer TTL");
+    assert!(
+        decision.ttl_ms > 10_000,
+        "Calm market should have longer TTL"
+    );
     assert_eq!(decision.reason, TtlReason::LowVolatility);
 }
 
@@ -64,7 +65,10 @@ async fn test_volatile_market_fixture() {
 
     let decision = engine.compute_ttl("XLM/USDC").await;
 
-    assert!(decision.ttl_ms < 1_000, "Volatile market should have shorter TTL");
+    assert!(
+        decision.ttl_ms < 1_000,
+        "Volatile market should have shorter TTL"
+    );
     assert_eq!(decision.reason, TtlReason::HighVolatility);
 }
 

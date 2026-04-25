@@ -318,6 +318,33 @@ When in doubt, **open a Discussion** — there are no silly questions. 🙂
 
 ---
 
+## Secrets Rotation Checklist
+
+When rotating credentials (DATABASE_URL, REDIS_URL, SOROBAN_RPC_URL), follow this checklist to ensure zero downtime and security:
+
+1. **Database Credentials**:
+   - [ ] Create a new database user with the same permissions.
+   - [ ] Update the environment variable in the staging environment.
+   - [ ] Verify that the service starts correctly (startup checks will pass).
+   - [ ] Deploy the change to production.
+   - [ ] Monitor logs for connection errors.
+   - [ ] Once all instances are updated, revoke the old user's credentials.
+
+2. **Redis Credentials**:
+   - [ ] Update the password in Redis (if applicable, using `CONFIG SET requirepass`).
+   - [ ] Update the environment variable in the application.
+   - [ ] Restart the application.
+
+3. **Soroban RPC URL/API Keys**:
+   - [ ] If using a provider with API keys, generate a new key.
+   - [ ] Update the environment variable.
+   - [ ] Verify connectivity via startup checks.
+   - [ ] Deactivate the old API key.
+
+**Security Reminder**: Never log full connection strings. Our configuration system masks these automatically in `Debug` output. If you add new sensitive environment variables, ensure they are also masked.
+
+---
+
 **Thank you for contributing to StellarRoute!** Every PR, no matter how small, helps build better infrastructure for the Stellar ecosystem. 🚀
 
 _Built with ❤️ for the Stellar ecosystem_

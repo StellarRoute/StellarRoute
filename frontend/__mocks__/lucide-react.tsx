@@ -49,6 +49,11 @@ export const TrendingUp = Icon;
 
 export const TriangleAlert = Icon;
 export const AlertCircle = Icon;
+export const MapPin = Icon;
+export const HelpCircle = Icon;
+export const ArrowUpDown = Icon;
+export const Settings2 = Icon;
+export const Route = Icon;
 
 // Sonner "Toaster" icon set
 export const CircleCheckIcon = Icon;

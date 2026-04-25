@@ -2,11 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -14,25 +12,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-import { TransactionConfirmationModal, type BatchSwapItem } from "@/components/shared/TransactionConfirmationModal";
+import { TransactionConfirmationModal } from "@/components/shared/TransactionConfirmationModal";
+import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
 import { usePairs } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
-import { useTransactionHistory } from "@/hooks/useTransactionHistory";
+import { useTransactionLifecycle } from "@/hooks/useTransactionLifecycle";
 import { useWallet } from "@/components/providers/wallet-provider";
 import { useSettings } from "@/components/providers/settings-provider";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-
+import { toast } from "sonner";
 import type { PathStep, TradingPair } from "@/types";
-import { TransactionStatus } from "@/types/transaction";
-
 import {
   formatMaxAmountForInput,
   maxDecimalsForSellAsset,
+  parseSellAmount,
 } from "@/lib/amount-input";
+
 import { QUOTE_AUTO_REFRESH_INTERVAL_MS } from "@/lib/quote-stale";
-import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
-import { SwapValidationSchema } from "@/lib/swap-validation";
 
 const MOCK_WALLET = "GBSU...XYZ9";
 
@@ -57,21 +52,21 @@ export function DemoSwap() {
   const { data: pairs, loading: pairsLoading, error: pairsError } = usePairs();
   const { isConnected, stubSpendableBalance } = useWallet();
   const { settings } = useSettings();
-  const { isOnline, isOffline } = useOnlineStatus();
 
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [sellRaw, setSellRaw] = useState<string>("");
-  const [slippage, setSlippage] = useState<number | null>(0.5);
-
-  const [batch, setBatch] = useState<BatchSwapItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [txStatus, setTxStatus] = useState<TransactionStatus | "review">(
-    "review",
-  );
-  const [errorMessage, setErrorMessage] = useState<string>();
-  const [txHash, setTxHash] = useState<string>();
 
-  const { addTransaction } = useTransactionHistory(MOCK_WALLET);
+  const {
+    status: txStatus,
+    txHash,
+    errorMessage,
+    initiateSwap,
+    cancel,
+    resubmit,
+    tryAgain,
+    dismiss,
+  } = useTransactionLifecycle();
 
   useEffect(() => {
     if (!pairs?.length) return;
@@ -90,35 +85,15 @@ export function DemoSwap() {
 
   const sellMaxDecimals = selectedPair
     ? maxDecimalsForSellAsset(
-      selectedPair.base_asset,
-      selectedPair.base_decimals,
-    )
+        selectedPair.base_asset,
+        selectedPair.base_decimals,
+      )
     : maxDecimalsForSellAsset("native");
 
-  const inputValidation = SwapValidationSchema.validate(
-    {
-      amount: sellRaw,
-      maxDecimals: sellMaxDecimals,
-      sellAssetId: selectedPair?.base_asset,
-      buyAssetId: selectedPair?.counter_asset,
-      slippage,
-    },
-    { mode: "input" },
-  );
-  const submitValidation = SwapValidationSchema.validate(
-    {
-      amount: sellRaw,
-      maxDecimals: sellMaxDecimals,
-      sellAssetId: selectedPair?.base_asset,
-      buyAssetId: selectedPair?.counter_asset,
-      slippage,
-    },
-    { mode: "submit" },
-  );
+  const parseResult = parseSellAmount(sellRaw, sellMaxDecimals);
 
-  const parseResult = inputValidation.amountResult;
-
-  const numericForQuote = inputValidation.parsed.amount?.numeric;
+  const numericForQuote =
+    parseResult.status === "ok" ? parseResult.numeric : undefined;
 
   const quoteBase = selectedPair?.base_asset ?? "";
   const quoteCounter = selectedPair?.counter_asset ?? "";
@@ -131,15 +106,9 @@ export function DemoSwap() {
     manualRefreshCoolingDown,
     autoRefreshEnabled,
     setAutoRefreshEnabled,
-    isStale,
-    isRecovering,
-    retryAttempt,
-  } = useQuoteRefresh(quoteBase, quoteCounter, numericForQuote, "sell", {
-    isOnline,
-  });
+  } = useQuoteRefresh(quoteBase, quoteCounter, numericForQuote, "sell");
 
-  const refreshDisabled =
-    !isOnline || quoteLoading || manualRefreshCoolingDown || !numericForQuote;
+  const refreshDisabled = quoteLoading || manualRefreshCoolingDown || !numericForQuote;
 
   const amountInputInvalid =
     sellRaw.trim() !== "" &&
@@ -155,117 +124,65 @@ export function DemoSwap() {
     setSellRaw(formatMaxAmountForInput(stubSpendableBalance, sellMaxDecimals));
   }, [isConnected, stubSpendableBalance, sellMaxDecimals]);
 
-  const handleAddToBatch = () => {
-    if (parseResult.status !== "ok" || !selectedPair || !quote) {
-      toast.error("Valid quote required to add to batch.");
-      return;
-    }
-
-    const newItem: BatchSwapItem = {
-      fromAsset: selectedPair.base,
-      fromAmount: parseResult.normalized,
-      toAsset: selectedPair.counter,
-      toAmount: quote.total,
-      exchangeRate: quote.price,
-      priceImpact: priceImpactDisplay,
-      routePath: quote.path,
-    };
-
-    setBatch((prev) => [...prev, newItem]);
-    setSellRaw("");
-    toast.success("Added to batch", {
-      description: `${newItem.fromAmount} ${newItem.fromAsset} → ${newItem.toAmount} ${newItem.toAsset}`,
-    });
-  };
   const handleSwapClick = () => {
-    if (!isOnline) {
-      toast.error("You are offline. Reconnect to continue.");
+    if (parseResult.status !== "ok" || !selectedPair) {
+      toast.error("Enter a valid sell amount and select a pair.");
       return;
     }
-
-    if (!submitValidation.isValid) {
-      toast.error(submitValidation.issues[0]?.message ?? "Invalid swap inputs.");
-      return;
-    }
-
-    setTxStatus("review");
-    setErrorMessage(undefined);
-    setTxHash(undefined);
     setIsModalOpen(true);
   };
 
   const handleConfirm = () => {
-    if (!isOnline) {
-      setTxStatus("failed");
-      setErrorMessage("No internet connection. Reconnect and try again.");
-      return;
-    }
+    if (parseResult.status !== "ok" || !selectedPair) return;
+    const fromAmt = parseResult.normalized;
+    const toAmt = quote?.total ?? "10.5";
 
-    setTxStatus("pending");
-
-    setTimeout(() => {
-      setTxStatus("submitting");
-
-      setTimeout(() => {
-        setTxStatus("processing");
-
-        setTimeout(() => {
-          const isSuccess = Math.random() > 0.1; // Slightly better success rate for batches
-
-          if (isSuccess) {
-            const mockHash = "mock_tx_" + Math.random().toString(36).substring(7);
-            setTxHash(mockHash);
-            setTxStatus("success");
-
-            if (batch.length > 0) {
-              toast.success("Batch Successful!", {
-                description: `Executed ${batch.length} swaps in one atomic transaction.`,
-              });
-              
-              // Clear batch on success
-              setBatch([]);
-            } else {
-              const fromAmt = parseResult.status === "ok" ? parseResult.normalized : "0";
-              const toAmt = quote?.total ?? "0";
-              toast.success("Transaction Successful!", {
-                description: `Swapped ${fromAmt} ${selectedPair?.base ?? ""} for ${toAmt} ${selectedPair?.counter ?? ""}`,
-              });
-            }
-          } else {
-            setTxStatus("failed");
-            setErrorMessage("Atomic batch failed. Please check liquidity or slippage and try again.");
-            toast.error("Transaction Failed");
-          }
-        }, 1500);
-      }, 800);
-    }, 1200);
+    initiateSwap({
+      fromAsset: selectedPair.base ?? "XLM",
+      fromAmount: fromAmt,
+      toAsset: selectedPair.counter ?? "USDC",
+      toAmount: toAmt,
+      exchangeRate: quote?.price ?? "0.105",
+      priceImpact: "0.1%",
+      minReceived: toAmt,
+      networkFee: "0.00001",
+      routePath: quote?.path?.length ? quote.path : mockRoute,
+      walletAddress: MOCK_WALLET,
+    }).then(() => {
+      if (txStatus === "confirmed") {
+        toast.success("Transaction Successful!", {
+          description: `Swapped ${fromAmt} ${selectedPair.base ?? ""} for ${toAmt} ${selectedPair.counter ?? ""}`,
+        });
+      }
+    });
   };
 
-  const handleCancel = () => {
-    setTxStatus("review");
+  const handleDismiss = () => {
+    dismiss();
+    setIsModalOpen(false);
+  };
+
+  const handleDone = () => {
+    dismiss();
+    setIsModalOpen(false);
+  };
+
+  const handleTryAgain = () => {
+    tryAgain();
+  };
+
+  const handleResubmit = () => {
+    resubmit();
   };
 
   const receivePreview =
     quote && parseResult.status === "ok" ? quote.total : "—";
 
-  const priceImpactDisplay =
-    quote?.price_impact != null ? `${quote.price_impact}%` : "—";
-
-  const slippageWarning = inputValidation.warnings.slippage;
-  const slippageError = inputValidation.fieldErrors.slippage;
-
   return (
-    <Card className="mx-auto mt-8 max-w-lg border-primary/20 bg-background/50 p-6 shadow-lg backdrop-blur-sm">
+    <Card className="p-6 max-w-lg mx-auto shadow-lg mt-8 border-primary/20 bg-background/50 backdrop-blur-sm">
       <div className="space-y-4">
-        {isOffline && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            You&apos;re offline. Quotes are paused and swap submission is disabled
-            until connection is restored.
-          </div>
-        )}
-
         <div>
-          <h2 className="mb-1 text-xl font-bold">Swap Tokens</h2>
+          <h2 className="text-xl font-bold mb-1">Swap Tokens</h2>
           <p className="text-sm text-muted-foreground">
             Demo swap with sell amount validation and debounced quotes
           </p>
@@ -274,7 +191,7 @@ export function DemoSwap() {
         <div className="space-y-2">
           <span className="text-sm font-medium">Pair</span>
           {pairsLoading ? (
-            <Skeleton className="h-10 w-full rounded-md" />
+            <p className="text-sm text-muted-foreground">Loading pairs…</p>
           ) : pairsError ? (
             <p className="text-sm text-destructive">
               Could not load pairs. Start the API to select a market.
@@ -318,7 +235,6 @@ export function DemoSwap() {
               Max
             </Button>
           </div>
-
           <Input
             inputMode="decimal"
             autoComplete="off"
@@ -328,7 +244,6 @@ export function DemoSwap() {
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSellRaw(e.target.value)}
             className="text-lg font-medium"
           />
-
           <div className="min-h-[1.25rem] text-xs">
             {parseResult.status === "precision_exceeded" && (
               <span className="text-destructive">{parseResult.message}</span>
@@ -351,14 +266,15 @@ export function DemoSwap() {
           </div>
         </div>
 
-        <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+        <div className="space-y-4 bg-muted/20 p-4 rounded-lg border">
           <div>
             <span className="text-sm font-medium">Estimated receive</span>
-            <div className="mt-1 text-2xl font-bold text-success">
+            <div className="text-2xl font-bold mt-1 text-success">
               {quoteLoading && numericForQuote !== undefined ? (
-                <div className="flex items-center gap-2 h-8">
-                  <Skeleton className="h-7 w-32" />
-                </div>
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  ~ …
+                </span>
               ) : (
                 <>
                   {receivePreview}
@@ -367,116 +283,17 @@ export function DemoSwap() {
               )}
             </div>
             {quoteError && numericForQuote !== undefined && (
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-destructive">
-                <p>Quote failed: {quoteError.message}</p>
-                {isRecovering && (
-                  <p className="text-muted-foreground">
-                    Network looks unstable. Retrying automatically (attempt {retryAttempt}).
-                  </p>
-                )}
-                {isOnline && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => refresh()}
-                    disabled={quoteLoading || manualRefreshCoolingDown}
-                    className="h-6 px-2 text-xs"
-                  >
-                    Retry now
-                  </Button>
-                )}
-              </div>
+              <p className="text-xs text-destructive mt-1">
+                Quote failed: {quoteError.message}
+              </p>
             )}
           </div>
-
           <div>
             <span className="text-sm font-medium text-muted-foreground">
               Reference price
             </span>
-            <div className="mt-1 flex items-center gap-2 text-sm">
-              <span>{quote?.price ?? "—"}</span>
-              {isStale && (
-                <span className="inline-flex items-center rounded-md bg-yellow-400/10 px-2 py-1 text-xs font-medium text-yellow-500 ring-1 ring-inset ring-yellow-400/20">
-                  Stale
-                </span>
-              )}
-            </div>
+            <div className="text-sm mt-1">{quote?.price ?? "—"}</div>
           </div>
-
-          <div className="flex justify-between text-sm">
-            <span>
-              Price impact{" "}
-              <span title="How much this trade moves the quoted market price">
-                ⓘ
-              </span>
-            </span>
-            <span>{priceImpactDisplay}</span>
-          </div>
-
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Slippage tolerance</span>
-
-            <div className="flex gap-2">
-              {[0.1, 0.5, 1].map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setSlippage(preset)}
-                  className={`rounded-md border px-3 py-1 text-sm ${slippage === preset ? "bg-primary text-primary-foreground" : ""
-                    }`}
-                >
-                  {preset}%
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={0}
-                max={50}
-                step="0.1"
-                value={slippage ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === "") {
-                    setSlippage(null);
-                    return;
-                  }
-
-                  const val = Number(raw);
-                  if (Number.isNaN(val)) {
-                    setSlippage(null);
-                    return;
-                  }
-
-                  setSlippage(val);
-                }}
-                placeholder="Custom %"
-                className="w-24"
-              />
-              <span className="text-sm">%</span>
-            </div>
-
-            {slippageError && (
-              <p className="text-xs text-destructive">
-                {slippageError}
-              </p>
-            )}
-
-            {!slippageError && slippageWarning && (
-              <p className="text-xs text-yellow-500">{slippageWarning}</p>
-            )}
-          </div>
-
-        {numericForQuote && (
-          <TradeRouteDisplay 
-            quote={quote || null} 
-            isLoading={quoteLoading} 
-            error={quoteError?.message}
-          />
-        )}
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -492,7 +309,7 @@ export function DemoSwap() {
               ) : (
                 <RefreshCw className="h-4 w-4" aria-hidden />
               )}
-              {quoteError ? "Retry quote" : "Refresh quote"}
+              Refresh quote
             </Button>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
               <input
@@ -508,12 +325,9 @@ export function DemoSwap() {
         </div>
 
         <Button
-          className="h-12 w-full text-lg"
+          className="w-full text-lg h-12"
           onClick={handleSwapClick}
-          disabled={
-            !isOnline ||
-            !submitValidation.isValid
-          }
+          disabled={!selectedPair || parseResult.status !== "ok"}
         >
           Review Swap
         </Button>
@@ -521,30 +335,29 @@ export function DemoSwap() {
 
       <TransactionConfirmationModal
         isOpen={isModalOpen}
-        onOpenChange={setIsModalOpen}
+        onOpenChange={(open) => {
+          if (!open && txStatus !== "pending" && txStatus !== "submitted") {
+            setIsModalOpen(false);
+          }
+        }}
         fromAsset={selectedPair?.base ?? "XLM"}
-        fromAmount={
-          parseResult.status === "ok" ? parseResult.normalized : sellRaw || "0"
-        }
+        fromAmount={parseResult.status === "ok" ? parseResult.normalized : ""}
         toAsset={selectedPair?.counter ?? "USDC"}
         toAmount={quote?.total ?? "—"}
         exchangeRate={quote?.price ?? "—"}
         priceImpact="0.1%"
-        slippageTolerancePct={settings.slippageTolerance}
         networkFee="0.00001"
+        slippageTolerancePct={settings?.slippageTolerance}
         routePath={quote?.path?.length ? quote.path : mockRoute}
-        swaps={batch}
-        onConfirm={handleConfirm}
-        onCancel={handleCancel}
-        confirmDisabled={isOffline}
-        confirmDisabledReason={
-          isOffline
-            ? "Reconnect to the internet before confirming this swap."
-            : undefined
-        }
         status={txStatus}
-        errorMessage={errorMessage}
         txHash={txHash}
+        errorMessage={errorMessage}
+        onConfirm={handleConfirm}
+        onCancel={cancel}
+        onTryAgain={handleTryAgain}
+        onResubmit={handleResubmit}
+        onDismiss={handleDismiss}
+        onDone={handleDone}
       />
     </Card>
   );

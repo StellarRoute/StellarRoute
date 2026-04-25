@@ -53,7 +53,10 @@ impl DiffEngine {
         let orig = &artifact.original_output;
 
         // ── price ────────────────────────────────────────────────────────────
-        let orig_price = orig.get("price").cloned().unwrap_or(serde_json::Value::Null);
+        let orig_price = orig
+            .get("price")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         let replay_price = serde_json::Value::String(replay.price.clone());
         if !numeric_values_equal(&orig_price, &replay_price) {
             divergences.push(FieldDivergence {
@@ -91,9 +94,7 @@ impl DiffEngine {
             .unwrap_or(serde_json::Value::Null);
 
         // Only compare if the original has a path (some artifacts may not)
-        if orig_path_source != serde_json::Value::Null
-            && orig_path_source != replay_path_source
-        {
+        if orig_path_source != serde_json::Value::Null && orig_path_source != replay_path_source {
             divergences.push(FieldDivergence {
                 field: "path[0].source".to_string(),
                 original: orig_path_source,
@@ -123,7 +124,10 @@ fn numeric_values_equal(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     // Try numeric comparison for string values
     if let (Some(sa), Some(sb)) = (a.as_str(), b.as_str()) {
         if let (Ok(fa), Ok(fb)) = (sa.parse::<f64>(), sb.parse::<f64>()) {
-            return (fa - fb).abs() < NUMERIC_TOLERANCE;
+            // Allow a tiny epsilon for f64 parse/rounding noise so that
+            // decimal strings that differ by exactly 1e-7 (after formatting)
+            // are treated as equal.
+            return (fa - fb).abs() <= NUMERIC_TOLERANCE + 1e-12;
         }
     }
     false
@@ -221,7 +225,10 @@ mod tests {
         // Let's use a value clearly within tolerance
         let replay2 = make_replay(&artifact, "1.00000005", "sdex:offer1");
         let report2 = DiffEngine::diff(&artifact, &replay2);
-        assert!(report2.is_identical, "diff within tolerance should be identical");
+        assert!(
+            report2.is_identical,
+            "diff within tolerance should be identical"
+        );
         let _ = report; // suppress unused warning
     }
 
@@ -231,7 +238,10 @@ mod tests {
         let replay = make_replay(&artifact, "1.0000000", "amm:pool1");
         let report = DiffEngine::diff(&artifact, &replay);
         assert!(!report.is_identical);
-        assert!(report.divergences.iter().any(|d| d.field == "selected_source"));
+        assert!(report
+            .divergences
+            .iter()
+            .any(|d| d.field == "selected_source"));
     }
 
     // ── Property-based tests ────────────────────────────────────────────────

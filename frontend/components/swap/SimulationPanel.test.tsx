@@ -20,6 +20,25 @@ describe("SimulationPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("should respect stored locale when rendering translated swap copy", () => {
+    window.localStorage.setItem(
+      "stellar_route_settings",
+      JSON.stringify({ locale: "zh-CN" })
+    );
+
+    render(
+      <SimulationPanel
+        payAmount=""
+        expectedOutput="0"
+        slippage={0.5}
+      />
+    );
+
+    expect(screen.getByText("输入数量后即可查看交易模拟")).toBeInTheDocument();
+
+    window.localStorage.clear();
+  });
+
   it("should show loading state", () => {
     render(
       <SimulationPanel
@@ -36,7 +55,7 @@ describe("SimulationPanel", () => {
   });
 
   it("should show error state", () => {
-    render(
+    const { container } = render(
       <SimulationPanel
         payAmount="100"
         expectedOutput="98"
@@ -47,6 +66,8 @@ describe("SimulationPanel", () => {
 
     expect(screen.getByText("Simulation Error")).toBeInTheDocument();
     expect(screen.getByText("Network error occurred")).toBeInTheDocument();
+    const errorPanel = container.querySelector(".border-destructive\\/30");
+    expect(errorPanel).toHaveClass("bg-destructive/5", "text-destructive");
   });
 
   it("should calculate and display simulation data correctly", () => {
@@ -116,6 +137,25 @@ describe("SimulationPanel", () => {
         /This trade may significantly affect the market price/
       )
     ).toBeInTheDocument();
+    expect(screen.getByText("High Impact")).toHaveClass("text-warning");
+    expect(screen.getByText(/High Price Impact:/).closest(".rounded-lg")).toHaveClass(
+      "bg-warning/10",
+      "border-warning/30",
+      "text-warning",
+    );
+  });
+
+  it("uses theme token classes for key quote states", () => {
+    render(
+      <SimulationPanel
+        payAmount="100"
+        expectedOutput="98"
+        slippage={0.5}
+      />
+    );
+
+    expect(screen.getByText("97.510000")).toHaveClass("text-primary");
+    expect(screen.getByText("0.005%")).toHaveClass("text-success");
   });
 
   it("should calculate slippage protection correctly", () => {

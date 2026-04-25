@@ -9,8 +9,11 @@ use crate::models::{PoolReserve, PoolState};
 use crate::soroban::{SorobanRpc, SorobanRpcClient};
 use chrono::Utc;
 use serde_json;
+use sqlx::Row;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
+
+const DISCOVERY_CURSOR_JOB: &str = "soroban_pool_discovery";
 
 /// Configuration for AMM pool indexing
 #[derive(Clone, Debug)]
@@ -73,61 +76,128 @@ impl AmmAggregator {
     pub async fn aggregate_once(&self) -> Result<()> {
         debug!("Starting AMM pool aggregation cycle");
 
-        // Get registered pools from router contract
-        let pools = self.get_registered_pools().await?;
-        info!("Found {} registered pools", pools.len());
+        let current_ledger = self.soroban.get_latest_ledger().await?;
+        let cursor_str = self.load_discovery_cursor().await?;
+        let start_ledger: u64 = cursor_str.parse().unwrap_or(0);
 
-        // Process pools in batches
-        for batch in pools.chunks(self.config.batch_size) {
+        if start_ledger >= current_ledger {
+            debug!(
+                "No new ledgers to process for discovery (start={}, current={})",
+                start_ledger, current_ledger
+            );
+        } else {
+            // Discover new pools since last check
+            let new_pools = self
+                .discover_new_pools(start_ledger, current_ledger)
+                .await?;
+            if !new_pools.is_empty() {
+                info!("Discovered {} new pools", new_pools.len());
+                self.process_pool_batch(&new_pools).await?;
+            }
+        }
+
+        // Always process existing pools to update reserves
+        let existing_pools = self.get_tracked_pools().await?;
+        debug!("Processing {} existing pools", existing_pools.len());
+        for batch in existing_pools.chunks(self.config.batch_size) {
             if let Err(e) = self.process_pool_batch(batch).await {
                 warn!("Failed to process pool batch: {}", e);
-                // Continue with next batch
             }
         }
 
         // Clean up stale pools
         self.cleanup_stale_pools().await?;
 
+        // Update cursor to current ledger
+        self.store_discovery_cursor(
+            &current_ledger.to_string(),
+            Some(current_ledger as i64),
+            "running",
+        )
+        .await?;
+
         debug!("Completed AMM pool aggregation cycle");
         Ok(())
     }
 
-    /// Get list of registered pools from router contract
-    async fn get_registered_pools(&self) -> Result<Vec<String>> {
-        // Call router contract to get pool list
-        let request = serde_json::json!({
-            "contractId": self.config.router_contract,
-            "key": {
-                "contract": self.config.router_contract,
-                "key": "PoolList",
-                "durability": "persistent"
-            }
-        });
+    async fn load_discovery_cursor(&self) -> Result<String> {
+        let row = sqlx::query("SELECT cursor FROM soroban_sync_cursors WHERE job_name = $1")
+            .bind(DISCOVERY_CURSOR_JOB)
+            .fetch_optional(self.db.pool())
+            .await?;
 
-        match self.soroban.request("getContractData", request).await {
-            Ok(data) => {
-                // Parse the XDR to get pool addresses
-                self.parse_pool_list(&data)
-            }
-            Err(e) => {
-                warn!("Failed to query router contract for pools: {}. Using configured pools as fallback.", e);
-                self.get_configured_pools().await
+        if let Some(row) = row {
+            return Ok(row.get::<String, _>("cursor"));
+        }
+
+        self.store_discovery_cursor("0", Some(0), "initialized")
+            .await?;
+        Ok("0".to_string())
+    }
+
+    async fn store_discovery_cursor(
+        &self,
+        cursor: &str,
+        last_seen_ledger: Option<i64>,
+        status: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO soroban_sync_cursors (job_name, cursor, last_seen_ledger, status, updated_at)
+            VALUES ($1, $2, $3, $4, now())
+            ON CONFLICT (job_name)
+            DO UPDATE SET
+                cursor = EXCLUDED.cursor,
+                last_seen_ledger = EXCLUDED.last_seen_ledger,
+                status = EXCLUDED.status,
+                updated_at = now()
+            "#,
+        )
+        .bind(DISCOVERY_CURSOR_JOB)
+        .bind(cursor)
+        .bind(last_seen_ledger)
+        .bind(status)
+        .execute(self.db.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Discover new pools via contract events
+    async fn discover_new_pools(&self, start_ledger: u64, end_ledger: u64) -> Result<Vec<String>> {
+        use crate::soroban::EventFilter;
+
+        let filters = vec![EventFilter {
+            event_type: "contract".to_string(),
+            contract_ids: vec![self.config.router_contract.clone()],
+            topics: vec![vec!["pool_created".to_string()]], // Standard topic for pool discovery
+        }];
+
+        let events = self
+            .soroban
+            .get_events(start_ledger, Some(end_ledger), filters)
+            .await?;
+        let mut new_pools = Vec::new();
+
+        for event in events {
+            // Topic structure usually: ["pool_created", token_a, token_b, pool_address]
+            // Or pool_address is in the value. For this implementation, we assume pool_address is the last topic
+            // if it exists, or we'd decode the value XDR.
+            if let Some(pool_address) = event.topics.last() {
+                new_pools.push(pool_address.clone());
             }
         }
+
+        Ok(new_pools)
     }
 
-    /// Parse pool list from contract data
-    fn parse_pool_list(&self, _data: &serde_json::Value) -> Result<Vec<String>> {
-        // TODO: Implement proper XDR decoding for Vec<Address>
-        // For now, return empty vec
-        Ok(vec![])
-    }
+    /// Get pools currently tracked in the database
+    async fn get_tracked_pools(&self) -> Result<Vec<String>> {
+        let rows = sqlx::query("SELECT pool_address FROM amm_pool_reserves")
+            .fetch_all(self.db.pool())
+            .await?;
 
-    /// Get pools from configuration (fallback when router query fails)
-    async fn get_configured_pools(&self) -> Result<Vec<String>> {
-        // TODO: Load from config or database
-        // For now, return empty vec
-        Ok(vec![])
+        Ok(rows.into_iter().map(|r| r.get("pool_address")).collect())
     }
 
     /// Process a batch of pools

@@ -112,23 +112,28 @@ impl ReplayArtifact {
         .bind(payload)
         .fetch_one(db)
         .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to insert artifact: {}", e).into()))?;
+        .map_err(|e| {
+            ApiError::Internal(anyhow::anyhow!("Failed to insert artifact: {}", e).into())
+        })?;
 
         Ok(row.get("id"))
     }
 
     /// Fetch a single artifact by ID. Returns `ApiError::NotFound` if absent.
     pub async fn fetch(db: &PgPool, id: Uuid) -> Result<ReplayArtifact> {
-        let row = sqlx::query(
-            r#"SELECT artifact FROM replay_artifacts WHERE id = $1"#,
-        )
-        .bind(id)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to fetch artifact: {}", e).into()))?;
+        let row = sqlx::query(r#"SELECT artifact FROM replay_artifacts WHERE id = $1"#)
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(anyhow::anyhow!("Failed to fetch artifact: {}", e).into())
+            })?;
 
         match row {
-            None => Err(ApiError::NotFound(format!("Replay artifact not found: {}", id))),
+            None => Err(ApiError::NotFound(format!(
+                "Replay artifact not found: {}",
+                id
+            ))),
             Some(r) => {
                 let json: serde_json::Value = r.get("artifact");
                 serde_json::from_value(json).map_err(|e| {
@@ -167,7 +172,9 @@ impl ReplayArtifact {
         .bind(offset)
         .fetch_all(db)
         .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to list artifacts: {}", e).into()))?;
+        .map_err(|e| {
+            ApiError::Internal(anyhow::anyhow!("Failed to list artifacts: {}", e).into())
+        })?;
 
         Ok(rows
             .into_iter()
@@ -184,13 +191,13 @@ impl ReplayArtifact {
     /// Delete artifacts older than `retention`. Returns the number of rows deleted.
     pub async fn prune_older_than(db: &PgPool, retention: Duration) -> Result<u64> {
         let cutoff = Utc::now() - retention;
-        let result = sqlx::query(
-            r#"DELETE FROM replay_artifacts WHERE captured_at < $1"#,
-        )
-        .bind(cutoff)
-        .execute(db)
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to prune artifacts: {}", e).into()))?;
+        let result = sqlx::query(r#"DELETE FROM replay_artifacts WHERE captured_at < $1"#)
+            .bind(cutoff)
+            .execute(db)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(anyhow::anyhow!("Failed to prune artifacts: {}", e).into())
+            })?;
 
         Ok(result.rows_affected())
     }

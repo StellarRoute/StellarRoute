@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, TrendingDown, TrendingUp } from "lucide-react";
+import { useSwapI18n } from "@/lib/swap-i18n";
 
 export interface SimulationPanelProps {
   /** Amount being paid/sold */
@@ -32,6 +33,8 @@ export function SimulationPanel({
   isLoading = false,
   error,
 }: SimulationPanelProps) {
+  const { t } = useSwapI18n();
+
   const calculateSimulation = (): SimulationData | null => {
     const payAmountNum = parseFloat(payAmount);
     const expectedOutputNum = parseFloat(expectedOutput);
@@ -66,12 +69,12 @@ export function SimulationPanel({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-3">
-        <div className="flex items-center gap-2 text-red-600">
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3 text-destructive">
+        <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
-          <span className="text-sm font-medium">Simulation Error</span>
+          <span className="text-sm font-medium">{t("swap.simulation.errorTitle")}</span>
         </div>
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm">{error}</p>
       </div>
     );
   }
@@ -99,7 +102,7 @@ export function SimulationPanel({
     return (
       <div className="rounded-xl border border-border/50 p-4 space-y-3">
         <div className="text-center text-muted-foreground text-sm">
-          Enter an amount to see trade simulation
+          {t("swap.simulation.emptyState")}
         </div>
       </div>
     );
@@ -111,15 +114,15 @@ export function SimulationPanel({
     <div className="rounded-xl border border-border/50 p-4 space-y-4 bg-muted/30">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h4 className="text-sm font-medium">Trade Simulation</h4>
+          <h4 className="text-sm font-medium">{t("swap.simulation.title")}</h4>
           <Badge variant="secondary" className="text-xs">
-            {slippage}% slippage
+            {t("swap.simulation.slippageBadge", { value: slippage })}
           </Badge>
         </div>
         {isHighImpact && (
-          <div className="flex items-center gap-1 text-amber-600">
+          <div className="flex items-center gap-1 text-warning">
             <TrendingUp className="h-3 w-3" />
-            <span className="text-xs font-medium">High Impact</span>
+            <span className="text-xs font-medium text-warning">{t("swap.simulation.highImpact")}</span>
           </div>
         )}
       </div>
@@ -127,7 +130,7 @@ export function SimulationPanel({
       <div className="grid grid-cols-1 gap-3">
         {/* Expected Output */}
         <div className="flex justify-between items-center py-2 border-b border-border/30">
-          <span className="text-sm text-muted-foreground">Expected Output</span>
+          <span className="text-sm text-muted-foreground">{t("swap.simulation.expectedOutput")}</span>
           <span className="text-sm font-mono font-medium">
             {simulation.expectedOutput}
           </span>
@@ -136,24 +139,26 @@ export function SimulationPanel({
         {/* Minimum Received */}
         <div className="flex justify-between items-center py-2 border-b border-border/30">
           <div className="flex items-center gap-1">
-            <span className="text-sm text-muted-foreground">Min Received</span>
+            <span className="text-sm text-muted-foreground">{t("swap.simulation.minReceived")}</span>
             <div className="h-3 w-3 rounded-full bg-blue-500/20 flex items-center justify-center">
               <TrendingDown className="h-2 w-2 text-blue-600" />
             </div>
           </div>
           <div className="text-right">
-            <span className="text-sm font-mono font-medium text-blue-600">
+            <span className="text-sm font-mono font-medium text-primary">
               {simulation.minReceived}
             </span>
             <div className="text-xs text-muted-foreground">
-              -{simulation.slippageProtection} from slippage
+              {t("swap.simulation.fromSlippage", {
+                amount: simulation.slippageProtection,
+              })}
             </div>
           </div>
         </div>
 
         {/* Effective Rate */}
         <div className="flex justify-between items-center py-2 border-b border-border/30">
-          <span className="text-sm text-muted-foreground">Effective Rate</span>
+          <span className="text-sm text-muted-foreground">{t("swap.simulation.effectiveRate")}</span>
           <span className="text-sm font-mono font-medium">
             1 XLM ≈ {simulation.effectiveRate} USDC
           </span>
@@ -161,10 +166,10 @@ export function SimulationPanel({
 
         {/* Price Impact */}
         <div className="flex justify-between items-center py-2">
-          <span className="text-sm text-muted-foreground">Price Impact</span>
+          <span className="text-sm text-muted-foreground">{t("swap.simulation.priceImpact")}</span>
           <span
             className={`text-sm font-medium ${
-              isHighImpact ? "text-amber-600" : "text-emerald-600"
+              isHighImpact ? "text-warning" : "text-success"
             }`}
           >
             {simulation.priceImpact}%
@@ -174,11 +179,12 @@ export function SimulationPanel({
 
       {/* Warning for high price impact */}
       {isHighImpact && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+        <div className="rounded-lg bg-warning/10 border border-warning/30 text-warning p-3">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-            <div className="text-xs text-amber-700">
-              <strong>High Price Impact:</strong> This trade may significantly affect the market price. Consider splitting into smaller orders.
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="text-xs">
+              <strong>{t("swap.simulation.highImpactTitle")}</strong>{" "}
+              {t("swap.simulation.highImpactBody")}
             </div>
           </div>
         </div>

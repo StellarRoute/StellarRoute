@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { useSwapI18n } from "@/lib/swap-i18n";
 
 interface SlippageControlProps {
   slippage: number;
@@ -16,19 +17,21 @@ interface SlippageControlProps {
 }
 
 export function SlippageControl({ slippage, onChange }: SlippageControlProps) {
+  const { t } = useSwapI18n();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full">
           <Settings className="h-4 w-4 text-muted-foreground" />
-          <span className="sr-only">Settings</span>
+          <span className="sr-only">{t("swap.settings.buttonLabel")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" avoidCollisions className="w-[calc(100vw-24px)] max-w-[240px]">
-        <DropdownMenuLabel>Transaction Settings</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("swap.settings.menuTitle")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="p-3">
-          <div className="text-sm font-medium mb-3">Slippage Tolerance</div>
+          <div className="text-sm font-medium mb-3">{t("swap.settings.slippageTolerance")}</div>
           <div className="flex gap-2">
             {[0.1, 0.5, 1.0].map((val) => (
               <Button

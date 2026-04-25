@@ -1,239 +1,240 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useState, useCallback, useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RotateCcw } from 'lucide-react';
-import { PairSelector } from './PairSelector';
-import { QuoteSummary } from './QuoteSummary';
+import { ArrowUpDown, RefreshCw } from 'lucide-react';
+import { AmountInput } from './AmountInput';
+import { TokenSelector } from './TokenSelector';
+import { PriceInfoPanel } from './PriceInfoPanel';
 import { RouteDisplay } from './RouteDisplay';
-import { SlippageControl } from './SlippageControl';
-import { SwapCTA } from './SwapCTA';
-import { SimulationPanel } from './SimulationPanel';
-import { FeeBreakdownPanel } from './FeeBreakdownPanel';
-import { useTradeFormStorage } from '@/hooks/useTradeFormStorage';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AlternativeRoute } from './RouteDisplay';
+import { SwapButton, SwapButtonState } from './SwapButton';
+import { SettingsPanel } from '../settings/SettingsPanel';
+import { HighImpactConfirmModal } from './HighImpactConfirmModal';
+import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
+import { useSwapState } from '@/hooks/useSwapState';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { STELLAR_NATIVE_MAX_DECIMALS } from '@/lib/amount-input';
-import { SwapValidationSchema } from '@/lib/swap-validation';
+import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export function SwapCard() {
   const {
-    amount: payAmount,
-    setAmount: setPayAmount,
+    fromToken,
+    setFromToken,
+    toToken,
+    setToToken,
+    fromAmount,
+    setFromAmount,
+    toAmount,
     slippage,
-    setSlippage,
-    reset,
-    isHydrated,
-  } = useTradeFormStorage();
+    quote,
+    switchTokens,
+    formattedRate,
+  } = useSwapState();
 
-  const [receiveAmount, setReceiveAmount] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-  const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { isOnline, isOffline } = useOnlineStatus();
-  const [confidenceScore, setConfidenceScore] = useState<number>(85);
-  const [volatility, setVolatility] = useState<'high' | 'medium' | 'low'>('low');
+  const [isConnected, setIsConnected] = useState(false);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(null);
 
-  const validation = SwapValidationSchema.validate(
-    {
-      amount: payAmount,
-      maxDecimals: STELLAR_NATIVE_MAX_DECIMALS,
-      slippage,
-    },
-    { mode: 'submit', requirePair: false },
-  );
-  const isValidAmount = validation.amountResult.status === 'ok';
+  // Connection status indicator
+  const { isOnline } = useOnlineStatus();
+  const { status: streamStatus, mode: streamMode } = useQuoteStreamStatus({
+    isRecovering: quote.isRecovering,
+    error: quote.error,
+    isOnline,
+  });
+  
+  // Mock balance
+  const fromBalance = "100.00"; 
+  const fromSymbol = fromToken === 'native' ? 'XLM' : fromToken.split(':')[0];
+  const toSymbol = toToken === 'native' ? 'XLM' : toToken.split(':')[0];
 
-  const clearQuoteTimer = useCallback(() => {
-    if (quoteTimerRef.current) {
-      clearTimeout(quoteTimerRef.current);
-      quoteTimerRef.current = null;
-    }
-  }, []);
+  const buttonState = useMemo<SwapButtonState>(() => {
+    if (isSwapping) return "executing";
+    if (!isConnected) return "no_wallet";
+    if (!fromAmount || parseFloat(fromAmount) === 0) return "no_amount";
+    if (parseFloat(fromAmount) > parseFloat(fromBalance)) return "insufficient_balance";
+    if (quote.priceImpact > 10) return "high_impact_warning";
+    if (quote.isStale) return "error";
+    if (quote.error) return "error";
+    return "ready";
+  }, [isConnected, fromAmount, fromBalance, quote.priceImpact, quote.isStale, quote.error, isSwapping]);
 
-  const requestQuote = useCallback((amount: string) => {
-    clearQuoteTimer();
-    const amountNumber = parseFloat(amount);
+  const executeSwap = useCallback(async () => {
+    setIsSwapping(true);
+    // Simulate transaction delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsSwapping(false);
+    toast.success(`Successfully swapped ${fromAmount} ${fromSymbol} for ${parseFloat(toAmount).toFixed(4)} ${toSymbol}`);
+  }, [fromAmount, fromSymbol, toAmount, toSymbol]);
 
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      setIsLoading(false);
-      setQuoteError(null);
-      setReceiveAmount('');
-      setConfidenceScore(85);
-      setVolatility('low');
+  const handleSwap = useCallback(async () => {
+    if (quote.priceImpact > 5) {
+      setIsConfirmModalOpen(true);
       return;
     }
+    await executeSwap();
+  }, [quote.priceImpact, executeSwap]);
 
-    if (!isOnline) {
-      setIsLoading(false);
-      setQuoteError('You are offline. Reconnect to refresh quote.');
-      setReceiveAmount('');
-      return;
-    }
+  const handleMax = useCallback(() => {
+    setFromAmount(fromBalance);
+  }, [fromBalance, setFromAmount]);
 
-    setIsLoading(true);
-    setQuoteError(null);
-
-    quoteTimerRef.current = setTimeout(() => {
-      setReceiveAmount((amountNumber * 0.98).toFixed(4));
-      const nextConfidence = Math.max(50, Math.min(95, 90 - amountNumber / 100));
-      setConfidenceScore(Math.round(nextConfidence));
-      if (amountNumber > 1000) {
-        setVolatility('high');
-      } else if (amountNumber > 100) {
-        setVolatility('medium');
-      } else {
-        setVolatility('low');
-      }
-      setIsLoading(false);
-    }, 500);
-  }, [clearQuoteTimer, isOnline]);
-
-  const handlePayAmountChange = (amount: string) => {
-    setPayAmount(amount);
-    requestQuote(amount);
-  };
-
-  const handleRetryQuote = () => {
-    requestQuote(payAmount);
-  };
-
-  useEffect(() => {
-    if (!isOnline) {
-      clearQuoteTimer();
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional UI transition for offline mode
-      setIsLoading(false);
-      if (parseFloat(payAmount) > 0) {
-        setQuoteError('You are offline. Reconnect to refresh quote.');
-      }
-      return;
-    }
-
-    // Automatic recovery: once online, refresh the active quote.
-    if (quoteError && parseFloat(payAmount) > 0) {
-      requestQuote(payAmount);
-    }
-  }, [isOnline, payAmount, quoteError, clearQuoteTimer, requestQuote]);
-
-  useEffect(() => {
-    return () => {
-      clearQuoteTimer();
-    };
-  }, [clearQuoteTimer]);
-
-  const handleReset = () => {
-    clearQuoteTimer();
-    reset();
-    setReceiveAmount('');
-    setQuoteError(null);
-    setIsLoading(false);
-    setConfidenceScore(85);
-    setVolatility('low');
-  };
-
-  // Defer render until localStorage has been read to avoid flash of default values
-  if (!isHydrated) {
-    return (
-      <Card className="w-full border shadow-sm">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-semibold">Swap</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-32 animate-pulse rounded-lg bg-muted" />
-        </CardContent>
-      </Card>
-    );
-  }
+  const handleSwitchTokens = useCallback(() => {
+    setSelectedRoute(null);
+    switchTokens();
+  }, [switchTokens]);
 
   return (
-    <Card className="w-full border shadow-sm">
-      <CardHeader className="pb-4">
-        {isOffline && (
-          <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            You&apos;re offline. Quote refresh and swap submission are paused until
-            your connection is restored.
+    <div data-testid="swap-card" className="w-full max-w-[480px] mx-auto perspective-1000">
+      <Card className="relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px] transition-all duration-500 hover:shadow-primary/5">
+        {/* Animated Background Gradients */}
+        <div className="absolute -top-24 -left-24 w-48 h-48 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-700" />
+        
+        <CardContent className="p-6 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent">
+              Swap
+            </h2>
+            <div className="flex items-center gap-1">
+              <QuoteStreamStatusIndicator status={streamStatus} mode={streamMode} />
+              <SettingsPanel />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => quote.refresh()} 
+                disabled={quote.loading}
+                aria-label="Refresh quote"
+                className="h-9 w-9 rounded-xl hover:bg-muted/80"
+              >
+                <RefreshCw className={cn("h-4.5 w-4.5 text-muted-foreground", quote.loading && "animate-spin")} />
+              </Button>
+            </div>
           </div>
-        )}
-        <div className="flex items-center justify-between flex-row">
-          <CardTitle className="text-xl font-semibold">Swap</CardTitle>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 rounded-full"
-              onClick={handleReset}
-              title="Clear form"
-            >
-              <RotateCcw className="h-4 w-4 text-muted-foreground" />
-              <span className="sr-only">Clear form</span>
-            </Button>
-            <SlippageControl slippage={slippage} onChange={setSlippage} />
+
+          {/* Pay Section */}
+          <div className="space-y-2 group">
+            <div className="bg-muted/30 hover:bg-muted/40 transition-colors rounded-2xl p-4 border border-border/20 focus-within:border-primary/30 focus-within:ring-4 focus-within:ring-primary/5">
+              <div className="flex justify-between items-start mb-1">
+                <AmountInput
+                  label="You Pay"
+                  value={fromAmount}
+                  onChange={setFromAmount}
+                  onMax={handleMax}
+                  balance={`${fromBalance} ${fromSymbol}`}
+                  className="flex-1"
+                />
+                <TokenSelector
+                  selectedAsset={fromToken}
+                  onSelect={setFromToken}
+                  className="mt-6"
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <PairSelector
-          payAmount={payAmount}
-          onPayAmountChange={handlePayAmountChange}
-          receiveAmount={receiveAmount}
-        />
-        {isValidAmount && (
-          <div className="space-y-4">
-            <SimulationPanel
-              payAmount={payAmount}
-              expectedOutput={receiveAmount}
-              slippage={slippage}
-              isLoading={isLoading}
-            />
-            <FeeBreakdownPanel
-              protocolFees={[
-                { name: 'Router Fee', amount: '0.001 XLM', description: 'Fee for using StellarRoute aggregator' },
-                { name: 'Pool Fee', amount: '0.003%', description: 'Liquidity provider fee for AQUA pool' },
-              ]}
-              networkCosts={[
-                { name: 'Base Fee', amount: '0.00001 XLM', description: 'Stellar network base transaction fee' },
-                { name: 'Operation Fee', amount: '0.00002 XLM', description: 'Fee for path payment operations' },
-              ]}
-              totalFee="0.01 XLM"
-              netOutput={`${(parseFloat(receiveAmount || '0') * 0.99).toFixed(4)} USDC`}
-            />
-            <QuoteSummary
-              rate="1 XLM ≈ 0.98 USDC"
-              fee="0.01 XLM"
-              priceImpact="< 0.1%"
-              isLoading={isLoading}
-            />
-            <RouteDisplay
-              amountOut={receiveAmount}
-              confidenceScore={confidenceScore}
-              volatility={volatility}
-              isLoading={isLoading}
-            />
-          </>
-        )}
-        {quoteError && isValidAmount && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            <p>{quoteError}</p>
+
+          {/* Toggle Button */}
+          <div className="relative h-2 flex items-center justify-center z-10">
             <Button
-              type="button"
               variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={handleRetryQuote}
-              disabled={!isOnline || isLoading}
+              size="icon"
+              onClick={handleSwitchTokens}
+              className="absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 hover:scale-110 active:scale-95 transition-all duration-300 group"
             >
-              Retry quote
+              <ArrowUpDown className="h-4 w-4 text-primary group-hover:rotate-180 transition-transform duration-500" />
             </Button>
           </div>
-        )}
-        <SwapCTA
-          validation={validation}
-          isLoading={isLoading}
-          isOnline={isOnline}
-          onSwap={() => console.log('Swapping...')}
-        />
-      </CardContent>
-    </Card>
+
+          {/* Receive Section */}
+          <div className="space-y-2">
+            <div className="bg-muted/30 rounded-2xl p-4 border border-border/20">
+              <div className="flex justify-between items-start mb-1">
+                <AmountInput
+                  label="You Receive"
+                  value={selectedRoute?.expectedAmount ?? toAmount}
+                  readOnly
+                  placeholder="0.00"
+                  className="flex-1"
+                  showMax={false}
+                />
+                <TokenSelector
+                  selectedAsset={toToken}
+                  onSelect={setToToken}
+                  className="mt-6"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Info Panels (Conditional) */}
+          {parseFloat(fromAmount) > 0 && (
+            <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <PriceInfoPanel
+                rate={formattedRate}
+                priceImpact={quote.priceImpact}
+                minReceived={`${(parseFloat(toAmount || '0') * (1 - slippage / 100)).toFixed(4)} ${toSymbol}`}
+                networkFee={quote.fee ? `${quote.fee.toFixed(5)} XLM` : '0.00001 XLM'}
+                isLoading={quote.loading}
+              />
+              <RouteDisplay
+                amountOut={selectedRoute?.expectedAmount ?? toAmount}
+                isLoading={quote.loading}
+                onSelect={setSelectedRoute}
+              />
+            </div>
+          )}
+
+          {/* Stale Indicator */}
+          {quote.isStale && (
+            <span
+              data-testid="stale-indicator"
+              className="text-xs text-amber-500 font-medium"
+            >
+              Quote outdated — refresh for latest price
+            </span>
+          )}
+
+          {/* Action Button */}
+          <div className="pt-2">
+            <SwapButton
+              state={buttonState}
+              onSwap={handleSwap}
+              onConnectWallet={() => setIsConnected(true)}
+              isLoading={quote.loading}
+            />
+          </div>
+          
+          {/* Status/Error Messages */}
+          {quote.error && (
+            <p className="text-center text-xs font-medium text-destructive animate-pulse">
+              {quote.error.message}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+      
+      {/* High Impact Confirmation Modal */}
+      <HighImpactConfirmModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={executeSwap}
+        priceImpact={quote.priceImpact}
+        fromAmount={fromAmount}
+        fromSymbol={fromSymbol}
+        toAmount={toAmount}
+        toSymbol={toSymbol}
+      />
+
+      {/* Footer Info */}
+      <p className="text-center text-[10px] text-muted-foreground/60 mt-4 px-8 uppercase tracking-widest font-bold">
+        Powered by StellarRoute Aggregator
+      </p>
+    </div>
   );
 }
+

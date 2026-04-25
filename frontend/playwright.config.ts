@@ -32,6 +32,24 @@ export default defineConfig({
       name: "chromium-mobile",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "edge-cases",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/quote-edge-cases.spec.ts",
+    },
+    {
+      name: "a11y",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/a11y-swap-flow.spec.ts",
+    },
   ],
   /* Start the Next.js dev server before running tests */
   webServer: {

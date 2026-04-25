@@ -75,17 +75,12 @@ pub enum DeduplicationResult {
     Reprocessing,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum OrderingStrategy {
     StrictSequence,
+    #[default]
     BestEffort,
     Unordered,
-}
-
-impl Default for OrderingStrategy {
-    fn default() -> Self {
-        Self::BestEffort
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,10 +241,7 @@ impl EventDeduplicator {
 
     pub async fn drain_ready(&self, stream_id: &str) -> Vec<(IdempotencyKey, u64)> {
         let states = self.stream_states.read().await;
-        let last_seq = states
-            .get(stream_id)
-            .map(|s| s.last_sequence)
-            .unwrap_or(0);
+        let last_seq = states.get(stream_id).map(|s| s.last_sequence).unwrap_or(0);
         drop(states);
 
         let mut buffer = self.out_of_order_buffer.write().await;
@@ -351,7 +343,11 @@ impl std::fmt::Display for SequenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SequenceError::Gap { expected, received } => {
-                write!(f, "sequence gap: expected {}, received {}", expected, received)
+                write!(
+                    f,
+                    "sequence gap: expected {}, received {}",
+                    expected, received
+                )
             }
         }
     }

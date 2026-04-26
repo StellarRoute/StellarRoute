@@ -342,7 +342,6 @@ impl HybridOptimizer {
             policy: policy.clone(),
             total_compute_time_ms: start_time.elapsed().as_millis() as u64,
             excluded_routes,
-            flagged_venues: Vec::new(),
             flagged_venues: vec![],
         })
     }

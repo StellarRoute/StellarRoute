@@ -127,15 +127,6 @@ impl ExclusionPolicy {
                         reason: ExclusionReason::Override,
                     });
                 }
-                (Some(OverrideDirective::ForceExclude), None) => {
-                    excluded.insert(venue.venue_ref.clone());
-                    excluded_venues.push(ExcludedVenueInfo {
-                        venue_ref: venue.venue_ref.clone(),
-                        score: venue.record.score,
-                        signals: venue.record.signals.clone(),
-                        reason: ExclusionReason::Override,
-                    });
-                }
                 (None, None) => {
                     // 1. Check Circuit Breaker first
                     if let Some(registry) = &self.circuit_breaker {

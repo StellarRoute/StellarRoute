@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Clock3, RefreshCw } from 'lucide-react';
+import { AlertCircle, Clock, RefreshCw } from 'lucide-react';
 import type { TradeFormSnapshot } from '@/hooks/useTradeFormStorage';
 
 interface SessionRecoveryModalProps {
@@ -81,7 +81,7 @@ export function SessionRecoveryModal({
   const getIcon = () => {
     switch (reason) {
       case 'wake':
-        return <Clock3 className="h-6 w-6" />;
+        return <Clock className="h-6 w-6" />;
       case 'refresh':
         return <RefreshCw className="h-6 w-6" />;
       default:

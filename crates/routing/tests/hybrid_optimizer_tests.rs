@@ -17,9 +17,6 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 100 XLM
             anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-            fee_bps: 30,
-            anomaly_score: 0.0,
             anomaly_reasons: vec![], // 100 XLM
         },
         LiquidityEdge {
@@ -30,9 +27,6 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             liquidity: 500_000_000,
             price: 1.0,
             fee_bps: 30, // 50 XLM
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-            fee_bps: 30,
             anomaly_score: 0.0,
             anomaly_reasons: vec![], // 50 XLM
         },
@@ -46,9 +40,6 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 80 USDC
             anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-            fee_bps: 30,
-            anomaly_score: 0.0,
             anomaly_reasons: vec![], // 80 USDC
         },
         LiquidityEdge {
@@ -59,9 +50,6 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             liquidity: 200_000_000,
             price: 1.0,
             fee_bps: 30, // 20 EURT
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-            fee_bps: 30,
             anomaly_score: 0.0,
             anomaly_reasons: vec![], // 20 EURT
         },
@@ -74,9 +62,6 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30, // 30 USDC
             anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-            fee_bps: 30,
-            anomaly_score: 0.0,
             anomaly_reasons: vec![], // 30 USDC
         },
         // Additional liquidity sources
@@ -88,9 +73,6 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             liquidity: 150_000_000,
             price: 1.0,
             fee_bps: 30, // 15 XLM
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-            fee_bps: 30,
             anomaly_score: 0.0,
             anomaly_reasons: vec![], // 15 XLM
         },

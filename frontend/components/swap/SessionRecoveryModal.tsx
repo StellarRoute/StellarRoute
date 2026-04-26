@@ -49,6 +49,7 @@ export function SessionRecoveryModal({
     setError(null);
     try {
       await onRestore();
+      setIsLoading(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to restore session';
       setError(message);

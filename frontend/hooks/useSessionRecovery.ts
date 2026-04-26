@@ -35,7 +35,7 @@ export function useSessionRecovery() {
     };
     lastCheckpointRef.current = checkpoint;
     sessionStorage.setItem(SESSION_CHECKPOINT_KEY, JSON.stringify(checkpoint));
-  }, [persistCheckpoint]);
+  }, []);
 
   // Keep storage heartbeat fresh without mutating staleness baseline.
   const heartbeatCheckpoint = useCallback(() => {
@@ -45,7 +45,7 @@ export function useSessionRecovery() {
       isRefresh,
     };
     sessionStorage.setItem(SESSION_CHECKPOINT_KEY, JSON.stringify(checkpoint));
-  }, []);
+  }, [persistCheckpoint]);
 
   // Check if session is stale based on time gap
   const checkSessionFreshness = useCallback(() => {

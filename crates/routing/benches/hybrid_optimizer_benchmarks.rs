@@ -16,6 +16,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 1_000_000_000,
             price: 1.0,
             fee_bps: 30, // 100 XLM
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -25,6 +27,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 500_000_000,
             price: 1.0,
             fee_bps: 30, // 50 USDC
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -34,6 +38,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 200_000_000,
             price: 1.0,
             fee_bps: 30, // 20 XLM
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "EURT".to_string(),
@@ -43,6 +49,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 100_000_000,
             price: 1.0,
             fee_bps: 30, // 10 EURT
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -52,6 +60,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 300_000_000,
             price: 1.0,
             fee_bps: 30, // 30 USDC
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         },
     ]
 }
@@ -148,6 +158,8 @@ fn bench_scalability(c: &mut Criterion) {
                 liquidity: 100_000_000 * (i + 1) as i128,
                 price: 1.0,
                 fee_bps: 30,
+                anomaly_score: 0.0,
+                anomaly_reasons: vec![],
             });
         }
 

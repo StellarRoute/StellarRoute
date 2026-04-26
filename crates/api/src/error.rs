@@ -7,7 +7,7 @@ use axum::{
 };
 use thiserror::Error;
 
-use crate::models::{ApiErrorCode, ErrorResponse};
+use crate::models::{ApiErrorCode, ApiResponse, ErrorResponse};
 
 use std::sync::Arc;
 
@@ -125,13 +125,12 @@ impl IntoResponse for ApiError {
                     "threshold_secs_sdex": threshold_secs_sdex,
                     "threshold_secs_amm": threshold_secs_amm,
                 });
-                let body = Json(
-                    ErrorResponse::new(
-                        ApiErrorCode::StaleMarketData,
-                        "All market data inputs are stale",
-                    )
-                    .with_details(details),
-                );
+                let payload = ErrorResponse::new(
+                    ApiErrorCode::StaleMarketData,
+                    "All market data inputs are stale",
+                )
+                .with_details(details);
+                let body = Json(ApiResponse::new(payload, "system"));
                 return (StatusCode::UNPROCESSABLE_ENTITY, body).into_response();
             }
             ApiError::Database(_) | ApiError::Internal(_) => (
@@ -141,7 +140,8 @@ impl IntoResponse for ApiError {
             ),
         };
 
-        let body = Json(ErrorResponse::new(error_type, message));
+        let payload = ErrorResponse::new(error_type, message);
+        let body = Json(ApiResponse::new(payload, "system"));
         (status, body).into_response()
     }
 }
@@ -158,8 +158,8 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body");
-        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
-        (status, json)
+        let envelope: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        (status, envelope["data"].clone())
     }
 
     #[tokio::test]

@@ -32,6 +32,27 @@ Key benchmarks:
 - `amm_quote_constant_product`: Single AMM quote
 - `amm_quote_large_trade_4M_reserve`: Impact on large trades
 
+## Quote Serialization
+
+The `/api/v1/quote` hot path now caches the fully serialized response body and
+reuses it on cache hits. This avoids the previous `QuoteResponse -> JSON`
+serialization work on every cached response while preserving the exact wire
+contract.
+
+Run the API serialization benchmark with:
+```bash
+cargo bench -p stellarroute-api --bench quote_serialization
+```
+
+Key benchmarks:
+- `quote_response_serialize_each_time`: Baseline cost of serializing a representative quote payload.
+- `quote_response_cached_json_reuse`: Optimized cache-hit path that reuses prebuilt JSON bytes.
+
+For p95 validation in an environment with Redis enabled, compare
+`histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))`
+before and after deployment while driving repeated identical quote requests to
+exercise the cache-hit path.
+
 ## Safety Bounds
 
 ### Route Discovery

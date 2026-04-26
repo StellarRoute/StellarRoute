@@ -10,6 +10,7 @@ export type SwapButtonState =
   | "insufficient_balance"
   | "high_price_impact"
   | "high_impact_warning"
+  | "refreshing_quote"
   | "ready"
   | "executing"
   | "error";
@@ -78,6 +79,14 @@ export function SwapButton({
           disabled: true,
           variant: "default" as const,
           icon: <Loader2 className="mr-2 h-5 w-5 animate-spin" />,
+        };
+      case "refreshing_quote":
+        return {
+          label: "Refreshing Quote...",
+          disabled: true,
+          variant: "outline" as const,
+          icon: <Loader2 className="mr-2 h-5 w-5 animate-spin" />,
+          className: "border-primary/40 text-primary",
         };
       case "error":
         return {

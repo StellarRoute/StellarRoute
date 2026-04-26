@@ -51,7 +51,7 @@ describe("TransactionHistory", () => {
   it("should replace skeleton with empty state after loading", async () => {
     const { container } = render(<TransactionHistory />);
 
-    let skeletons = container.querySelectorAll(".animate-pulse");
+    const skeletons = container.querySelectorAll(".animate-pulse");
     expect(skeletons.length).toBeGreaterThan(0);
 
     await waitFor(

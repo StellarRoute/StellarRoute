@@ -1,5 +1,6 @@
 //! API routes
 
+pub mod canary;
 pub mod health;
 pub mod kill_switch;
 pub mod metrics;

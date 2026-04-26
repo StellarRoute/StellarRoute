@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown, RefreshCw } from 'lucide-react';
@@ -13,7 +13,12 @@ import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
 import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
+import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
+import {
+  SESSION_RECOVERY_THRESHOLD_MS,
+  type TradeFormSnapshot,
+} from '@/hooks/useTradeFormStorage';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { cn } from '@/lib/utils';
@@ -29,15 +34,40 @@ export function SwapCard() {
     setFromAmount,
     toAmount,
     slippage,
+    setSlippage,
+    deadline,
+    setDeadline,
     quote,
     switchTokens,
     formattedRate,
+    pendingRecovery,
+    restorePending,
+    discardPending,
+    hasRecoverableState,
+    snapshotCurrent,
+    reset,
   } = useSwapState();
 
   const [isConnected, setIsConnected] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(null);
+  const [wakeSnapshot, setWakeSnapshot] = useState<TradeFormSnapshot | null>(null);
+  const [wakeRecoveryOpen, setWakeRecoveryOpen] = useState(false);
+  const [recoveryRequestedAt, setRecoveryRequestedAt] = useState<number | null>(null);
+  const [isRecoveringSession, setIsRecoveringSession] = useState(false);
+  const hiddenAtRef = useRef<number | null>(null);
+  const recoveryReason: 'refresh' | 'wake' | null = wakeRecoveryOpen
+    ? 'wake'
+    : pendingRecovery
+      ? 'refresh'
+      : null;
+  const requiresFreshQuote =
+    recoveryRequestedAt !== null &&
+    (quote.lastQuotedAtMs === null ||
+      quote.lastQuotedAtMs < recoveryRequestedAt ||
+      quote.loading ||
+      quote.isStale);
 
   // Connection status indicator
   const { isOnline } = useOnlineStatus();
@@ -56,12 +86,92 @@ export function SwapCard() {
     if (isSwapping) return "executing";
     if (!isConnected) return "no_wallet";
     if (!fromAmount || parseFloat(fromAmount) === 0) return "no_amount";
+    if (quote.error) return "error";
+    if (requiresFreshQuote) return "refreshing_quote";
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return "insufficient_balance";
     if (quote.priceImpact > 10) return "high_impact_warning";
+    if (quote.loading) return "refreshing_quote";
     if (quote.isStale) return "error";
-    if (quote.error) return "error";
     return "ready";
-  }, [isConnected, fromAmount, fromBalance, quote.priceImpact, quote.isStale, quote.error, isSwapping]);
+  }, [
+    fromAmount,
+    fromBalance,
+    isConnected,
+    isSwapping,
+    quote.error,
+    quote.isStale,
+    quote.loading,
+    quote.priceImpact,
+    requiresFreshQuote,
+  ]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+
+      const hiddenAt = hiddenAtRef.current;
+      hiddenAtRef.current = null;
+
+      if (
+        document.visibilityState !== 'visible' ||
+        hiddenAt === null ||
+        Date.now() - hiddenAt < SESSION_RECOVERY_THRESHOLD_MS ||
+        !hasRecoverableState
+      ) {
+        return;
+      }
+
+      setWakeRecoveryOpen(true);
+      setWakeSnapshot(snapshotCurrent());
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [hasRecoverableState, snapshotCurrent]);
+
+  const closeRecoveryModal = useCallback(() => {
+    setWakeRecoveryOpen(false);
+    setWakeSnapshot(null);
+  }, []);
+
+  const handleDiscardRecovery = useCallback(() => {
+    if (recoveryReason === 'refresh') {
+      discardPending();
+    } else {
+      reset();
+      setSelectedRoute(null);
+    }
+    setRecoveryRequestedAt(null);
+    closeRecoveryModal();
+  }, [closeRecoveryModal, discardPending, recoveryReason, reset]);
+
+  const handleRestoreRecovery = useCallback(async () => {
+    setSelectedRoute(null);
+    setRecoveryRequestedAt(Date.now());
+    setIsRecoveringSession(true);
+
+    try {
+      if (recoveryReason === 'refresh') {
+        restorePending();
+        closeRecoveryModal();
+        // Force quote refresh after restoring form state
+        await quote.refresh({ force: true });
+      } else {
+        closeRecoveryModal();
+        await quote.refresh({ force: true });
+      }
+    } catch (error) {
+      console.error('Failed to restore session:', error);
+      throw error; // Let modal handle the error display
+    } finally {
+      setIsRecoveringSession(false);
+    }
+  }, [closeRecoveryModal, quote, recoveryReason, restorePending]);
 
   const executeSwap = useCallback(async () => {
     setIsSwapping(true);
@@ -103,7 +213,16 @@ export function SwapCard() {
             </h2>
             <div className="flex items-center gap-1">
               <QuoteStreamStatusIndicator status={streamStatus} mode={streamMode} />
-              <SettingsPanel />
+              <SettingsPanel
+                slippage={slippage}
+                onSlippageChange={setSlippage}
+                deadline={deadline}
+                onDeadlineChange={setDeadline}
+                onReset={() => {
+      reset();
+      setSelectedRoute(null);
+    }}
+              />
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -198,6 +317,38 @@ export function SwapCard() {
               Quote outdated — refresh for latest price
             </span>
           )}
+          {quote.isRecovering && (
+            <div
+              data-testid="recovering-indicator"
+              className="flex items-center justify-between gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2"
+            >
+              <span className="text-xs text-blue-500 font-medium">
+                {quote.hasPendingRetry
+                  ? `Retrying quote in ${Math.max(1, Math.ceil(quote.pendingRetryRemainingMs / 1000))}s...`
+                  : 'Retrying quote...'}
+              </span>
+              {quote.hasPendingRetry && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={quote.cancelRetry}
+                  className="h-7 rounded-lg px-2 text-[11px] font-semibold text-blue-600 hover:bg-blue-500/10 hover:text-blue-700"
+                >
+                  Cancel retry
+                </Button>
+              )}
+            </div>
+          )}
+
+          {requiresFreshQuote && (
+            <span
+              data-testid="recovery-refresh-indicator"
+              className="text-xs font-medium text-primary"
+            >
+              Session restored — fetching a fresh quote before trading
+            </span>
+          )}
 
           {/* Action Button */}
           <div className="pt-2">
@@ -230,6 +381,15 @@ export function SwapCard() {
         toSymbol={toSymbol}
       />
 
+      <SessionRecoveryModal
+        isOpen={recoveryReason !== null}
+        reason={recoveryReason ?? 'refresh'}
+        snapshot={recoveryReason === 'refresh' ? pendingRecovery : wakeSnapshot}
+        isRecovering={isRecoveringSession}
+        onRestore={handleRestoreRecovery}
+        onDiscard={handleDiscardRecovery}
+      />
+
       {/* Footer Info */}
       <p className="text-center text-[10px] text-muted-foreground/60 mt-4 px-8 uppercase tracking-widest font-bold">
         Powered by StellarRoute Aggregator
@@ -237,4 +397,3 @@ export function SwapCard() {
     </div>
   );
 }
-

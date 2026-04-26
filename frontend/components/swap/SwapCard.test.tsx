@@ -1,35 +1,31 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi, Mock } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { SwapCard } from "./SwapCard";
 import { SettingsProvider } from "@/components/providers/settings-provider";
 
-function setNavigatorOnline(value: boolean) {
-  Object.defineProperty(window.navigator, "onLine", {
+  return {
+    promise,
+    resolve: () => resolve(createResponse(data)),
+  };
+}
+
+function setVisibilityState(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
     configurable: true,
-    value,
+    get: () => state,
   });
 }
 
-describe("SwapCard network resilience and states", () => {
+describe("SwapCard session recovery", () => {
   beforeEach(() => {
     localStorage.clear();
-    global.fetch = vi.fn(() => 
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          total: "9.5",
-          price_impact: "0.5",
-          path: [],
-          price: "0.95",
-          amount: "10"
-        })
-      })
-    ) as Mock;
+    setVisibilityState("visible");
   });
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -59,16 +55,6 @@ describe("SwapCard network resilience and states", () => {
     await waitFor(() => {
       expect(screen.getByText(/enter amount/i)).toBeInTheDocument();
     });
-    
-    // 3. Enter amount
-    const payInput = screen.getByLabelText(/you pay/i);
-    await user.type(payInput, "10");
-    
-    // 4. Should show "Swap" button
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
-    }, { timeout: 3000 });
-  });
 
   it("shows high price impact warning for large amounts", async () => {
     // Override fetch mock for this test to return high price impact

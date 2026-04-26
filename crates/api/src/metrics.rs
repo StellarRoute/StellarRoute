@@ -56,13 +56,117 @@ lazy_static! {
     )
     .expect("Can't create QUOTE_REQUESTS counter");
 
-    /// Kill switch status gauge
     pub static ref KILL_SWITCH_STATUS: IntGaugeVec = register_int_gauge_vec!(
         "stellarroute_kill_switch_status",
         "Kill switch status (1 for disabled, 0 for enabled)",
         &["type", "name"]
     )
     .expect("Can't create KILL_SWITCH_STATUS gauge");
+
+    /// Adaptive timeout value in milliseconds
+    pub static ref ADAPTIVE_TIMEOUT_MS: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_adaptive_timeout_ms",
+        "Current adaptive timeout value in milliseconds",
+        &["environment"]
+    )
+    .expect("Can't create ADAPTIVE_TIMEOUT_MS gauge");
+
+    /// EMA latency in milliseconds
+    pub static ref EMA_LATENCY_MS: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_ema_latency_ms",
+        "Current EMA latency in milliseconds",
+        &["environment"]
+    )
+    .expect("Can't create EMA_LATENCY_MS gauge");
+
+    // ── Priority queue metrics ────────────────────────────────────────────
+
+    /// Total jobs submitted to the priority queue, labelled by priority band.
+    pub static ref QUEUE_SUBMISSIONS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_queue_submissions_total",
+        "Total jobs submitted to the priority queue",
+        &["priority"]
+    )
+    .expect("Can't create QUEUE_SUBMISSIONS counter");
+
+    /// Total jobs completed from the priority queue, labelled by priority band.
+    pub static ref QUEUE_COMPLETIONS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_queue_completions_total",
+        "Total jobs completed from the priority queue",
+        &["priority"]
+    )
+    .expect("Can't create QUEUE_COMPLETIONS counter");
+
+    /// Current depth of the pending queue, labelled by priority band.
+    pub static ref QUEUE_DEPTH: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_queue_depth",
+        "Current number of pending jobs in the priority queue",
+        &["priority"]
+    )
+    .expect("Can't create QUEUE_DEPTH gauge");
+
+    /// Job processing latency histogram, labelled by priority band.
+    pub static ref QUEUE_JOB_LATENCY: HistogramVec = register_histogram_vec!(
+        "stellarroute_queue_job_duration_seconds",
+        "Time from job submission to completion, by priority band",
+        &["priority"],
+        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+    )
+    .expect("Can't create QUEUE_JOB_LATENCY histogram");
+
+    /// WFQ virtual clock value (monotonically increasing).
+    pub static ref QUEUE_VIRTUAL_CLOCK: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_queue_virtual_clock",
+        "Current WFQ virtual clock value used for starvation prevention",
+        &["instance"]
+    )
+    .expect("Can't create QUEUE_VIRTUAL_CLOCK gauge");
+
+    // ── Indexer lag metrics ───────────────────────────────────────────────
+
+    /// Indexer lag in ledger counts relative to Horizon.
+    /// Labels: source (sdex / amm)
+    pub static ref INDEXER_LAG_LEDGERS: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_lag_ledgers",
+        "Number of ledgers the local index is behind the live Horizon sequence",
+        &["source"]
+    )
+    .expect("Can't create INDEXER_LAG_LEDGERS gauge");
+
+    /// Indexer lag in estimated wall-clock seconds.
+    /// Labels: source (sdex / amm)
+    pub static ref INDEXER_LAG_SECONDS: prometheus::GaugeVec = prometheus::register_gauge_vec!(
+        "stellarroute_indexer_lag_seconds",
+        "Estimated wall-clock lag of the local index behind Horizon (seconds)",
+        &["source"]
+    )
+    .expect("Can't create INDEXER_LAG_SECONDS gauge");
+
+    /// Most recently indexed ledger sequence number.
+    /// Labels: source (sdex / amm)
+    pub static ref INDEXER_LAST_LEDGER: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_last_indexed_ledger",
+        "Most recently indexed ledger sequence number",
+        &["source"]
+    )
+    .expect("Can't create INDEXER_LAST_LEDGER gauge");
+
+    /// Current Horizon latest ledger sequence (cached from last measurement).
+    pub static ref INDEXER_HORIZON_LEDGER: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_horizon_ledger",
+        "Current Horizon latest ledger sequence number (cached)",
+        &["instance"]
+    )
+    .expect("Can't create INDEXER_HORIZON_LEDGER gauge");
+
+    /// Sync status gauge: 1 = ok, 0 = warning, -1 = critical, -2 = unknown.
+    /// Labels: source (sdex / amm)
+    pub static ref INDEXER_SYNC_STATUS: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_sync_status",
+        "Indexer sync health: 1=ok, 0=warning, -1=critical, -2=unknown",
+        &["source"]
+    )
+    .expect("Can't create INDEXER_SYNC_STATUS gauge");
 }
 
 /// Record kill switch status
@@ -105,6 +209,87 @@ pub fn record_cache_hit(cache_type: &str) {
 /// Record cache miss
 pub fn record_cache_miss(cache_type: &str) {
     CACHE_MISSES.with_label_values(&[cache_type]).inc();
+}
+
+/// Record adaptive timeout metrics
+pub fn record_adaptive_timeout(timeout_ms: u64, ema_ms: u64, environment: &str) {
+    ADAPTIVE_TIMEOUT_MS
+        .with_label_values(&[environment])
+        .set(timeout_ms as i64);
+    EMA_LATENCY_MS
+        .with_label_values(&[environment])
+        .set(ema_ms as i64);
+}
+
+// ── Priority queue metric helpers ─────────────────────────────────────────────
+
+/// Increment the submission counter for a priority band.
+pub fn record_queue_submission(priority: &str) {
+    QUEUE_SUBMISSIONS.with_label_values(&[priority]).inc();
+}
+
+/// Increment the completion counter for a priority band.
+pub fn record_queue_completion(priority: &str) {
+    QUEUE_COMPLETIONS.with_label_values(&[priority]).inc();
+}
+
+/// Record job processing latency for a priority band.
+pub fn record_queue_job_latency(duration: Duration, priority: &str) {
+    QUEUE_JOB_LATENCY
+        .with_label_values(&[priority])
+        .observe(duration.as_secs_f64());
+}
+
+/// Update the pending queue depth gauges from a metrics snapshot.
+///
+/// Call this periodically (e.g. from a background task) to keep the
+/// Prometheus gauges in sync with the actual queue state.
+pub fn update_queue_depth_gauges(pending_by_priority: &[usize; 4]) {
+    const BANDS: [&str; 4] = ["critical", "high", "normal", "low"];
+    for (i, &depth) in pending_by_priority.iter().enumerate() {
+        QUEUE_DEPTH.with_label_values(&[BANDS[i]]).set(depth as i64);
+    }
+}
+
+/// Update the WFQ virtual clock gauge.
+pub fn update_virtual_clock(value: i64) {
+    QUEUE_VIRTUAL_CLOCK
+        .with_label_values(&["default"])
+        .set(value);
+}
+
+// ── Indexer lag metric helpers ────────────────────────────────────────────────
+
+/// Update all indexer lag gauges for a single source in one call.
+///
+/// Called by [`crate::indexer_lag::IndexerLagMonitor`] after each measurement.
+pub fn update_indexer_lag(
+    source: &str,
+    lag_ledgers: u64,
+    lag_seconds: f64,
+    last_indexed_ledger: u64,
+    horizon_ledger: u64,
+    status: crate::indexer_lag::SyncStatus,
+) {
+    INDEXER_LAG_LEDGERS
+        .with_label_values(&[source])
+        .set(lag_ledgers as i64);
+
+    INDEXER_LAG_SECONDS
+        .with_label_values(&[source])
+        .set(lag_seconds);
+
+    INDEXER_LAST_LEDGER
+        .with_label_values(&[source])
+        .set(last_indexed_ledger as i64);
+
+    INDEXER_HORIZON_LEDGER
+        .with_label_values(&["default"])
+        .set(horizon_ledger as i64);
+
+    INDEXER_SYNC_STATUS
+        .with_label_values(&[source])
+        .set(status.as_gauge_value());
 }
 
 /// Get cache hit ratio for a given cache type

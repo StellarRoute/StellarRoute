@@ -1,6 +1,6 @@
 use stellarroute_routing::health::anomaly::{AnomalyConfig, LiquidityAnomalyDetector};
-use stellarroute_routing::optimizer::HybridOptimizer;
-use stellarroute_routing::pathfinder::{LiquidityEdge, PathfinderConfig};
+use stellarroute_routing::optimizer::{HybridOptimizer, OptimizerPolicy};
+use stellarroute_routing::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig};
 use stellarroute_routing::policy::RoutingPolicy;
 
 #[test]
@@ -31,7 +31,7 @@ fn test_anomaly_detection_integration() {
 
 #[test]
 fn test_optimizer_flags_anomalies() {
-    let optimizer = HybridOptimizer::new(PathfinderConfig::default());
+    let mut optimizer = HybridOptimizer::new(PathfinderConfig::default());
 
     // Create edges with anomalies
     let edges = vec![LiquidityEdge {

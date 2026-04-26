@@ -14,9 +14,6 @@ pub struct GraphManager {
     edges: Arc<ArcSwap<Vec<LiquidityEdge>>>,
     anomaly_detector:
         Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
-    pub db: PgPool,
-    pub edges: Arc<ArcSwap<CompactedGraph>>,
-    pub anomaly_detector: Arc<tokio::sync::Mutex<LiquidityAnomalyDetector>>,
 }
 
 impl GraphManager {

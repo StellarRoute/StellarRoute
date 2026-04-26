@@ -144,16 +144,6 @@ pub struct AppState {
     /// Shared liquidity anomaly detector
     pub anomaly_detector:
         Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
-    /// Canary configuration for side-by-side policy evaluation
-    pub canary_config: Arc<tokio::sync::RwLock<CanaryConfig>>,
-    /// Canary history buffer for operator reporting
-    pub canary_history: Arc<tokio::sync::RwLock<std::collections::VecDeque<CanaryEvaluation>>>,
-    /// Dynamic timeout controller for quote discovery
-    pub timeout_controller: Arc<TimeoutController>,
-    /// Non-blocking audit log writer for route decisions
-    pub audit_writer: Arc<AuditWriter>,
-    /// Indexer lag monitor for sync drift detection
-    pub indexer_lag: Arc<IndexerLagMonitor>,
 }
 
 impl AppState {

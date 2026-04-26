@@ -70,6 +70,8 @@ export interface PriceQuote {
   ttl_seconds?: number;
   /** Estimated price impact percentage */
   price_impact?: string;
+  /** Optional alternative routes provided by the aggregator */
+  alternativeRoutes?: { id: string; venue: string; expectedAmount: string }[];
 }
 
 export interface HealthStatus {

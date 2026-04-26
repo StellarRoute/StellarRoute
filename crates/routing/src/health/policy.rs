@@ -112,59 +112,48 @@ impl ExclusionPolicy {
             // 2. Check Venue Override
             let venue_directive = self.overrides.venue_entries.get(&venue.venue_ref);
 
-            match (source_directive, venue_directive) {
-                (_, Some(OverrideDirective::ForceInclude))
-                | (Some(OverrideDirective::ForceInclude), _) => {
-                    // Skip threshold check entirely — always included.
-                }
-                (_, Some(OverrideDirective::ForceExclude))
-                | (Some(OverrideDirective::ForceExclude), _) => {
-                    excluded.insert(venue.venue_ref.clone());
-                    excluded_venues.push(ExcludedVenueInfo {
-                        venue_ref: venue.venue_ref.clone(),
-                        score: venue.record.score,
-                        signals: venue.record.signals.clone(),
-                        reason: ExclusionReason::Override,
-                    });
-                }
-                (Some(OverrideDirective::ForceExclude), None) => {
-                    excluded.insert(venue.venue_ref.clone());
-                    excluded_venues.push(ExcludedVenueInfo {
-                        venue_ref: venue.venue_ref.clone(),
-                        score: venue.record.score,
-                        signals: venue.record.signals.clone(),
-                        reason: ExclusionReason::Override,
-                    });
-                }
-                (None, None) => {
-                    // 1. Check Circuit Breaker first
-                    if let Some(registry) = &self.circuit_breaker {
-                        if registry.is_venue_excluded(&venue.venue_ref) {
-                            excluded.insert(venue.venue_ref.clone());
-                            excluded_venues.push(ExcludedVenueInfo {
-                                venue_ref: venue.venue_ref.clone(),
-                                score: venue.record.score,
-                                signals: venue.record.signals.clone(),
-                                reason: ExclusionReason::CircuitBreakerOpen,
-                            });
-                            continue;
-                        }
-                    }
-
-                    // 2. Check Static Threshold
-                    let threshold = match venue.venue_type {
-                        VenueType::Sdex => self.thresholds.sdex,
-                        VenueType::Amm => self.thresholds.amm,
-                    };
-                    if venue.record.score < threshold {
+            if matches!(source_directive, Some(OverrideDirective::ForceInclude))
+                || matches!(venue_directive, Some(OverrideDirective::ForceInclude))
+            {
+                // Skip threshold check entirely — always included.
+            } else if matches!(source_directive, Some(OverrideDirective::ForceExclude))
+                || matches!(venue_directive, Some(OverrideDirective::ForceExclude))
+            {
+                excluded.insert(venue.venue_ref.clone());
+                excluded_venues.push(ExcludedVenueInfo {
+                    venue_ref: venue.venue_ref.clone(),
+                    score: venue.record.score,
+                    signals: venue.record.signals.clone(),
+                    reason: ExclusionReason::Override,
+                });
+            } else {
+                // 1. Check Circuit Breaker first
+                if let Some(registry) = &self.circuit_breaker {
+                    if registry.is_venue_excluded(&venue.venue_ref) {
                         excluded.insert(venue.venue_ref.clone());
                         excluded_venues.push(ExcludedVenueInfo {
                             venue_ref: venue.venue_ref.clone(),
                             score: venue.record.score,
                             signals: venue.record.signals.clone(),
-                            reason: ExclusionReason::PolicyThreshold { threshold },
+                            reason: ExclusionReason::CircuitBreakerOpen,
                         });
+                        continue;
                     }
+                }
+
+                // 2. Check Static Threshold
+                let threshold = match venue.venue_type {
+                    VenueType::Sdex => self.thresholds.sdex,
+                    VenueType::Amm => self.thresholds.amm,
+                };
+                if venue.record.score < threshold {
+                    excluded.insert(venue.venue_ref.clone());
+                    excluded_venues.push(ExcludedVenueInfo {
+                        venue_ref: venue.venue_ref.clone(),
+                        score: venue.record.score,
+                        signals: venue.record.signals.clone(),
+                        reason: ExclusionReason::PolicyThreshold { threshold },
+                    });
                 }
             }
         }
@@ -182,21 +171,21 @@ impl ExclusionPolicy {
 
         // 2. Check Venue Override
         let venue_directive = self.overrides.venue_entries.get(venue_ref);
-        match (source_directive, venue_directive) {
-            (_, Some(OverrideDirective::ForceInclude))
-            | (Some(OverrideDirective::ForceInclude), _) => false,
-            (_, Some(OverrideDirective::ForceExclude)) => true,
-            (Some(OverrideDirective::ForceExclude), None) => true,
-            (_, Some(OverrideDirective::ForceExclude))
-            | (Some(OverrideDirective::ForceExclude), _) => true,
-            (None, None) => {
-                if let Some(registry) = &self.circuit_breaker {
-                    if registry.is_venue_excluded(venue_ref) {
-                        return true;
-                    }
+        if matches!(source_directive, Some(OverrideDirective::ForceInclude))
+            || matches!(venue_directive, Some(OverrideDirective::ForceInclude))
+        {
+            false
+        } else if matches!(source_directive, Some(OverrideDirective::ForceExclude))
+            || matches!(venue_directive, Some(OverrideDirective::ForceExclude))
+        {
+            true
+        } else {
+            if let Some(registry) = &self.circuit_breaker {
+                if registry.is_venue_excluded(venue_ref) {
+                    return true;
                 }
-                false
             }
+            false
         }
     }
 }

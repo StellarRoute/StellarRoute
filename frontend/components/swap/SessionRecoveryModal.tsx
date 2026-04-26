@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Clock, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import type { TradeFormSnapshot } from '@/hooks/useTradeFormStorage';
 
 interface SessionRecoveryModalProps {
@@ -78,17 +78,6 @@ export function SessionRecoveryModal({
     }
   };
 
-  const getIcon = () => {
-    switch (reason) {
-      case 'wake':
-        return <Clock className="h-6 w-6" />;
-      case 'refresh':
-        return <RefreshCw className="h-6 w-6" />;
-      default:
-        return <AlertCircle className="h-6 w-6" />;
-    }
-  };
-
   const getActionText = () => {
     if (isLoading) return 'Restoring...';
     return reason === 'refresh' ? 'Restore Session' : 'Refresh Quote';
@@ -105,7 +94,7 @@ export function SessionRecoveryModal({
         <div className="space-y-6 p-7">
           <DialogHeader className="space-y-3">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-              {getIcon()}
+              <AlertCircle className="h-6 w-6" />
             </div>
             <DialogTitle className="text-center text-2xl font-bold tracking-tight">
               {getTitle()}

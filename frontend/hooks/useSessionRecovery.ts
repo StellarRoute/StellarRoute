@@ -27,13 +27,23 @@ export function useSessionRecovery() {
   const visibilityHandlerRef = useRef<(() => void) | null>(null);
   const pageShowHandlerRef = useRef<((e: PageTransitionEvent) => void) | null>(null);
 
-  // Update checkpoint
-  const updateCheckpoint = useCallback((isRefresh = false) => {
+  // Persist checkpoint and update in-memory state used for staleness detection.
+  const persistCheckpoint = useCallback((isRefresh = false) => {
     const checkpoint: SessionCheckpoint = {
       timestamp: Date.now(),
       isRefresh,
     };
     lastCheckpointRef.current = checkpoint;
+    sessionStorage.setItem(SESSION_CHECKPOINT_KEY, JSON.stringify(checkpoint));
+  }, [persistCheckpoint]);
+
+  // Keep storage heartbeat fresh without mutating staleness baseline.
+  const heartbeatCheckpoint = useCallback(() => {
+    const isRefresh = lastCheckpointRef.current?.isRefresh ?? false;
+    const checkpoint: SessionCheckpoint = {
+      timestamp: Date.now(),
+      isRefresh,
+    };
     sessionStorage.setItem(SESSION_CHECKPOINT_KEY, JSON.stringify(checkpoint));
   }, []);
 
@@ -65,7 +75,7 @@ export function useSessionRecovery() {
     
     // Set initial checkpoint if none exists
     if (!lastCheckpointRef.current) {
-      updateCheckpoint(false);
+      persistCheckpoint(false);
     }
   }, []);
 
@@ -98,7 +108,7 @@ export function useSessionRecovery() {
           });
         }
       }
-      updateCheckpoint(false);
+      persistCheckpoint(false);
     };
 
     document.addEventListener('visibilitychange', visibilityHandlerRef.current);
@@ -107,7 +117,7 @@ export function useSessionRecovery() {
         document.removeEventListener('visibilitychange', visibilityHandlerRef.current);
       }
     };
-  }, [checkSessionFreshness, updateCheckpoint, checkRecoverableContext]);
+  }, [checkSessionFreshness, persistCheckpoint, checkRecoverableContext]);
 
   // Handle page show event (tab refresh/navigation back)
   useEffect(() => {
@@ -125,7 +135,7 @@ export function useSessionRecovery() {
           });
         }
       }
-      updateCheckpoint(true);
+      persistCheckpoint(true);
     };
 
     window.addEventListener('pageshow', pageShowHandlerRef.current);
@@ -134,16 +144,16 @@ export function useSessionRecovery() {
         window.removeEventListener('pageshow', pageShowHandlerRef.current);
       }
     };
-  }, [checkSessionFreshness, updateCheckpoint, checkRecoverableContext]);
+  }, [checkSessionFreshness, persistCheckpoint, checkRecoverableContext]);
 
   // Update checkpoint on regular interval
   useEffect(() => {
     const interval = setInterval(() => {
-      updateCheckpoint(false);
+      heartbeatCheckpoint();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [updateCheckpoint]);
+  }, [heartbeatCheckpoint]);
 
   // Begin recovery process
   const beginRecovery = useCallback(() => {
@@ -161,8 +171,8 @@ export function useSessionRecovery() {
       refreshType: null,
       hasRecoverableContext: false,
     });
-    updateCheckpoint(false);
-  }, [updateCheckpoint]);
+    persistCheckpoint(false);
+  }, [persistCheckpoint]);
 
   // Dismiss recovery (reset)
   const dismissRecovery = useCallback(() => {
@@ -172,8 +182,8 @@ export function useSessionRecovery() {
       refreshType: null,
       hasRecoverableContext: false,
     });
-    updateCheckpoint(false);
-  }, [updateCheckpoint]);
+    persistCheckpoint(false);
+  }, [persistCheckpoint]);
 
   return {
     ...state,

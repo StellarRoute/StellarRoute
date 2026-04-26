@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 /// Configuration for liquidity anomaly detection
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,18 +62,23 @@ impl LiquidityAnomalyDetector {
         current_depth: Option<i128>,
     ) -> AnomalyResult {
         let now = Utc::now();
-        let history = self.history.entry(venue_ref.to_string()).or_insert_with(|| VenueHistory {
-            venue_ref: venue_ref.to_string(),
-            last_reserves: current_reserves,
-            last_depth: current_depth,
-            last_updated_at: now,
-        });
+        let history = self
+            .history
+            .entry(venue_ref.to_string())
+            .or_insert_with(|| VenueHistory {
+                venue_ref: venue_ref.to_string(),
+                last_reserves: current_reserves,
+                last_depth: current_depth,
+                last_updated_at: now,
+            });
 
         let mut score = 0.0;
         let mut reasons = Vec::new();
 
         // 1. Detect AMM reserve shifts
-        if let (Some((last_a, last_b)), Some((curr_a, curr_b))) = (history.last_reserves, current_reserves) {
+        if let (Some((last_a, last_b)), Some((curr_a, curr_b))) =
+            (history.last_reserves, current_reserves)
+        {
             if last_a > 0 && last_b > 0 {
                 let shift_a = (curr_a as f64 - last_a as f64).abs() / last_a as f64;
                 let shift_b = (curr_b as f64 - last_b as f64).abs() / last_b as f64;
@@ -92,7 +97,10 @@ impl LiquidityAnomalyDetector {
                 let collapse = (last_d as f64 - curr_d as f64) / last_d as f64;
                 if collapse > self.config.depth_collapse_threshold {
                     score += (collapse / self.config.depth_collapse_threshold).min(1.0) * 0.9;
-                    reasons.push(format!("Significant depth collapse: {:.1}%", collapse * 100.0));
+                    reasons.push(format!(
+                        "Significant depth collapse: {:.1}%",
+                        collapse * 100.0
+                    ));
                 }
             }
         }

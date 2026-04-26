@@ -10,7 +10,8 @@ use stellarroute_routing::pathfinder::LiquidityEdge;
 pub struct GraphManager {
     db: PgPool,
     edges: Arc<ArcSwap<Vec<LiquidityEdge>>>,
-    anomaly_detector: Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
+    anomaly_detector:
+        Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
 }
 
 impl GraphManager {
@@ -173,7 +174,7 @@ impl GraphManager {
                         let (reserves, depth) = if is_amm {
                             // For AMM, we assume reserves are related to the available amount
                             // This is a simplification; in a real app we'd fetch reserves directly
-                            (Some(( (a * 1e7) as i128, ( (a * p * 1e7) as i128))), None)
+                            (Some(((a * 1e7) as i128, ((a * p * 1e7) as i128))), None)
                         } else {
                             (None, Some((a * 1e7) as i128))
                         };

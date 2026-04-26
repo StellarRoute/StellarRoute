@@ -1,6 +1,6 @@
 use stellarroute_routing::health::anomaly::{AnomalyConfig, LiquidityAnomalyDetector};
-use stellarroute_routing::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig};
 use stellarroute_routing::optimizer::{HybridOptimizer, OptimizerPolicy};
+use stellarroute_routing::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig};
 use stellarroute_routing::policy::RoutingPolicy;
 
 #[test]
@@ -32,7 +32,7 @@ fn test_anomaly_detection_integration() {
 #[test]
 fn test_optimizer_flags_anomalies() {
     let mut optimizer = HybridOptimizer::new(PathfinderConfig::default());
-    
+
     // Create edges with anomalies
     let edges = vec![
         LiquidityEdge {
@@ -60,7 +60,9 @@ fn test_optimizer_flags_anomalies() {
     ];
 
     let routing_policy = RoutingPolicy::default();
-    let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 100, &routing_policy).unwrap();
+    let result = optimizer
+        .find_optimal_routes("XLM", "USDC", &edges, 100, &routing_policy)
+        .unwrap();
 
     // The anomalous route might still be selected if it's better, but it should be flagged
     assert!(result.metrics.anomaly_score > 0.0 || !result.flagged_venues.is_empty());

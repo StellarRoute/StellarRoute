@@ -113,7 +113,8 @@ impl ExclusionPolicy {
             let venue_directive = self.overrides.venue_entries.get(&venue.venue_ref);
 
             match (source_directive, venue_directive) {
-                (_, Some(OverrideDirective::ForceInclude)) | (Some(OverrideDirective::ForceInclude), _) => {
+                (_, Some(OverrideDirective::ForceInclude))
+                | (Some(OverrideDirective::ForceInclude), _) => {
                     // Skip threshold check entirely — always included.
                 }
                 (_, Some(OverrideDirective::ForceExclude)) => {

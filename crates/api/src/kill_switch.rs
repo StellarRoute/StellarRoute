@@ -1,8 +1,8 @@
 use crate::cache::CacheManager;
-use stellarroute_routing::health::policy::{OverrideDirective, OverrideRegistry};
-use stellarroute_routing::health::scorer::VenueType;
 use std::collections::HashMap;
 use std::sync::Arc;
+use stellarroute_routing::health::policy::{OverrideDirective, OverrideRegistry};
+use stellarroute_routing::health::scorer::VenueType;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -50,7 +50,11 @@ impl KillSwitchManager {
                 // Record metrics
                 for (source, directive) in &state.sources {
                     let disabled = matches!(directive, OverrideDirective::ForceExclude);
-                    crate::metrics::record_kill_switch_status("source", &format!("{:?}", source).to_lowercase(), disabled);
+                    crate::metrics::record_kill_switch_status(
+                        "source",
+                        &format!("{:?}", source).to_lowercase(),
+                        disabled,
+                    );
                 }
                 for (venue, directive) in &state.venues {
                     let disabled = matches!(directive, OverrideDirective::ForceExclude);
@@ -88,7 +92,11 @@ impl KillSwitchManager {
         // Record metrics
         for (source, directive) in &new_state.sources {
             let disabled = matches!(directive, OverrideDirective::ForceExclude);
-            crate::metrics::record_kill_switch_status("source", &format!("{:?}", source).to_lowercase(), disabled);
+            crate::metrics::record_kill_switch_status(
+                "source",
+                &format!("{:?}", source).to_lowercase(),
+                disabled,
+            );
         }
         for (venue, directive) in &new_state.venues {
             let disabled = matches!(directive, OverrideDirective::ForceExclude);
@@ -133,19 +141,25 @@ mod tests {
     #[tokio::test]
     async fn test_kill_switch_manager_in_memory() {
         let manager = KillSwitchManager::new(None);
-        
+
         let mut sources = HashMap::new();
         sources.insert(VenueType::Amm, OverrideDirective::ForceExclude);
-        
+
         let mut venues = HashMap::new();
         venues.insert("sdex:123".to_string(), OverrideDirective::ForceExclude);
-        
+
         let state = KillSwitchState { sources, venues };
         manager.update_state(state).await.unwrap();
-        
+
         let registry = manager.get_override_registry().await;
-        assert_eq!(registry.source_entries.get(&VenueType::Amm), Some(&OverrideDirective::ForceExclude));
-        assert_eq!(registry.venue_entries.get("sdex:123"), Some(&OverrideDirective::ForceExclude));
+        assert_eq!(
+            registry.source_entries.get(&VenueType::Amm),
+            Some(&OverrideDirective::ForceExclude)
+        );
+        assert_eq!(
+            registry.venue_entries.get("sdex:123"),
+            Some(&OverrideDirective::ForceExclude)
+        );
         assert_eq!(registry.source_entries.get(&VenueType::Sdex), None);
     }
 }

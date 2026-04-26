@@ -42,7 +42,7 @@ export function AmountInput({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      let raw = e.target.value.replace(/,/g, '.'); 
+      const raw = e.target.value.replace(/,/g, '.'); 
       
       if (raw === '') {
         setInternalValue('');

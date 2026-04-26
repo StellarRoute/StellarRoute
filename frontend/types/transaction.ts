@@ -7,6 +7,39 @@ export type TransactionStatus =
   | 'failed'
   | 'dropped';
 
+export type TimelinePhase = 'signature' | 'submit' | 'inclusion' | 'finality';
+
+export type TimelineEventState =
+  | 'active'
+  | 'success'
+  | 'failed'
+  | 'retrying';
+
+export type TimelineEventSource = 'wallet' | 'api' | 'chain';
+
+export interface TransactionCorrelationIds {
+  walletRequestId: string;
+  apiRequestId?: string;
+  txHash?: string;
+  replacementTxHash?: string;
+}
+
+export interface TransactionTimelineEvent {
+  id: string;
+  phase: TimelinePhase;
+  state: TimelineEventState;
+  source: TimelineEventSource;
+  timestamp: number;
+  titleKey: string;
+  descriptionKey?: string;
+  correlation: TransactionCorrelationIds;
+  attempt: number;
+  txHash?: string;
+  replacedTxHash?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 export interface TransactionRecord {
   id: string; // unique identifier (could be hash if known)
   timestamp: number; // unix timestamp
@@ -35,6 +68,12 @@ export interface TransactionRecord {
   // Results / Errors
   hash?: string; // on-chain transaction hash
   errorMessage?: string; // reason for failure if applicable
+
+  // Timeline / Correlation metadata
+  timeline?: TransactionTimelineEvent[];
+  correlation?: TransactionCorrelationIds;
+  retryCount?: number;
+  replacementCount?: number;
   
   walletAddress: string; // to track history per-wallet
 }

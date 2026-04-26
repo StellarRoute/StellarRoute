@@ -2,12 +2,14 @@
 //!
 //! Provides REST API endpoints for price quotes and orderbook data.
 
+pub mod audit;
 pub mod cache;
 pub mod docs;
 pub mod error;
 pub mod exactlyonce;
 pub mod graph;
 pub mod handlers;
+pub mod indexer_lag;
 pub mod kill_switch;
 pub mod load_test;
 pub mod metrics;

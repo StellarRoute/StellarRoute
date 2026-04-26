@@ -237,7 +237,7 @@ async fn check_pathfinding_latency() -> CheckResult {
 }
 
 async fn check_multi_hop_support() -> CheckResult {
-    // Check if the RoutingEngine can handle multiple hops in config
+    // Check if the routing policy allows multiple hops.
     let engine = stellarroute_routing::RoutingEngine::new();
     let policy = engine.routing_policy();
 

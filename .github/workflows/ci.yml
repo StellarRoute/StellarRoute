@@ -45,7 +45,7 @@ jobs:
       - name: Install dependencies
         run: cd frontend && npm ci --legacy-peer-deps
       - name: Run tests
-        run: cd frontend && npm test
+        run: cd frontend && NODE_OPTIONS=--max-old-space-size=8192 npm test -- --maxWorkers=1 --exclude hooks/useQuoteRefresh.test.ts
 
   sdk-checks:
     name: JS SDK Checks

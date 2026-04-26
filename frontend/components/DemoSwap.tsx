@@ -121,7 +121,7 @@ export function DemoSwap() {
 
   const applyMax = useCallback(() => {
     if (!isConnected || stubSpendableBalance == null) return;
-    setSellRaw(formatMaxAmountForInput(stubSpendableBalance, sellMaxDecimals));
+    setSellRaw(formatMaxAmountForInput(stubSpendableBalance.toString(), sellMaxDecimals));
   }, [isConnected, stubSpendableBalance, sellMaxDecimals]);
 
   const handleSwapClick = () => {

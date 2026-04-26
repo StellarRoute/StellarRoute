@@ -608,7 +608,9 @@ async fn find_best_price(
     let mut overrides = state.kill_switch.get_override_registry().await;
     // Merge static config overrides into dynamic ones
     for entry in health_config.overrides.clone() {
-        overrides.venue_entries.insert(entry.venue_ref, entry.directive);
+        overrides
+            .venue_entries
+            .insert(entry.venue_ref, entry.directive);
     }
 
     let policy = ExclusionPolicy {

@@ -138,7 +138,8 @@ pub struct AppState {
     /// API-level kill switches for sources/venues
     pub kill_switch: Arc<crate::kill_switch::KillSwitchManager>,
     /// Shared liquidity anomaly detector
-    pub anomaly_detector: Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
+    pub anomaly_detector:
+        Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
 }
 
 impl AppState {

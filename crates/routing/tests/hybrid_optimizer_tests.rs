@@ -17,7 +17,7 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30,
             anomaly_score: 0.0,
-            anomaly_reasons: vec![], // 100 XLM
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -28,7 +28,7 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30,
             anomaly_score: 0.0,
-            anomaly_reasons: vec![], // 50 XLM
+            anomaly_reasons: vec![],
         },
         // Multi-hop paths
         LiquidityEdge {
@@ -40,7 +40,7 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30,
             anomaly_score: 0.0,
-            anomaly_reasons: vec![], // 80 USDC
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "EURT".to_string(),
@@ -51,7 +51,7 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30,
             anomaly_score: 0.0,
-            anomaly_reasons: vec![], // 20 EURT
+            anomaly_reasons: vec![],
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -62,7 +62,7 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30,
             anomaly_score: 0.0,
-            anomaly_reasons: vec![], // 30 USDC
+            anomaly_reasons: vec![],
         },
         // Additional liquidity sources
         LiquidityEdge {
@@ -74,7 +74,7 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             price: 1.0,
             fee_bps: 30,
             anomaly_score: 0.0,
-            anomaly_reasons: vec![], // 15 XLM
+            anomaly_reasons: vec![],
         },
     ]
 }

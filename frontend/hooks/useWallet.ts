@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   connectWallet,
   disconnectWallet,
@@ -16,6 +16,10 @@ const initialState: WalletSession = {
   isConnected: false,
 };
 
+/**
+ * Legacy useWallet hook - prefer using the WalletProvider context instead
+ * @deprecated Use useWallet from @/components/providers/wallet-provider
+ */
 export function useWallet() {
   const [session, setSession] = useState<WalletSession>(initialState);
   const [availableWallets, setAvailableWallets] = useState<
@@ -24,12 +28,7 @@ export function useWallet() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔹 Load available wallets on mount
-  useEffect(() => {
-    loadWallets();
-  }, []);
-
-  const loadWallets = async () => {
+  const loadWallets = useCallback(async () => {
     try {
       const wallets = await getAvailableWallets();
       setAvailableWallets(wallets);
@@ -37,7 +36,12 @@ export function useWallet() {
     } catch {
       setAvailableWallets([]);
     }
-  };
+  }, []);
+
+  // 🔹 Load available wallets on mount
+  useEffect(() => {
+    loadWallets();
+  }, [loadWallets]);
 
   // 🔹 Connect wallet
   const connect = async (walletId: SupportedWallet) => {

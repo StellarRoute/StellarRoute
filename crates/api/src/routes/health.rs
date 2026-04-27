@@ -66,6 +66,35 @@ pub async fn health_check(
     };
     components.insert("redis".to_string(), redis_status);
 
+    // --- Indexer lag ---
+    let lag_snapshots = state.indexer_lag.snapshots().await;
+    for snap in &lag_snapshots {
+        let component_key = format!("indexer_lag_{}", snap.source);
+        let component_val = match snap.status {
+            crate::indexer_lag::SyncStatus::Ok => "healthy".to_string(),
+            crate::indexer_lag::SyncStatus::Warning => {
+                warn!(
+                    source = %snap.source,
+                    lag_ledgers = snap.lag_ledgers,
+                    "Indexer lag elevated during health check"
+                );
+                // Warning does not flip all_healthy — it's a soft signal
+                format!("warning (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Critical => {
+                warn!(
+                    source = %snap.source,
+                    lag_ledgers = snap.lag_ledgers,
+                    "Indexer lag CRITICAL during health check"
+                );
+                all_healthy = false;
+                format!("unhealthy (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Unknown => "unknown".to_string(),
+        };
+        components.insert(component_key, component_val);
+    }
+
     let status = if all_healthy {
         "healthy".to_string()
     } else {
@@ -144,6 +173,32 @@ pub async fn dependency_health(
     // similarly to the earlier implementation using `reqwest`.
     components.insert("horizon".to_string(), "not_configured".to_string());
     components.insert("soroban_rpc".to_string(), "not_configured".to_string());
+
+    // --- Indexer lag ---
+    let lag_snapshots = state.indexer_lag.snapshots().await;
+    for snap in &lag_snapshots {
+        let component_key = format!("indexer_lag_{}", snap.source);
+        let component_val = match snap.status {
+            crate::indexer_lag::SyncStatus::Ok => {
+                format!("ok (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Warning => {
+                format!(
+                    "warning (lag: {} ledgers, {:.0}s)",
+                    snap.lag_ledgers, snap.lag_seconds
+                )
+            }
+            crate::indexer_lag::SyncStatus::Critical => {
+                all_ok = false;
+                format!(
+                    "degraded (lag: {} ledgers, {:.0}s)",
+                    snap.lag_ledgers, snap.lag_seconds
+                )
+            }
+            crate::indexer_lag::SyncStatus::Unknown => "unknown".to_string(),
+        };
+        components.insert(component_key, component_val);
+    }
 
     let status = if all_ok { "ok" } else { "degraded" }.to_string();
     let body = DependenciesHealthResponse {

@@ -16,6 +16,7 @@ use stellarroute_routing::health::scorer::{
 };
 
 use crate::{
+    audit::{AuditExclusion, AuditInputs, AuditOutcome, AuditPathStep, AuditSelected},
     cache,
     error::{ApiError, Result},
     middleware::{validation::ValidatedQuoteRequest, RequestId},
@@ -64,8 +65,16 @@ pub async fn get_quote(
     );
 
     async move {
-        match get_quote_inner(state, base_asset, quote_asset, params, explain).await {
-            Ok((quote, cache_hit)) => {
+        match get_quote_inner(
+            state.clone(),
+            base_asset.clone(),
+            quote_asset.clone(),
+            params.clone(),
+            explain,
+        )
+        .await
+        {
+            Ok((quote_resp, cache_hit)) => {
                 let error_class = "none";
                 let latency_ms = start_time.elapsed().as_millis() as u64;
 
@@ -85,15 +94,43 @@ pub async fn get_quote(
                     "Quote pipeline completed"
                 );
 
-                let envelope = crate::models::ApiResponse::new(quote, request_id.to_string());
+                // ── Audit log ────────────────────────────────────────────
+                let trace_id = crate::tracing_config::TraceContext::current().trace_id;
+                let audit_inputs = AuditInputs {
+                    base: base.clone(),
+                    quote: quote.clone(),
+                    amount: quote_resp.amount.clone(),
+                    slippage_bps: params.slippage_bps(),
+                    quote_type: quote_resp.quote_type.clone(),
+                };
+                let audit_selected = build_audit_selected(&quote_resp);
+                let audit_exclusions = build_audit_exclusions(&quote_resp);
+                state.audit_writer.emit(
+                    request_id.as_str(),
+                    &trace_id,
+                    latency_ms,
+                    AuditOutcome::Success,
+                    cache_hit,
+                    audit_inputs,
+                    Some(audit_selected),
+                    audit_exclusions,
+                );
+
+                let envelope = crate::models::ApiResponse::new(quote_resp, request_id.to_string());
                 Ok(Json(envelope))
             }
             Err(e) => {
-                let error_class = match &e {
-                    ApiError::Validation(_) | ApiError::InvalidAsset(_) => "validation",
-                    ApiError::NotFound(_) | ApiError::NoRouteFound => "not_found",
-                    ApiError::StaleMarketData { .. } => "stale_market_data",
-                    _ => "internal",
+                let (error_class, audit_outcome) = match &e {
+                    ApiError::Validation(_) | ApiError::InvalidAsset(_) => {
+                        ("validation", AuditOutcome::Error)
+                    }
+                    ApiError::NotFound(_) | ApiError::NoRouteFound => {
+                        ("not_found", AuditOutcome::NoRoute)
+                    }
+                    ApiError::StaleMarketData { .. } => {
+                        ("stale_market_data", AuditOutcome::StaleData)
+                    }
+                    _ => ("internal", AuditOutcome::Error),
                 };
                 let latency_ms = start_time.elapsed().as_millis() as u64;
 
@@ -113,6 +150,31 @@ pub async fn get_quote(
                     "Quote pipeline failed"
                 );
 
+                // ── Audit log ────────────────────────────────────────────
+                let trace_id = crate::tracing_config::TraceContext::current().trace_id;
+                let amount_str = params.amount.as_deref().unwrap_or("1").to_string();
+                let quote_type_str = match params.quote_type {
+                    crate::models::request::QuoteType::Sell => "sell",
+                    crate::models::request::QuoteType::Buy => "buy",
+                };
+                let audit_inputs = AuditInputs {
+                    base: base.clone(),
+                    quote: quote.clone(),
+                    amount: amount_str,
+                    slippage_bps: params.slippage_bps(),
+                    quote_type: quote_type_str.to_string(),
+                };
+                state.audit_writer.emit(
+                    request_id.as_str(),
+                    &trace_id,
+                    latency_ms,
+                    audit_outcome,
+                    false,
+                    audit_inputs,
+                    None,
+                    vec![],
+                );
+
                 Err(e)
             }
         }
@@ -127,7 +189,7 @@ async fn get_quote_inner(
     quote_asset: AssetPath,
     params: QuoteParams,
     explain: bool,
-) -> Result<(QuoteResponse, bool)> {
+) -> Result<(PreparedQuoteResponse, bool)> {
     let base = base_asset.to_canonical();
     let quote = quote_asset.to_canonical();
 
@@ -238,6 +300,8 @@ async fn get_quote_inner(
 
             if let Some(cache) = &state.cache {
                 if let Ok(mut cache) = cache.try_lock() {
+                    let jitter = crate::cache::JitteredTtl::default();
+                    let jittered_ttl = jitter.apply(state.cache_policy.quote_ttl);
                     let _ = cache
                         .set(&quote_cache_key_c, &response, state.cache_policy.quote_ttl)
                         .await;

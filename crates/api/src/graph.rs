@@ -10,6 +10,10 @@ use stellarroute_routing::pathfinder::LiquidityEdge;
 
 /// Daemon that maintains an active in-memory cache of the routing graph
 pub struct GraphManager {
+    db: PgPool,
+    edges: Arc<ArcSwap<Vec<LiquidityEdge>>>,
+    anomaly_detector:
+        Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
     pub db: PgPool,
     pub edges: Arc<ArcSwap<CompactedGraph>>,
     pub anomaly_detector: Arc<tokio::sync::Mutex<LiquidityAnomalyDetector>>,

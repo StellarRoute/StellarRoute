@@ -157,3 +157,65 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .glass-card {
+    background: color-mix(in srgb, white, transparent 95%);
+    backdrop-filter: blur(24px);
+    border: 1px solid color-mix(in srgb, white, transparent 90%);
+    box-shadow: var(--shadow-2xl);
+  }
+  
+  .glass-toast {
+    background: color-mix(in srgb, var(--background), transparent 40%) !important;
+    backdrop-filter: blur(24px) !important;
+    border: 1px solid color-mix(in srgb, var(--border), transparent 60%) !important;
+    box-shadow: var(--shadow-2xl) !important;
+    border-radius: 1rem !important;
+    color: var(--foreground) !important;
+  }
+}
+
+/* Sonner custom styles */
+[data-sonner-toast] {
+  transition: all 0.3s ease;
+}
+
+[data-sonner-toast][data-styled="true"] {
+  padding: 1rem !important;
+}
+
+[data-sonner-toast] [data-title] {
+  font-weight: 700 !important;
+  font-size: 0.875rem !important;
+  letter-spacing: -0.01em !important;
+}
+
+[data-sonner-toast] [data-description] {
+  color: var(--muted-foreground) !important;
+  font-size: 0.75rem !important;
+  margin-top: 0.25rem !important;
+}
+
+[data-sonner-toast] [data-icon] {
+  margin-right: 0.75rem !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+  border-color: color-mix(in srgb, var(--success), transparent 80%) !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-color: color-mix(in srgb, var(--destructive), transparent 80%) !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  border-color: color-mix(in srgb, var(--warning), transparent 80%) !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  border-color: color-mix(in srgb, var(--primary), transparent 80%) !important;
+}
+
+
+

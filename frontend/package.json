@@ -37,6 +37,9 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@ladle/react": "^5.1.1",
+    "@next/bundle-analyzer": "16.1.6",
+    "@playwright/test": "1.49.1",
     "@axe-core/playwright": "^4.11.2",
     "@ladle/react": "^5.1.1",
     "@next/bundle-analyzer": "16.1.6",

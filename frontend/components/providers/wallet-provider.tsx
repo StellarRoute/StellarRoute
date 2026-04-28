@@ -4,6 +4,8 @@ interface WalletContextType {
 'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
+
 import {
   connectWallet,
   disconnectWallet,
@@ -137,6 +139,9 @@ export function WalletProvider({
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Unknown error');
       setError({ message: e.message });
+      toast.error('Wallet connection failed', {
+        description: e.message,
+      });
     } finally {
       setIsLoading(false);
     }

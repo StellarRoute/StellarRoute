@@ -25,8 +25,9 @@ export interface QuoteResult {
   hasPendingRetry: boolean;
   pendingRetryRemainingMs: number;
   cancelRetry: () => void;
-  refresh: () => void;
+  refresh: (opts?: { force?: boolean }) => void;
   data: import('@/types').PriceQuote | undefined;
+  lastQuotedAtMs: number | null;
 }
 
 /**
@@ -111,5 +112,6 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     cancelRetry,
     refresh,
     data,
+    lastQuotedAtMs: data ? (data.timestamp ?? Date.now()) : null,
   };
 }

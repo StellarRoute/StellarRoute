@@ -19,6 +19,7 @@ pub mod regions;
 pub mod replay;
 pub mod routes;
 pub mod server;
+pub mod simulation;
 pub mod shutdown;
 pub mod state;
 pub mod telemetry;

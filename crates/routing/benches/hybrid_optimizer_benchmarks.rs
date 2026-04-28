@@ -3,7 +3,8 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::time::Duration;
 use stellarroute_routing::{
-    HybridOptimizer, LiquidityEdge, PathfinderConfig, PolicyPresets, RoutingPolicy,
+    BenchmarkHarness, HybridOptimizer, LiquidityEdge, OptimizerPolicy, PathfinderConfig,
+    PolicyPresets, RoutingPolicy, ScorerInput, ScorerRegistry, SwapPath,
 };
 
 fn create_test_edges() -> Vec<LiquidityEdge> {
@@ -247,12 +248,98 @@ fn bench_benchmark_policies(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_scorer_throughput(c: &mut Criterion) {
+    let policy = OptimizerPolicy::default();
+    let input = ScorerInput {
+        output_amount: 500_000_000,
+        impact_bps: 100,
+        compute_time_us: 50_000,
+        hop_count: 2,
+        policy: policy.clone(),
+    };
+
+    let mut group = c.benchmark_group("scorer_throughput");
+    group.measurement_time(Duration::from_secs(5));
+
+    let registry = ScorerRegistry::new();
+    for (name, scorer) in registry.iter() {
+        let scorer_name = name.to_string();
+        group.bench_with_input(
+            BenchmarkId::new("score", &scorer_name),
+            &input,
+            |b, inp| b.iter(|| black_box(scorer.score(black_box(inp)))),
+        );
+    }
+
+    // Also benchmark via registry (includes clamping overhead)
+    for scorer_name in ["default", "fee_minimizing", "output_maximizing"] {
+        let mut reg = ScorerRegistry::new();
+        reg.set_active(scorer_name).unwrap();
+        group.bench_with_input(
+            BenchmarkId::new("registry_score", scorer_name),
+            &input,
+            |b, inp| b.iter(|| black_box(reg.score(black_box(inp)))),
+        );
+    }
+
+    group.finish();
+}
+
+fn bench_scorer_comparison(c: &mut Criterion) {
+    let edges = create_test_edges();
+    let optimizer = HybridOptimizer::new(PathfinderConfig::default());
+    let routing_policy = RoutingPolicy::default();
+
+    // Collect up to 50 candidate paths by running the optimizer on multiple pairs
+    let mut all_paths: Vec<SwapPath> = Vec::new();
+    let pairs = [
+        ("XLM", "BTC"),
+        ("XLM", "USDC"),
+        ("XLM", "EURT"),
+        ("USDC", "BTC"),
+        ("USDC", "EURT"),
+    ];
+    for (from, to) in pairs {
+        if let Ok(diag) =
+            optimizer.find_optimal_routes(from, to, &edges, 100_000_000, &routing_policy)
+        {
+            all_paths.push(diag.selected_path);
+            for (path, _) in diag.alternatives {
+                all_paths.push(path);
+            }
+        }
+    }
+    // Pad to 50 paths by repeating if needed
+    let target = 50.min(all_paths.len().max(1));
+    let paths: Vec<_> = all_paths.iter().cycle().take(target).cloned().collect();
+
+    let registry = ScorerRegistry::new();
+
+    let mut group = c.benchmark_group("scorer_comparison");
+    group.measurement_time(Duration::from_secs(10));
+
+    group.bench_function("harness_all_scorers_50_paths", |b| {
+        b.iter(|| {
+            black_box(BenchmarkHarness::run(
+                black_box(&paths),
+                black_box(&edges),
+                black_box(100_000_000i128),
+                black_box(&registry),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_policy_comparison,
     bench_latency_vs_quality,
     bench_scalability,
     bench_determinism,
-    bench_benchmark_policies
+    bench_benchmark_policies,
+    bench_scorer_throughput,
+    bench_scorer_comparison
 );
 criterion_main!(benches);

@@ -2,6 +2,7 @@
 
 pub mod canary;
 pub mod health;
+pub mod idempotent_quote;
 pub mod kill_switch;
 pub mod metrics;
 pub mod orderbook;
@@ -29,6 +30,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health::health_check))
         .route("/health/deps", get(health::dependency_health))
         .route("/metrics/cache", get(metrics::cache_metrics))
+        .route("/metrics/pool", get(metrics::pool_stats))
         .route("/metrics", get(prometheus::prometheus_metrics))
         // API v1 routes
         .route("/api/v1/pairs", get(pairs::list_pairs))
@@ -38,6 +40,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(orderbook::get_orderbook),
         )
         .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
+        .route("/api/v1/quote", post(idempotent_quote::post_quote))
         .route(
             "/api/v1/route/:base/:quote",
             get(quote::get_route).route_layer(axum::middleware::from_fn(legacy_route_deprecation)),

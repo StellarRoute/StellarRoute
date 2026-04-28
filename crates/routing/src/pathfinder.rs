@@ -169,34 +169,6 @@ impl Pathfinder {
             }
 
             // Explore neighbors
-            if let Some(neighbors) = graph.get(&current) {
-                for edge in neighbors {
-                    // Cycle prevention
-                    if visited.contains(&edge.to) {
-                        continue;
-                    }
-
-                    let mut new_visited = visited.clone();
-                    new_visited.insert(edge.to.clone());
-
-                    let hop = PathHop {
-                        source_asset: edge.from.clone(),
-                        destination_asset: edge.to.clone(),
-                        venue_type: edge.venue_type.clone(),
-                        venue_ref: edge.venue_ref.clone(),
-                        price: edge.price,
-                        fee_bps: edge.fee_bps,
-                        anomaly_score: edge.anomaly_score,
-                        anomaly_reasons: edge.anomaly_reasons.clone(),
-                    };
-
-                    // Simple output estimation (50bps slippage per hop)
-                    let estimated_after_hop = (estimated_output * 9950) / 10000;
-
-                    let mut new_hops = path_hops.clone();
-                    new_hops.push(hop);
-
-                    queue.push_back((edge.to.clone(), new_hops, new_visited, estimated_after_hop));
             for edge in graph.get_neighbors(current_idx) {
                 let venue_type = if edge.venue_type_idx == 1 {
                     "amm"

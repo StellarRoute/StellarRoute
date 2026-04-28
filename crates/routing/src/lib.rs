@@ -17,6 +17,7 @@ pub mod optimizer;
 pub mod pathfinder;
 pub mod policy;
 pub mod risk;
+pub mod scorer;
 pub mod simulator;
 
 pub use adaptive_routing::{AdaptiveError, AdaptivePolicy, AdaptiveRouter, QualityMetrics};
@@ -33,6 +34,10 @@ pub use optimizer::{
 pub use pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig, SwapPath};
 pub use policy::RoutingPolicy;
 pub use risk::{AssetRiskLimit, ExclusionReason, RiskLimitConfig, RiskValidator, RouteExclusion};
+pub use scorer::{
+    BenchmarkHarness, BenchmarkReport, DefaultScorer, FeeMinimizingScorer, OutputMaximizingScorer,
+    RouteScorer, ScorerInput, ScorerOutput, ScorerRegistry, ScorerResult,
+};
 
 /// Routing engine with integrated pathfinding and impact calculations
 pub struct RoutingEngine {

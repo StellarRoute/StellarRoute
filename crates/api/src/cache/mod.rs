@@ -2,6 +2,7 @@
 
 pub mod adaptive_ttl;
 pub mod invalidation;
+pub mod jitter;
 pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
@@ -16,6 +17,8 @@ pub use adaptive_ttl::{
     AdaptiveTtlConfig, AdaptiveTtlEngine, AdaptiveTtlStats, DepthAggregator, MarketMetrics,
     TtlDecision, TtlReason, VolatilityCalculator,
 };
+
+pub use jitter::JitteredTtl;
 
 pub use prewarmer::{
     CachePrewarmer, DemandForecaster, KeyDemandEntry, PrewarmError, PrewarmMetrics,

@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSwapI18n } from "@/lib/swap-i18n";
 
 export type SwapButtonState = 
   | "no_wallet"
@@ -30,12 +31,13 @@ export function SwapButton({
   isLoading = false,
   className,
 }: SwapButtonProps) {
+  const { t } = useSwapI18n();
   
   const getButtonProps = () => {
     switch (state) {
       case "no_wallet":
         return {
-          label: "Connect Wallet",
+          label: t("swap.cta.connectWallet"),
           onClick: onConnectWallet,
           disabled: false,
           variant: "default" as const,
@@ -44,21 +46,21 @@ export function SwapButton({
         };
       case "no_amount":
         return {
-          label: "Enter Amount",
+          label: t("swap.cta.enterAmount"),
           disabled: true,
           variant: "secondary" as const,
           className: "bg-muted/50 text-muted-foreground",
         };
       case "insufficient_balance":
         return {
-          label: "Insufficient Balance",
+          label: t("swap.cta.insufficientBalance"),
           disabled: true,
           variant: "destructive" as const,
           className: "bg-destructive/10 text-destructive border-destructive/20 border",
         };
       case "high_price_impact":
         return {
-          label: "Price Impact Too High",
+          label: t("swap.simulation.highImpactTitle"),
           disabled: true,
           variant: "destructive" as const,
           icon: <AlertCircle className="mr-2 h-5 w-5" />,
@@ -66,7 +68,7 @@ export function SwapButton({
         };
       case "high_impact_warning":
         return {
-          label: "Swap Anyway",
+          label: t("swap.cta.swapAnyway"),
           onClick: onSwap,
           disabled: isLoading,
           variant: "destructive" as const,
@@ -75,14 +77,14 @@ export function SwapButton({
         };
       case "executing":
         return {
-          label: "Swapping...",
+          label: t("swap.cta.swapping"),
           disabled: true,
           variant: "default" as const,
           icon: <Loader2 className="mr-2 h-5 w-5 animate-spin" />,
         };
       case "refreshing_quote":
         return {
-          label: "Refreshing Quote...",
+          label: t("swap.cta.loadingQuote"),
           disabled: true,
           variant: "outline" as const,
           icon: <Loader2 className="mr-2 h-5 w-5 animate-spin" />,
@@ -90,7 +92,7 @@ export function SwapButton({
         };
       case "error":
         return {
-          label: "Error fetching quote",
+          label: t("swap.cta.errorFetchingQuote"),
           disabled: true,
           variant: "outline" as const,
           className: "border-destructive/50 text-destructive",
@@ -98,7 +100,7 @@ export function SwapButton({
       case "ready":
       default:
         return {
-          label: "Swap",
+          label: t("swap.cta.reviewSwap"),
           onClick: onSwap,
           disabled: isLoading,
           variant: "default" as const,

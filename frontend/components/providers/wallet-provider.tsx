@@ -1,9 +1,9 @@
-import { createContext, useContext, ReactNode, useState } from 'react';
-
-interface WalletContextType {
 'use client';
 
 import * as React from 'react';
+import { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
+import { createContext, useContext, ReactNode } from 'react';
 import {
   connectWallet,
   disconnectWallet,
@@ -42,7 +42,7 @@ interface WalletContextValue {
   setTransactionPending: (pending: boolean) => void;
 }
 
-const WalletContext = createContext<WalletContextType | undefined>(undefined);
+const WalletContext = createContext<WalletContextValue | undefined>(undefined);
 
 const AUTO_RECONNECT_PREFERENCE_KEY = 'stellarroute.wallet.autoReconnect';
 const LAST_WALLET_ID_KEY = 'stellarroute.wallet.lastWalletId';
@@ -66,6 +66,12 @@ export function WalletProvider({
   const [error, setError] = React.useState<WalletError | null>(null);
   const [autoReconnectPreferred, setAutoReconnectPreferredState] = React.useState(true);
   const [didLoadReconnectPreference, setDidLoadReconnectPreference] = React.useState(false);
+  const [accountSwitchState, setAccountSwitchState] = React.useState<AccountSwitchState>({
+    isDetecting: false,
+    hasChanged: false,
+    previousAddress: null,
+  });
+  const [isTransactionPending, setIsTransactionPending] = React.useState(false);
   const didAttemptInitialReconnect = React.useRef(false);
   const reconnectThrottleUntilMs = React.useRef(0);
 

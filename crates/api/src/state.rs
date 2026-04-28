@@ -18,6 +18,7 @@ use stellarroute_routing::health::circuit_breaker::CircuitBreakerRegistry;
 use crate::audit::AuditWriter;
 use crate::indexer_lag::IndexerLagMonitor;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
+use crate::exactlyonce::DedupeLedger;
 
 /// Primary database pool for write operations plus an optional replica pool
 /// for read-heavy endpoints.
@@ -40,6 +41,11 @@ impl DatabasePools {
 
     pub fn write_pool(&self) -> &PgPool {
         &self.primary
+    }
+
+    /// Returns the replica pool if one is configured, otherwise `None`.
+    pub fn replica_pool(&self) -> Option<&PgPool> {
+        self.replica.as_ref()
     }
 }
 
@@ -164,6 +170,12 @@ impl AppState {
             .clone()
             .start_polling(std::time::Duration::from_secs(30));
 
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+
         Self {
             db,
             cache: None,
@@ -188,6 +200,7 @@ impl AppState {
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
             indexer_lag,
+            idempotency_ledger,
         }
     }
 
@@ -222,6 +235,12 @@ impl AppState {
             ks.start_sync();
         });
 
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+
         Self {
             db,
             cache: Some(cache_arc),
@@ -246,6 +265,7 @@ impl AppState {
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
             indexer_lag,
+            idempotency_ledger,
         }
     }
 

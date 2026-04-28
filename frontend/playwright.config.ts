@@ -50,6 +50,15 @@ export default defineConfig({
       },
       testMatch: "**/a11y-swap-flow.spec.ts",
     },
+    {
+      name: "optimistic-swap",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/optimistic-swap-pipeline.spec.ts",
+    },
   ],
   /* Start the Next.js dev server before running tests */
   webServer: {

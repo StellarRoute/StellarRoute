@@ -1,7 +1,7 @@
-use axum::{extract::State, Json};
 use crate::error::Result;
 use crate::kill_switch::KillSwitchState;
 use crate::state::AppState;
+use axum::{extract::State, Json};
 use std::sync::Arc;
 use tracing::info;
 
@@ -15,9 +15,7 @@ use tracing::info;
         (status = 500, description = "Internal server error", body = ErrorResponse),
     )
 )]
-pub async fn get_kill_switch(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<KillSwitchState>> {
+pub async fn get_kill_switch(State(state): State<Arc<AppState>>) -> Result<Json<KillSwitchState>> {
     let ks_state = state.kill_switch.get_state().await;
     Ok(Json(ks_state))
 }
@@ -39,9 +37,12 @@ pub async fn update_kill_switch(
     Json(payload): Json<KillSwitchState>,
 ) -> Result<Json<serde_json::Value>> {
     info!("Admin updating kill switch state: {:?}", payload);
-    
-    state.kill_switch.update_state(payload).await
-        .map_err(|e| crate::error::ApiError::Internal(e))?;
-    
+
+    state
+        .kill_switch
+        .update_state(payload)
+        .await
+        .map_err(|e| crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!("{}", e))))?;
+
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }

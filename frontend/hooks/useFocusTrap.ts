@@ -14,7 +14,7 @@ const FOCUSABLE_SELECTOR =
  * unmounts.
  */
 export function useFocusTrap(
-  containerRef: React.RefObject<HTMLElement>,
+  containerRef: React.RefObject<HTMLElement | null>,
   active: boolean
 ): void {
   useEffect(() => {

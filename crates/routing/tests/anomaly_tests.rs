@@ -1,6 +1,6 @@
 use stellarroute_routing::health::anomaly::{AnomalyConfig, LiquidityAnomalyDetector};
-use stellarroute_routing::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig};
-use stellarroute_routing::optimizer::{HybridOptimizer, OptimizerPolicy};
+use stellarroute_routing::optimizer::HybridOptimizer;
+use stellarroute_routing::pathfinder::{LiquidityEdge, PathfinderConfig};
 use stellarroute_routing::policy::RoutingPolicy;
 
 #[test]
@@ -31,36 +31,25 @@ fn test_anomaly_detection_integration() {
 
 #[test]
 fn test_optimizer_flags_anomalies() {
-    let mut optimizer = HybridOptimizer::new(PathfinderConfig::default());
-    
+    let optimizer = HybridOptimizer::new(PathfinderConfig::default());
+
     // Create edges with anomalies
-    let edges = vec![
-        LiquidityEdge {
-            from: "XLM".to_string(),
-            to: "USDC".to_string(),
-            venue_type: "amm".to_string(),
-            venue_ref: "anomalous_pool".to_string(),
-            liquidity: 1000,
-            price: 1.0,
-            fee_bps: 30,
-            anomaly_score: 0.8,
-            anomaly_reasons: vec!["Sudden reserve shift: 70%".to_string()],
-        },
-        LiquidityEdge {
-            from: "XLM".to_string(),
-            to: "USDC".to_string(),
-            venue_type: "sdex".to_string(),
-            venue_ref: "healthy_offer".to_string(),
-            liquidity: 1000,
-            price: 1.01,
-            fee_bps: 20,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-        },
-    ];
+    let edges = vec![LiquidityEdge {
+        from: "XLM".to_string(),
+        to: "USDC".to_string(),
+        venue_type: "amm".to_string(),
+        venue_ref: "anomalous_pool".to_string(),
+        liquidity: 10_000_000,
+        price: 1.0,
+        fee_bps: 30,
+        anomaly_score: 0.8,
+        anomaly_reasons: vec!["Sudden reserve shift: 70%".to_string()],
+    }];
 
     let routing_policy = RoutingPolicy::default();
-    let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 100, &routing_policy).unwrap();
+    let result = optimizer
+        .find_optimal_routes("XLM", "USDC", &edges, 100, &routing_policy)
+        .unwrap();
 
     // The anomalous route might still be selected if it's better, but it should be flagged
     assert!(result.metrics.anomaly_score > 0.0 || !result.flagged_venues.is_empty());

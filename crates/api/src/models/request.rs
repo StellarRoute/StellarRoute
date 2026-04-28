@@ -1,6 +1,7 @@
 //! API request models
 
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 /// Default slippage tolerance in basis points (0.50%)
 pub const DEFAULT_SLIPPAGE_BPS: u32 = 50;
@@ -22,18 +23,63 @@ pub struct QuoteParams {
 }
 
 /// Request item for batch quotes
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct QuoteRequestItem {
+    /// Base asset identifier ("native", "CODE", or "CODE:ISSUER")
     pub base: String,
+    /// Quote asset identifier ("native", "CODE", or "CODE:ISSUER")
     pub quote: String,
+    /// Amount to trade (default: "1")
     pub amount: Option<String>,
+    /// Slippage tolerance in basis points (default: 50)
     pub slippage_bps: Option<u32>,
+    /// Quote direction: "sell" or "buy" (default: sell)
     pub quote_type: Option<QuoteType>,
 }
 
-/// Batch quote request
-#[derive(Debug, Deserialize)]
+impl QuoteRequestItem {
+    /// Validate this item and return a descriptive error string on failure.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.base.is_empty() {
+            return Err("base asset cannot be empty".to_string());
+        }
+        if self.quote.is_empty() {
+            return Err("quote asset cannot be empty".to_string());
+        }
+        if self.base == self.quote {
+            return Err(format!(
+                "base and quote assets must differ (got '{}')",
+                self.base
+            ));
+        }
+        if let Some(ref amount_str) = self.amount {
+            let amount: f64 = amount_str
+                .parse()
+                .map_err(|_| format!("amount '{}' is not a valid number", amount_str))?;
+            if amount <= 0.0 {
+                return Err(format!("amount must be > 0, got {}", amount));
+            }
+        }
+        if let Some(bps) = self.slippage_bps {
+            if bps > MAX_SLIPPAGE_BPS {
+                return Err(format!(
+                    "slippage_bps {} exceeds maximum {}",
+                    bps, MAX_SLIPPAGE_BPS
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Batch quote request — up to 25 pairs in one call.
+///
+/// All items are executed concurrently against a shared market snapshot.
+/// Per-item failures do not abort the batch; each item carries its own
+/// `result` field indicating success or the specific error.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct BatchQuoteRequest {
+    /// Quote items to evaluate (1–25).
     pub quotes: Vec<QuoteRequestItem>,
 }
 
@@ -88,7 +134,7 @@ fn default_quote_type() -> QuoteType {
 }
 
 /// Type of quote requested
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum QuoteType {
     /// Selling the base asset

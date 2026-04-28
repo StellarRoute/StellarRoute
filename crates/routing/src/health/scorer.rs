@@ -314,6 +314,7 @@ impl Default for HealthScoringConfig {
             min_tvl_threshold_e7: default_min_tvl(),
             depth_levels: default_depth_levels(),
             freshness_threshold_secs: FreshnessThresholds::default(),
+            anomaly: crate::health::anomaly::AnomalyConfig::default(),
         }
     }
 }

@@ -2,6 +2,7 @@
 
 pub mod adaptive_ttl;
 pub mod invalidation;
+pub mod jitter;
 pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
@@ -16,6 +17,8 @@ pub use adaptive_ttl::{
     AdaptiveTtlConfig, AdaptiveTtlEngine, AdaptiveTtlStats, DepthAggregator, MarketMetrics,
     TtlDecision, TtlReason, VolatilityCalculator,
 };
+
+pub use jitter::JitteredTtl;
 
 pub use prewarmer::{
     CachePrewarmer, DemandForecaster, KeyDemandEntry, PrewarmError, PrewarmMetrics,
@@ -61,6 +64,23 @@ impl CacheManager {
         }
     }
 
+    /// Get a cached JSON payload without deserializing.
+    #[instrument(skip(self), fields(cache.hit = tracing::field::Empty))]
+    pub async fn get_json(&mut self, key: &str) -> Option<String> {
+        match self.client.get::<_, String>(key).await {
+            Ok(json) => {
+                tracing::Span::current().record("cache.hit", true);
+                debug!("Raw JSON cache hit for key: {}", key);
+                Some(json)
+            }
+            Err(_) => {
+                tracing::Span::current().record("cache.hit", false);
+                debug!("Raw JSON cache miss for key: {}", key);
+                None
+            }
+        }
+    }
+
     /// Set a cached value with TTL
     #[instrument(skip(self, value), fields(cache.ttl_ms = ttl.as_millis() as u64))]
     pub async fn set<T: Serialize>(
@@ -82,6 +102,22 @@ impl CacheManager {
             .await?;
 
         debug!("Cached key: {} with TTL: {:?}", key, ttl);
+        Ok(())
+    }
+
+    /// Set a pre-serialized JSON payload with TTL.
+    #[instrument(skip(self, json), fields(cache.ttl_ms = ttl.as_millis() as u64))]
+    pub async fn set_json(
+        &mut self,
+        key: &str,
+        json: &str,
+        ttl: Duration,
+    ) -> Result<(), RedisError> {
+        self.client
+            .set_ex::<_, _, ()>(key, json, ttl.as_secs())
+            .await?;
+
+        debug!("Cached raw JSON key: {} with TTL: {:?}", key, ttl);
         Ok(())
     }
 

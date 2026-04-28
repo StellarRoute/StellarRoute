@@ -113,10 +113,21 @@ impl ExclusionPolicy {
             let venue_directive = self.overrides.venue_entries.get(&venue.venue_ref);
 
             match (source_directive, venue_directive) {
-                (_, Some(OverrideDirective::ForceInclude)) | (Some(OverrideDirective::ForceInclude), _) => {
+                (_, Some(OverrideDirective::ForceInclude))
+                | (Some(OverrideDirective::ForceInclude), _) => {
                     // Skip threshold check entirely — always included.
                 }
-                (_, Some(OverrideDirective::ForceExclude)) => {
+                (_, Some(OverrideDirective::ForceExclude))
+                | (Some(OverrideDirective::ForceExclude), _) => {
+                    excluded.insert(venue.venue_ref.clone());
+                    excluded_venues.push(ExcludedVenueInfo {
+                        venue_ref: venue.venue_ref.clone(),
+                        score: venue.record.score,
+                        signals: venue.record.signals.clone(),
+                        reason: ExclusionReason::Override,
+                    });
+                }
+                (Some(OverrideDirective::ForceExclude), None) => {
                     excluded.insert(venue.venue_ref.clone());
                     excluded_venues.push(ExcludedVenueInfo {
                         venue_ref: venue.venue_ref.clone(),
@@ -175,6 +186,9 @@ impl ExclusionPolicy {
             (_, Some(OverrideDirective::ForceInclude))
             | (Some(OverrideDirective::ForceInclude), _) => false,
             (_, Some(OverrideDirective::ForceExclude)) => true,
+            (Some(OverrideDirective::ForceExclude), None) => true,
+            (_, Some(OverrideDirective::ForceExclude))
+            | (Some(OverrideDirective::ForceExclude), _) => true,
             (None, None) => {
                 if let Some(registry) = &self.circuit_breaker {
                     if registry.is_venue_excluded(venue_ref) {

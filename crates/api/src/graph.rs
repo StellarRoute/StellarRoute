@@ -2,15 +2,21 @@
 use arc_swap::ArcSwap;
 use sqlx::{postgres::PgListener, PgPool, Row};
 use std::sync::Arc;
+use stellarroute_routing::health::anomaly::LiquidityAnomalyDetector;
 use tracing::{debug, error, info, warn};
 
+use stellarroute_routing::compaction::CompactedGraph;
 use stellarroute_routing::pathfinder::LiquidityEdge;
 
 /// Daemon that maintains an active in-memory cache of the routing graph
 pub struct GraphManager {
     db: PgPool,
     edges: Arc<ArcSwap<Vec<LiquidityEdge>>>,
-    anomaly_detector: Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
+    anomaly_detector:
+        Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
+    pub db: PgPool,
+    pub edges: Arc<ArcSwap<CompactedGraph>>,
+    pub anomaly_detector: Arc<tokio::sync::Mutex<LiquidityAnomalyDetector>>,
 }
 
 impl GraphManager {
@@ -18,7 +24,7 @@ impl GraphManager {
     pub fn new(db: PgPool) -> Self {
         Self {
             db,
-            edges: Arc::new(ArcSwap::from_pointee(Vec::new())),
+            edges: Arc::new(ArcSwap::from_pointee(CompactedGraph::default())),
             anomaly_detector: Arc::new(tokio::sync::Mutex::new(
                 stellarroute_routing::health::anomaly::LiquidityAnomalyDetector::new(
                     stellarroute_routing::health::anomaly::AnomalyConfig::default(),
@@ -28,8 +34,8 @@ impl GraphManager {
     }
 
     /// Retrieve the current live copy of the routing graph.
-    /// Returns an Arc to the vector for zero-copy sharing.
-    pub fn get_edges(&self) -> Arc<Vec<LiquidityEdge>> {
+    /// Returns an Arc to the compacted graph for zero-copy sharing.
+    pub fn get_edges(&self) -> Arc<CompactedGraph> {
         self.edges.load_full()
     }
 
@@ -173,7 +179,7 @@ impl GraphManager {
                         let (reserves, depth) = if is_amm {
                             // For AMM, we assume reserves are related to the available amount
                             // This is a simplification; in a real app we'd fetch reserves directly
-                            (Some(( (a * 1e7) as i128, ( (a * p * 1e7) as i128))), None)
+                            (Some(((a * 1e7) as i128, ((a * p * 1e7) as i128))), None)
                         } else {
                             (None, Some((a * 1e7) as i128))
                         };
@@ -197,10 +203,11 @@ impl GraphManager {
         }
 
         info!(
-            "Graph sync complete: swapped {} edges atomically",
+            "Graph sync complete: swapped {} edges atomically into compacted graph",
             next_edges.len()
         );
-        self.edges.store(Arc::new(next_edges));
+        self.edges
+            .store(Arc::new(CompactedGraph::from_edges(next_edges)));
         Ok(())
     }
 }
@@ -225,15 +232,19 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }];
 
         // Set initial state
-        manager.edges.store(Arc::new(initial_edges.clone()));
+        manager
+            .edges
+            .store(Arc::new(CompactedGraph::from_edges(initial_edges.clone())));
 
         // Obtain a snapshot
         let snapshot1 = manager.get_edges();
-        assert_eq!(snapshot1.len(), 1);
-        assert_eq!(snapshot1[0].from, "XLM");
+        assert_eq!(snapshot1.asset_count(), 2);
+        assert_eq!(snapshot1.assets[0], "XLM");
 
         // Update the manager with new data
         let new_edges = vec![LiquidityEdge {
@@ -244,17 +255,21 @@ mod tests {
             liquidity: 200,
             price: 0.99,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }];
-        manager.edges.store(Arc::new(new_edges));
+        manager
+            .edges
+            .store(Arc::new(CompactedGraph::from_edges(new_edges)));
 
         // Obtain a second snapshot
         let snapshot2 = manager.get_edges();
-        assert_eq!(snapshot2.len(), 1);
-        assert_eq!(snapshot2[0].from, "USDC");
+        assert_eq!(snapshot2.asset_count(), 2);
+        assert_eq!(snapshot2.assets[0], "USDC");
 
         // Verify snapshot1 is STILL valid and unchanged
-        assert_eq!(snapshot1.len(), 1);
-        assert_eq!(snapshot1[0].from, "XLM");
+        assert_eq!(snapshot1.asset_count(), 2);
+        assert_eq!(snapshot1.assets[0], "XLM");
     }
 
     #[tokio::test]
@@ -270,8 +285,12 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }];
-        manager.edges.store(Arc::new(initial_edges));
+        manager
+            .edges
+            .store(Arc::new(CompactedGraph::from_edges(initial_edges)));
 
         let mut handles = vec![];
         for _ in 0..10 {
@@ -279,7 +298,7 @@ mod tests {
             handles.push(tokio::spawn(async move {
                 for _ in 0..100 {
                     let edges = m.get_edges();
-                    assert!(!edges.is_empty());
+                    assert!(edges.asset_count() > 0);
                     tokio::task::yield_now().await;
                 }
             }));
@@ -296,8 +315,10 @@ mod tests {
                     liquidity: 100,
                     price: 1.0,
                     fee_bps: 30,
+                    anomaly_score: 0.0,
+                    anomaly_reasons: vec![],
                 }];
-                m2.edges.store(Arc::new(edges));
+                m2.edges.store(Arc::new(CompactedGraph::from_edges(edges)));
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             }
         });

@@ -1,7 +1,37 @@
 //! API response models
 
+use axum::{
+    body::{Body, Bytes},
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use utoipa::ToSchema;
+
+/// Standard API response envelope
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ApiResponse<T> {
+    pub v: u8,
+    pub timestamp: i64,
+    pub request_id: String,
+    pub data: T,
+}
+
+impl<T> ApiResponse<T> {
+    pub fn new(data: T, request_id: impl Into<String>) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        Self {
+            v: 1,
+            timestamp,
+            request_id: request_id.into(),
+            data,
+        }
+    }
+}
 
 /// Per-component health status value
 pub type ComponentStatus = String;
@@ -194,13 +224,127 @@ pub struct QuoteResponse {
     pub data_freshness: Option<DataFreshness>,
 }
 
+/// Prepared quote payload that can be returned without re-serializing on hot paths.
+#[derive(Debug, Clone)]
+pub struct PreparedQuoteResponse {
+    quote: Option<Arc<QuoteResponse>>,
+    body: Bytes,
+}
+
+impl PreparedQuoteResponse {
+    pub fn from_quote(quote: QuoteResponse) -> crate::error::Result<Self> {
+        let body = serde_json::to_vec(&quote).map(Bytes::from).map_err(|err| {
+            crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "failed to serialize quote response: {err}"
+            )))
+        })?;
+
+        Ok(Self {
+            quote: Some(Arc::new(quote)),
+            body,
+        })
+    }
+
+    pub fn from_cached_json(json: String) -> Self {
+        Self {
+            quote: None,
+            body: Bytes::from(json),
+        }
+    }
+
+    pub fn quote(&self) -> Option<&QuoteResponse> {
+        self.quote.as_deref()
+    }
+
+    pub fn into_quote(self) -> crate::error::Result<QuoteResponse> {
+        match self.quote {
+            Some(quote) => Ok(match Arc::try_unwrap(quote) {
+                Ok(owned) => owned,
+                Err(shared) => (*shared).clone(),
+            }),
+            None => serde_json::from_slice(&self.body).map_err(|err| {
+                crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!(
+                    "failed to deserialize cached quote response: {err}"
+                )))
+            }),
+        }
+    }
+
+    pub fn json_bytes(&self) -> &Bytes {
+        &self.body
+    }
+}
+
+impl IntoResponse for PreparedQuoteResponse {
+    fn into_response(self) -> Response {
+        let mut response = Response::new(Body::from(self.body));
+        *response.status_mut() = StatusCode::OK;
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        response
+    }
+}
+
 /// Response for a batch quote request
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchQuoteResponse {
-    /// Array of quotes in the same order as requested
-    pub quotes: Vec<QuoteResponse>,
-    /// Total number of quotes successfully fetched
+    /// Results in the same order as the request items.
+    pub results: Vec<BatchQuoteItemResult>,
+    /// Number of items that succeeded.
+    pub items_succeeded: usize,
+    /// Number of items that failed (per-item errors, not a batch-level failure).
+    pub items_failed: usize,
+    /// Total items in the batch.
     pub total: usize,
+    /// Unix timestamp (ms) of the shared market snapshot used for all items.
+    /// All quotes in this batch were computed against data no older than this.
+    pub snapshot_timestamp: i64,
+}
+
+/// Result for a single item in a batch quote response.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchQuoteItemResult {
+    /// Zero-based index of this item in the original request.
+    pub index: usize,
+    /// The quote, present when `status == "ok"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote: Option<QuoteResponse>,
+    /// Per-item error, present when `status == "error"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<BatchItemError>,
+    /// `"ok"` or `"error"`.
+    pub status: String,
+}
+
+impl BatchQuoteItemResult {
+    pub fn ok(index: usize, quote: QuoteResponse) -> Self {
+        Self {
+            index,
+            quote: Some(quote),
+            error: None,
+            status: "ok".to_string(),
+        }
+    }
+
+    pub fn err(index: usize, error: BatchItemError) -> Self {
+        Self {
+            index,
+            quote: None,
+            error: Some(error),
+            status: "error".to_string(),
+        }
+    }
+}
+
+/// Per-item error detail in a batch response.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BatchItemError {
+    /// Machine-readable error code.
+    pub code: String,
+    /// Human-readable description.
+    pub message: String,
 }
 
 /// Trading route response (path only, no pricing)
@@ -342,6 +486,7 @@ pub enum ExclusionReason {
     Override,
     StaleData,
     CircuitBreakerOpen,
+    LiquidityAnomaly,
 }
 
 /// Machine-readable error codes for API failures
@@ -525,5 +670,51 @@ mod tests {
         assert!(json.get("freshCount").is_none());
         assert!(json.get("staleCount").is_none());
         assert!(json.get("maxStalenessSecs").is_none());
+    }
+
+    #[test]
+    fn prepared_quote_response_matches_derived_json_contract() {
+        let quote = QuoteResponse {
+            base_asset: AssetInfo::native(),
+            quote_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),
+            amount: "100.0000000".to_string(),
+            price: "1.0000000".to_string(),
+            total: "100.0000000".to_string(),
+            quote_type: "sell".to_string(),
+            path: vec![PathStep {
+                from_asset: AssetInfo::native(),
+                to_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),
+                price: "1.0000000".to_string(),
+                source: "sdex".to_string(),
+            }],
+            timestamp: 1_700_000_000_000,
+            expires_at: Some(1_700_000_003_000),
+            source_timestamp: Some(1_700_000_000_000),
+            ttl_seconds: Some(30),
+            rationale: None,
+            price_impact: Some("0.01".to_string()),
+            exclusion_diagnostics: None,
+            data_freshness: Some(DataFreshness {
+                fresh_count: 1,
+                stale_count: 0,
+                max_staleness_secs: 0,
+            }),
+        };
+
+        let expected = serde_json::to_vec(&quote).expect("serialize expected");
+        let prepared = PreparedQuoteResponse::from_quote(quote).expect("prepare quote response");
+
+        assert_eq!(prepared.json_bytes(), &Bytes::from(expected));
+    }
+
+    #[test]
+    fn prepared_quote_response_restores_quote_from_cached_json() {
+        let json = r#"{"base_asset":{"asset_type":"native"},"quote_asset":{"asset_type":"native"},"amount":"1.0000000","price":"1.0000000","total":"1.0000000","quote_type":"sell","path":[],"timestamp":1700000000000}"#;
+
+        let prepared = PreparedQuoteResponse::from_cached_json(json.to_string());
+        let restored = prepared.into_quote().expect("decode cached quote");
+
+        assert_eq!(restored.amount, "1.0000000");
+        assert_eq!(restored.quote_type, "sell");
     }
 }

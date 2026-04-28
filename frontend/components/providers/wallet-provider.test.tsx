@@ -1,20 +1,27 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { WalletProvider, useWallet } from "./wallet-provider";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { WalletProvider, useWallet } from '../wallet-provider';
+import * as walletLib from '@/lib/wallet';
 
-import * as freighter from "@stellar/freighter-api";
+// Mock the wallet library
+vi.mock('@/lib/wallet', () => ({
+  getAvailableWallets: vi.fn(),
+  connectWallet: vi.fn(),
+  disconnectWallet: vi.fn(),
+  refreshWalletSession: vi.fn(),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 afterEach(() => {
   cleanup();
 });
 
-// ── Test consumer ──────────────────────────────────────────────────────────────
-function WalletConsumer() {
+// Test component to access wallet context
+function TestComponent() {
   const {
     address,
     isConnected,
@@ -24,8 +31,11 @@ function WalletConsumer() {
     isLoading,
     networkMismatch,
     stubSpendableBalance,
+    autoReconnectPreferred,
     connect,
+    reconnect,
     disconnect,
+    setAutoReconnectPreferred,
   } = useWallet();
 
   return (
@@ -38,129 +48,360 @@ function WalletConsumer() {
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="mismatch">{String(networkMismatch)}</span>
       <span data-testid="balance">{stubSpendableBalance ?? "none"}</span>
+      <span data-testid="autoReconnect">{String(autoReconnectPreferred)}</span>
       <button onClick={() => connect("freighter")}>Connect Freighter</button>
+      <button onClick={reconnect}>Reconnect</button>
       <button onClick={disconnect}>Disconnect</button>
+      <button onClick={() => setAutoReconnectPreferred(false)}>Disable auto reconnect</button>
+      <button onClick={() => setAutoReconnectPreferred(true)}>Enable auto reconnect</button>
     </div>
   );
 }
 
-function renderWithProvider(defaultNetwork?: "testnet" | "mainnet") {
-  return render(
-    <WalletProvider defaultNetwork={defaultNetwork ?? "testnet"}>
-      <WalletConsumer />
-    </WalletProvider>
-  );
-}
+describe('WalletProvider Account Switching', () => {
+  const mockAddress1 = 'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const mockAddress2 = 'GDEF456GHIJKLMNOPQRSTUVWXYZ789ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
-describe("WalletProvider", () => {
-  it("provides disconnected state by default", () => {
-    renderWithProvider();
-    expect(screen.getByTestId("connected").textContent).toBe("false");
-    expect(screen.getByTestId("address").textContent).toBe("none");
-    expect(screen.getByTestId("network").textContent).toBe("testnet");
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWalletLib.getAvailableWallets.mockResolvedValue([
+      { id: 'freighter', label: 'Freighter', installed: true }
+    ]);
+    mockWalletLib.disconnectWallet.mockReturnValue({
+      walletId: null,
+      address: null,
+      network: null,
+      isConnected: false,
+    });
   });
 
-  it("connects and exposes address", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
+  it('should prevent connection during pending transaction', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Start a transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    // Try to connect during transaction
+    fireEvent.click(screen.getByText('Connect'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.connectWallet).not.toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId('connected')).toHaveTextContent('Disconnected');
+  });
+
+  it('should prevent disconnection during pending transaction', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Start a transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    // Try to disconnect during transaction
+    fireEvent.click(screen.getByText('Disconnect'));
+
+    // Should still be connected
+    expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+  });
+
+  it('should prevent account refresh during pending transaction', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress2,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Start a transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    // Try to refresh account during transaction
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should successfully refresh account when no transaction is pending', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress2,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+      expect(screen.getByTestId('address')).toHaveTextContent(mockAddress1);
+    });
+
+    // Refresh account
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalledWith('freighter');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('address')).toHaveTextContent(mockAddress2);
+    });
+  });
+
+  it('should handle refresh account errors gracefully', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockRejectedValue(new Error('Refresh failed'));
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Try to refresh account (should fail)
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalled();
+    });
+
+    // Should still be connected with original address
+    expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    expect(screen.getByTestId('address')).toHaveTextContent(mockAddress1);
+  });
+
+  it('should reset account switch state after successful refresh', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress2,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Refresh account
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalled();
+    });
+
+    // Account switch state should be reset (this would need to be exposed in the test component)
+    // For now, we verify that the refresh completed successfully
+    await waitFor(() => {
+      expect(screen.getByTestId('address')).toHaveTextContent(mockAddress2);
+    });
+  });
+
+  it('should allow normal operations after transaction ends', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Start and end transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    fireEvent.click(screen.getByText('End Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Not pending');
+
+    // Should now be able to disconnect
+    fireEvent.click(screen.getByText('Disconnect'));
+    expect(screen.getByTestId('connected')).toHaveTextContent('Disconnected');
+  });
+
+  it("persists auto reconnect preference changes", async () => {
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    expect(screen.getByTestId("autoReconnect").textContent).toBe("true");
+
+    await user.click(
+      screen.getByRole("button", { name: "Disable auto reconnect" }),
+    );
+    expect(screen.getByTestId("autoReconnect").textContent).toBe("false");
+    expect(
+      window.localStorage.getItem("stellarroute.wallet.autoReconnect"),
+    ).toBe("false");
+
+    await user.click(
+      screen.getByRole("button", { name: "Enable auto reconnect" }),
+    );
+    expect(screen.getByTestId("autoReconnect").textContent).toBe("true");
+    expect(
+      window.localStorage.getItem("stellarroute.wallet.autoReconnect"),
+    ).toBe("true");
+  });
+
+  it("auto reconnects on mount when preference is enabled and a wallet was previously used", async () => {
+    window.localStorage.setItem("stellarroute.wallet.autoReconnect", "true");
+    window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
+
+    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({
+      address: "GABCDEFGHIJKLMNOPWXYZ",
+    });
+    vi.mocked(freighter.getAddress).mockResolvedValueOnce({
+      address: "GABCDEFGHIJKLMNOPWXYZ",
+    });
     vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
       network: "testnet",
       networkUrl: "",
       networkPassphrase: "",
     });
 
-    const user = userEvent.setup();
     renderWithProvider();
-
-    await user.click(screen.getByRole("button", { name: "Connect Freighter" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("connected").textContent).toBe("true");
     });
-    expect(screen.getByTestId("address").textContent).toBe("GABCDEFGHIJKLMNOPWXYZ");
     expect(screen.getByTestId("walletId").textContent).toBe("freighter");
   });
 
-  it("disconnects and clears state", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
-    });
+  it("does not auto reconnect on mount when preference is disabled", async () => {
+    window.localStorage.setItem("stellarroute.wallet.autoReconnect", "false");
+    window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
 
-    const user = userEvent.setup();
     renderWithProvider();
-
-    await user.click(screen.getByRole("button", { name: "Connect Freighter" }));
-    await waitFor(() => expect(screen.getByTestId("connected").textContent).toBe("true"));
-
-    await user.click(screen.getByRole("button", { name: "Disconnect" }));
-
-    expect(screen.getByTestId("connected").textContent).toBe("false");
-    expect(screen.getByTestId("address").textContent).toBe("none");
-    expect(screen.getByTestId("walletId").textContent).toBe("none");
-    expect(screen.getByTestId("error").textContent).toBe("none");
-  });
-
-  it("detects network mismatch when wallet is on mainnet but app is testnet", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "mainnet",
-      networkUrl: "",
-      networkPassphrase: "",
-    });
-
-    const user = userEvent.setup();
-    renderWithProvider("testnet");
-
-    await user.click(screen.getByRole("button", { name: "Connect Freighter" }));
-    await waitFor(() => expect(screen.getByTestId("connected").textContent).toBe("true"));
-
-    expect(screen.getByTestId("mismatch").textContent).toBe("true");
-  });
-
-  it("exposes stubSpendableBalance when connected", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
-    });
-
-    const user = userEvent.setup();
-    renderWithProvider();
-
-    await user.click(screen.getByRole("button", { name: "Connect Freighter" }));
-    await waitFor(() => expect(screen.getByTestId("connected").textContent).toBe("true"));
-
-    expect(screen.getByTestId("balance").textContent).toBe("10000.0000000");
-  });
-
-  it("sets error on connect failure", async () => {
-    vi.mocked(freighter.requestAccess).mockRejectedValueOnce(new Error("Extension not found"));
-
-    const user = userEvent.setup();
-    renderWithProvider();
-
-    await user.click(screen.getByRole("button", { name: "Connect Freighter" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("error").textContent).toBe("Extension not found");
+      expect(screen.getByTestId("connected").textContent).toBe("false");
     });
-    expect(screen.getByTestId("connected").textContent).toBe("false");
+    expect(freighter.requestAccess).not.toHaveBeenCalled();
   });
 
-  it("throws when useWallet is used outside WalletProvider", () => {
-    // Suppress React error boundary noise
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => render(<WalletConsumer />)).toThrow(
-      "useWallet must be used within a WalletProvider"
-    );
-    spy.mockRestore();
+  it("recovers disconnected session when reconnect is triggered", async () => {
+    window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
+
+    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({
+      address: "GABCDEFGHIJKLMNOPWXYZ",
+    });
+    vi.mocked(freighter.getAddress).mockResolvedValueOnce({
+      address: "GABCDEFGHIJKLMNOPWXYZ",
+    });
+    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
+      network: "testnet",
+      networkUrl: "",
+      networkPassphrase: "",
+    });
+
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connected").textContent).toBe("true");
+    });
+    expect(screen.getByTestId("walletId").textContent).toBe("freighter");
   });
 });

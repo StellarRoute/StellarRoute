@@ -233,13 +233,26 @@ impl HybridOptimizer {
         amount_in: i128,
         routing_policy: &RoutingPolicy,
     ) -> Result<OptimizerDiagnostics> {
+        let graph = crate::compaction::CompactedGraph::from_edges(edges.to_vec());
+        self.find_optimal_routes_compacted(from, to, &graph, amount_in, routing_policy)
+    }
+
+    /// Find optimal routes using a compacted graph
+    pub fn find_optimal_routes_compacted(
+        &self,
+        from: &str,
+        to: &str,
+        graph: &crate::compaction::CompactedGraph,
+        amount_in: i128,
+        routing_policy: &RoutingPolicy,
+    ) -> Result<OptimizerDiagnostics> {
         let start_time = Instant::now();
         let policy = self.active_policy();
         let mut excluded_routes = Vec::new();
 
-        let paths = self
-            .pathfinder
-            .find_paths(from, to, edges, amount_in, routing_policy)?;
+        let paths =
+            self.pathfinder
+                .find_paths_compacted(from, to, graph, amount_in, routing_policy)?;
 
         if paths.is_empty() {
             return Err(RoutingError::NoRoute(from.to_string(), to.to_string()));
@@ -247,7 +260,7 @@ impl HybridOptimizer {
 
         let mut scored_paths = Vec::new();
         for path in &paths {
-            let metrics = self.calculate_route_metrics(path, edges, amount_in)?;
+            let metrics = self.calculate_route_metrics_compacted(path, graph, amount_in)?;
 
             if metrics.impact_bps > policy.max_impact_bps
                 || metrics.compute_time_us > policy.max_compute_time_ms * 1000
@@ -255,18 +268,20 @@ impl HybridOptimizer {
                 continue;
             }
 
+            // Risk validation logic remains same, but needs to lookup liquidity from compacted graph
             if let Some(ref validator) = self.risk_validator {
                 let mut path_valid = true;
                 for hop in &path.hops {
-                    let edge_liquidity = edges
-                        .iter()
-                        .find(|e| {
-                            e.from == hop.source_asset
-                                && e.to == hop.destination_asset
-                                && e.venue_ref == hop.venue_ref
-                        })
-                        .map(|e| e.liquidity)
-                        .unwrap_or(0);
+                    // This is inefficient but keep it for now
+                    let mut edge_liquidity = 0;
+                    if let Some(&from_idx) = graph.asset_map.get(&hop.source_asset) {
+                        for edge in graph.get_neighbors(from_idx) {
+                            if edge.venue_ref == hop.venue_ref {
+                                edge_liquidity = edge.liquidity;
+                                break;
+                            }
+                        }
+                    }
 
                     if let Err(exclusion) =
                         validator.validate_impact(&hop.destination_asset, metrics.impact_bps)
@@ -327,14 +342,15 @@ impl HybridOptimizer {
             policy: policy.clone(),
             total_compute_time_ms: start_time.elapsed().as_millis() as u64,
             excluded_routes,
+            flagged_venues: vec![],
         })
     }
 
-    /// Calculate comprehensive route metrics
-    fn calculate_route_metrics(
+    /// Calculate comprehensive route metrics using a compacted graph
+    fn calculate_route_metrics_compacted(
         &self,
         path: &SwapPath,
-        edges: &[LiquidityEdge],
+        graph: &crate::compaction::CompactedGraph,
         amount_in: i128,
     ) -> Result<RouteMetrics> {
         let start_time = Instant::now();
@@ -346,16 +362,24 @@ impl HybridOptimizer {
 
         // Simulate execution through each hop
         for hop in &path.hops {
-            // Find corresponding edge
-            let edge = edges
+            // Find corresponding edge in compacted graph
+            let from_idx = *graph.asset_map.get(&hop.source_asset).ok_or_else(|| {
+                RoutingError::NoRoute(hop.source_asset.clone(), hop.destination_asset.clone())
+            })?;
+
+            let edge = graph
+                .get_neighbors(from_idx)
                 .iter()
-                .find(|e| e.from == hop.source_asset && e.to == hop.destination_asset)
+                .find(|e| {
+                    graph.assets[e.to_idx as usize] == hop.destination_asset
+                        && e.venue_ref == hop.venue_ref
+                })
                 .ok_or_else(|| {
                     RoutingError::NoRoute(hop.source_asset.clone(), hop.destination_asset.clone())
                 })?;
 
-            // Calculate impact based on venue type
-            let (output, impact_bps) = if edge.venue_type == "amm" {
+            // Calculate impact based on venue type index
+            let (output, impact_bps) = if edge.venue_type_idx == 1 {
                 // Simulate AMM calculation (simplified)
                 let estimated_output = (total_output * 9970) / 10000; // 0.3% fee
                 (estimated_output, 30) // Simplified impact

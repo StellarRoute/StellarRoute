@@ -53,7 +53,10 @@ function useFetch<T>(
 
   // Stable ref so the interval callback always sees the latest fetcher
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);

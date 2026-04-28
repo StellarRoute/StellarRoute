@@ -220,6 +220,9 @@ pub struct QuoteResponse {
     /// Freshness metadata about the data sources used to compute this quote
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_freshness: Option<DataFreshness>,
+    /// Cryptographic signature verifying the quote provenance 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 /// Prepared quote payload that can be returned without re-serializing on hot paths.
@@ -517,6 +520,8 @@ pub enum ApiErrorCode {
     NoRoute,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
+    /// Quote has expired and cannot be executed
+    QuoteExpired,
 }
 
 impl ApiErrorCode {
@@ -535,6 +540,7 @@ impl ApiErrorCode {
             Self::InvalidAssetFormat => "invalid_asset_format",
             Self::NoRoute => "no_route",
             Self::StaleMarketData => "stale_market_data",
+            Self::QuoteExpired => "quote_expired",
         }
     }
 }

@@ -469,7 +469,7 @@ fn batch_error_from_api_error(e: &ApiError) -> (String, String) {
     }
 }
 
-async fn get_quote_inner(
+pub(crate) async fn get_quote_inner(
     state: Arc<AppState>,
     base_asset: AssetPath,
     quote_asset: AssetPath,

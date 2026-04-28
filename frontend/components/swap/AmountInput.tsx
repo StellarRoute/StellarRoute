@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { normalizeDecimalString } from '@/lib/amount-input';
 import { useState, useCallback, useEffect, useId } from 'react';
+import { AmountPresets } from './AmountPresets';
 
 interface AmountInputProps {
   value: string;
   onChange?: (value: string) => void;
   onMax?: () => void;
+  onPresetSelect?: (percentage: number) => void;
   placeholder?: string;
   disabled?: boolean;
   readOnly?: boolean;
@@ -17,6 +19,7 @@ interface AmountInputProps {
   label?: string;
   balance?: string;
   showMax?: boolean;
+  showPresets?: boolean;
   decimals?: number; 
 }
 
@@ -24,6 +27,7 @@ export function AmountInput({
   value,
   onChange,
   onMax,
+  onPresetSelect,
   placeholder = '0.00',
   disabled = false,
   readOnly = false,
@@ -31,6 +35,7 @@ export function AmountInput({
   label,
   balance,
   showMax = true,
+  showPresets = false,
   decimals = 7,
 }: AmountInputProps) {
   const [internalValue, setInternalValue] = useState(value);
@@ -118,6 +123,15 @@ export function AmountInput({
         </p>
       )}
 
+      {showPresets && onPresetSelect && (
+        <AmountPresets
+          balance={balance || null}
+          decimals={decimals}
+          onSelect={onPresetSelect}
+          disabled={disabled || readOnly}
+          className="mt-2"
+        />
+      )}
     </div>
   );
 }

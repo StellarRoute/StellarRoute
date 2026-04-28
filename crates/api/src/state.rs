@@ -14,6 +14,7 @@ use stellarroute_routing::health::circuit_breaker::{CircuitBreakerRegistry, Brea
 use crate::audit::AuditWriter;
 use crate::indexer_lag::IndexerLagMonitor;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
+use crate::exactlyonce::DedupeLedger;
 
 /// Cache policy configuration
 #[derive(Debug, Clone)]
@@ -110,6 +111,8 @@ pub struct AppState {
     pub audit_writer: Arc<AuditWriter>,
     /// Indexer lag monitor for sync drift detection
     pub indexer_lag: Arc<IndexerLagMonitor>,
+    /// Idempotency ledger for POST /api/v1/quote deduplication
+    pub idempotency_ledger: Arc<DedupeLedger>,
 }
 
 impl AppState {
@@ -128,6 +131,12 @@ impl AppState {
         indexer_lag
             .clone()
             .start_polling(std::time::Duration::from_secs(30));
+
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
 
         Self {
             db,
@@ -151,6 +160,7 @@ impl AppState {
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
             indexer_lag,
+            idempotency_ledger,
         }
     }
 
@@ -184,6 +194,12 @@ impl AppState {
             ks.start_sync();
         });
 
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+
         Self {
             db,
             cache: Some(cache_arc),
@@ -206,6 +222,7 @@ impl AppState {
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
             indexer_lag,
+            idempotency_ledger,
         }
     }
 

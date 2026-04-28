@@ -74,6 +74,7 @@ proptest.workspace = true
 tokio-tungstenite = "0.20"
 futures-util = "0.3"
 criterion = { version = "0.5", features = ["html_reports"] }
+wiremock = "0.6"
 
 [[bench]]
 name = "quote_serialization"

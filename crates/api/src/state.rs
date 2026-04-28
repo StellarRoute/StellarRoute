@@ -6,48 +6,15 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::cache::{CacheManager, SingleFlight};
-
-use crate::graph::GraphManager;
-use crate::models::{PreparedQuoteResponse, RoutesResponse};
+use crate::models::{QuoteResponse, RoutesResponse};
 use crate::replay::capture::CaptureHook;
 use crate::routes::ws::WsState;
-use stellarroute_routing::adaptive_timeout::TimeoutController;
-use stellarroute_routing::canary::{CanaryConfig, CanaryEvaluation};
-use stellarroute_routing::health::circuit_breaker::CircuitBreakerRegistry;
+use stellarroute_routing::health::circuit_breaker::{CircuitBreakerRegistry, BreakerConfig};
 
 use crate::audit::AuditWriter;
 use crate::indexer_lag::IndexerLagMonitor;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 use crate::exactlyonce::DedupeLedger;
-
-/// Primary database pool for write operations plus an optional replica pool
-/// for read-heavy endpoints.
-#[derive(Clone, Debug)]
-pub struct DatabasePools {
-    primary: PgPool,
-    replica: Option<PgPool>,
-}
-
-impl DatabasePools {
-    pub fn new(primary: PgPool, replica: Option<PgPool>) -> Self {
-        Self { primary, replica }
-    }
-
-    /// Pool used for read-only queries. Falls back to the primary pool when
-    /// no replica is configured.
-    pub fn read_pool(&self) -> &PgPool {
-        self.replica.as_ref().unwrap_or(&self.primary)
-    }
-
-    pub fn write_pool(&self) -> &PgPool {
-        &self.primary
-    }
-
-    /// Returns the replica pool if one is configured, otherwise `None`.
-    pub fn replica_pool(&self) -> Option<&PgPool> {
-        self.replica.as_ref()
-    }
-}
 
 /// Cache policy configuration
 #[derive(Debug, Clone)]
@@ -91,12 +58,10 @@ impl CacheMetrics {
         self.quote_misses.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Increment the stale-quote-rejection counter by one.
     pub fn inc_stale_rejection(&self) {
         self.stale_quote_rejections.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Add `n` to the stale-inputs-excluded counter.
     pub fn add_stale_inputs_excluded(&self, n: u64) {
         self.stale_inputs_excluded.fetch_add(n, Ordering::Relaxed);
     }
@@ -119,31 +84,17 @@ impl CacheMetrics {
 /// Shared API state
 #[derive(Clone)]
 pub struct AppState {
-    /// Database connection pool
-    pub db: DatabasePools,
-    /// Redis cache manager (optional)
+    pub db: PgPool,
     pub cache: Option<Arc<Mutex<CacheManager>>>,
-    /// API version
     pub version: String,
-    /// Cache policy settings
     pub cache_policy: CachePolicy,
-    /// Cache hit/miss counters
     pub cache_metrics: Arc<CacheMetrics>,
-    /// Route computation worker pool
     pub worker_pool: Arc<RouteWorkerPool>,
-    /// Single-flight manager for quotes to prevent stampedes
-    pub quote_single_flight: Arc<SingleFlight<crate::error::Result<(PreparedQuoteResponse, bool)>>>,
-
-    /// Optional replay capture hook (None when REPLAY_CAPTURE_ENABLED=false)
+    pub quote_single_flight: Arc<SingleFlight<crate::error::Result<QuoteResponse>>>,
     pub replay_capture: Option<Arc<CaptureHook>>,
-
-    /// Single-flight manager for routes
     pub routes_single_flight: Arc<SingleFlight<crate::error::Result<RoutesResponse>>>,
-    /// Persistent background synced graph manager
     pub graph_manager: Arc<GraphManager>,
-    /// WebSocket shared state
     pub ws: Option<Arc<WsState>>,
-    /// Shared circuit breaker registry for liquidity providers
     pub circuit_breaker: Arc<CircuitBreakerRegistry>,
     /// API-level kill switches for sources/venues
     pub kill_switch: Arc<crate::kill_switch::KillSwitchManager>,
@@ -165,8 +116,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Create new application state
-    pub fn new(db: DatabasePools) -> Self {
+    pub fn new(db: PgPool) -> Self {
         Self::new_with_policy(db, CachePolicy::default())
     }
 
@@ -195,9 +145,7 @@ impl AppState {
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
-            quote_single_flight: Arc::new(SingleFlight::<
-                crate::error::Result<(PreparedQuoteResponse, bool)>,
-            >::new()),
+            quote_single_flight: Arc::new(SingleFlight::new()),
             replay_capture: None,
             routes_single_flight: Arc::new(SingleFlight::new()),
             anomaly_detector: graph_manager.anomaly_detector.clone(),
@@ -216,8 +164,7 @@ impl AppState {
         }
     }
 
-    /// Create new application state with cache
-    pub fn with_cache(db: DatabasePools, cache: CacheManager) -> Self {
+    pub fn with_cache(db: PgPool, cache: CacheManager) -> Self {
         Self::with_cache_and_policy(db, cache, CachePolicy::default())
     }
 
@@ -260,9 +207,7 @@ impl AppState {
             cache_policy,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
-            quote_single_flight: Arc::new(SingleFlight::<
-                crate::error::Result<(PreparedQuoteResponse, bool)>,
-            >::new()),
+            quote_single_flight: Arc::new(SingleFlight::new()),
             replay_capture: None,
             routes_single_flight: Arc::new(SingleFlight::new()),
             anomaly_detector: graph_manager.anomaly_detector.clone(),
@@ -281,7 +226,6 @@ impl AppState {
         }
     }
 
-    /// Create worker pool with configuration
     fn create_worker_pool(db: PgPool) -> Arc<RouteWorkerPool> {
         let queue = JobQueue::new(db);
         let config = WorkerPoolConfig::default();
@@ -303,54 +247,21 @@ impl AppState {
         pool
     }
 
-    /// Wrap in Arc for sharing across handlers
     pub fn into_arc(self) -> Arc<Self> {
         Arc::new(self)
     }
 
-    /// Check if caching is enabled
     pub fn has_cache(&self) -> bool {
         self.cache.is_some()
     }
 
-    /// Attach a replay capture hook to this state.
-    /// Returns a new `AppState` with the hook set.
     pub fn with_replay_capture(mut self, hook: CaptureHook) -> Self {
         self.replay_capture = Some(Arc::new(hook));
         self
     }
 
-    /// Attach WebSocket state to this state.
-    /// Returns a new `AppState` with the state set.
     pub fn with_ws(mut self, ws: Arc<WsState>) -> Self {
         self.ws = Some(ws);
         self
-    }
-
-    /// Calculate a quantitative health score (0.0 to 1.0) based on dependency health
-    pub async fn calculate_health_score(&self) -> f64 {
-        let mut score = 1.0;
-
-        // Check DB
-        if sqlx::query("SELECT 1")
-            .execute(self.db.read_pool())
-            .await
-            .is_err()
-        {
-            score *= 0.5;
-        }
-
-        // Check Redis
-        if let Some(cache) = &self.cache {
-            if let Ok(mut guard) = cache.try_lock() {
-                if !guard.is_healthy().await {
-                    score *= 0.8;
-                }
-            }
-        }
-
-        // Check Horizon (simplified active probe)
-        // In a real app, this would be more sophisticated
-        score
     }
 }

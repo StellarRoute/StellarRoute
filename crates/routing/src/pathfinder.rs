@@ -1,7 +1,7 @@
 //! Pathfinding algorithms for swap routing with N-hop support and safety bounds
 
 use crate::error::{Result, RoutingError};
-use crate::policy::RoutingPolicy;
+use crate::policy::{RouteDiagnostic, RoutingPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use tracing::instrument;
@@ -9,14 +9,13 @@ use tracing::instrument;
 /// Configuration for path discovery
 #[derive(Clone, Debug)]
 pub struct PathfinderConfig {
-    /// Minimum liquidity threshold for intermediate assets
     pub min_liquidity_threshold: i128,
 }
 
 impl Default for PathfinderConfig {
     fn default() -> Self {
         Self {
-            min_liquidity_threshold: 1_000_000, // 1 unit in e7
+            min_liquidity_threshold: 1_000_000,
         }
     }
 }
@@ -129,22 +128,84 @@ impl Pathfinder {
             .cloned()
             .ok_or_else(|| RoutingError::NoRoute(from.to_string(), to.to_string()))?;
 
-        let paths = self.bfs_paths_compacted(graph, from_idx, to_idx, amount_in, policy)?;
+        let raw_paths = self.bfs_paths(&graph, from, to, amount_in, policy.max_hops)?;
 
-        if paths.is_empty() {
+        if raw_paths.is_empty() {
             return Err(RoutingError::NoRoute(from.to_string(), to.to_string()));
         }
 
-        tracing::Span::current().record("route.paths_found", paths.len());
+        // 🔥 APPLY POLICY FILTER (CRITICAL REQUIREMENT)
+        let mut diagnostics: Vec<RouteDiagnostic> = Vec::new();
 
-        Ok(paths)
+        let filtered_paths: Vec<SwapPath> = raw_paths
+            .into_iter()
+            .enumerate()
+            .filter_map(|(idx, path)| {
+                // Convert PathHop -> RouteHop (policy-compatible)
+                let hops_for_policy = path
+                    .hops
+                    .iter()
+                    .map(|h| crate::policy::RouteHop {
+                        venue_type: h.venue_type.clone(),
+                        asset: h.destination_asset.clone(),
+                    })
+                    .collect::<Vec<_>>();
+
+                let route_id = format!("route_{}", idx);
+
+                if let Some(diag) = policy.should_exclude_route(&route_id, &hops_for_policy) {
+                    diagnostics.push(diag);
+                    None
+                } else {
+                    Some(path)
+                }
+            })
+            .collect();
+
+        // You could log diagnostics if needed (safe exposure)
+        if !diagnostics.is_empty() {
+            tracing::debug!(excluded_routes = diagnostics.len(), "routes excluded by policy");
+        }
+
+        if filtered_paths.is_empty() {
+            return Err(RoutingError::NoRoute(from.to_string(), to.to_string()));
+        }
+
+        tracing::Span::current().record("route.paths_found", filtered_paths.len());
+
+        Ok(filtered_paths)
     }
 
     fn bfs_paths_compacted(
         &self,
-        graph: &crate::compaction::CompactedGraph,
-        from_idx: u32,
-        to_idx: u32,
+        edges: &[LiquidityEdge],
+        policy: &RoutingPolicy,
+    ) -> Result<HashMap<String, Vec<LiquidityEdge>>> {
+        let mut graph: HashMap<String, Vec<LiquidityEdge>> = HashMap::new();
+
+        for edge in edges {
+            if !policy.is_venue_allowed(&edge.venue_type) {
+                continue;
+            }
+
+            if edge.liquidity < self.config.min_liquidity_threshold {
+                continue;
+            }
+
+            graph
+                .entry(edge.from.clone())
+                .or_default()
+                .push(edge.clone());
+        }
+
+        Ok(graph)
+    }
+
+    fn bfs_paths(
+        &self,
+        graph: &HashMap<String, Vec<LiquidityEdge>>,
+        from: &str,
+        to: &str,
         amount_in: i128,
         policy: &RoutingPolicy,
     ) -> Result<Vec<SwapPath>> {
@@ -152,15 +213,16 @@ impl Pathfinder {
         let mut queue = VecDeque::new();
 
         let mut initial_visited = std::collections::HashSet::new();
-        initial_visited.insert(from_idx);
-        queue.push_back((from_idx, Vec::new(), initial_visited, amount_in));
+        initial_visited.insert(from.to_string());
 
-        while let Some((current_idx, path_hops, visited, estimated_output)) = queue.pop_front() {
-            if path_hops.len() >= policy.max_hops {
+        queue.push_back((from.to_string(), Vec::new(), initial_visited, amount_in));
+
+        while let Some((current, path_hops, visited, estimated_output)) = queue.pop_front() {
+            if path_hops.len() >= max_hops {
                 continue;
             }
 
-            if current_idx == to_idx {
+            if current == to {
                 paths.push(SwapPath {
                     hops: path_hops.clone(),
                     estimated_output,
@@ -168,15 +230,35 @@ impl Pathfinder {
                 continue;
             }
 
-            // Explore neighbors
-            for edge in graph.get_neighbors(current_idx) {
-                let venue_type = if edge.venue_type_idx == 1 {
-                    "amm"
-                } else {
-                    "sdex"
-                };
-                if !policy.is_venue_allowed(venue_type) {
-                    continue;
+            if let Some(neighbors) = graph.get(&current) {
+                for edge in neighbors {
+                    if visited.contains(&edge.to) {
+                        continue;
+                    }
+
+                    let mut new_visited = visited.clone();
+                    new_visited.insert(edge.to.clone());
+
+                    let hop = PathHop {
+                        source_asset: edge.from.clone(),
+                        destination_asset: edge.to.clone(),
+                        venue_type: edge.venue_type.clone(),
+                        venue_ref: edge.venue_ref.clone(),
+                        price: edge.price,
+                        fee_bps: edge.fee_bps,
+                    };
+
+                    let estimated_after_hop = (estimated_output * 9950) / 10000;
+
+                    let mut new_hops = path_hops.clone();
+                    new_hops.push(hop);
+
+                    queue.push_back((
+                        edge.to.clone(),
+                        new_hops,
+                        new_visited,
+                        estimated_after_hop,
+                    ));
                 }
 
                 if edge.liquidity < self.config.min_liquidity_threshold {

@@ -111,7 +111,10 @@ impl FixtureBuilder {
     /// Sufficient to test single-hop routing with both venue types.
     pub fn minimal_market() -> Self {
         let xlm = FixtureAsset::native();
-        let usdc = FixtureAsset::credit4("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN");
+        let usdc = FixtureAsset::credit4(
+            "USDC",
+            "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+        );
 
         Self::new()
             .with_asset(xlm.clone())
@@ -126,7 +129,8 @@ impl FixtureBuilder {
                 last_modified_ledger: 50_000_000,
             })
             .with_amm_pool(FixtureAmmPool {
-                pool_address: "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001".to_string(),
+                pool_address: "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001"
+                    .to_string(),
                 selling_asset: xlm.clone(),
                 buying_asset: usdc.clone(),
                 reserve_selling: "500000.0000000".to_string(),
@@ -140,8 +144,14 @@ impl FixtureBuilder {
     /// a direct AMM shortcut. Used to verify multi-hop route discovery.
     pub fn multi_hop_market() -> Self {
         let xlm = FixtureAsset::native();
-        let usdc = FixtureAsset::credit4("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN");
-        let eurc = FixtureAsset::credit4("EURC", "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP");
+        let usdc = FixtureAsset::credit4(
+            "USDC",
+            "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+        );
+        let eurc = FixtureAsset::credit4(
+            "EURC",
+            "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP",
+        );
 
         Self::new()
             .with_asset(xlm.clone())
@@ -169,7 +179,8 @@ impl FixtureBuilder {
             })
             // Direct shortcut: XLM → EURC via AMM
             .with_amm_pool(FixtureAmmPool {
-                pool_address: "CAMMPOOL2XLMEURC000000000000000000000000000000000000000002".to_string(),
+                pool_address: "CAMMPOOL2XLMEURC000000000000000000000000000000000000000002"
+                    .to_string(),
                 selling_asset: xlm.clone(),
                 buying_asset: eurc.clone(),
                 reserve_selling: "300000.0000000".to_string(),
@@ -179,7 +190,8 @@ impl FixtureBuilder {
             })
             // AMM: USDC → EURC (alternative to SDEX hop 2)
             .with_amm_pool(FixtureAmmPool {
-                pool_address: "CAMMPOOL3USDCEURC000000000000000000000000000000000000000003".to_string(),
+                pool_address: "CAMMPOOL3USDCEURC000000000000000000000000000000000000000003"
+                    .to_string(),
                 selling_asset: usdc.clone(),
                 buying_asset: eurc.clone(),
                 reserve_selling: "200000.0000000".to_string(),
@@ -192,7 +204,10 @@ impl FixtureBuilder {
     /// Thin liquidity market: very low reserves to test liquidity-floor exclusions.
     pub fn thin_liquidity_market() -> Self {
         let xlm = FixtureAsset::native();
-        let usdc = FixtureAsset::credit4("USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN");
+        let usdc = FixtureAsset::credit4(
+            "USDC",
+            "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+        );
 
         Self::new()
             .with_asset(xlm.clone())
@@ -207,7 +222,8 @@ impl FixtureBuilder {
                 last_modified_ledger: 50_000_002,
             })
             .with_amm_pool(FixtureAmmPool {
-                pool_address: "CAMMPOOL4THIN0000000000000000000000000000000000000000000004".to_string(),
+                pool_address: "CAMMPOOL4THIN0000000000000000000000000000000000000000000004"
+                    .to_string(),
                 selling_asset: xlm.clone(),
                 buying_asset: usdc.clone(),
                 reserve_selling: "0.1000000".to_string(),
@@ -296,6 +312,8 @@ impl FixtureBuilder {
                 liquidity,
                 price,
                 fee_bps: 0,
+                anomaly_score: 0.0,
+                anomaly_reasons: Vec::new(),
             });
         }
 
@@ -322,6 +340,8 @@ impl FixtureBuilder {
                 liquidity: reserve_selling,
                 price: price_fwd,
                 fee_bps: pool.fee_bps,
+                anomaly_score: 0.0,
+                anomaly_reasons: Vec::new(),
             });
 
             // Reverse direction (AMM pools are symmetric)
@@ -333,6 +353,8 @@ impl FixtureBuilder {
                 liquidity: reserve_buying,
                 price: price_rev,
                 fee_bps: pool.fee_bps,
+                anomaly_score: 0.0,
+                anomaly_reasons: Vec::new(),
             });
         }
 

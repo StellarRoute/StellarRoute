@@ -4,7 +4,11 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use std::{collections::HashMap, sync::Arc};
 use tracing::warn;
 
-use crate::{models::{DependenciesHealthResponse, HealthResponse}, state::AppState};
+use crate::{
+    middleware::RequestId,
+    models::{ApiResponse, DependenciesHealthResponse, HealthResponse},
+    state::AppState,
+};
 
 /// Health check endpoint
 ///
@@ -20,7 +24,10 @@ use crate::{models::{DependenciesHealthResponse, HealthResponse}, state::AppStat
         (status = 503, description = "One or more dependencies unhealthy", body = HealthResponse),
     )
 )]
-pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+pub async fn health_check(
+    State(state): State<Arc<AppState>>,
+    request_id: RequestId,
+) -> impl IntoResponse {
     let timestamp = chrono::Utc::now().to_rfc3339();
     let mut components: HashMap<String, String> = HashMap::new();
     let mut all_healthy = true;
@@ -59,6 +66,35 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoRespon
     };
     components.insert("redis".to_string(), redis_status);
 
+    // --- Indexer lag ---
+    let lag_snapshots = state.indexer_lag.snapshots().await;
+    for snap in &lag_snapshots {
+        let component_key = format!("indexer_lag_{}", snap.source);
+        let component_val = match snap.status {
+            crate::indexer_lag::SyncStatus::Ok => "healthy".to_string(),
+            crate::indexer_lag::SyncStatus::Warning => {
+                warn!(
+                    source = %snap.source,
+                    lag_ledgers = snap.lag_ledgers,
+                    "Indexer lag elevated during health check"
+                );
+                // Warning does not flip all_healthy — it's a soft signal
+                format!("warning (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Critical => {
+                warn!(
+                    source = %snap.source,
+                    lag_ledgers = snap.lag_ledgers,
+                    "Indexer lag CRITICAL during health check"
+                );
+                all_healthy = false;
+                format!("unhealthy (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Unknown => "unknown".to_string(),
+        };
+        components.insert(component_key, component_val);
+    }
+
     let status = if all_healthy {
         "healthy".to_string()
     } else {
@@ -78,7 +114,8 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoRespon
         StatusCode::SERVICE_UNAVAILABLE
     };
 
-    (http_status, Json(body)).into_response()
+    let envelope = ApiResponse::new(body, request_id.to_string());
+    (http_status, Json(envelope)).into_response()
 }
 
 /// Dependency readiness check for infrastructure and external providers.
@@ -93,6 +130,7 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoRespon
 )]
 pub async fn dependency_health(
     State(state): State<Arc<AppState>>,
+    request_id: RequestId,
 ) -> impl IntoResponse {
     let timestamp = chrono::Utc::now().to_rfc3339();
     let mut components: HashMap<String, String> = HashMap::new();
@@ -136,6 +174,32 @@ pub async fn dependency_health(
     components.insert("horizon".to_string(), "not_configured".to_string());
     components.insert("soroban_rpc".to_string(), "not_configured".to_string());
 
+    // --- Indexer lag ---
+    let lag_snapshots = state.indexer_lag.snapshots().await;
+    for snap in &lag_snapshots {
+        let component_key = format!("indexer_lag_{}", snap.source);
+        let component_val = match snap.status {
+            crate::indexer_lag::SyncStatus::Ok => {
+                format!("ok (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Warning => {
+                format!(
+                    "warning (lag: {} ledgers, {:.0}s)",
+                    snap.lag_ledgers, snap.lag_seconds
+                )
+            }
+            crate::indexer_lag::SyncStatus::Critical => {
+                all_ok = false;
+                format!(
+                    "degraded (lag: {} ledgers, {:.0}s)",
+                    snap.lag_ledgers, snap.lag_seconds
+                )
+            }
+            crate::indexer_lag::SyncStatus::Unknown => "unknown".to_string(),
+        };
+        components.insert(component_key, component_val);
+    }
+
     let status = if all_ok { "ok" } else { "degraded" }.to_string();
     let body = DependenciesHealthResponse {
         status,
@@ -149,5 +213,6 @@ pub async fn dependency_health(
         StatusCode::SERVICE_UNAVAILABLE
     };
 
-    (http_status, Json(body)).into_response()
+    let envelope = ApiResponse::new(body, request_id.to_string());
+    (http_status, Json(envelope)).into_response()
 }

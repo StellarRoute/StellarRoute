@@ -74,7 +74,7 @@ impl ReplayEngine {
         let candidates: Vec<ReplayCandidate> = artifact
             .liquidity_snapshot
             .iter()
-            .filter_map(|row| parse_candidate(row))
+            .filter_map(parse_candidate)
             .collect();
 
         // Run the same deterministic selection as the live pipeline:
@@ -222,7 +222,12 @@ mod tests {
         }
     }
 
-    fn candidate(venue_type: &str, venue_ref: &str, price: &str, amount: &str) -> LiquidityCandidate {
+    fn candidate(
+        venue_type: &str,
+        venue_ref: &str,
+        price: &str,
+        amount: &str,
+    ) -> LiquidityCandidate {
         LiquidityCandidate {
             venue_type: venue_type.to_string(),
             venue_ref: venue_ref.to_string(),

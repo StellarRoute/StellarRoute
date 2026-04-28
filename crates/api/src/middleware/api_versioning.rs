@@ -24,10 +24,7 @@ fn is_v1_path(path: &str) -> bool {
     path == "/api/v1" || path.starts_with("/api/v1/")
 }
 
-pub async fn api_versioning_layer(
-    request: axum::http::Request<Body>,
-    next: Next,
-) -> Response {
+pub async fn api_versioning_layer(request: axum::http::Request<Body>, next: Next) -> Response {
     let path = request.uri().path().to_string();
     let mut response = next.run(request).await;
 

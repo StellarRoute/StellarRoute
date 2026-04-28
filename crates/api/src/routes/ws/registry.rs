@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
 use super::messages::{ServerMessage, SubscriptionId};
@@ -72,10 +72,13 @@ impl SubscriptionRegistry {
         entry_tx: mpsc::Sender<ServerMessage>,
         sub: Subscription,
     ) -> Result<(), &'static str> {
-        let entry = self.connections.entry(conn_id).or_insert_with(|| ConnectionEntry {
-            subscriptions: Vec::new(),
-            tx: entry_tx,
-        });
+        let entry = self
+            .connections
+            .entry(conn_id)
+            .or_insert_with(|| ConnectionEntry {
+                subscriptions: Vec::new(),
+                tx: entry_tx,
+            });
 
         if entry.subscriptions.len() >= MAX_SUBSCRIPTIONS_PER_CONNECTION {
             return Err("subscription_limit_exceeded");

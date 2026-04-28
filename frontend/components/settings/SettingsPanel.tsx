@@ -9,10 +9,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { SlippageSettings } from "./SlippageSettings";
 import { DeadlineSettings } from "./DeadlineSettings";
-import { useTradeFormStorage } from "@/hooks/useTradeFormStorage";
 
-export function SettingsPanel() {
-  const { slippage, setSlippage, deadline, setDeadline, reset } = useTradeFormStorage();
+interface SettingsPanelProps {
+  slippage: number;
+  onSlippageChange: (value: number) => void;
+  deadline: number;
+  onDeadlineChange: (value: number) => void;
+  onReset: () => void;
+}
+
+export function SettingsPanel({
+  slippage,
+  onSlippageChange,
+  deadline,
+  onDeadlineChange,
+  onReset,
+}: SettingsPanelProps) {
 
   return (
     <Popover>
@@ -26,13 +38,13 @@ export function SettingsPanel() {
           <span className="sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[320px] p-6 rounded-[24px] shadow-2xl border-border/40 bg-background/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+      <PopoverContent align="end" data-testid="settings-panel" className="w-[320px] p-6 rounded-[24px] shadow-2xl border-border/40 bg-background/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold tracking-tight">Settings</h3>
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={reset}
+            onClick={onReset}
             className="h-8 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors gap-1.5 px-3 rounded-full"
           >
             <RotateCcw className="h-3 w-3" />
@@ -41,8 +53,8 @@ export function SettingsPanel() {
         </div>
 
         <div className="space-y-6">
-          <SlippageSettings value={slippage} onChange={setSlippage} />
-          <DeadlineSettings value={deadline} onChange={setDeadline} />
+          <SlippageSettings value={slippage} onChange={onSlippageChange} />
+          <DeadlineSettings value={deadline} onChange={onDeadlineChange} />
         </div>
       </PopoverContent>
     </Popover>

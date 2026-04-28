@@ -173,12 +173,9 @@ async fn get_pairs_returns_correct_content_type() {
         .await
         .expect("Failed to connect to database");
 
-    let router = Server::new(
-        ServerConfig::default(),
-        DatabasePools::new(pool, None),
-    )
-    .await
-    .into_router();
+    let router = Server::new(ServerConfig::default(), DatabasePools::new(pool, None))
+        .await
+        .into_router();
 
     let response = router
         .oneshot(

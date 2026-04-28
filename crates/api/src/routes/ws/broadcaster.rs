@@ -42,7 +42,10 @@ pub async fn run_broadcaster(
         let result = broadcaster_loop(state.clone(), registry.clone(), poll_interval_ms).await;
         // broadcaster_loop only returns on an unrecoverable error / panic
         // (it loops internally). Log and restart.
-        warn!("broadcaster_loop exited unexpectedly: {:?}; restarting in 1 s", result);
+        warn!(
+            "broadcaster_loop exited unexpectedly: {:?}; restarting in 1 s",
+            result
+        );
         sleep(Duration::from_secs(1)).await;
     }
 }
@@ -128,7 +131,10 @@ async fn broadcaster_loop(
             // Always emit on first poll (prev_revision is None); otherwise
             // only emit when the revision has changed.
             if prev_revision.as_deref() == Some(revision.as_str()) {
-                debug!("broadcaster: no revision change for {}/{}, skipping", base, quote);
+                debug!(
+                    "broadcaster: no revision change for {}/{}, skipping",
+                    base, quote
+                );
                 continue;
             }
 
@@ -179,10 +185,7 @@ async fn broadcaster_loop(
                 // 5. Dedup — skip if price hasn't changed beyond threshold
                 // ------------------------------------------------------------
                 if should_skip_emission(sub.last_emitted_price, price, sub.amount.is_some()) {
-                    debug!(
-                        "broadcaster: price unchanged for sub {}, skipping",
-                        sub.id
-                    );
+                    debug!("broadcaster: price unchanged for sub {}, skipping", sub.id);
                     continue;
                 }
 
@@ -211,7 +214,7 @@ async fn broadcaster_loop(
 
                 let msg = ServerMessage::now(ServerPayload::QuoteUpdate {
                     subscription_id: sub.id,
-                    quote: quote_response,
+                    quote: Box::new(quote_response),
                 });
 
                 let sent = send_or_remove(&state, &registry, conn_id, &tx, msg).await;
@@ -320,10 +323,7 @@ async fn send_no_route_to_pair(
 // DB helpers (inlined from routes/quote.rs — private functions)
 // ---------------------------------------------------------------------------
 
-async fn find_asset_id(
-    state: &AppState,
-    asset: &AssetPath,
-) -> Result<Uuid, ApiError> {
+async fn find_asset_id(state: &AppState, asset: &AssetPath) -> Result<Uuid, ApiError> {
     let asset_type = asset.to_asset_type();
 
     let row = if asset.asset_code == "native" {

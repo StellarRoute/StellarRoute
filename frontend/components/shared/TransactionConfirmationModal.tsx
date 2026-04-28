@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,19 +11,21 @@ import { Button } from "@/components/ui/button";
 import { PathStep } from "@/types";
 import { RouteVisualization } from "./RouteVisualization";
 import { CopyButton } from "./CopyButton";
+import { ExplorerLink } from "./ExplorerLink";
 import { describeTradeRoute } from "@/lib/route-helpers";
 import { TransactionStatus } from "@/types/transaction";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import {
   ArrowDown,
   CheckCircle2,
   XCircle,
   Loader2,
   Wallet,
-  ExternalLink,
   ChevronRight,
   TriangleAlert,
   AlertCircle,
   Info,
+  Clock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -57,7 +59,11 @@ interface TransactionConfirmationModalProps {
   routePath?: PathStep[];
   // Actions
   onConfirm: () => void;
-  onCancel?: () => void;
+  onCancel: () => void;
+  onTryAgain: () => void;
+  onResubmit: () => void;
+  onDismiss: () => void;
+  onDone: () => void;
   confirmDisabled?: boolean;
   confirmDisabledReason?: string;
   // State
@@ -72,6 +78,16 @@ function parseMaybeNumber(value: string | undefined): number | undefined {
   if (!Number.isFinite(n)) return undefined;
   return n;
 }
+
+const STATE_DESCRIPTIONS: Record<TransactionStatus | "review", string> = {
+  review: "Review your transaction details before signing.",
+  pending: "Waiting for your wallet signature. Please confirm in your wallet.",
+  submitted: "Transaction submitted to the network. Waiting for confirmation.",
+  confirmed: "Your transaction has been confirmed on the Stellar network.",
+  failed: "Your transaction failed. You can try again or dismiss.",
+  dropped:
+    "Your transaction was not included in a ledger within the time limit.",
+};
 
 export function TransactionConfirmationModal({
   isOpen,
@@ -88,6 +104,10 @@ export function TransactionConfirmationModal({
   routePath,
   onConfirm,
   onCancel,
+  onTryAgain,
+  onResubmit,
+  onDismiss,
+  onDone,
   confirmDisabled = false,
   confirmDisabledReason,
   status,
@@ -96,6 +116,18 @@ export function TransactionConfirmationModal({
   swaps,
 }: TransactionConfirmationModalProps) {
   const [countdown, setCountdown] = useState(15);
+  const [liveMessage, setLiveMessage] = useState("");
+
+  // Focus refs per state
+  const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const cancelBtnRef = useRef<HTMLButtonElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const doneBtnRef = useRef<HTMLButtonElement>(null);
+  const tryAgainBtnRef = useRef<HTMLButtonElement>(null);
+  const resubmitBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Focus trap while modal is open
+  useFocusTrap(containerRef, isOpen);
 
   const priceImpactValue = useMemo(() => {
     if (swaps && swaps.length > 0) {
@@ -141,18 +173,96 @@ export function TransactionConfirmationModal({
     return () => clearInterval(timer);
   }, [isOpen, status]);
 
-  const handleOpenChange = (open: boolean) => {
-    if (status === "review" || status === "success" || status === "failed") {
-      onOpenChange(open);
-      if (!open && onCancel) onCancel();
-    }
-  };
+  // Per-state focus management
+  useEffect(() => {
+    if (!isOpen) return;
+    // Small timeout to ensure the DOM has updated before focusing
+    const id = setTimeout(() => {
+      switch (status) {
+        case "review":
+          confirmBtnRef.current?.focus();
+          break;
+        case "pending":
+          cancelBtnRef.current?.focus();
+          break;
+        case "submitted":
+          containerRef.current?.focus();
+          break;
+        case "confirmed":
+          doneBtnRef.current?.focus();
+          break;
+        case "failed":
+          tryAgainBtnRef.current?.focus();
+          break;
+        case "dropped":
+          resubmitBtnRef.current?.focus();
+          break;
+      }
+    }, 50);
+    return () => clearTimeout(id);
+  }, [status, isOpen]);
+
+  // Escape key handler — suppress close during in-flight states
+  useEffect(() => {
+    if (!isOpen) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (status === "pending" || status === "submitted") {
+        event.preventDefault();
+        event.stopPropagation();
+        setLiveMessage(
+          "Transaction in progress. Use the Cancel button to abort.",
+        );
+      } else {
+        // review, confirmed, failed, dropped — allow close
+        onOpenChange(false);
+      }
+    };
+
+    container.addEventListener("keydown", handleKeyDown, true);
+    return () => container.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, status, onOpenChange]);
 
   const isBatch = swaps && swaps.length > 0;
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[425px] w-[90vw] sm:w-auto">
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      // Only allow Dialog's own close mechanism for non-in-flight states
+      if (!open && (status === "pending" || status === "submitted")) {
+        setLiveMessage(
+          "Transaction in progress. Use the Cancel button to abort.",
+        );
+        return;
+      }
+      onOpenChange(open);
+    }}>
+      <DialogContent
+        className="sm:max-w-[425px] w-[90vw] sm:w-auto"
+        aria-describedby="modal-state-desc"
+      >
+        {/* Inner container: receives focus trap, tabIndex, and keydown handler */}
+        <div
+          ref={containerRef}
+          tabIndex={-1}
+          className="outline-none"
+        >
+        {/* Visually hidden state description for screen readers */}
+        <p id="modal-state-desc" className="sr-only">
+          {STATE_DESCRIPTIONS[status]}
+        </p>
+
+        {/* aria-live region for transient announcements */}
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        >
+          {liveMessage}
+        </div>
+
         {/* REVIEW STATE */}
         {status === "review" && (
           <>
@@ -381,15 +491,11 @@ export function TransactionConfirmationModal({
                 />
               </div>
               </div>
-
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
-                Demo mode: signing and submission are simulated — not yet
-                on-chain.
-              </div>
             </div>
 
             <DialogFooter className="flex-col sm:flex-col gap-2">
               <Button
+                ref={confirmBtnRef}
                 onClick={onConfirm}
                 disabled={confirmDisabled}
                 className="w-full min-h-[48px]"
@@ -406,7 +512,7 @@ export function TransactionConfirmationModal({
                 type="button"
                 variant="outline"
                 className="w-full min-h-[48px]"
-                onClick={() => handleOpenChange(false)}
+                onClick={onCancel}
               >
                 Cancel
               </Button>
@@ -433,38 +539,50 @@ export function TransactionConfirmationModal({
               <DialogDescription>
                 Please confirm the transaction in your wallet to continue.
               </DialogDescription>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Demo mode: this action is simulated — not yet on-chain.
-              </p>
             </div>
+            <Button
+              ref={cancelBtnRef}
+              type="button"
+              variant="outline"
+              className="w-full min-h-[48px]"
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
           </div>
         )}
 
-        {/* SUBMITTING / PROCESSING STATE */}
-        {(status === "submitting" || status === "processing") && (
+        {/* SUBMITTED STATE */}
+        {status === "submitted" && (
           <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
             <Loader2 className="w-16 h-16 text-primary animate-spin" />
             <div>
               <DialogTitle className="text-xl mb-2">
-                {status === "submitting" ? "Submitting..." : "Processing..."}
+                Submitting to network…
               </DialogTitle>
               <DialogDescription>
                 Waiting for network confirmation. This should only take a few
                 seconds.
               </DialogDescription>
             </div>
+            {txHash && (
+              <ExplorerLink
+                hash={txHash}
+                className="flex items-center gap-1 text-sm text-primary hover:underline"
+              />
+            )}
           </div>
         )}
 
-        {/* SUCCESS STATE */}
-        {status === "success" && (
+        {/* CONFIRMED STATE */}
+        {status === "confirmed" && (
           <div className="py-8 flex flex-col items-center justify-center space-y-6 text-center">
             <div className="bg-success/10 p-4 rounded-full">
               <CheckCircle2 className="w-16 h-16 text-success" />
             </div>
             <div>
               <DialogTitle className="text-2xl mb-2">
-                {isBatch ? "Batch Successful!" : "Swap Successful!"}
+                {isBatch ? "Batch Confirmed!" : "Swap Confirmed!"}
               </DialogTitle>
               <DialogDescription>
                 {swaps && swaps.length > 1 ? (
@@ -490,20 +608,16 @@ export function TransactionConfirmationModal({
                   </span>
                   <CopyButton value={txHash} label="Copy transaction hash" />
                 </div>
-                <a
-                  href={`https://stellar.expert/explorer/public/tx/${txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
+                <ExplorerLink
+                  hash={txHash}
                   className="flex items-center gap-1 text-sm text-primary hover:underline"
-                >
-                  View on Stellar Expert{" "}
-                  <ExternalLink className="w-4 h-4" />
-                </a>
+                />
               </div>
             )}
 
             <Button
-              onClick={() => handleOpenChange(false)}
+              ref={doneBtnRef}
+              onClick={onDone}
               className="w-full mt-4"
             >
               Done
@@ -529,7 +643,14 @@ export function TransactionConfirmationModal({
 
             <div className="w-full space-y-2 mt-4">
               <Button
-                onClick={() => handleOpenChange(false)}
+                ref={tryAgainBtnRef}
+                onClick={onTryAgain}
+                className="w-full"
+              >
+                Try Again
+              </Button>
+              <Button
+                onClick={onDismiss}
                 className="w-full"
                 variant="outline"
               >
@@ -538,6 +659,42 @@ export function TransactionConfirmationModal({
             </div>
           </div>
         )}
+
+        {/* DROPPED STATE */}
+        {status === "dropped" && (
+          <div className="py-8 flex flex-col items-center justify-center space-y-6 text-center">
+            <div className="bg-muted p-4 rounded-full">
+              <Clock className="w-16 h-16 text-muted-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-xl mb-2">
+                Transaction Dropped
+              </DialogTitle>
+              <DialogDescription className="max-w-[280px] mx-auto">
+                Your transaction was not included in a ledger within the time
+                limit.
+              </DialogDescription>
+            </div>
+
+            <div className="w-full space-y-2 mt-4">
+              <Button
+                ref={resubmitBtnRef}
+                onClick={onResubmit}
+                className="w-full"
+              >
+                Resubmit
+              </Button>
+              <Button
+                onClick={onDismiss}
+                className="w-full"
+                variant="outline"
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
+        </div>{/* end inner container */}
       </DialogContent>
     </Dialog>
   );

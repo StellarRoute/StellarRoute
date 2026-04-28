@@ -10,12 +10,19 @@
  * `lastQuotedAtMs` from pushed payloads while keeping manual refresh as a fallback.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   StellarRouteApiError,
   stellarRouteClient,
 } from '@/lib/api/client';
+import {
+  calculateQuoteRetryDelayMs,
+  emitQuoteRetryTelemetry,
+  getQuoteRetryRequestKey,
+  type QuoteRetryRequestContext,
+  type QuoteRetryTelemetryEvent,
+} from '@/lib/quote-retry';
 import {
   isQuoteStale,
   QUOTE_AMOUNT_DEBOUNCE_MS,
@@ -44,13 +51,21 @@ export interface UseQuoteRefreshOptions {
   isOnline?: boolean;
   /** Auto-retry attempts for transient online quote failures. */
   maxAutoRetries?: number;
-  /** Base delay in ms for retry backoff: attempt * retryBackoffMs. */
+  /** Base delay in ms for exponential retry backoff. */
   retryBackoffMs?: number;
+  /** Upper bound for exponential retry backoff. */
+  maxRetryBackoffMs?: number;
+  /** Random jitter ratio applied symmetrically to the computed retry delay. */
+  retryJitterRatio?: number;
+  /** Optional deterministic random source for tests. */
+  retryRandom?: () => number;
+  /** Optional telemetry sink for retry lifecycle events. */
+  onRetryEvent?: (event: QuoteRetryTelemetryEvent) => void;
 }
 
 export type UseQuoteRefreshState = UseApiState<PriceQuote> & {
   /** Manual refresh; blocked during cooldown or while inputs are invalid. */
-  refresh: () => void;
+  refresh: (options?: { force?: boolean }) => void;
   /** True after a manual refresh until the cooldown elapses. */
   manualRefreshCoolingDown: boolean;
   autoRefreshEnabled: boolean;
@@ -63,9 +78,23 @@ export type UseQuoteRefreshState = UseApiState<PriceQuote> & {
   isRecovering: boolean;
   /** Current transient retry attempt count for the active request context. */
   retryAttempt: number;
+  /** True when a retry is queued and waiting for its backoff window. */
+  hasPendingRetry: boolean;
+  /** Remaining wait time for the queued retry. */
+  pendingRetryRemainingMs: number;
+  /** Cancel the currently queued retry, if any. */
+  cancelRetry: () => void;
   /** Remaining wait time from Retry-After, if the API is currently rate-limiting requests. */
   rateLimitRemainingMs: number;
 };
+
+interface PendingQuoteRetry {
+  request: QuoteRetryRequestContext;
+  key: string;
+  attempt: number;
+  dueAtMs: number;
+  delayMs: number;
+}
 
 function isTransientQuoteError(err: Error): boolean {
   if (err instanceof StellarRouteApiError) {
@@ -96,6 +125,10 @@ export function useQuoteRefresh(
   const isOnline = options?.isOnline ?? true;
   const maxAutoRetries = options?.maxAutoRetries ?? 2;
   const retryBackoffMs = options?.retryBackoffMs ?? 1_000;
+  const maxRetryBackoffMs = options?.maxRetryBackoffMs ?? 30_000;
+  const retryJitterRatio = options?.retryJitterRatio ?? 0.2;
+  const retryRandom = options?.retryRandom;
+  const onRetryEvent = options?.onRetryEvent;
 
   const debouncedAmount = useDebounced(amount, debounceMs);
   const [tick, setTick] = useState(0);
@@ -111,6 +144,9 @@ export function useQuoteRefresh(
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [rateLimitUntilMs, setRateLimitUntilMs] = useState(0);
+  const [pendingRetry, setPendingRetry] = useState<PendingQuoteRetry | null>(
+    null,
+  );
 
   const hasValidInputs =
     Boolean(base) &&
@@ -119,6 +155,28 @@ export function useQuoteRefresh(
     Number.isFinite(debouncedAmount) &&
     debouncedAmount > 0;
   const canRequest = hasValidInputs && isOnline;
+  const requestContext = useMemo(
+    () =>
+      hasValidInputs && debouncedAmount !== undefined
+        ? {
+            base,
+            quoteAsset,
+            amount: debouncedAmount,
+            type,
+          }
+        : null,
+    [base, quoteAsset, debouncedAmount, hasValidInputs, type],
+  );
+  const requestKey = requestContext
+    ? getQuoteRetryRequestKey(requestContext)
+    : null;
+
+  const emitRetryEvent = useCallback(
+    (event: QuoteRetryTelemetryEvent) => {
+      emitQuoteRetryTelemetry(event, onRetryEvent);
+    },
+    [onRetryEvent],
+  );
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
@@ -130,13 +188,45 @@ export function useQuoteRefresh(
     setRetryAttempt(0);
     setIsRecovering(false);
     setRateLimitUntilMs(0);
+    setPendingRetry(null);
   }, [base, quoteAsset, debouncedAmount, type]);
+
+  const cancelRetry = useCallback(() => {
+    setPendingRetry((current) => {
+      if (current) {
+        emitRetryEvent({
+          stage: 'cancelled',
+          request: current.request,
+          attempt: current.attempt,
+          delayMs: current.delayMs,
+        });
+      }
+      return null;
+    });
+    setIsRecovering(false);
+    setRetryAttempt(0);
+  }, [emitRetryEvent]);
+
+  useEffect(() => {
+    if (!pendingRetry || !requestKey || pendingRetry.key !== requestKey || !canRequest) {
+      return;
+    }
+
+    const delayMs = Math.max(0, pendingRetry.dueAtMs - Date.now());
+    const id = setTimeout(() => {
+      setPendingRetry((current) =>
+        current && current.key === pendingRetry.key ? null : current,
+      );
+      setTick((n) => n + 1);
+    }, delayMs);
+
+    return () => clearTimeout(id);
+  }, [canRequest, pendingRetry, requestKey]);
 
   useEffect(() => {
     if (!canRequest) return;
 
     const controller = new AbortController();
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     // Same pattern as `useFetch` in useApi.ts: set loading before starting the request.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional loading transition before async getQuote
     setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -149,9 +239,18 @@ export function useQuoteRefresh(
         if (!controller.signal.aborted) {
           const t = Date.now();
           setLastQuotedAtMs(t);
+          if (retryAttempt > 0 && requestContext) {
+            emitRetryEvent({
+              stage: 'succeeded',
+              request: requestContext,
+              attempt: retryAttempt,
+              delayMs: 0,
+            });
+          }
           setRetryAttempt(0);
           setIsRecovering(false);
           setRateLimitUntilMs(0);
+          setPendingRetry(null);
           setState({ data, loading: false, error: null });
         }
       })
@@ -164,7 +263,9 @@ export function useQuoteRefresh(
           const shouldRetry =
             isOnline &&
             isTransientQuoteError(normalizedError) &&
-            retryAttempt < maxAutoRetries;
+            retryAttempt < maxAutoRetries &&
+            requestContext !== null &&
+            requestKey !== null;
           const rateLimitDelayMs =
             normalizedError instanceof StellarRouteApiError &&
             normalizedError.isRateLimit
@@ -184,21 +285,52 @@ export function useQuoteRefresh(
 
           if (shouldRetry) {
             const nextAttempt = retryAttempt + 1;
+            const delayMs = rateLimitDelayMs ?? calculateQuoteRetryDelayMs(
+              nextAttempt,
+              {
+                baseDelayMs: retryBackoffMs,
+                maxDelayMs: maxRetryBackoffMs,
+                jitterRatio: retryJitterRatio,
+              },
+              retryRandom,
+            );
+            const scheduledAtMs = Date.now();
             setRetryAttempt(nextAttempt);
             setIsRecovering(true);
-            retryTimer = setTimeout(() => {
-              setTick((n) => n + 1);
-            }, rateLimitDelayMs ?? nextAttempt * retryBackoffMs);
+            setPendingRetry({
+              request: requestContext,
+              key: requestKey,
+              attempt: nextAttempt,
+              dueAtMs: scheduledAtMs + delayMs,
+              delayMs,
+            });
+            emitRetryEvent({
+              stage: 'scheduled',
+              request: requestContext,
+              attempt: nextAttempt,
+              delayMs,
+              errorMessage: normalizedError.message,
+            });
             return;
           }
 
+          if (retryAttempt > 0 && requestContext) {
+            emitRetryEvent({
+              stage: 'failed',
+              request: requestContext,
+              attempt: retryAttempt,
+              delayMs: 0,
+              errorMessage: normalizedError.message,
+            });
+          }
+
+          setPendingRetry(null);
           setIsRecovering(false);
         }
       });
 
     return () => {
       controller.abort();
-      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [
     base,
@@ -209,8 +341,14 @@ export function useQuoteRefresh(
     canRequest,
     isOnline,
     maxAutoRetries,
+    maxRetryBackoffMs,
     retryAttempt,
     retryBackoffMs,
+    retryJitterRatio,
+    retryRandom,
+    emitRetryEvent,
+    requestContext,
+    requestKey,
   ]);
 
   useEffect(() => {
@@ -223,11 +361,14 @@ export function useQuoteRefresh(
     return () => clearTimeout(id);
   }, [manualCooldownUntil]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((options?: { force?: boolean }) => {
     if (!canRequest) return;
     const t = Date.now();
-    if (t < manualCooldownUntil || t < rateLimitUntilMs) return;
-    setManualCooldownUntil(t + manualRefreshCooldownMs);
+    if (t < rateLimitUntilMs) return;
+    if (!options?.force && t < manualCooldownUntil) return;
+    setManualCooldownUntil(
+      options?.force ? 0 : t + manualRefreshCooldownMs,
+    );
     setRateLimitUntilMs(0);
     setTick((n) => n + 1);
   }, [
@@ -265,6 +406,9 @@ export function useQuoteRefresh(
     data !== undefined && isQuoteStale(lastQuotedAtMs, nowMs, staleAfterMs);
   const rateLimitRemainingMs =
     rateLimitUntilMs > nowMs ? rateLimitUntilMs - nowMs : 0;
+  const pendingRetryRemainingMs = pendingRetry
+    ? Math.max(0, pendingRetry.dueAtMs - nowMs)
+    : 0;
 
   return {
     data,
@@ -278,6 +422,9 @@ export function useQuoteRefresh(
     lastQuotedAtMs,
     isRecovering,
     retryAttempt,
+    hasPendingRetry: pendingRetry !== null,
+    pendingRetryRemainingMs,
+    cancelRetry,
     rateLimitRemainingMs,
   };
 }

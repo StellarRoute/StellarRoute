@@ -58,6 +58,7 @@ impl CaptureHook {
     /// * `health_config` – health scoring config snapshot used during computation
     /// * `response` – the `QuoteResponse` produced by the live pipeline
     /// * `incident_id` – optional incident label
+    #[allow(clippy::too_many_arguments)]
     pub fn capture(
         &self,
         base: &str,

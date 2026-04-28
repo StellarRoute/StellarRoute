@@ -29,6 +29,13 @@ type SwapTranslationKey =
   | "swap.quote.rate"
   | "swap.quote.networkFee"
   | "swap.quote.priceImpact"
+  | "swap.quote.minimumReceived"
+  | "swap.quote.exchangeRateTooltip"
+  | "swap.quote.minimumReceivedTooltip"
+  | "swap.quote.networkFeeTooltip"
+  | "swap.quote.exportJson"
+  | "swap.quote.exportCsv"
+  | "swap.quote.exportSuccess"
   | "swap.settings.buttonLabel"
   | "swap.settings.menuTitle"
   | "swap.settings.slippageTolerance"
@@ -72,7 +79,25 @@ type SwapTranslationKey =
   | "swap.cta.selectTokens"
   | "swap.cta.enterAmount"
   | "swap.cta.invalidSlippage"
-  | "swap.cta.loadingQuote";
+  | "swap.cta.loadingQuote"
+  | "swap.cta.connectWallet"
+  | "swap.cta.insufficientBalance"
+  | "swap.cta.swapAnyway"
+  | "swap.cta.swapping"
+  | "swap.cta.errorFetchingQuote"
+  | "swap.card.refreshQuote"
+  | "swap.card.outdated"
+  | "swap.card.recoveringQuote"
+  | "swap.card.recoveringQuoteCountdown"
+  | "swap.card.cancelRetry"
+  | "swap.card.sessionRestored"
+  | "swap.card.poweredBy"
+  | "swap.shortcuts.title"
+  | "swap.shortcuts.openHelp"
+  | "swap.shortcuts.closeHelp"
+  | "swap.shortcuts.focusPayAmount"
+  | "swap.shortcuts.focusReceiveAmount"
+  | "swap.shortcuts.refreshQuote";
 
 type SwapTranslations = Record<SwapTranslationKey, string>;
 
@@ -96,6 +121,16 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.quote.rate": "Rate",
     "swap.quote.networkFee": "Network Fee",
     "swap.quote.priceImpact": "Price Impact",
+    "swap.quote.minimumReceived": "Minimum Received",
+    "swap.quote.exchangeRateTooltip":
+      "Current market rate for this trading pair inclusive of path routing.",
+    "swap.quote.minimumReceivedTooltip":
+      "Your transaction will revert if there is a large unfavorable price movement before it is confirmed.",
+    "swap.quote.networkFeeTooltip":
+      "Estimated cost to execute this transaction on the Stellar network.",
+    "swap.quote.exportJson": "Export JSON",
+    "swap.quote.exportCsv": "Export CSV",
+    "swap.quote.exportSuccess": "Quote summary exported as {format}",
     "swap.settings.buttonLabel": "Settings",
     "swap.settings.menuTitle": "Transaction Settings",
     "swap.settings.slippageTolerance": "Slippage Tolerance",
@@ -146,6 +181,25 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.cta.enterAmount": "Enter amount",
     "swap.cta.invalidSlippage": "Invalid slippage",
     "swap.cta.loadingQuote": "Loading quote...",
+    "swap.cta.connectWallet": "Connect Wallet",
+    "swap.cta.insufficientBalance": "Insufficient Balance",
+    "swap.cta.swapAnyway": "Swap Anyway",
+    "swap.cta.swapping": "Swapping...",
+    "swap.cta.errorFetchingQuote": "Error fetching quote",
+    "swap.card.refreshQuote": "Refresh quote",
+    "swap.card.outdated": "Quote outdated — refresh for latest price",
+    "swap.card.recoveringQuote": "Retrying quote...",
+    "swap.card.recoveringQuoteCountdown": "Retrying quote in {seconds}s...",
+    "swap.card.cancelRetry": "Cancel retry",
+    "swap.card.sessionRestored":
+      "Session restored — fetching a fresh quote before trading",
+    "swap.card.poweredBy": "Powered by StellarRoute Aggregator",
+    "swap.shortcuts.title": "Keyboard shortcuts",
+    "swap.shortcuts.openHelp": "Open shortcut help",
+    "swap.shortcuts.closeHelp": "Close modal",
+    "swap.shortcuts.focusPayAmount": "Focus pay amount",
+    "swap.shortcuts.focusReceiveAmount": "Focus receive amount",
+    "swap.shortcuts.refreshQuote": "Refresh quote",
   },
   "zh-CN": {
     "swap.card.title": "兑换",
@@ -166,6 +220,14 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.quote.rate": "汇率",
     "swap.quote.networkFee": "网络费用",
     "swap.quote.priceImpact": "价格影响",
+    "swap.quote.minimumReceived": "最少收到",
+    "swap.quote.exchangeRateTooltip": "包含路径路由影响的当前市场汇率。",
+    "swap.quote.minimumReceivedTooltip":
+      "若确认前出现不利的大幅价格波动，交易将回滚。",
+    "swap.quote.networkFeeTooltip": "在 Stellar 网络执行该交易的预计成本。",
+    "swap.quote.exportJson": "导出 JSON",
+    "swap.quote.exportCsv": "导出 CSV",
+    "swap.quote.exportSuccess": "报价摘要已导出为 {format}",
     "swap.settings.buttonLabel": "设置",
     "swap.settings.menuTitle": "交易设置",
     "swap.settings.slippageTolerance": "滑点容忍度",
@@ -211,6 +273,24 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.cta.enterAmount": "输入数量",
     "swap.cta.invalidSlippage": "滑点无效",
     "swap.cta.loadingQuote": "正在获取报价...",
+    "swap.cta.connectWallet": "连接钱包",
+    "swap.cta.insufficientBalance": "余额不足",
+    "swap.cta.swapAnyway": "仍要兑换",
+    "swap.cta.swapping": "兑换中...",
+    "swap.cta.errorFetchingQuote": "获取报价失败",
+    "swap.card.refreshQuote": "刷新报价",
+    "swap.card.outdated": "报价已过期——请刷新获取最新价格",
+    "swap.card.recoveringQuote": "正在重试报价...",
+    "swap.card.recoveringQuoteCountdown": "{seconds} 秒后重试报价...",
+    "swap.card.cancelRetry": "取消重试",
+    "swap.card.sessionRestored": "会话已恢复——正在获取最新报价后再交易",
+    "swap.card.poweredBy": "由 StellarRoute 聚合器提供支持",
+    "swap.shortcuts.title": "键盘快捷键",
+    "swap.shortcuts.openHelp": "打开快捷键帮助",
+    "swap.shortcuts.closeHelp": "关闭弹窗",
+    "swap.shortcuts.focusPayAmount": "聚焦支付数量",
+    "swap.shortcuts.focusReceiveAmount": "聚焦接收数量",
+    "swap.shortcuts.refreshQuote": "刷新报价",
   },
 };
 

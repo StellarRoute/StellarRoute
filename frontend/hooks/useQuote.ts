@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useQuoteRefresh } from './useQuoteRefresh';
-import type { Asset, QuoteType } from '@/types';
+import type { QuoteType } from '@/types';
 
 interface UseQuoteProps {
   fromToken: string; // asset identifier "native" or "CODE:ISSUER"
@@ -20,16 +20,34 @@ export interface QuoteResult {
   loading: boolean;
   error: Error | null;
   isStale: boolean;
-  refresh: () => void;
+  isRecovering: boolean;
+  retryAttempt: number;
+  hasPendingRetry: boolean;
+  pendingRetryRemainingMs: number;
+  cancelRetry: () => void;
+  refresh: (opts?: { force?: boolean }) => void;
+  data: import('@/types').PriceQuote | undefined;
+  lastQuotedAtMs: number | null;
 }
 
 /**
  * Hook to fetch real-time swap quotes with debouncing and state management.
- * 
+ *
  * Adapts the robust useQuoteRefresh hook to the specific swap interface requirements.
  */
 export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuoteProps): QuoteResult {
-  const { data, loading, error, isStale, refresh } = useQuoteRefresh(
+  const {
+    data,
+    loading,
+    error,
+    isStale,
+    isRecovering,
+    retryAttempt,
+    hasPendingRetry,
+    pendingRetryRemainingMs,
+    cancelRetry,
+    refresh,
+  } = useQuoteRefresh(
     fromToken,
     toToken,
     amount,
@@ -37,7 +55,7 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     {
       debounceMs: 300,
       autoRefreshIntervalMs: 15000,
-    }
+    },
   );
 
   const result = useMemo(() => {
@@ -54,7 +72,7 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     // Parse the data from the PriceQuote response
     const outputAmount = parseFloat(data.total) || 0;
     const priceImpact = parseFloat(data.price_impact || '0') || 0;
-    
+
     // Extract route symbols from path
     const route = data.path.reduce((acc: string[], step) => {
       const fromCode = step.from_asset.asset_code || 'XLM';
@@ -87,6 +105,13 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     loading,
     error: error instanceof Error ? error : error ? new Error(String(error)) : null,
     isStale,
+    isRecovering,
+    retryAttempt,
+    hasPendingRetry,
+    pendingRetryRemainingMs,
+    cancelRetry,
     refresh,
+    data,
+    lastQuotedAtMs: data ? (data.timestamp ?? Date.now()) : null,
   };
 }

@@ -3,20 +3,23 @@
 //! This crate provides the indexing service for SDEX orderbooks and Soroban AMM pools.
 
 pub mod amm;
+pub mod asset_metadata;
 pub mod config;
 pub mod db;
 pub mod deduplication;
 pub mod error;
 pub mod horizon;
+pub mod metrics;
 pub mod models;
 pub mod reconciliation;
+pub mod shutdown;
 pub mod telemetry;
 
 pub mod sdex;
 pub mod soroban;
 
-use sqlx::PgPool;
 use crate::reconciliation::BackfillManager;
+use sqlx::PgPool;
 
 pub use deduplication::{
     DeduplicationConfig, DeduplicationResult, DeduplicatorState, DeduplicatorStats,
@@ -26,7 +29,6 @@ pub use deduplication::{
 
 /// Indexer service
 pub struct Indexer {
-    pool: PgPool,
     backfill_manager: Option<BackfillManager>,
 }
 
@@ -34,8 +36,7 @@ impl Indexer {
     /// Create a new indexer instance
     pub fn new(pool: PgPool) -> Self {
         Self {
-            backfill_manager: Some(BackfillManager::new(pool.clone())),
-            pool,
+            backfill_manager: Some(BackfillManager::new(pool)),
         }
     }
 

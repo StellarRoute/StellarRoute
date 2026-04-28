@@ -1,12 +1,6 @@
 //! Distributed tracing middleware for request context propagation.
 
-use axum::{
-    body::Body,
-    extract::Request,
-    http::HeaderMap,
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, extract::Request, http::HeaderMap, middleware::Next, response::Response};
 use opentelemetry::propagation::TextMapPropagator;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use std::collections::HashMap;
@@ -70,14 +64,16 @@ pub async fn trace_layer(request: Request<Body>, next: Next) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use opentelemetry::trace::TraceContextExt;
     use axum::http::HeaderValue;
+    use opentelemetry::trace::TraceContextExt;
 
     #[test]
     fn test_extract_context_no_headers() {
         let headers = HeaderMap::new();
         let ctx = extract_context_from_headers(&headers);
-        assert!(ctx.span().span_context().trace_id().to_string() == "00000000000000000000000000000000");
+        assert!(
+            ctx.span().span_context().trace_id().to_string() == "00000000000000000000000000000000"
+        );
     }
 
     #[test]

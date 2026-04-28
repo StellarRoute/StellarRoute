@@ -14,11 +14,7 @@
 
 use clap::{Parser, Subcommand};
 use sqlx::postgres::PgPoolOptions;
-use stellarroute_api::replay::{
-    artifact::ReplayArtifact,
-    diff::DiffEngine,
-    engine::ReplayEngine,
-};
+use stellarroute_api::replay::{artifact::ReplayArtifact, diff::DiffEngine, engine::ReplayEngine};
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -100,8 +96,7 @@ async fn run() -> anyhow::Result<()> {
             let artifact = ReplayArtifact::fetch(&pool, id)
                 .await
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
-            let output = ReplayEngine::run(&artifact)
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            let output = ReplayEngine::run(&artifact).map_err(|e| anyhow::anyhow!("{}", e))?;
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
 
@@ -110,13 +105,17 @@ async fn run() -> anyhow::Result<()> {
             let artifact = ReplayArtifact::fetch(&pool, id)
                 .await
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
-            let output = ReplayEngine::run(&artifact)
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            let output = ReplayEngine::run(&artifact).map_err(|e| anyhow::anyhow!("{}", e))?;
             let report = DiffEngine::diff(&artifact, &output);
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
 
-        Commands::List { incident, base, quote, limit } => {
+        Commands::List {
+            incident,
+            base,
+            quote,
+            limit,
+        } => {
             let limit = limit.clamp(1, 100);
             let summaries = ReplayArtifact::list(
                 &pool,

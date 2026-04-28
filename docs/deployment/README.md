@@ -32,6 +32,35 @@ curl "https://friendbot.stellar.org/?addr=$(soroban keys address deployer)"
 - Rotate keys if compromise is suspected.
 - The `.gitignore` excludes `.soroban/`, `*.secret-key`, and `identity.toml`.
 
+### Secret Rotation Checklist
+
+Use this checklist when rotating database, Redis, or Soroban RPC credentials:
+
+1. Add the new secret or credential alongside the old one in the target secret store.
+2. Update the runtime environment to point at the new value, keeping the old value available for rollback.
+3. Restart one service at a time and confirm `GET /health` and `GET /health/deps` remain healthy.
+4. Remove the old credential only after the new one has been verified in production.
+5. Confirm no startup logs or health checks print secret material.
+
+Recommended order: database first, Redis second, Soroban RPC last.
+
+### Unified Liquidity Migration and Rollback
+
+The unified liquidity path reads from `normalized_liquidity`, which combines SDEX offers and AMM reserves.
+
+Migration sequence:
+
+1. Apply the new schema/migration that creates or updates `normalized_liquidity` and the AMM reserve tables.
+2. Backfill existing SDEX data before switching quote or routing reads.
+3. Verify quote responses and route selection on a staging environment.
+4. Flip the API/query path to the unified model.
+
+Rollback sequence:
+
+1. Stop new writes into the unified path.
+2. Switch reads back to the previous SDEX-only query path.
+3. Preserve the backfill checkpoint tables so a later retry can resume safely.
+4. Keep the last known-good schema migration file and deployment artifact together.
 ## Testnet Deployment (From Clean Machine)
 
 ### 1. Setup
@@ -164,6 +193,22 @@ Before deploying an upgrade to mainnet:
 - Rebuilds contracts from source and compares bytecode hash against deployed contract
 - Requires `SOROBAN_CONTRACT_ID` repository variable
 - Fails the workflow if hashes mismatch
+
+### CI Restoration Sequence
+
+Restore the main CI gate in this order so regressions are easier to isolate:
+
+1. Re-enable formatting and lint checks first (`cargo fmt --check`, `cargo clippy -- -D warnings`).
+2. Re-enable unit tests next, starting with the crates touched most often.
+3. Re-enable contract verification last, keeping the nightly verification workflow as the safety net.
+4. Quarantine any flaky step in a separate workflow or scheduled job until it is stable.
+5. Require the restored baseline to stay green for a full review window before tightening merge policy again.
+
+Merge gating policy:
+
+- Main branch merges should require the restored baseline checks to pass.
+- Contract verification can remain advisory until the restore sequence is complete.
+- Flaky checks should be documented with owner and next review date.
 
 ## Troubleshooting
 

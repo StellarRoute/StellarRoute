@@ -3,6 +3,11 @@
 //! Provides pathfinding algorithms for optimal swap routing across SDEX and Soroban AMM pools.
 //! Supports N-hop paths with safety bounds, cycle prevention, and price impact calculation.
 
+pub mod adaptive_routing;
+pub mod adaptive_timeout;
+pub mod canary;
+pub mod compaction;
+pub mod consensus;
 pub mod error;
 pub mod fixtures;
 pub mod health;
@@ -12,8 +17,16 @@ pub mod optimizer;
 pub mod pathfinder;
 pub mod policy;
 pub mod risk;
+pub mod scorer;
 pub mod simulator;
 
+pub use adaptive_routing::{AdaptiveError, AdaptivePolicy, AdaptiveRouter, QualityMetrics};
+pub use adaptive_timeout::{TimeoutConfig, TimeoutController};
+pub use canary::{CanaryConfig, CanaryEvaluation, CanaryEvaluator};
+pub use compaction::{CompactedEdge, CompactedGraph};
+pub use consensus::{
+    ConsensusDiagnostics, ConsensusEngine, ConsensusError, ConsensusPolicy, RouteCandidate,
+};
 pub use impact::{AmmQuoteCalculator, OrderbookImpactCalculator};
 pub use optimizer::{
     HybridOptimizer, OptimizerDiagnostics, OptimizerPolicy, PolicyPresets, RouteMetrics,
@@ -21,6 +34,10 @@ pub use optimizer::{
 pub use pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig, SwapPath};
 pub use policy::RoutingPolicy;
 pub use risk::{AssetRiskLimit, ExclusionReason, RiskLimitConfig, RiskValidator, RouteExclusion};
+pub use scorer::{
+    BenchmarkHarness, BenchmarkReport, DefaultScorer, FeeMinimizingScorer, OutputMaximizingScorer,
+    RouteScorer, ScorerInput, ScorerOutput, ScorerRegistry, ScorerResult,
+};
 
 /// Routing engine with integrated pathfinding and impact calculations
 pub struct RoutingEngine {

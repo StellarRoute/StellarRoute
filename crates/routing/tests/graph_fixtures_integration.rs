@@ -51,7 +51,13 @@ fn scenario_single_hop_sdex_route_found() {
     let policy = default_policy();
 
     let paths = pathfinder
-        .find_paths("native", "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", &edges, 100_000_000, &policy)
+        .find_paths(
+            "native",
+            "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+            &edges,
+            100_000_000,
+            &policy,
+        )
         .expect("should find at least one path");
 
     assert!(!paths.is_empty(), "expected at least one route");
@@ -68,7 +74,13 @@ fn scenario_single_hop_both_venues_represented() {
     let policy = default_policy();
 
     let paths = pathfinder
-        .find_paths("native", "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", &edges, 100_000_000, &policy)
+        .find_paths(
+            "native",
+            "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+            &edges,
+            100_000_000,
+            &policy,
+        )
         .expect("should find paths");
 
     let venue_types: Vec<_> = paths
@@ -204,12 +216,11 @@ fn scenario_thin_liquidity_below_threshold_no_route() {
     );
 
     // Either no route found or an error — both are acceptable for thin liquidity
-    match result {
-        Ok(paths) => assert!(
+    if let Ok(paths) = result {
+        assert!(
             paths.is_empty(),
             "thin liquidity should yield no viable paths"
-        ),
-        Err(_) => {} // NoRoute / InsufficientLiquidity errors are expected
+        );
     }
 }
 
@@ -239,7 +250,10 @@ fn json_minimal_market_fixture_loads_and_routes() {
         )
         .expect("should route from JSON fixture");
 
-    assert!(!paths.is_empty(), "JSON fixture must produce at least one route");
+    assert!(
+        !paths.is_empty(),
+        "JSON fixture must produce at least one route"
+    );
 }
 
 // ── Scenario 5: Venue policy filtering ───────────────────────────────────────
@@ -248,8 +262,7 @@ fn json_minimal_market_fixture_loads_and_routes() {
 fn scenario_sdex_only_policy_excludes_amm_venues() {
     let edges = FixtureBuilder::minimal_market().build_edges();
     let pathfinder = Pathfinder::new(default_config());
-    let policy = RoutingPolicy::default()
-        .with_venue_allowlist(vec!["sdex".to_string()]);
+    let policy = RoutingPolicy::default().with_venue_allowlist(vec!["sdex".to_string()]);
 
     let paths = pathfinder
         .find_paths(
@@ -276,8 +289,7 @@ fn scenario_sdex_only_policy_excludes_amm_venues() {
 fn scenario_amm_only_policy_excludes_sdex_venues() {
     let edges = FixtureBuilder::minimal_market().build_edges();
     let pathfinder = Pathfinder::new(default_config());
-    let policy = RoutingPolicy::default()
-        .with_venue_allowlist(vec!["amm".to_string()]);
+    let policy = RoutingPolicy::default().with_venue_allowlist(vec!["amm".to_string()]);
 
     let paths = pathfinder
         .find_paths(

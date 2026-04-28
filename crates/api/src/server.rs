@@ -1,7 +1,6 @@
 //! API server setup and configuration
 
 use axum::{http::Request, Router};
-use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::{
     compression::CompressionLayer,
@@ -25,7 +24,7 @@ use crate::{
 };
 
 /// API server configuration
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServerConfig {
     /// Server host address
     pub host: String,
@@ -39,6 +38,19 @@ pub struct ServerConfig {
     pub redis_url: Option<String>,
     /// Quote cache TTL in seconds
     pub quote_cache_ttl_seconds: u64,
+}
+
+impl std::fmt::Debug for ServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("enable_cors", &self.enable_cors)
+            .field("enable_compression", &self.enable_compression)
+            .field("redis_url", &self.redis_url.as_ref().map(|_| "[REDACTED]"))
+            .field("quote_cache_ttl_seconds", &self.quote_cache_ttl_seconds)
+            .finish()
+    }
 }
 
 impl Default for ServerConfig {
@@ -190,7 +202,12 @@ impl Server {
         app
     }
 
-    /// Start the server
+    /// Start the server with graceful shutdown support.
+    ///
+    /// The server listens for `SIGTERM` / `SIGINT` and enters a drain window
+    /// before exiting.  New requests are rejected with `503` during the drain
+    /// window; in-flight requests are allowed to complete up to
+    /// `SHUTDOWN_DRAIN_TIMEOUT_S` seconds (default: 30).
     pub async fn start(self) -> Result<()> {
         let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port)
             .parse()
@@ -199,14 +216,26 @@ impl Server {
         info!("🚀 StellarRoute API server starting on http://{}", addr);
         info!("📊 Health check: http://{}/health", addr);
         info!("📈 Trading pairs: http://{}/api/v1/pairs", addr);
-        info!("� Prometheus metrics: http://{}/metrics", addr);
-        info!("�📚 API Documentation: http://{}/swagger-ui", addr);
+        info!("📉 Prometheus metrics: http://{}/metrics", addr);
+        info!("📚 API Documentation: http://{}/swagger-ui", addr);
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .expect("Failed to bind address");
 
-        axum::serve(listener, self.app).await.expect("Server error");
+        let shutdown = crate::shutdown::ShutdownSignal::new();
+        info!(
+            drain_timeout_secs = shutdown.drain_timeout.as_secs(),
+            "Graceful shutdown configured"
+        );
+
+        let shutdown_clone = shutdown.clone();
+        axum::serve(listener, self.app)
+            .with_graceful_shutdown(async move {
+                shutdown_clone.wait_for_signal().await;
+            })
+            .await
+            .expect("Server error");
 
         Ok(())
     }

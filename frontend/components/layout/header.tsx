@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { WalletButton } from "@/components/shared/WalletButton"
+//import { WalletButton } from "@/components/shared/WalletButton"
 import { NetworkBadge } from "@/components/shared/network-badge"
 import { MobileNav } from "./mobile-nav"
 import { cn } from "@/lib/utils"
@@ -90,7 +90,7 @@ export function Header() {
             <ThemeToggle />
           </div>
           <div className="hidden md:block">
-            <WalletButton />
+           {/* <WalletButton /> */}
           </div>
 
           {/* Mobile Menu Button */}

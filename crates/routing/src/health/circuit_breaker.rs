@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -131,24 +131,26 @@ impl CircuitBreakerRegistry {
     }
 
     pub fn is_venue_excluded(&self, venue_ref: &str) -> bool {
-        let breaker_arc = self.breakers.entry(venue_ref.to_string()).or_insert_with(|| {
-            Arc::new(Mutex::new(VenueBreaker::new()))
-        });
-        
+        let breaker_arc = self
+            .breakers
+            .entry(venue_ref.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(VenueBreaker::new())));
+
         let mut breaker = breaker_arc.lock();
         breaker.check_and_transition(&self.config);
-        
-        // Exclude if state is Open. 
-        // HalfOpen should probably allow limited traffic, 
+
+        // Exclude if state is Open.
+        // HalfOpen should probably allow limited traffic,
         // but for now let's say it's "included" so it can be probed.
         breaker.state == BreakerState::Open
     }
 
     pub fn record_result(&self, venue_ref: &str, success: bool) {
-        let breaker_arc = self.breakers.entry(venue_ref.to_string()).or_insert_with(|| {
-            Arc::new(Mutex::new(VenueBreaker::new()))
-        });
-        
+        let breaker_arc = self
+            .breakers
+            .entry(venue_ref.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(VenueBreaker::new())));
+
         let mut breaker = breaker_arc.lock();
         if success {
             breaker.record_success(&self.config);
@@ -211,7 +213,7 @@ mod tests {
             recovery_timeout_secs: 1,
         };
         let mut breaker = VenueBreaker::new();
-        
+
         breaker.record_failure(&config);
         breaker.record_failure(&config);
         assert_eq!(breaker.state, BreakerState::Open);

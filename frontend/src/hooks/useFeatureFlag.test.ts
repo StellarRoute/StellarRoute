@@ -67,8 +67,7 @@ describe("useFeatureFlags (batch)", () => {
       useFeatureFlags(["routes_beta", "swap_ui_v2"])
     );
 
-    await waitFor(() => expect(result.current.routes_beta).toBeDefined());
-    expect(result.current.routes_beta).toBe(true);
+    await waitFor(() => expect(result.current.routes_beta).toBe(true));
     expect(result.current.swap_ui_v2).toBe(false);
   });
 });

@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { normalizeDecimalString } from '@/lib/amount-input';
 import { useState, useCallback, useEffect, useId } from 'react';
+import { AmountPresets } from './AmountPresets';
 
 interface AmountInputProps {
   value: string;
   onChange?: (value: string) => void;
   onMax?: () => void;
+  onPresetSelect?: (percentage: number) => void;
   placeholder?: string;
   disabled?: boolean;
   readOnly?: boolean;
@@ -17,12 +19,15 @@ interface AmountInputProps {
   label?: string;
   balance?: string;
   showMax?: boolean;
+  showPresets?: boolean;
+  decimals?: number; 
 }
 
 export function AmountInput({
   value,
   onChange,
   onMax,
+  onPresetSelect,
   placeholder = '0.00',
   disabled = false,
   readOnly = false,
@@ -30,6 +35,8 @@ export function AmountInput({
   label,
   balance,
   showMax = true,
+  showPresets = false,
+  decimals = 7,
 }: AmountInputProps) {
   const [internalValue, setInternalValue] = useState(value);
   const inputId = useId();
@@ -40,24 +47,29 @@ export function AmountInput({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
+      const raw = e.target.value.replace(/,/g, '.'); 
       
-      // Allow empty string, single dot, or numbers
-      if (raw === '' || raw === '.') {
-        setInternalValue(raw);
-        onChange?.(raw);
+      if (raw === '') {
+        setInternalValue('');
+        onChange?.('');
         return;
       }
 
-      // Basic numeric validation before heavy normalization
-      if (!/^\d*\.?\d*$/.test(raw)) {
-        return;
+      if ((raw.match(/\./g) || []).length > 1) return;
+
+      if (!/^\d*\.?\d*$/.test(raw)) return;
+
+      if (raw.includes('.')) {
+        const [, decimalPart] = raw.split('.');
+        if (decimalPart && decimalPart.length > (decimals || 7)) {
+          return; 
+        }
       }
 
       setInternalValue(raw);
       onChange?.(raw);
     },
-    [onChange]
+    [onChange, decimals]
   );
 
   return (
@@ -104,6 +116,22 @@ export function AmountInput({
           </Button>
         )}
       </div>
+      
+        {balance && internalValue && parseFloat(internalValue) > parseFloat(balance) && (
+        <p className="text-[10px] font-medium text-red-500 px-1 mt-1">
+          Amount exceeds available balance
+        </p>
+      )}
+
+      {showPresets && onPresetSelect && (
+        <AmountPresets
+          balance={balance || null}
+          decimals={decimals}
+          onSelect={onPresetSelect}
+          disabled={disabled || readOnly}
+          className="mt-2"
+        />
+      )}
     </div>
   );
 }

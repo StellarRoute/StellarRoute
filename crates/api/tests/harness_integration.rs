@@ -4,13 +4,13 @@ use axum::{
 };
 use stellarroute_api::{
     load_test::{
-        LoadTestHarness, HarnessConfig, TrafficType, TrafficMix, 
-        AmountDistribution, DegradationScenario
+        AmountDistribution, DegradationScenario, HarnessConfig, LoadTestHarness, TrafficMix,
+        TrafficType,
     },
-    state::DatabasePools, Server, ServerConfig
+    state::DatabasePools,
+    Server, ServerConfig,
 };
 use tower::ServiceExt;
-use std::sync::Arc;
 
 #[tokio::test]
 #[ignore = "requires a running PostgreSQL instance"]
@@ -25,12 +25,8 @@ async fn test_harness_mixed_traffic_profile() {
         .await
         .expect("Failed to connect to database");
 
-    let server = Server::new(
-        ServerConfig::default(),
-        DatabasePools::new(pool, None),
-    )
-    .await;
-    let router = Arc::new(server.into_router());
+    let server = Server::new(ServerConfig::default(), DatabasePools::new(pool, None)).await;
+    let router = server.into_router();
 
     let config = HarnessConfig {
         name: "mixed_traffic_test".to_string(),
@@ -52,40 +48,46 @@ async fn test_harness_mixed_traffic_profile() {
     };
 
     let harness = LoadTestHarness::new(config);
-    
+
     let router_clone = router.clone();
-    let results = harness.run(move |traffic_type, amount| {
-        let router = router_clone.clone();
-        async move {
-            // Select pairs based on traffic type
-            let (base, quote) = match traffic_type {
-                TrafficType::Sdex => ("native", "USDC"), // Typical SDEX pair
-                TrafficType::Amm => ("native", "XLM"),  // Typical AMM pair (demo)
-                TrafficType::Mixed => ("USDC", "XLM"),
-            };
+    let results = harness
+        .run(move |traffic_type, amount| {
+            let router = router_clone.clone();
+            async move {
+                // Select pairs based on traffic type
+                let (base, quote) = match traffic_type {
+                    TrafficType::Sdex => ("native", "USDC"), // Typical SDEX pair
+                    TrafficType::Amm => ("native", "XLM"),   // Typical AMM pair (demo)
+                    TrafficType::Mixed => ("USDC", "XLM"),
+                };
 
-            let uri = format!("/api/v1/quote/{}/{}?amount={}", base, quote, amount);
-            let request = Request::builder()
-                .uri(uri)
-                .body(Body::empty())
-                .unwrap();
+                let uri = format!("/api/v1/quote/{}/{}?amount={}", base, quote, amount);
+                let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
 
-            let response = router.oneshot(request).await.map_err(|e| e.to_string())?;
-            
-            if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND {
-                Ok(())
-            } else {
-                Err(format!("Unexpected status: {}", response.status()))
+                let response = router
+                    .clone()
+                    .oneshot(request)
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND
+                {
+                    Ok(())
+                } else {
+                    Err(format!("Unexpected status: {}", response.status()))
+                }
             }
-        }
-    }).await;
+        })
+        .await;
 
     results.print_summary();
-    harness.save_results(&results).expect("Failed to save results");
+    harness
+        .save_results(&results)
+        .expect("Failed to save results");
 
     assert!(results.total_requests >= 40); // Allow some slack for timing
     assert!(results.successful_requests + results.failed_requests == results.total_requests);
-    
+
     // Verify file was created
     assert!(std::path::Path::new("load_test_results_mixed_traffic_test.json").exists());
 }
@@ -103,12 +105,8 @@ async fn test_harness_degradation_scenario() {
         .await
         .expect("Failed to connect to database");
 
-    let server = Server::new(
-        ServerConfig::default(),
-        DatabasePools::new(pool, None),
-    )
-    .await;
-    let router = Arc::new(server.into_router());
+    let server = Server::new(ServerConfig::default(), DatabasePools::new(pool, None)).await;
+    let router = server.into_router();
 
     let config = HarnessConfig {
         name: "degradation_test".to_string(),
@@ -125,27 +123,34 @@ async fn test_harness_degradation_scenario() {
     };
 
     let harness = LoadTestHarness::new(config);
-    
-    let router_clone = router.clone();
-    let results = harness.run(move |_, _| {
-        let router = router_clone.clone();
-        async move {
-            let request = Request::builder()
-                .uri("/api/v1/quote/native/USDC?amount=1")
-                .body(Body::empty())
-                .unwrap();
 
-            let response = router.oneshot(request).await.map_err(|e| e.to_string())?;
-            if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND {
-                Ok(())
-            } else {
-                Err(format!("Unexpected status: {}", response.status()))
+    let router_clone = router.clone();
+    let results = harness
+        .run(move |_, _| {
+            let router = router_clone.clone();
+            async move {
+                let request = Request::builder()
+                    .uri("/api/v1/quote/native/USDC?amount=1")
+                    .body(Body::empty())
+                    .unwrap();
+
+                let response = router
+                    .clone()
+                    .oneshot(request)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND
+                {
+                    Ok(())
+                } else {
+                    Err(format!("Unexpected status: {}", response.status()))
+                }
             }
-        }
-    }).await;
+        })
+        .await;
 
     results.print_summary();
-    
+
     // Check that latency is affected by simulated db_latency
     assert!(results.p50_latency_ms >= 100.0);
     // Check that some requests failed due to simulated error rate

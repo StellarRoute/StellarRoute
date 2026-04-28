@@ -10,19 +10,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MarketShock {
     /// Percentage reduction in available liquidity (0.0 to 1.0)
-    LiquidityDrain {
-        venue_ref: String,
-        percentage: f64,
-    },
+    LiquidityDrain { venue_ref: String, percentage: f64 },
     /// Percentage increase in price (0.0 to 1.0)
-    PriceJump {
-        venue_ref: String,
-        percentage: f64,
-    },
+    PriceJump { venue_ref: String, percentage: f64 },
     /// Complete removal of a venue
-    VenueOutage {
-        venue_ref: String,
-    },
+    VenueOutage { venue_ref: String },
 }
 
 /// Simulation scenario configuration
@@ -107,7 +99,10 @@ impl RouteSimulator {
 
     fn apply_shock(&self, edges: &mut [LiquidityEdge], shock: &MarketShock) {
         match shock {
-            MarketShock::LiquidityDrain { venue_ref, percentage } => {
+            MarketShock::LiquidityDrain {
+                venue_ref,
+                percentage,
+            } => {
                 for edge in edges.iter_mut() {
                     if edge.venue_ref == *venue_ref {
                         let drain = (edge.liquidity as f64 * percentage) as i128;
@@ -115,7 +110,10 @@ impl RouteSimulator {
                     }
                 }
             }
-            MarketShock::PriceJump { venue_ref, percentage } => {
+            MarketShock::PriceJump {
+                venue_ref,
+                percentage,
+            } => {
                 for edge in edges.iter_mut() {
                     if edge.venue_ref == *venue_ref {
                         edge.price *= 1.0 + percentage;
@@ -147,18 +145,22 @@ mod tests {
                 to: "USDC".to_string(),
                 venue_type: "sdex".to_string(),
                 venue_ref: "venue1".to_string(),
-                liquidity: 1000_000_000,
+                liquidity: 1_000_000_000,
                 price: 0.12,
                 fee_bps: 0,
+                anomaly_score: 0.0,
+                anomaly_reasons: vec![],
             },
             LiquidityEdge {
                 from: "XLM".to_string(),
                 to: "USDC".to_string(),
                 venue_type: "amm".to_string(),
                 venue_ref: "venue2".to_string(),
-                liquidity: 1000_000_000,
+                liquidity: 1_000_000_000,
                 price: 0.121,
                 fee_bps: 30,
+                anomaly_score: 0.0,
+                anomaly_reasons: vec![],
             },
         ]
     }

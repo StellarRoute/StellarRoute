@@ -9,22 +9,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { SlippageSettings } from "./SlippageSettings";
 import { DeadlineSettings } from "./DeadlineSettings";
+import { useTradeFormStorage } from "@/hooks/useTradeFormStorage";
+import { useSettings } from "@/components/providers/settings-provider";
 
-interface SettingsPanelProps {
-  slippage: number;
-  onSlippageChange: (value: number) => void;
-  deadline: number;
-  onDeadlineChange: (value: number) => void;
-  onReset: () => void;
-}
+export function SettingsPanel() {
+  const { deadline, setDeadline, reset: resetForm } = useTradeFormStorage();
+  const { resetSettings } = useSettings();
 
-export function SettingsPanel({
-  slippage,
-  onSlippageChange,
-  deadline,
-  onDeadlineChange,
-  onReset,
-}: SettingsPanelProps) {
+  const handleReset = () => {
+    resetForm();
+    resetSettings();
+  };
 
   return (
     <Popover>
@@ -44,7 +39,7 @@ export function SettingsPanel({
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={onReset}
+            onClick={handleReset}
             className="h-8 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors gap-1.5 px-3 rounded-full"
           >
             <RotateCcw className="h-3 w-3" />
@@ -53,8 +48,8 @@ export function SettingsPanel({
         </div>
 
         <div className="space-y-6">
-          <SlippageSettings value={slippage} onChange={onSlippageChange} />
-          <DeadlineSettings value={deadline} onChange={onDeadlineChange} />
+          <SlippageSettings />
+          <DeadlineSettings value={deadline} onChange={setDeadline} />
         </div>
       </PopoverContent>
     </Popover>

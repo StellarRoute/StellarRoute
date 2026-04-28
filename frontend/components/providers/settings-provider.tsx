@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useTheme } from 'next-themes';
-import { Settings, DEFAULT_SETTINGS, ThemeSetting } from '@/types/settings';
+import { Settings, DEFAULT_SETTINGS, ThemeSetting, SlippageProfile } from '@/types/settings';
 import { getUserLocale } from '@/lib/formatting';
 
 const STORAGE_KEY = 'stellar_route_settings';
@@ -13,6 +13,10 @@ interface SettingsContextType {
   updateTheme: (theme: ThemeSetting) => void;
   updateLocale: (locale: Settings['locale']) => void;
   resetSettings: () => void;
+  addProfile: (profile: { name: string; value: number }) => void;
+  updateProfile: (id: string, updates: Partial<SlippageProfile>) => void;
+  deleteProfile: (id: string) => void;
+  selectProfile: (id: string) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -70,6 +74,69 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings(DEFAULT_SETTINGS);
   };
 
+  const addProfile = (profile: { name: string; value: number }) => {
+    if (!isValidSlippage(profile.value)) return;
+    const newProfile: SlippageProfile = {
+      id: crypto.randomUUID(),
+      name: profile.name,
+      value: profile.value,
+      isPreset: false,
+    };
+    setSettings((prev) => ({
+      ...prev,
+      slippageProfiles: [...prev.slippageProfiles, newProfile],
+      activeProfileId: newProfile.id,
+      slippageTolerance: newProfile.value,
+    }));
+  };
+
+  const updateProfile = (id: string, updates: Partial<SlippageProfile>) => {
+    if (updates.value !== undefined && !isValidSlippage(updates.value)) return;
+    setSettings((prev) => ({
+      ...prev,
+      slippageProfiles: prev.slippageProfiles.map((p) =>
+        p.id === id && !p.isPreset ? { ...p, ...updates } : p
+      ),
+      slippageTolerance: prev.activeProfileId === id && updates.value !== undefined ? updates.value : prev.slippageTolerance,
+    }));
+  };
+
+  const deleteProfile = (id: string) => {
+    setSettings((prev) => {
+      const profile = prev.slippageProfiles.find((p) => p.id === id);
+      if (profile?.isPreset) return prev; // Cannot delete preset
+      
+      const newProfiles = prev.slippageProfiles.filter((p) => p.id !== id);
+      let newActiveId = prev.activeProfileId;
+      let newSlippage = prev.slippageTolerance;
+      
+      if (prev.activeProfileId === id) {
+        newActiveId = DEFAULT_SETTINGS.activeProfileId;
+        const fallback = newProfiles.find((p) => p.id === newActiveId);
+        newSlippage = fallback ? fallback.value : DEFAULT_SETTINGS.slippageTolerance;
+      }
+
+      return {
+        ...prev,
+        slippageProfiles: newProfiles,
+        activeProfileId: newActiveId,
+        slippageTolerance: newSlippage,
+      };
+    });
+  };
+
+  const selectProfile = (id: string) => {
+    setSettings((prev) => {
+      const profile = prev.slippageProfiles.find((p) => p.id === id);
+      if (!profile) return prev;
+      return {
+        ...prev,
+        activeProfileId: id,
+        slippageTolerance: profile.value,
+      };
+    });
+  };
+
   return (
     <SettingsContext.Provider
       value={{
@@ -78,6 +145,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         updateTheme,
         updateLocale,
         resetSettings,
+        addProfile,
+        updateProfile,
+        deleteProfile,
+        selectProfile,
       }}
     >
       {children}

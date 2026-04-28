@@ -67,8 +67,5 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/admin/kill-switch",
             post(kill_switch::update_kill_switch),
         )
-        // Canary routes
-        .route("/api/v1/system/canary/report", get(canary::get_report))
-        .route("/api/v1/system/canary/config", post(canary::update_config))
         .with_state(state)
 }

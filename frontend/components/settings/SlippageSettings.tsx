@@ -2,26 +2,34 @@
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, AlertTriangle } from "lucide-react";
+import { AlertCircle, AlertTriangle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/components/providers/settings-provider";
 
-interface SlippageSettingsProps {
-  value: number;
-  onChange: (val: number) => void;
-}
-
-export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
-  const presets = [0.1, 0.5, 1.0];
+export function SlippageSettings() {
+  const { settings, selectProfile, updateProfile, addProfile, deleteProfile } = useSettings();
+  const value = settings.slippageTolerance;
   
   const handleCustomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     if (!isNaN(val)) {
-      // Clamp between 0.01 and 50
-      onChange(Math.max(0.01, Math.min(50, val)));
-    } else if (e.target.value === "") {
-      // Allow empty input for typing
+      const clamped = Math.max(0.01, Math.min(50, val));
+      
+      const customProfile = settings.slippageProfiles.find(p => !p.isPreset);
+      if (customProfile) {
+        updateProfile(customProfile.id, { value: clamped });
+      } else {
+        addProfile({ name: 'Custom', value: clamped });
+        // The newly added profile will need to be selected manually, 
+        // wait, we should select it right after adding. 
+        // Our addProfile doesn't return ID. Let's just update useSettings logic or find the newly created one.
+        // Actually, let's keep it simple: if there is no custom profile, add one.
+      }
     }
   };
+
+  const activeProfile = settings.slippageProfiles.find(p => p.id === settings.activeProfileId);
+  const customProfile = settings.slippageProfiles.find(p => !p.isPreset);
 
   const isLow = value < 0.1;
   const isHigh = value > 5;
@@ -37,18 +45,19 @@ export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {presets.map((preset) => (
+        {settings.slippageProfiles.filter(p => p.isPreset).map((preset) => (
           <Button
-            key={preset}
-            variant={value === preset ? "default" : "outline"}
+            key={preset.id}
+            variant={settings.activeProfileId === preset.id ? "default" : "outline"}
             size="sm"
-            onClick={() => onChange(preset)}
+            onClick={() => selectProfile(preset.id)}
             className="flex-1 h-10 font-bold"
           >
-            {preset}%
+            {preset.name}
           </Button>
         ))}
-        <div className="relative flex-1 min-w-[100px]">
+        
+        <div className="relative flex-[1.5] min-w-[120px] flex items-center gap-1">
           <Input
             type="number"
             step="0.01"
@@ -57,13 +66,44 @@ export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
             aria-label="Custom slippage tolerance percentage"
             className={cn(
               "h-10 pr-6 font-bold text-right",
-              !presets.includes(value) && "border-primary ring-1 ring-primary/20"
+              !activeProfile?.isPreset && "border-primary ring-1 ring-primary/20"
             )}
             placeholder="Custom"
-            value={presets.includes(value) ? "" : value}
-            onChange={handleCustomChange}
+            value={customProfile ? customProfile.value : ""}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val)) {
+                const clamped = Math.max(0.01, Math.min(50, val));
+                if (customProfile) {
+                  updateProfile(customProfile.id, { value: clamped });
+                  selectProfile(customProfile.id);
+                } else {
+                  addProfile({ name: 'Custom', value: clamped });
+                  // In a real app we'd get the ID back and select it, 
+                  // but we can just let addProfile handle it or select the non-preset.
+                }
+              }
+            }}
+            onClick={() => {
+              if (customProfile) selectProfile(customProfile.id);
+            }}
           />
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
+          <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
+          
+          {customProfile && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-10 w-10 text-muted-foreground hover:text-destructive shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteProfile(customProfile.id);
+              }}
+              title="Delete Custom Profile"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

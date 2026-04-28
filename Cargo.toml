@@ -74,6 +74,7 @@ arc-swap = "1.7"
 dashmap = "5.5"
 rand = "0.8"
 proptest = "1.5"
+httpdate = "1.0"
 
 # Clippy and formatting
 [workspace.lints.clippy]

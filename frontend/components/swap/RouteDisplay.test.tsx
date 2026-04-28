@@ -77,4 +77,44 @@ describe("RouteDisplay", () => {
 
     expect(screen.queryByTestId("alternative-route-route-0")).not.toBeInTheDocument();
   });
+
+  it("renders route detail drawer with per-hop venue and fee breakdown", async () => {
+    const routes = [
+      {
+        id: "route-0",
+        venue: "AQUA Pool",
+        expectedAmount: "≈ 49.7500",
+        hops: [
+          {
+            id: "hop-0",
+            fromAsset: "XLM",
+            toAsset: "AQUA",
+            venue: "SDEX",
+            fee: "0.00001 XLM",
+          },
+          {
+            id: "hop-1",
+            fromAsset: "AQUA",
+            toAsset: "USDC",
+            venue: "AQUA Pool",
+            fee: "0.00002 XLM",
+          },
+        ],
+      },
+    ];
+
+    render(<RouteDisplay amountOut="50.0" alternativeRoutes={routes} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show route details" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Route detail drawer")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Per-hop route details")).toBeInTheDocument();
+    expect(screen.getByText("Hop 1: XLM -> AQUA")).toBeInTheDocument();
+    expect(screen.getByText("Hop 2: AQUA -> USDC")).toBeInTheDocument();
+    expect(screen.getByText("Estimated total fees")).toBeInTheDocument();
+    expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
+  });
 });

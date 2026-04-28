@@ -3,13 +3,16 @@
 //! This crate provides the indexing service for SDEX orderbooks and Soroban AMM pools.
 
 pub mod amm;
+pub mod asset_metadata;
 pub mod config;
 pub mod db;
 pub mod deduplication;
 pub mod error;
 pub mod horizon;
+pub mod metrics;
 pub mod models;
 pub mod reconciliation;
+pub mod shutdown;
 pub mod telemetry;
 
 pub mod sdex;

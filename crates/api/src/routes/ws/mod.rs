@@ -108,9 +108,12 @@ pub async fn ws_handler(
         None => {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse::new(
-                    ApiErrorCode::Overloaded,
-                    "WebSocket endpoint is not enabled.",
+                Json(crate::models::ApiResponse::new(
+                    ErrorResponse::new(
+                        ApiErrorCode::Overloaded,
+                        "WebSocket endpoint is not enabled.",
+                    ),
+                    "system",
                 )),
             )
                 .into_response();
@@ -122,12 +125,15 @@ pub async fn ws_handler(
     if current >= ws_state.max_connections {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new(
-                ApiErrorCode::Overloaded,
-                format!(
-                    "Server has reached the maximum of {} concurrent connections.",
-                    ws_state.max_connections
+            Json(crate::models::ApiResponse::new(
+                ErrorResponse::new(
+                    ApiErrorCode::Overloaded,
+                    format!(
+                        "Server has reached the maximum of {} concurrent connections.",
+                        ws_state.max_connections
+                    ),
                 ),
+                "system",
             )),
         )
             .into_response();
@@ -147,9 +153,12 @@ pub async fn ws_handler(
         if timestamps.len() >= IP_RATE_LIMIT_PER_MINUTE {
             return (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse::new(
-                    ApiErrorCode::RateLimitExceeded,
-                    "Too many new WebSocket connections from this IP. Try again later.",
+                Json(crate::models::ApiResponse::new(
+                    ErrorResponse::new(
+                        ApiErrorCode::RateLimitExceeded,
+                        "Too many new WebSocket connections from this IP. Try again later.",
+                    ),
+                    "system",
                 )),
             )
                 .into_response();

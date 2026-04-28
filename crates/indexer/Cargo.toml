@@ -32,6 +32,11 @@ config.workspace = true
 
 futures = "0.3"
 rust_decimal = { version = "1.33", features = ["db-postgres"] }
+rand.workspace = true
+httpdate = "1.0"
+prometheus = "0.13"
+lazy_static = "1.4"
+toml = "0.8"
 
 # Stellar SDK (TBD - need to find correct package)
 # stellar-sdk = "?"

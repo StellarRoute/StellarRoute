@@ -117,7 +117,17 @@ impl ExclusionPolicy {
                 | (Some(OverrideDirective::ForceInclude), _) => {
                     // Skip threshold check entirely — always included.
                 }
-                (_, Some(OverrideDirective::ForceExclude)) => {
+                (_, Some(OverrideDirective::ForceExclude))
+                | (Some(OverrideDirective::ForceExclude), _) => {
+                    excluded.insert(venue.venue_ref.clone());
+                    excluded_venues.push(ExcludedVenueInfo {
+                        venue_ref: venue.venue_ref.clone(),
+                        score: venue.record.score,
+                        signals: venue.record.signals.clone(),
+                        reason: ExclusionReason::Override,
+                    });
+                }
+                (Some(OverrideDirective::ForceExclude), None) => {
                     excluded.insert(venue.venue_ref.clone());
                     excluded_venues.push(ExcludedVenueInfo {
                         venue_ref: venue.venue_ref.clone(),

@@ -55,6 +55,19 @@ impl SdexIndexer {
             match self.index_offers().await {
                 Ok(count) => {
                     info!("Indexed {} offers", count);
+                    crate::metrics::record_offers_indexed("sdex", count as u64);
+                    crate::metrics::record_throttle_success("sdex");
+                }
+                Err(IndexerError::RateLimitExceeded { retry_after }) => {
+                    // Cursor is NOT advanced on rate-limit — we retry the same page.
+                    let wait_secs = retry_after.unwrap_or(5);
+                    warn!(
+                        retry_after_secs = wait_secs,
+                        "SDEX polling rate-limited; preserving cursor and waiting"
+                    );
+                    let consecutive = self.horizon.throttle.consecutive_429s();
+                    crate::metrics::record_throttle_event(wait_secs * 1_000, consecutive, "sdex");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
                 }
                 Err(e) => {
                     error!("Error indexing offers: {}", e);

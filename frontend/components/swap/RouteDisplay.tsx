@@ -11,6 +11,13 @@ export interface AlternativeRoute {
   id: string;
   venue: string;
   expectedAmount: string;
+  hops?: Array<{
+    id: string;
+    fromAsset: string;
+    toAsset: string;
+    venue: string;
+    fee: string;
+  }>;
 }
 
 interface RouteDisplayProps {
@@ -39,7 +46,39 @@ function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
     id: `route-${index}`,
     venue,
     expectedAmount: `≈ ${(baseAmount * (0.995 - index * 0.0015)).toFixed(4)}`,
+    hops:
+      index % 2 === 0
+        ? [
+            {
+              id: `${index}-0`,
+              fromAsset: "XLM",
+              toAsset: "USDC",
+              venue,
+              fee: "0.00001 XLM",
+            },
+          ]
+        : [
+            {
+              id: `${index}-0`,
+              fromAsset: "XLM",
+              toAsset: "AQUA",
+              venue: "SDEX",
+              fee: "0.00001 XLM",
+            },
+            {
+              id: `${index}-1`,
+              fromAsset: "AQUA",
+              toAsset: "USDC",
+              venue,
+              fee: "0.00002 XLM",
+            },
+          ],
   }));
+}
+
+function parseFeeToNumber(fee: string): number {
+  const numeric = Number.parseFloat(fee);
+  return Number.isFinite(numeric) ? numeric : 0;
 }
 
 function AlternativeRouteButton({
@@ -110,6 +149,13 @@ export function RouteDisplay({
   const visibleRoutes = shouldVirtualize
     ? routes.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     : routes;
+  const selectedRoute =
+    routes.find((route) => route.id === selectedRouteId) ?? routes[0] ?? null;
+  const selectedRouteHops = selectedRoute?.hops ?? [];
+  const totalRouteFee = selectedRouteHops.reduce(
+    (sum, hop) => sum + parseFeeToNumber(hop.fee),
+    0,
+  );
 
   if (isLoading) {
     return <RouteDisplaySkeleton />;
@@ -225,6 +271,59 @@ export function RouteDisplay({
           )}
         </div>
       </div>
+
+      {showDetails && selectedRoute && (
+        <div
+          aria-label="Route detail drawer"
+          className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Per-hop route details
+            </h5>
+            <span className="text-xs text-muted-foreground">
+              {selectedRouteHops.length} hop{selectedRouteHops.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          {selectedRouteHops.length > 0 ? (
+            <div aria-label="Per-hop route details" className="space-y-2">
+              {selectedRouteHops.map((hop, index) => (
+                <div
+                  key={hop.id}
+                  className="rounded-md border border-border/40 bg-background/70 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between text-xs font-medium">
+                    <span>
+                      Hop {index + 1}: {hop.fromAsset} {'->'} {hop.toAsset}
+                    </span>
+                    <span className="text-muted-foreground">{hop.venue}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Fee</span>
+                    <span>{hop.fee}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No hop breakdown available for this route.
+            </p>
+          )}
+
+          <div className="rounded-md border border-border/40 bg-background/70 px-3 py-2">
+            <div className="flex items-center justify-between text-xs font-medium">
+              <span>Estimated total fees</span>
+              <span>{totalRouteFee.toFixed(5)} XLM</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Route venue</span>
+              <span>{selectedRoute.venue}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

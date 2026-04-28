@@ -1,6 +1,7 @@
 "use client";
 
 import { useWallet } from "@/hooks/useWallet";
+import { AccountSwitcher } from "./account-switcher";
 
 const APP_NETWORK = "TESTNET";
 
@@ -71,6 +72,13 @@ export function WalletButton() {
 
   return (
     <div className="flex flex-col gap-2">
+      <AccountSwitcher 
+        onAccountChange={(newAddress) => {
+          console.log("Account changed to:", newAddress);
+          // This could trigger balance/quote refreshes
+        }}
+      />
+      
       <div className="flex items-center gap-2">
         <span className="rounded-md border px-3 py-2 text-sm">
           {shortAddress}

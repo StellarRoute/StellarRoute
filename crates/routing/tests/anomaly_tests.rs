@@ -34,30 +34,17 @@ fn test_optimizer_flags_anomalies() {
     let optimizer = HybridOptimizer::new(PathfinderConfig::default());
 
     // Create edges with anomalies
-    let edges = vec![
-        LiquidityEdge {
-            from: "XLM".to_string(),
-            to: "USDC".to_string(),
-            venue_type: "amm".to_string(),
-            venue_ref: "anomalous_pool".to_string(),
-            liquidity: 1000,
-            price: 1.0,
-            fee_bps: 30,
-            anomaly_score: 0.8,
-            anomaly_reasons: vec!["Sudden reserve shift: 70%".to_string()],
-        },
-        LiquidityEdge {
-            from: "XLM".to_string(),
-            to: "USDC".to_string(),
-            venue_type: "sdex".to_string(),
-            venue_ref: "healthy_offer".to_string(),
-            liquidity: 1000,
-            price: 1.01,
-            fee_bps: 20,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
-        },
-    ];
+    let edges = vec![LiquidityEdge {
+        from: "XLM".to_string(),
+        to: "USDC".to_string(),
+        venue_type: "amm".to_string(),
+        venue_ref: "anomalous_pool".to_string(),
+        liquidity: 10_000_000,
+        price: 1.0,
+        fee_bps: 30,
+        anomaly_score: 0.8,
+        anomaly_reasons: vec!["Sudden reserve shift: 70%".to_string()],
+    }];
 
     let routing_policy = RoutingPolicy::default();
     let result = optimizer

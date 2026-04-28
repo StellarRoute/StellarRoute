@@ -799,8 +799,12 @@ async fn find_best_price(
     quote_id: uuid::Uuid,
     amount: f64,
 ) -> Result<FindBestPriceResult> {
-    // Initialize budget tracker for per-stage timing enforcement
-    let mut budget_tracker = BudgetTracker::new(BudgetConfig::realtime());
+    let base_symbol = base.to_canonical();
+    let quote_symbol = quote.to_canonical();
+
+    // Parallel multi-source quote computation
+    let sdex_timeout = Duration::from_millis(500);
+    let amm_timeout = Duration::from_millis(500);
 
     // Stage 1: Fetch candidates from data sources
     let health_score = state.calculate_health_score().await;
@@ -838,6 +842,35 @@ async fn find_best_price(
         Ok(Ok(mut res)) => candidates.append(&mut res),
         Ok(Err(e)) => warn!("AMM source error: {:?}", e),
         Err(_) => warn!("AMM source timed out after {:?}", dynamic_timeout),
+    }
+
+    let health_config = HealthScoringConfig::default();
+
+    let Some((max_ledger, dropped_candidates)) = apply_snapshot_continuity_guard(&mut candidates)
+    else {
+        return Err(ApiError::NoRouteFound);
+    };
+
+    if dropped_candidates > 0 {
+        state.cache_metrics.inc_consistency_violation();
+        crate::metrics::record_consistency_violation(&base_symbol, &quote_symbol);
+        warn!(
+            base = %base_symbol,
+            quote = %quote_symbol,
+            max_ledger,
+            dropped_candidates,
+            remaining_candidates = candidates.len(),
+            "Snapshot continuity guard dropped stale mixed-ledger candidates"
+        );
+    }
+
+    if candidates.is_empty() {
+        return Err(ApiError::StaleMarketData {
+            stale_count: dropped_candidates,
+            fresh_count: 0,
+            threshold_secs_sdex: health_config.freshness_threshold_secs.sdex,
+            threshold_secs_amm: health_config.freshness_threshold_secs.amm,
+        });
     }
 
     // Deterministic merge: sort by price, then venue type, then ref
@@ -889,7 +922,6 @@ async fn find_best_price(
     budget_tracker.record(PipelineStage::FreshnessEval, freshness_guard.complete());
 
     // Health scoring / exclusion policy (defaults match routing `HealthScoringConfig`)
-    let health_config = HealthScoringConfig::default();
     let freshness_outcome =
         FreshnessGuard::evaluate(&scorer_inputs, &health_config.freshness_threshold_secs, now);
 
@@ -1079,6 +1111,7 @@ struct DirectVenueCandidate {
     available_amount: f64,
     price_e7: i64,
     available_amount_e7: i64,
+    source_ledger: i64,
 }
 
 impl DirectVenueCandidate {
@@ -1093,6 +1126,13 @@ impl DirectVenueCandidate {
             "sdex".to_string()
         }
     }
+}
+
+fn apply_snapshot_continuity_guard(candidates: &mut Vec<DirectVenueCandidate>) -> Option<(i64, usize)> {
+    let max_ledger = candidates.iter().map(|c| c.source_ledger).max()?;
+    let before_len = candidates.len();
+    candidates.retain(|c| c.source_ledger == max_ledger);
+    Some((max_ledger, before_len.saturating_sub(candidates.len())))
 }
 
 fn evaluate_single_hop_direct_venues(
@@ -1190,7 +1230,8 @@ async fn fetch_source_candidates(
                     price::text as price,
                     available_amount::text as available_amount,
                     price_e7,
-                    available_amount_e7
+                    available_amount_e7,
+                    source_ledger
                 from normalized_liquidity
         where selling_asset_id = $1
           and buying_asset_id = $2
@@ -1215,6 +1256,7 @@ async fn fetch_source_candidates(
                 .unwrap_or(0.0);
             let price_e7: i64 = row.get("price_e7");
             let available_amount_e7: i64 = row.get("available_amount_e7");
+            let source_ledger: i64 = row.get("source_ledger");
             DirectVenueCandidate {
                 venue_type,
                 venue_ref,
@@ -1222,6 +1264,7 @@ async fn fetch_source_candidates(
                 available_amount,
                 price_e7,
                 available_amount_e7,
+                source_ledger,
             }
         })
         .collect())
@@ -1382,6 +1425,16 @@ mod tests {
         price: f64,
         available_amount: f64,
     ) -> DirectVenueCandidate {
+        candidate_with_ledger(venue_type, venue_ref, price, available_amount, 1)
+    }
+
+    fn candidate_with_ledger(
+        venue_type: &str,
+        venue_ref: &str,
+        price: f64,
+        available_amount: f64,
+        source_ledger: i64,
+    ) -> DirectVenueCandidate {
         DirectVenueCandidate {
             venue_type: venue_type.to_string(),
             venue_ref: venue_ref.to_string(),
@@ -1389,6 +1442,7 @@ mod tests {
             available_amount,
             price_e7: (price * 1e7) as i64,
             available_amount_e7: (available_amount * 1e7) as i64,
+            source_ledger,
         }
     }
 
@@ -1525,6 +1579,68 @@ mod tests {
         let (rejections, excluded) = metrics.snapshot_staleness();
         assert_eq!(rejections, 1);
         assert_eq!(excluded, 5);
+    }
+
+    #[test]
+    fn consistency_violation_counter_increments() {
+        let metrics = CacheMetrics::default();
+        assert_eq!(metrics.snapshot_consistency(), 0);
+
+        metrics.inc_consistency_violation();
+        metrics.inc_consistency_violation();
+
+        assert_eq!(metrics.snapshot_consistency(), 2);
+    }
+
+    #[test]
+    fn continuity_guard_keeps_only_latest_ledger_candidates() {
+        let mut candidates = vec![
+            candidate_with_ledger("sdex", "offer_old", 0.99, 100.0, 10),
+            candidate_with_ledger("amm", "pool_new", 1.01, 100.0, 11),
+            candidate_with_ledger("sdex", "offer_new", 1.00, 100.0, 11),
+        ];
+
+        let (max_ledger, dropped) =
+            apply_snapshot_continuity_guard(&mut candidates).expect("must have candidates");
+
+        assert_eq!(max_ledger, 11);
+        assert_eq!(dropped, 1);
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates.iter().all(|c| c.source_ledger == 11));
+    }
+
+    #[tokio::test]
+    async fn continuity_guard_blocks_cross_snapshot_leakage_under_parallel_merge() {
+        use std::time::Duration;
+        use tokio::time::sleep;
+
+        async fn fetch_simulated(ledger: i64, delay_ms: u64) -> Vec<DirectVenueCandidate> {
+            sleep(Duration::from_millis(delay_ms)).await;
+            vec![candidate_with_ledger(
+                "sdex",
+                &format!("offer_l{}", ledger),
+                1.0,
+                100.0,
+                ledger,
+            )]
+        }
+
+        let (mut old_snapshot, mut new_snapshot) =
+            tokio::join!(fetch_simulated(200, 20), fetch_simulated(201, 10));
+
+        let mut merged = Vec::new();
+        merged.append(&mut old_snapshot);
+        merged.append(&mut new_snapshot);
+
+        let (_max_ledger, dropped) =
+            apply_snapshot_continuity_guard(&mut merged).expect("must have merged candidates");
+
+        assert_eq!(dropped, 1, "one stale candidate should be removed");
+        assert_eq!(merged.len(), 1, "only latest snapshot should remain");
+        assert!(
+            merged.iter().all(|c| c.source_ledger == 201),
+            "all remaining candidates must come from the same latest snapshot"
+        );
     }
 
     // --- Req 6.3: mixed-freshness — NoRouteFound when fresh candidates lack liquidity ---

@@ -6,7 +6,7 @@ import {
   signTransaction,
 } from "@stellar/freighter-api";
 
-import type { AvailableWallet, SupportedWallet, WalletSession } from "./types";
+import type { AvailableWallet, SupportedWallet, WalletSession, Capabilities, Capability, CapabilityStatus } from "./types";
 
 export const WALLET_LABELS: Record<SupportedWallet, string> = {
   freighter: "Freighter",
@@ -84,6 +84,123 @@ export async function connectWallet(
   }
 
   throw new Error(`Unsupported wallet: ${walletId}`);
+}
+
+function getCapabilityResolution(capability: Capability): string {
+  switch (capability) {
+    case "sign_transaction":
+      return "Allow transaction signing in your wallet settings";
+    case "view_address":
+      return "Allow account access in your wallet settings";
+    case "view_network":
+      return "Switch to the matching network in your wallet";
+    case "request_access":
+      return "Reconnect your wallet to grant access";
+  }
+}
+
+export async function checkWalletCapabilities(
+  walletId: SupportedWallet,
+  network: string
+): Promise<Capabilities> {
+  const statuses: CapabilityStatus[] = [];
+
+  if (walletId === "freighter") {
+    try {
+      const accessRes = await requestAccess();
+      statuses.push({
+        capability: "request_access",
+        allowed: !accessRes.error,
+        reason: accessRes.error?.message,
+        resolution: accessRes.error ? getCapabilityResolution("request_access") : undefined,
+      });
+    } catch (e) {
+      statuses.push({
+        capability: "request_access",
+        allowed: false,
+        reason: "Failed to check wallet access",
+        resolution: getCapabilityResolution("request_access"),
+      });
+    }
+
+    try {
+      const addressRes = await getAddress();
+      const hasAddress = !addressRes.error && !!addressRes.address;
+      statuses.push({
+        capability: "view_address",
+        allowed: hasAddress,
+        reason: addressRes.error?.message,
+        resolution: hasAddress ? undefined : getCapabilityResolution("view_address"),
+      });
+    } catch (e) {
+      statuses.push({
+        capability: "view_address",
+        allowed: false,
+        reason: "Failed to get address",
+        resolution: getCapabilityResolution("view_address"),
+      });
+    }
+
+    try {
+      const networkRes = await getNetworkDetails();
+      const hasNetwork = !networkRes.error && !!networkRes.network;
+      const networkMatch = hasNetwork && networkRes.network === network;
+      statuses.push({
+        capability: "view_network",
+        allowed: networkMatch,
+        reason: networkMatch ? undefined : `Wallet on ${networkRes.network}, expected ${network}`,
+        resolution: networkMatch ? undefined : "Switch wallet network to match the app",
+      });
+    } catch (e) {
+      statuses.push({
+        capability: "view_network",
+        allowed: false,
+        reason: "Failed to get network details",
+        resolution: getCapabilityResolution("view_network"),
+      });
+    }
+
+    const signCap = statuses.find((s) => s.capability === "view_address");
+    const netCap = statuses.find((s) => s.capability === "view_network");
+    statuses.push({
+      capability: "sign_transaction",
+      allowed: signCap?.allowed && netCap?.allowed,
+      reason: !signCap?.allowed
+        ? "No address available"
+        : !netCap?.allowed
+          ? "Network mismatch"
+          : undefined,
+      resolution: !signCap?.allowed || !netCap?.allowed
+        ? getCapabilityResolution("sign_transaction")
+        : undefined,
+    });
+  } else if (walletId === "xbull") {
+    statuses.push({
+      capability: "request_access",
+      allowed: true,
+    });
+    statuses.push({
+      capability: "view_address",
+      allowed: true,
+    });
+    statuses.push({
+      capability: "view_network",
+      allowed: true,
+      reason: network === "testnet" ? undefined : "xBull only supports testnet",
+      resolution: network !== "testnet" ? "Switch app to testnet" : undefined,
+    });
+    statuses.push({
+      capability: "sign_transaction",
+      allowed: network === "testnet",
+      reason: network === "testnet" ? undefined : "xBull only supports testnet",
+      resolution: network !== "testnet" ? "Switch app to testnet" : undefined,
+    });
+  }
+
+  return {
+    checkedAt: Date.now(),
+    statuses,
+  };
 }
 
 export function disconnectWallet(): WalletSession {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, Wallet } from "lucide-react";
+import { Loader2, AlertCircle, Wallet, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSwapI18n } from "@/lib/swap-i18n";
 
@@ -14,7 +14,8 @@ export type SwapButtonState =
   | "refreshing_quote"
   | "ready"
   | "executing"
-  | "error";
+  | "error"
+  | "permission_blocked";
 
 interface SwapButtonProps {
   state: SwapButtonState;
@@ -96,6 +97,14 @@ export function SwapButton({
           disabled: true,
           variant: "outline" as const,
           className: "border-destructive/50 text-destructive",
+        };
+      case "permission_blocked":
+        return {
+          label: "Wallet permissions required",
+          disabled: true,
+          variant: "destructive" as const,
+          icon: <ShieldOff className="mr-2 h-5 w-5" />,
+          className: "bg-destructive/10 text-destructive border border-destructive/20",
         };
       case "ready":
       default:

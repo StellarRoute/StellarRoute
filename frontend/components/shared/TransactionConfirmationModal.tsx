@@ -30,6 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getSlippageWarningLevel } from "@/lib/slippage";
+import { TradeConfirmationChecklist, useTradeChecklist } from "@/components/swap/TradeConfirmationChecklist";
 
 export interface BatchSwapItem {
   fromAsset: string;
@@ -57,6 +58,11 @@ interface TransactionConfirmationModalProps {
   networkFee: string;
   slippageTolerancePct?: number;
   routePath?: PathStep[];
+  // Checklist props for pre-submission validations
+  walletConnected?: boolean;
+  walletBalance?: string;
+  quoteAge?: number;
+  routeFreshness?: 'fresh' | 'stale' | 'missing';
   // Actions
   onConfirm: () => void;
   onCancel: () => void;
@@ -114,6 +120,10 @@ export function TransactionConfirmationModal({
   errorMessage,
   txHash,
   swaps,
+  walletConnected = true,
+  walletBalance,
+  quoteAge,
+  routeFreshness = 'fresh',
 }: TransactionConfirmationModalProps) {
   const [countdown, setCountdown] = useState(15);
   const [liveMessage, setLiveMessage] = useState("");
@@ -157,6 +167,18 @@ export function TransactionConfirmationModal({
   }, [slippageTolerancePct, toAmount]);
 
   const minReceivedToDisplay = computedMinReceived ?? minReceived;
+
+  // Generate checklist for pre-submission validations
+  const { items: checklistItems, isReady: checklistReady } = useTradeChecklist({
+    fromAmount,
+    fromBalance: walletBalance,
+    slippage: slippageTolerancePct,
+    quoteAge,
+    routeFreshness,
+    walletConnected,
+  });
+
+  const canConfirm = checklistReady && !confirmDisabled;
 
   // Auto-refresh mock timer during review state
   useEffect(() => {
@@ -429,6 +451,16 @@ export function TransactionConfirmationModal({
                 </div>
               )}
 
+              {/* Pre-Submission Checklist */}
+              {status === 'review' && (
+                <TradeConfirmationChecklist
+                  items={checklistItems}
+                  isReady={checklistReady}
+                  onConfirm={onConfirm}
+                  confirmDisabled={confirmDisabled}
+                />
+              )}
+
               {/* Trade Details */}
               <div className="space-y-2 text-sm">
                 {!isBatch && (
@@ -497,7 +529,7 @@ export function TransactionConfirmationModal({
               <Button
                 ref={confirmBtnRef}
                 onClick={onConfirm}
-                disabled={confirmDisabled}
+                disabled={!canConfirm}
                 className="w-full min-h-[48px]"
                 size="lg"
               >

@@ -26,6 +26,8 @@ import { useCompactMode } from '@/hooks/useCompactMode';
 import { useShareableQuote } from '@/hooks/useShareableQuote';
 import { ShareQuoteButton } from './ShareQuoteButton';
 import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner';
+import { WalletCapabilitiesBanner } from '@/components/shared/WalletCapabilitiesBanner';
+import { useWallet } from '@/components/providers/wallet-provider';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
@@ -106,6 +108,9 @@ export function SwapCard() {
     isOnline,
   });
 
+  // Wallet capabilities for swap permission checks
+  const { isConnected, capabilities } = useWallet();
+
   const optimistic = useOptimisticSwap({
     rollbackTarget: {
       setFromToken,
@@ -132,17 +137,25 @@ export function SwapCard() {
     if (quote.priceImpact > 10) return "high_impact_warning";
     if (quote.loading) return "refreshing_quote";
     if (quote.isStale) return "error";
+    // Check capability: sign_transaction
+    if (capabilities) {
+      const signCap = capabilities.statuses.find(
+        (s) => s.capability === "sign_transaction"
+      );
+      if (signCap && !signCap.allowed) return "permission_blocked";
+    }
     return "ready";
   }, [
     fromAmount,
     fromBalance,
     isConnected,
-    isSwapping,
     quote.error,
     quote.isStale,
     quote.loading,
     quote.priceImpact,
     requiresFreshQuote,
+    capabilities,
+    optimistic.submitLock,
   ]);
 
   useEffect(() => {
@@ -347,6 +360,9 @@ export function SwapCard() {
     <div data-testid="swap-card" className="w-full max-w-[480px] mx-auto perspective-1000">
       {/* Network Mismatch Banner */}
       <NetworkMismatchBanner className="mb-4" />
+      
+      {/* Wallet Capabilities Banner */}
+      <WalletCapabilitiesBanner className="mb-4" />
       
       {/* Shared Quote Stale Warning */}
       {isSharedQuoteStale && refreshSharedQuote && (

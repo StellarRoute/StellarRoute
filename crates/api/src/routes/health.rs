@@ -169,10 +169,17 @@ pub async fn dependency_health(
     components.insert("redis".to_string(), redis_status);
 
     // --- Horizon / Soroban RPC ---
-    // Keep this lightweight: if you want active probes, you can wire them up
-    // similarly to the earlier implementation using `reqwest`.
-    components.insert("horizon".to_string(), "not_configured".to_string());
-    components.insert("soroban_rpc".to_string(), "not_configured".to_string());
+    let horizon_status = state.external_dependency_health.probe_horizon().await;
+    if horizon_status.starts_with("degraded") {
+        all_ok = false;
+    }
+    components.insert("horizon".to_string(), horizon_status);
+
+    let soroban_status = state.external_dependency_health.probe_soroban().await;
+    if soroban_status.starts_with("degraded") {
+        all_ok = false;
+    }
+    components.insert("soroban_rpc".to_string(), soroban_status);
 
     // --- Indexer lag ---
     let lag_snapshots = state.indexer_lag.snapshots().await;

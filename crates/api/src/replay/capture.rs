@@ -137,6 +137,7 @@ mod tests {
             price: "1.0000000".to_string(),
             total: "100.0000000".to_string(),
             quote_type: "sell".to_string(),
+            degraded: false,
             path: vec![PathStep {
                 from_asset: AssetInfo::native(),
                 to_asset: AssetInfo::native(),

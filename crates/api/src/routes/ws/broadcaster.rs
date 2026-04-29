@@ -200,6 +200,7 @@ async fn broadcaster_loop(
                     price: format!("{:.7}", price),
                     total: format!("{:.7}", amount * price),
                     quote_type: "sell".to_string(),
+                    degraded: false,
                     path,
                     timestamp,
                     expires_at: None,

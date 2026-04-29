@@ -13,6 +13,7 @@ fn quote_response_includes_rationale_metadata() {
         price: "1.0000000".to_string(),
         total: "50.0000000".to_string(),
         quote_type: "sell".to_string(),
+        degraded: false,
         path: vec![PathStep {
             from_asset: AssetInfo::native(),
             to_asset: AssetInfo::credit("USDC".to_string(), None),
@@ -118,8 +119,32 @@ fn exclusion_diagnostics_venue_order_is_deterministic_in_json() {
         amm_pos < sdex_pos,
         "exclusion order should remain deterministic"
     );
-
     // ensure sensitive internals are not leaked (score and signals)
     assert!(!json.contains("score"));
     assert!(!json.contains("signals"));
+}
+
+#[test]
+fn quote_response_serializes_degraded_flag() {
+    let response = QuoteResponse {
+        base_asset: AssetInfo::native(),
+        quote_asset: AssetInfo::native(),
+        amount: "1.0000000".to_string(),
+        price: "1.0000000".to_string(),
+        total: "1.0000000".to_string(),
+        quote_type: "sell".to_string(),
+        degraded: true,
+        path: vec![],
+        timestamp: 1_700_000_000,
+        expires_at: None,
+        source_timestamp: None,
+        ttl_seconds: None,
+        rationale: None,
+        price_impact: None,
+        exclusion_diagnostics: None,
+        data_freshness: None,
+    };
+
+    let json = serde_json::to_value(&response).expect("serialization failed");
+    assert_eq!(json["degraded"], true);
 }

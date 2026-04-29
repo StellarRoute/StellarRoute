@@ -23,6 +23,34 @@ use crate::{
     tag = "trading",
     responses(
         (status = 200, description = "List of trading pairs", body = PairsResponse),
+        (
+            status = 400,
+            description = "Invalid pagination parameters",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "validation_error",
+                    "message": "Invalid cursor; expected a numeric offset"
+                }
+            })
+        ),
+        (
+            status = 404,
+            description = "Trading pairs not found",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "not_found",
+                    "message": "No trading pairs found"
+                }
+            })
+        ),
         (status = 500, description = "Internal server error", body = crate::models::ErrorResponse),
     )
 )]

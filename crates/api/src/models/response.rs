@@ -196,6 +196,8 @@ pub struct QuoteResponse {
     pub price: String,
     pub total: String,
     pub quote_type: String,
+    #[serde(default)]
+    pub degraded: bool,
     pub path: Vec<PathStep>,
     /// Unix timestamp (ms) when this quote was generated
     pub timestamp: i64,
@@ -679,6 +681,7 @@ mod tests {
             price: "1.0000000".to_string(),
             total: "100.0000000".to_string(),
             quote_type: "sell".to_string(),
+            degraded: false,
             path: vec![PathStep {
                 from_asset: AssetInfo::native(),
                 to_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),

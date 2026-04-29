@@ -44,7 +44,7 @@ pub struct SwapPath {
     pub estimated_output: i128,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PathHop {
     pub source_asset: String,
     pub destination_asset: String,

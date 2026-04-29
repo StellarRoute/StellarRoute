@@ -39,3 +39,7 @@ harness = false
 [[bench]]
 name = "hybrid_optimizer_benchmarks"
 harness = false
+
+[[bench]]
+name = "deterministic_regression_benchmark"
+harness = false

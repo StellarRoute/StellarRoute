@@ -3,10 +3,11 @@
 This repository uses Ladle to render component stories for core swap primitives.
 
 ## Available stories
-- `TokenSelector`
-- `QuoteCard`
-- `RouteRow`
-- `SlippageControl`
+- `Swap primitives` (Core components in `components/swap/`)
+- `TokenSelector` (Shared component)
+- `QuoteCard` (Shared component)
+- `RouteRow` (Shared component)
+- `SlippageControl` (Shared component)
 
 ## Run locally
 1. `cd frontend`

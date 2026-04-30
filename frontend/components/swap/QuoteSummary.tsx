@@ -8,6 +8,7 @@ interface QuoteSummaryProps {
   fee: string;
   priceImpact: string;
   isLoading?: boolean;
+  error?: string;
 }
 
 export function QuoteSummary({
@@ -15,11 +16,20 @@ export function QuoteSummary({
   fee,
   priceImpact,
   isLoading = false,
+  error,
 }: QuoteSummaryProps) {
   const { t } = useSwapI18n();
 
   if (isLoading) {
     return <QuoteSummarySkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/50 p-4 bg-destructive/10 text-destructive text-sm font-medium">
+        {error}
+      </div>
+    );
   }
 
   const displayRate = rate?.trim() || null;

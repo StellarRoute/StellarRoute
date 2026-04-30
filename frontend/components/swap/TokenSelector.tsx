@@ -12,6 +12,8 @@ interface TokenSelectorProps {
   onSelect: (asset: string) => void;
   className?: string;
   disabled?: boolean;
+  /** Optional override for loading state (useful for stories/tests) */
+  isLoading?: boolean;
 }
 
 export function TokenSelector({
@@ -19,9 +21,11 @@ export function TokenSelector({
   onSelect,
   className,
   disabled = false,
+  isLoading: propLoading,
 }: TokenSelectorProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { data: pairs, loading } = usePairs();
+  const { data: pairs, loading: hookLoading } = usePairs();
+  const loading = propLoading ?? hookLoading;
 
   // Extract unique assets from all pairs
   const assets: AssetOption[] = useMemo(() => {

@@ -28,6 +28,8 @@ interface RouteDisplayProps {
   volatility?: "high" | "medium" | "low";
   /** Show loading skeleton */
   isLoading?: boolean;
+  /** Optional error message */
+  error?: string;
   /** Optional alternative route fixture data */
   alternativeRoutes?: AlternativeRoute[];
   /** Callback when an alternative route is selected */
@@ -159,6 +161,14 @@ export function RouteDisplay({
 
   if (isLoading) {
     return <RouteDisplaySkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/50 p-4 bg-destructive/10 text-destructive text-sm font-medium">
+        Route calculation failed: {error}
+      </div>
+    );
   }
 
   return (

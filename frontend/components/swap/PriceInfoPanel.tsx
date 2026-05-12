@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PriceImpactIndicator } from "./PriceImpactIndicator";
 import { Button } from "@/components/ui/button";
 import { useSwapI18n } from "@/lib/swap-i18n";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
 import PriceSparkline from "@/components/shared/PriceSparkline";
 
 interface PriceInfoPanelProps {
@@ -33,6 +34,9 @@ export function PriceInfoPanel({
   onExportCsv,
 }: PriceInfoPanelProps) {
   const { t } = useSwapI18n();
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
+
+  if (showSkeleton) {
 
   // ✅ TEMP MOCK DATA (replace later with real API)
   const mockPriceData = [
@@ -56,6 +60,7 @@ export function PriceInfoPanel({
   }
 
   return (
+    <div className={`rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20 ${contentClassName}`.trim()}>
     <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-4 transition-all duration-300 hover:border-primary/20">
       
       {/* 🔥 NEW: Sparkline Section */}

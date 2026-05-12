@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RouteDisplay } from "./RouteDisplay";
 
@@ -116,5 +117,25 @@ describe("RouteDisplay", () => {
     expect(screen.getByText("Hop 2: AQUA -> USDC")).toBeInTheDocument();
     expect(screen.getByText("Estimated total fees")).toBeInTheDocument();
     expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
+  });
+
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
+
+    const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+
+    rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Best Route")).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    expect(screen.getByText("Best Route")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

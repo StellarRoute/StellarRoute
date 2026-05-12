@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TransactionRecord } from "@/types/transaction";
@@ -39,7 +39,10 @@ describe("TransactionHistory", () => {
     historyState.clearHistory = vi.fn();
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it("should show skeleton loader initially", async () => {
     const { container } = render(<TransactionHistory />);
@@ -95,9 +98,20 @@ describe("TransactionHistory", () => {
 
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await waitFor(() => {
+      expect(screen.getByText("No Transactions Found")).toBeInTheDocument();
+    }, { timeout: 700 });
+  });
 
-    expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
+  it("progressively transitions from skeleton to history content", async () => {
+    const { container } = render(<TransactionHistory />);
+
+    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("No Transactions Found")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("No Transactions Found")).toBeInTheDocument();
+    }, { timeout: 700 });
   });
 
   it("virtualizes long activity lists and swaps the rendered window on scroll", async () => {

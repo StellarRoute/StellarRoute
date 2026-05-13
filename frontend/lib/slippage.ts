@@ -6,6 +6,14 @@ export const MAX_SLIPPAGE = 50;
 export const LOW_SLIPPAGE_WARNING_THRESHOLD = 0.1;
 export const HIGH_SLIPPAGE_WARNING_THRESHOLD = 1;
 
+export const SLIPPAGE_WARNING_TIERS = {
+  low: 0.1,
+  elevated: 1,
+  high: 5,
+} as const;
+
+export type SlippageWarningTier = "low" | "elevated" | "high";
+
 export function parseSlippageInput(value: string): number | null {
   if (value.trim() === "") return null;
 
@@ -48,4 +56,46 @@ export function getSlippageWarningLevel(
   }
 
   return null;
+}
+
+export function getSlippageWarningTier(
+  value: number | null,
+  thresholds = SLIPPAGE_WARNING_TIERS,
+): SlippageWarningTier | null {
+  if (value === null) return null;
+
+  if (value < thresholds.low) {
+    return "low";
+  }
+
+  if (value >= thresholds.high) {
+    return "high";
+  }
+
+  if (value >= thresholds.elevated) {
+    return "elevated";
+  }
+
+  return null;
+}
+
+export function requiresSlippageAcknowledgment(
+  value: number | null,
+  thresholds = SLIPPAGE_WARNING_TIERS,
+): boolean {
+  return getSlippageWarningTier(value, thresholds) === "high";
+}
+
+export function getSlippageAcknowledgmentKey({
+  amount,
+  fromToken,
+  slippage,
+  toToken,
+}: {
+  amount: string;
+  fromToken: string;
+  slippage: number;
+  toToken: string;
+}): string {
+  return [fromToken, toToken, amount.trim(), slippage].join("|");
 }

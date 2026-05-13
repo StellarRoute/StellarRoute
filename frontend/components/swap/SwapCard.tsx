@@ -23,13 +23,19 @@ import {
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { useCompactMode } from '@/hooks/useCompactMode';
+import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
 import { useShareableQuote } from '@/hooks/useShareableQuote';
 import { ShareQuoteButton } from './ShareQuoteButton';
+import { SlippageRiskNotice } from './SlippageRiskNotice';
 import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
 import { quoteExportToCsv, type QuoteExportPayload } from '@/lib/quote-export';
+import {
+  getSlippageAcknowledgmentKey,
+  requiresSlippageAcknowledgment,
+} from '@/lib/slippage';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import {
   Dialog,
@@ -87,6 +93,7 @@ export function SwapCard() {
   const [recoveryRequestedAt, setRecoveryRequestedAt] = useState<number | null>(null);
   const [isRecoveringSession, setIsRecoveringSession] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+  const [isHighSlippageAcknowledged, setIsHighSlippageAcknowledged] = useState(false);
   const lastFocusedElementRef = useRef<HTMLElement | null>(null);
   const hiddenAtRef = useRef<number | null>(null);
   const recoveryReason: 'refresh' | 'wake' | null = wakeRecoveryOpen
@@ -97,6 +104,14 @@ export function SwapCard() {
   const requiresFreshQuote =
     recoveryRequestedAt !== null &&
     (quote.loading || quote.isStale);
+  const needsSlippageAcknowledgment =
+    requiresSlippageAcknowledgment(slippage) && !isHighSlippageAcknowledged;
+  const slippageAcknowledgmentKey = getSlippageAcknowledgmentKey({
+    amount: fromAmount,
+    fromToken,
+    slippage,
+    toToken,
+  });
 
   // Connection status indicator
   const { isOnline } = useOnlineStatus();
@@ -129,6 +144,7 @@ export function SwapCard() {
     if (quote.error) return "error";
     if (requiresFreshQuote) return "refreshing_quote";
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return "insufficient_balance";
+    if (needsSlippageAcknowledgment) return "slippage_ack_required";
     if (quote.priceImpact > 10) return "high_impact_warning";
     if (quote.loading) return "refreshing_quote";
     if (quote.isStale) return "error";
@@ -137,12 +153,13 @@ export function SwapCard() {
     fromAmount,
     fromBalance,
     isConnected,
-    isSwapping,
+    optimistic.submitLock,
     quote.error,
     quote.isStale,
     quote.loading,
     quote.priceImpact,
     requiresFreshQuote,
+    needsSlippageAcknowledgment,
   ]);
 
   useEffect(() => {
@@ -263,6 +280,10 @@ export function SwapCard() {
     setSelectedRoute(null);
     switchTokens();
   }, [switchTokens]);
+
+  useEffect(() => {
+    setIsHighSlippageAcknowledged(false);
+  }, [slippageAcknowledgmentKey]);
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
@@ -499,6 +520,11 @@ export function SwapCard() {
                 isLoading={quote.loading}
                 onExportJson={() => handleExport("json")}
                 onExportCsv={() => handleExport("csv")}
+              />
+              <SlippageRiskNotice
+                slippage={slippage}
+                acknowledged={isHighSlippageAcknowledged}
+                onAcknowledgedChange={setIsHighSlippageAcknowledged}
               />
               <RouteDisplay
                 amountOut={selectedRoute?.expectedAmount ?? toAmount}

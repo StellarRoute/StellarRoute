@@ -1,6 +1,7 @@
 import { PathStep } from '@/types';
 import { Card } from '@/components/ui/card';
 import { getAssetCode, parseSource } from '@/lib/route-helpers';
+import { SwapViewState } from './ViewState';
 
 export interface RouteRowProps {
   step?: PathStep;
@@ -11,8 +12,8 @@ export interface RouteRowProps {
 export function RouteRow({ step, isLoading, error }: RouteRowProps) {
   if (isLoading) {
     return (
-      <Card className="p-3" role="status" aria-busy="true">
-        <div className="text-sm text-muted-foreground">Loading route row…</div>
+      <Card className="p-3">
+        <SwapViewState kind="routes" variant="loading" />
       </Card>
     );
   }
@@ -20,7 +21,11 @@ export function RouteRow({ step, isLoading, error }: RouteRowProps) {
   if (error) {
     return (
       <Card className="p-3 border-destructive">
-        <div className="text-sm text-destructive">Route row error: {error}</div>
+        <SwapViewState
+          kind="routes"
+          variant="error"
+          description={error}
+        />
       </Card>
     );
   }
@@ -28,7 +33,7 @@ export function RouteRow({ step, isLoading, error }: RouteRowProps) {
   if (!step) {
     return (
       <Card className="p-3">
-        <div className="text-sm text-muted-foreground">No route step</div>
+        <SwapViewState kind="routes" variant="empty" />
       </Card>
     );
   }

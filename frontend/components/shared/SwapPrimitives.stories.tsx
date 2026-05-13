@@ -1,5 +1,5 @@
 import { PathStep } from '@/types';
-import { TokenSelector, QuoteCard, RouteRow, SlippageControl } from './index';
+import { TokenSelector, QuoteCard, RouteRow, SlippageControl, SwapViewState } from './index';
 import { useState } from 'react';
 
 const sampleOptions = [
@@ -67,3 +67,19 @@ export const SlippageControlDefault = () => {
 export const SlippageControlLoading = () => <SlippageControl value={0} onChange={() => {}} isLoading />;
 export const SlippageControlError = () => <SlippageControl value={5} onChange={() => {}} error="Invalid slippage" />;
 export const SlippageControlEmpty = () => <SlippageControl value={0} onChange={() => {}} />;
+
+export const ViewStateQuoteLoading = () => <SwapViewState kind="quote" variant="loading" />;
+export const ViewStateQuoteError = () => <SwapViewState kind="quote" variant="error" />;
+export const ViewStateQuoteEmpty = () => <SwapViewState kind="quote" variant="empty" />;
+
+export const ViewStateRoutesLoading = () => <SwapViewState kind="routes" variant="loading" />;
+export const ViewStateRoutesError = () => <SwapViewState kind="routes" variant="error" />;
+export const ViewStateRoutesEmpty = () => <SwapViewState kind="routes" variant="empty" />;
+
+export const ViewStateHistoryLoading = () => <SwapViewState kind="history" variant="loading" />;
+export const ViewStateHistoryError = () => <SwapViewState kind="history" variant="error" />;
+export const ViewStateHistoryEmpty = () => <SwapViewState kind="history" variant="empty" />;
+
+export const ViewStateWalletLoading = () => <SwapViewState kind="wallet" variant="loading" />;
+export const ViewStateWalletError = () => <SwapViewState kind="wallet" variant="error" />;
+export const ViewStateWalletEmpty = () => <SwapViewState kind="wallet" variant="empty" />;

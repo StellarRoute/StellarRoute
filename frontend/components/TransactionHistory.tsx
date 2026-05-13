@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card"
 import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton"
 import { CopyButton } from "@/components/shared/CopyButton"
 import { ExplorerLink } from "@/components/shared/ExplorerLink"
-import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition"
+import { SwapViewState } from "@/components/shared/ViewState"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
 import { TransactionRecord } from "@/types/transaction"
@@ -33,7 +33,6 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
   const [sortKey, setSortKey] = useState<"date" | "amount">("date")
   const [isLoading, setIsLoading] = useState(true)
-  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -124,20 +123,18 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
       </div>
 
       <div ref={scrollRef} data-testid="tx-history-scroll" className="flex-1 overflow-auto">
-        {showSkeleton ? (
+        {isLoading ? (
           <ActivityTableSkeleton />
         ) : sortedTxs.length === 0 ? (
-          <div className={`flex flex-col items-center justify-center p-12 text-center h-full ${contentClassName}`.trim()}>
-            <div className="text-muted-foreground w-16 h-16 mb-4 opacity-50 bg-muted rounded-full flex items-center justify-center">
-              <span className="text-2xl">📋</span>
-            </div>
-            <h3 className="text-xl font-semibold mb-1">No Transactions Found</h3>
-            <p className="text-sm text-muted-foreground max-w-[250px]">
-              You haven&apos;t made any swaps yet, or your filters are too restrictive.
-            </p>
+          <div className="flex h-full items-center justify-center p-6">
+            <SwapViewState
+              kind="history"
+              variant="empty"
+              className="w-full max-w-md"
+            />
           </div>
         ) : (
-          <div className={`min-w-[720px] ${contentClassName}`.trim()}>
+          <div className="min-w-[720px]">
             <Table>
               <TableHeader className="bg-muted/50 sticky top-0 z-10">
                 <TableRow>

@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PathStep } from '@/types';
+import { SwapViewState } from './ViewState';
 
 export interface QuoteCardProps {
   fromAmount?: string;
@@ -15,8 +16,8 @@ export interface QuoteCardProps {
 export function QuoteCard({ fromAmount, toAmount, price, slippage, path, isLoading, error }: QuoteCardProps) {
   if (isLoading) {
     return (
-      <Card className="p-4" role="status" aria-busy="true">
-        <div className="text-sm text-muted-foreground">Loading quote…</div>
+      <Card className="p-4">
+        <SwapViewState kind="quote" variant="loading" />
       </Card>
     );
   }
@@ -24,7 +25,11 @@ export function QuoteCard({ fromAmount, toAmount, price, slippage, path, isLoadi
   if (error) {
     return (
       <Card className="p-4 border-destructive">
-        <div className="text-sm text-destructive">Quote error: {error}</div>
+        <SwapViewState
+          kind="quote"
+          variant="error"
+          description={error}
+        />
       </Card>
     );
   }
@@ -32,7 +37,7 @@ export function QuoteCard({ fromAmount, toAmount, price, slippage, path, isLoadi
   if (!fromAmount || !toAmount || !price) {
     return (
       <Card className="p-4">
-        <div className="text-sm text-muted-foreground">No quote data</div>
+        <SwapViewState kind="quote" variant="empty" />
       </Card>
     );
   }

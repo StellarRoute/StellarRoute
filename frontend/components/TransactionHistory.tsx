@@ -7,7 +7,7 @@ import { ArrowRight, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton"
+import { LoadingState, EmptyState } from "@/components/shared/ViewState"
 import { CopyButton } from "@/components/shared/CopyButton"
 import { ExplorerLink } from "@/components/shared/ExplorerLink"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
@@ -123,17 +123,12 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
 
       <div ref={scrollRef} data-testid="tx-history-scroll" className="flex-1 overflow-auto">
         {isLoading ? (
-          <ActivityTableSkeleton />
+          <LoadingState message="Loading transaction history..." />
         ) : sortedTxs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center h-full">
-            <div className="text-muted-foreground w-16 h-16 mb-4 opacity-50 bg-muted rounded-full flex items-center justify-center">
-              <span className="text-2xl">📋</span>
-            </div>
-            <h3 className="text-xl font-semibold mb-1">No Transactions Found</h3>
-            <p className="text-sm text-muted-foreground max-w-[250px]">
-              You haven&apos;t made any swaps yet, or your filters are too restrictive.
-            </p>
-          </div>
+          <EmptyState
+            message="No transactions"
+            description="Your transaction history will appear here after you make a swap."
+          />
         ) : (
           <div className="min-w-[720px]">
             <Table>

@@ -3,9 +3,9 @@ import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { useVirtualWindow } from "@/hooks/useVirtualWindow";
+import { LoadingState } from "@/components/shared/ViewState";
 
 import { ConfidenceIndicator } from "./ConfidenceIndicator";
-import { RouteDisplaySkeleton } from "./RouteDisplaySkeleton";
 
 export interface AlternativeRoute {
   id: string;
@@ -158,7 +158,7 @@ export function RouteDisplay({
   );
 
   if (isLoading) {
-    return <RouteDisplaySkeleton />;
+    return <LoadingState message="Finding best route…" />;
   }
 
   return (

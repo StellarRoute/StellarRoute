@@ -1,8 +1,7 @@
-"use client"
-
-import { useEffect, useRef, useState } from "react"
+"use client";
+import { useCallback, useEffect, useRef, useState } from "react"
 import { formatDistanceToNow } from "date-fns"
-import { ArrowRight, Trash2 } from "lucide-react"
+import { ArrowRight, Trash2, Download } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,6 +20,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  ALL_EXPORT_COLUMNS,
+  generateTransactionsCSV,
+  triggerCSVDownload,
+} from "@/lib/transaction-csv-export"
 
 // Hardcode mock wallet to match DemoSwap
 const MOCK_WALLET = "GBSU...XYZ9"
@@ -34,12 +47,23 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
   const [isLoading, setIsLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [])
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => {
+    if (typeof window === "undefined") return ALL_EXPORT_COLUMNS.map((col) => col.key);
+    try {
+      const stored = localStorage.getItem("stellar_route_csv_export_columns");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load export columns", e);
+    }
+    return ALL_EXPORT_COLUMNS.map((col) => col.key);
+  });
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
 
   const filteredTxs = transactions.filter((tx) => {
     if (filterAsset === "ALL") return true
@@ -52,6 +76,41 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
     }
     return parseFloat(b.fromAmount) - parseFloat(a.fromAmount)
   })
+
+  const handleColumnToggle = useCallback((key: string, checked: boolean) => {
+    setSelectedColumns((prev) => {
+      const next = checked ? [...prev, key] : prev.filter((k) => k !== key);
+      localStorage.setItem("stellar_route_csv_export_columns", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleExportCSV = useCallback(async () => {
+    if (selectedColumns.length === 0) return;
+    setIsExporting(true);
+    setExportProgress(0);
+    try {
+      const csv = await generateTransactionsCSV(
+        sortedTxs,
+        selectedColumns,
+        100,
+        (progress) => setExportProgress(progress)
+      );
+      triggerCSVDownload(csv, `stellarroute_trade_activity_${Date.now()}.csv`);
+    } catch (err) {
+      console.error("Export failed", err);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  }, [sortedTxs, selectedColumns]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [])
 
   const shouldVirtualize = sortedTxs.length > ACTIVITY_VIRTUALIZATION_THRESHOLD
   const virtualWindow = useVirtualWindow({
@@ -114,6 +173,39 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
             <option value="date">Sort by Date</option>
             <option value="amount">Sort by Amount</option>
           </select>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2" disabled={isExporting} data-testid="csv-export-button">
+                <Download className="h-4 w-4" />
+                <span>{isExporting ? `Exporting (${Math.round(exportProgress * 100)}%)` : "Export"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56" data-testid="csv-export-menu">
+              <DropdownMenuLabel>Select Columns</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {ALL_EXPORT_COLUMNS.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col.key}
+                  checked={selectedColumns.includes(col.key)}
+                  onCheckedChange={(checked) => handleColumnToggle(col.key, checked)}
+                  onSelect={(e) => e.preventDefault()}
+                  data-testid={`column-checkbox-${col.key}`}
+                >
+                  {col.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={selectedColumns.length === 0 || isExporting}
+                onClick={handleExportCSV}
+                className="justify-center font-semibold text-primary focus:text-primary focus:bg-primary/10"
+                data-testid="csv-download-button"
+              >
+                Download CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button variant="outline" size="icon" onClick={clearHistory} title="Clear History">
             <Trash2 className="h-4 w-4 text-destructive" />

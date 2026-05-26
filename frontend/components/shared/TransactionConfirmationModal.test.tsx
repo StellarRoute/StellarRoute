@@ -52,6 +52,7 @@ describe("TransactionConfirmationModal", () => {
         selector: '[data-slot="dialog-description"]',
       }),
     ).toBeTruthy();
+    expect(
       screen.getAllByText("Review your transaction details before signing.").length,
     ).toBeGreaterThan(0);
 

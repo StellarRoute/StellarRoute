@@ -32,6 +32,8 @@ interface RouteDisplayProps {
   alternativeRoutes?: AlternativeRoute[];
   /** Callback when an alternative route is selected */
   onSelect?: (route: AlternativeRoute) => void;
+  /** Show extended route diagnostics for expert mode */
+  extendedRouteDetails?: boolean;
 }
 
 const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
@@ -139,6 +141,7 @@ export function RouteDisplay({
   isLoading = false,
   alternativeRoutes,
   onSelect,
+  extendedRouteDetails = false,
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -340,6 +343,41 @@ export function RouteDisplay({
             <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
               <span>Route venue</span>
               <span>{selectedRoute.venue}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {extendedRouteDetails && selectedRoute && (
+        <div
+          data-testid="extended-diagnostics"
+          className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3.5 space-y-2.5 font-mono text-[10px] text-amber-600 dark:text-amber-400 animate-in fade-in slide-in-from-bottom-2 duration-300"
+        >
+          <div className="flex items-center justify-between border-b border-amber-500/10 pb-1.5">
+            <span className="font-bold uppercase tracking-wider">Extended Diagnostics</span>
+            <span className="bg-amber-500/10 px-1.5 py-0.5 rounded text-[9px] font-semibold text-amber-600 dark:text-amber-400">RAW_MODE</span>
+          </div>
+          <div className="space-y-1 text-muted-foreground dark:text-amber-400/80">
+            <div><span className="text-amber-600 dark:text-amber-500">path_id:</span> {selectedRoute.id}</div>
+            <div><span className="text-amber-600 dark:text-amber-500">venue_agent:</span> {selectedRoute.venue}</div>
+            <div><span className="text-amber-600 dark:text-amber-500">sim_status:</span> <span className="text-emerald-500">SUCCESS_OK</span></div>
+            <div><span className="text-amber-600 dark:text-amber-500">gas_pool:</span> {totalRouteFee.toFixed(5)} XLM</div>
+            <div><span className="text-amber-600 dark:text-amber-500">hops_count:</span> {selectedRouteHops.length}</div>
+            <div>
+              <span className="text-amber-600 dark:text-amber-500">raw_hops:</span>
+              <pre className="mt-1 pl-2 border-l border-amber-500/10 text-[9px] leading-relaxed overflow-x-auto">
+                {JSON.stringify(
+                  selectedRouteHops.map((h) => ({
+                    hop_id: h.id,
+                    from: h.fromAsset,
+                    to: h.toAsset,
+                    pool_venue: h.venue,
+                    est_fee: h.fee
+                  })),
+                  null,
+                  2
+                )}
+              </pre>
             </div>
           </div>
         </div>

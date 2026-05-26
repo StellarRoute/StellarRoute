@@ -16,6 +16,9 @@ import { TransactionConfirmationModal } from './TransactionConfirmationModal';
 import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
+import { useExpertSettings } from '@/hooks/useExpertSettings';
+import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
+import type { PreSubmitSnapshot } from '@/types/transaction';
 import {
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
@@ -81,6 +84,15 @@ export function SwapCard() {
     reset,
   } = useSwapState();
 
+  const {
+    expertMode,
+    bypassConfirmation,
+    extendedRouteDetails,
+    updateExpertMode,
+    updateBypassConfirmation,
+    updateExtendedRouteDetails,
+  } = useExpertSettings();
+
   const [isConnected, setIsConnected] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -126,6 +138,28 @@ export function SwapCard() {
     },
   });
 
+  // Handle background transaction toasts when bypassConfirmation is enabled
+  useEffect(() => {
+    if (!bypassConfirmation || !isModalOpen) return;
+
+    if (optimistic.status === 'pending') {
+      toast.loading('Signing transaction...', { id: 'swap-toast' });
+    } else if (optimistic.status === 'submitted') {
+      toast.loading('Transaction submitted, awaiting confirmation...', { id: 'swap-toast' });
+    } else if (optimistic.status === 'confirmed') {
+      toast.success('Swap confirmed successfully!', { id: 'swap-toast' });
+      setIsModalOpen(false);
+      reset();
+      setSelectedRoute(null);
+    } else if (optimistic.status === 'failed') {
+      toast.error(optimistic.errorMessage || 'Swap failed. Please try again.', { id: 'swap-toast' });
+      setIsModalOpen(false);
+    } else if (optimistic.status === 'dropped') {
+      toast.error('Transaction timed out.', { id: 'swap-toast' });
+      setIsModalOpen(false);
+    }
+  }, [optimistic.status, optimistic.errorMessage, bypassConfirmation, isModalOpen, reset, setSelectedRoute]);
+
   // Mock balance
   const fromBalance = '100.00';
   const fromSymbol = fromToken === 'native' ? 'XLM' : fromToken.split(':')[0];
@@ -147,7 +181,7 @@ export function SwapCard() {
     fromAmount,
     fromBalance,
     isConnected,
-    isSwapping,
+    optimistic.submitLock,
     quote.error,
     quote.isStale,
     quote.loading,
@@ -417,7 +451,8 @@ export function SwapCard() {
       <Card
         className={cn(
           'relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px] transition-all duration-500 hover:shadow-primary/5',
-          isCompact && 'rounded-2xl'
+          isCompact && 'rounded-2xl',
+          expertMode && 'border-amber-500/30 hover:shadow-amber-500/10 shadow-amber-500/5'
         )}
       >
         {/* Animated Background Gradients */}
@@ -427,14 +462,21 @@ export function SwapCard() {
         <CardContent className={cn('space-y-4', isCompact ? 'p-4' : 'p-6')}>
           {/* Header */}
           <div className="flex items-center justify-between mb-2">
-            <h2
-              className={cn(
-                'font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent',
-                isCompact ? 'text-lg' : 'text-xl'
+            <div className="flex items-center gap-1.5">
+              <h2
+                className={cn(
+                  'font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent',
+                  isCompact ? 'text-lg' : 'text-xl'
+                )}
+              >
+                Swap
+              </h2>
+              {expertMode && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
+                  Expert
+                </span>
               )}
-            >
-              Swap
-            </h2>
+            </div>
             <div className="flex items-center gap-1">
               <QuoteStreamStatusIndicator
                 status={streamStatus}
@@ -458,6 +500,12 @@ export function SwapCard() {
                 onSlippageChange={setSlippage}
                 deadline={deadline}
                 onDeadlineChange={setDeadline}
+                expertMode={expertMode}
+                bypassConfirmation={bypassConfirmation}
+                extendedRouteDetails={extendedRouteDetails}
+                onExpertModeChange={updateExpertMode}
+                onBypassConfirmationChange={updateBypassConfirmation}
+                onExtendedRouteDetailsChange={updateExtendedRouteDetails}
                 onReset={() => {
                   reset();
                   setSelectedRoute(null);
@@ -570,6 +618,7 @@ export function SwapCard() {
                 amountOut={selectedRoute?.expectedAmount ?? toAmount}
                 isLoading={quote.loading}
                 onSelect={setSelectedRoute}
+                extendedRouteDetails={extendedRouteDetails}
               />
               {/* Share Quote Button */}
               <div className="flex justify-end">
@@ -666,6 +715,37 @@ export function SwapCard() {
         toAmount={toAmount}
         toSymbol={toSymbol}
       />
+
+      {!bypassConfirmation && (
+        <TransactionConfirmationModal
+          isOpen={isModalOpen}
+          status={optimistic.status}
+          txHash={optimistic.txHash}
+          errorMessage={optimistic.errorMessage}
+          tradeParams={optimistic.tradeParams}
+          onConfirm={() => {}}
+          onCancel={() => {
+            optimistic.cancel();
+            setIsModalOpen(false);
+          }}
+          onTryAgain={() => {
+            optimistic.tryAgain();
+          }}
+          onResubmit={() => {
+            optimistic.resubmit();
+          }}
+          onDismiss={() => {
+            optimistic.dismiss();
+            setIsModalOpen(false);
+          }}
+          onDone={() => {
+            optimistic.dismiss();
+            setIsModalOpen(false);
+            reset();
+            setSelectedRoute(null);
+          }}
+        />
+      )}
 
       <SessionRecoveryModal
         isOpen={recoveryReason !== null}

@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { useWallet } from "@/hooks/useWallet";
-import { AccountSwitcher } from "./account-switcher";
+import { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { useWallet } from '@/hooks/useWallet';
+import { AccountSwitcher } from './account-switcher';
 
-const APP_NETWORK = "TESTNET";
+const APP_NETWORK = 'TESTNET';
 
 export function WalletButton() {
   const [showQrCode, setShowQrCode] = useState(false);
@@ -34,9 +34,9 @@ export function WalletButton() {
                 key={wallet.id}
                 onClick={() => connect(wallet.id)}
                 disabled={loading}
-                className="rounded-md border px-3 py-2 text-sm"
+                className="rounded-md border px-3 py-2 text-sm min-h-[44px]"
               >
-                {loading ? "Connecting..." : `Connect ${wallet.label}`}
+                {loading ? 'Connecting...' : `Connect ${wallet.label}`}
               </button>
             ))
           ) : (
@@ -55,8 +55,8 @@ export function WalletButton() {
               className="underline"
             >
               Install Freighter
-            </a>{" "}
-            |{" "}
+            </a>{' '}
+            |{' '}
             <a
               href="https://wallet.xbull.app/"
               target="_blank"
@@ -75,14 +75,14 @@ export function WalletButton() {
 
   return (
     <div className="flex flex-col gap-2">
-      <AccountSwitcher 
+      <AccountSwitcher
         onAccountChange={(newAddress) => {
-          console.log("Account changed to:", newAddress);
+          console.log('Account changed to:', newAddress);
           // This could trigger balance/quote refreshes
           setShowQrCode(false);
         }}
       />
-      
+
       <div className="flex items-center gap-2">
         <span className="rounded-md border px-3 py-2 text-sm font-mono bg-muted/20">
           {shortAddress}
@@ -92,13 +92,13 @@ export function WalletButton() {
           onClick={() => setShowQrCode(!showQrCode)}
           className={`rounded-md border px-3 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
             showQrCode
-              ? "bg-primary text-primary-foreground border-primary shadow-sm"
-              : "hover:bg-accent hover:text-accent-foreground bg-background"
+              ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+              : 'hover:bg-accent hover:text-accent-foreground bg-background'
           }`}
-          title={showQrCode ? "Hide QR Code" : "Show QR Code"}
+          title={showQrCode ? 'Hide QR Code' : 'Show QR Code'}
           aria-expanded={showQrCode}
         >
-          {showQrCode ? "Hide QR" : "Show QR"}
+          {showQrCode ? 'Hide QR' : 'Show QR'}
         </button>
 
         <button
@@ -138,7 +138,7 @@ export function WalletButton() {
       )}
 
       <div className="text-sm text-muted-foreground">
-        Wallet network: {session.network ?? "Unknown"}
+        Wallet network: {session.network ?? 'Unknown'}
       </div>
 
       {mismatch && (

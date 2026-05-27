@@ -23,13 +23,21 @@ export const QUOTE_MANUAL_REFRESH_COOLDOWN_MS = 2000;
 
 /**
  * Returns true when a successful quote is older than `staleAfterMs` relative to `nowMs`.
+ * If `expiresAtMs` is provided (server-side expiration), it takes precedence over `staleAfterMs`.
  * If there is no successful quote yet (`lastSuccessTimeMs == null`), returns false.
  */
 export function isQuoteStale(
   lastSuccessTimeMs: number | null,
   nowMs: number,
   staleAfterMs: number = QUOTE_STALE_AFTER_MS,
+  expiresAtMs?: number,
 ): boolean {
   if (lastSuccessTimeMs == null) return false;
+
+  // Server-side expiration metadata takes precedence to ensure sync with backend cache
+  if (expiresAtMs != null) {
+    return nowMs >= expiresAtMs;
+  }
+
   return nowMs - lastSuccessTimeMs >= staleAfterMs;
 }

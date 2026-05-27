@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import type { QuoteType } from '@/types';
 
 export interface ShareableQuoteParams {
   from?: string;
   to?: string;
   amount?: string;
   slippage?: string;
+  side?: QuoteType;
+  ts?: string;
 }
 
 const MAX_URL_LENGTH = 2048;
@@ -20,23 +23,40 @@ export function useShareableQuote() {
   const searchParams = useSearchParams();
   const [isStale, setIsStale] = useState(false);
 
+  // Update staleness when params change
+  useEffect(() => {
+    const timestamp = searchParams.get('ts');
+    if (timestamp) {
+      const ts = parseInt(timestamp, 10);
+      if (!isNaN(ts) && Date.now() - ts > STALE_THRESHOLD_MS) {
+        setIsStale(true);
+        return;
+      }
+    }
+    setIsStale(false);
+  }, [searchParams]);
+
   // Parse current URL params
   const parseParams = useCallback((): ShareableQuoteParams | null => {
     const from = searchParams.get('from');
     const to = searchParams.get('to');
     const amount = searchParams.get('amount');
     const slippage = searchParams.get('slippage');
-    const timestamp = searchParams.get('ts');
+    const side = searchParams.get('side') || searchParams.get('type');
 
     // Validate required params
-    if (!from || !to || !amount) {
+    if (!from || !to) {
       return null;
     }
 
     // Sanitize and validate amount
-    const sanitizedAmount = amount.replace(/[^0-9.]/g, '');
-    if (!sanitizedAmount || parseFloat(sanitizedAmount) <= 0) {
-      return null;
+    let sanitizedAmount: string | undefined;
+    if (amount) {
+      const isNegative = amount.trim().startsWith('-');
+      sanitizedAmount = amount.replace(/[^0-9.]/g, '');
+      if (isNegative || !sanitizedAmount || parseFloat(sanitizedAmount) <= 0) {
+        return null;
+      }
     }
 
     // Sanitize and validate slippage
@@ -49,12 +69,10 @@ export function useShareableQuote() {
       }
     }
 
-    // Check staleness
-    if (timestamp) {
-      const ts = parseInt(timestamp, 10);
-      if (!isNaN(ts) && Date.now() - ts > STALE_THRESHOLD_MS) {
-        setIsStale(true);
-      }
+    // Sanitize and validate side
+    let validatedSide: QuoteType | undefined;
+    if (side === 'sell' || side === 'buy') {
+      validatedSide = side as QuoteType;
     }
 
     return {
@@ -62,24 +80,30 @@ export function useShareableQuote() {
       to,
       amount: sanitizedAmount,
       slippage: sanitizedSlippage,
+      side: validatedSide,
     };
   }, [searchParams]);
 
   // Generate shareable URL
   const generateShareableUrl = useCallback(
     (params: ShareableQuoteParams): string | null => {
-      const { from, to, amount, slippage } = params;
+      const { from, to, amount, slippage, side } = params;
 
-      if (!from || !to || !amount) {
+      if (!from || !to) {
         return null;
       }
 
       const urlParams = new URLSearchParams();
       urlParams.set('from', from);
       urlParams.set('to', to);
-      urlParams.set('amount', amount);
+      if (amount) {
+        urlParams.set('amount', amount);
+      }
       if (slippage) {
         urlParams.set('slippage', slippage);
+      }
+      if (side) {
+        urlParams.set('side', side);
       }
       urlParams.set('ts', Date.now().toString());
 
@@ -100,13 +124,14 @@ export function useShareableQuote() {
   // Apply params to current route
   const applyParams = useCallback(
     (params: ShareableQuoteParams) => {
-      const { from, to, amount, slippage } = params;
+      const { from, to, amount, slippage, side } = params;
       const urlParams = new URLSearchParams();
 
       if (from) urlParams.set('from', from);
       if (to) urlParams.set('to', to);
       if (amount) urlParams.set('amount', amount);
       if (slippage) urlParams.set('slippage', slippage);
+      if (side) urlParams.set('side', side);
       urlParams.set('ts', Date.now().toString());
 
       router.push(`/swap?${urlParams.toString()}`);

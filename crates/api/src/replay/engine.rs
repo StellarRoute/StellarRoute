@@ -104,6 +104,8 @@ impl ReplayEngine {
             } else {
                 "sdex".to_string()
             },
+            liquidity_depth: Some(format!("{:.7}", selected.available_amount)),
+            fee_bps: Some(selected.fee_bps),
         }];
 
         Ok(ReplayOutput {
@@ -127,6 +129,7 @@ struct ReplayCandidate {
     venue_ref: String,
     price: f64,
     available_amount: f64,
+    fee_bps: u32,
 }
 
 fn parse_candidate(row: &LiquidityCandidate) -> Option<ReplayCandidate> {
@@ -137,6 +140,7 @@ fn parse_candidate(row: &LiquidityCandidate) -> Option<ReplayCandidate> {
         venue_ref: row.venue_ref.clone(),
         price,
         available_amount,
+        fee_bps: row.fee_bps.unwrap_or(0),
     })
 }
 
@@ -196,6 +200,7 @@ mod tests {
             venue_ref: "offer1".to_string(),
             price: "1.0000000".to_string(),
             available_amount: "100.0000000".to_string(),
+            fee_bps: Some(0),
         });
         let source = format!("{}:{}", first.venue_type, first.venue_ref);
         ReplayArtifact {
@@ -227,12 +232,14 @@ mod tests {
         venue_ref: &str,
         price: &str,
         amount: &str,
+        fee_bps: Option<u32>,
     ) -> LiquidityCandidate {
         LiquidityCandidate {
             venue_type: venue_type.to_string(),
             venue_ref: venue_ref.to_string(),
             price: price.to_string(),
             available_amount: amount.to_string(),
+            fee_bps,
         }
     }
 
@@ -242,8 +249,8 @@ mod tests {
     fn selects_lower_priced_candidate() {
         let artifact = make_artifact(
             vec![
-                candidate("amm", "pool1", "1.0200000", "100.0000000"),
-                candidate("sdex", "offer1", "1.0000000", "100.0000000"),
+                candidate("amm", "pool1", "1.0200000", "100.0000000", Some(30)),
+                candidate("sdex", "offer1", "1.0000000", "100.0000000", Some(0)),
             ],
             "50.0000000",
         );
@@ -255,7 +262,7 @@ mod tests {
     #[test]
     fn schema_version_mismatch_returns_bad_request() {
         let mut artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000")],
+            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000", Some(0))],
             "1.0000000",
         );
         artifact.schema_version = 99;
@@ -274,7 +281,7 @@ mod tests {
     #[test]
     fn insufficient_liquidity_returns_no_route() {
         let artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "5.0000000")],
+            vec![candidate("sdex", "offer1", "1.0000000", "5.0000000", Some(0))],
             "100.0000000",
         );
         let err = ReplayEngine::run(&artifact).unwrap_err();
@@ -284,7 +291,7 @@ mod tests {
     #[test]
     fn is_deterministic_true_when_source_matches() {
         let artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000")],
+            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000", Some(0))],
             "50.0000000",
         );
         let output = ReplayEngine::run(&artifact).expect("should succeed");
@@ -299,11 +306,13 @@ mod tests {
             venue_ref in "[a-z0-9]{4,12}",
             price_int in 1u64..1_000_000u64,
         ) -> LiquidityCandidate {
+            let vt = venue_type.to_string();
             LiquidityCandidate {
-                venue_type: venue_type.to_string(),
+                venue_type: vt.clone(),
                 venue_ref,
                 price: format!("{:.7}", price_int as f64 / 1_000_000.0),
                 available_amount: "1000.0000000".to_string(),
+                fee_bps: if vt == "amm" { Some(30) } else { Some(0) },
             }
         }
     }

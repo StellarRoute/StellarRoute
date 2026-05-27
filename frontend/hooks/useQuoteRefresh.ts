@@ -403,7 +403,8 @@ export function useQuoteRefresh(
       : state.error;
 
   const isStale =
-    data !== undefined && isQuoteStale(lastQuotedAtMs, nowMs, staleAfterMs);
+    data !== undefined &&
+    isQuoteStale(lastQuotedAtMs, nowMs, staleAfterMs, data.expires_at);
   const rateLimitRemainingMs =
     rateLimitUntilMs > nowMs ? rateLimitUntilMs - nowMs : 0;
   const pendingRetryRemainingMs = pendingRetry

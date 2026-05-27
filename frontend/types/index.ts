@@ -49,6 +49,10 @@ export interface PathStep {
   price: string;
   /** "sdex" or "amm:<pool_address>" */
   source: string;
+  /** Total liquidity depth available at this hop's price */
+  liquidity_depth?: string;
+  /** Fee in basis points for this hop (e.g., 30 for 0.3%) */
+  fee_bps?: number;
 }
 
 export interface PriceQuote {
@@ -57,7 +61,15 @@ export interface PriceQuote {
   amount: string;
   price: string;
   total: string;
+  /** "sell" or "buy" */
   quote_type: QuoteType;
+  /** Whether the quote is serving degraded market data */
+  degraded?: boolean;
+  /** Market midpoint price */
+  midpoint?: string;
+  /** Market spread in basis points */
+  spread_bps?: number;
+  /** Route breakdown */
   path: PathStep[];
   priceImpact?: string;
   /** Unix timestamp (seconds) */

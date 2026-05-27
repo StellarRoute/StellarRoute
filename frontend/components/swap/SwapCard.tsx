@@ -31,6 +31,7 @@ import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { useCompactMode } from '@/hooks/useCompactMode';
 import { useShareableQuote } from '@/hooks/useShareableQuote';
 import { ShareQuoteButton } from './ShareQuoteButton';
+import { QuoteCountdownTimer } from './QuoteCountdownTimer';
 import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -109,6 +110,9 @@ export function SwapCard() {
     }
     if (urlParams.slippage && parseFloat(urlParams.slippage) !== slippage) {
       setSlippage(parseFloat(urlParams.slippage));
+    }
+    if (urlParams.side && urlParams.side !== side) {
+      setSide(urlParams.side);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parseParams]); // Only run on mount when parseParams becomes available
@@ -599,8 +603,11 @@ export function SwapCard() {
               <div className="flex justify-between items-start mb-1">
                 <AmountInput
                   label={t('swap.pair.youPay')}
-                  value={fromAmount}
-                  onChange={setFromAmount}
+                  value={side === 'sell' ? fromAmount : (selectedRoute?.expectedAmount ?? toAmount)}
+                  onChange={(val) => {
+                    if (side !== 'sell') setSide('sell');
+                    setFromAmount(val);
+                  }}
                   onMax={handleMax}
                   onPresetSelect={handlePresetSelect}
                   balance={`${fromBalance} ${fromSymbol}`}
@@ -647,8 +654,11 @@ export function SwapCard() {
               <div className="flex justify-between items-start mb-1">
                 <AmountInput
                   label={t('swap.pair.youReceive')}
-                  value={selectedRoute?.expectedAmount ?? toAmount}
-                  readOnly
+                  value={side === 'buy' ? fromAmount : (selectedRoute?.expectedAmount ?? toAmount)}
+                  onChange={(val) => {
+                    if (side !== 'buy') setSide('buy');
+                    setFromAmount(val);
+                  }}
                   placeholder="0.00"
                   className="flex-1"
                   showMax={false}
@@ -674,6 +684,8 @@ export function SwapCard() {
               <PriceInfoPanel
                 rate={formattedRate}
                 priceImpact={quote.priceImpact}
+                midpoint={quote.data?.midpoint}
+                spreadBps={quote.data?.spread_bps}
                 minReceived={`${(parseFloat(toAmount || '0') * (1 - slippage / 100)).toFixed(4)} ${toSymbol}`}
                 networkFee={
                   quote.fee ? `${quote.fee.toFixed(5)} XLM` : '0.00001 XLM'
@@ -682,6 +694,15 @@ export function SwapCard() {
                 onExportJson={() => handleExport('json')}
                 onExportCsv={() => handleExport('csv')}
               />
+              
+              <QuoteCountdownTimer
+                expiresAtMs={quote.expiresAtMs}
+                ttlSeconds={quote.ttlSeconds}
+                onRefresh={() => quote.refresh({ force: true })}
+                isLoading={quote.loading}
+                className="px-1"
+              />
+
               <RouteDisplay
                 amountOut={selectedRoute?.expectedAmount ?? toAmount}
                 isLoading={quote.loading}
@@ -696,6 +717,7 @@ export function SwapCard() {
                     to: toToken,
                     amount: fromAmount,
                     slippage: slippage.toString(),
+                    side: side,
                   }}
                   disabled={!fromAmount || parseFloat(fromAmount) === 0}
                 />

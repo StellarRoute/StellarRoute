@@ -82,6 +82,10 @@ export interface PathStep {
   price: string;
   /** Liquidity source: `"sdex"` or `"amm:<pool_address>"`. */
   source: string;
+  /** Total liquidity depth available at this hop's price */
+  liquidity_depth?: string;
+  /** Fee in basis points for this hop (e.g., 30 for 0.3%) */
+  fee_bps?: number;
 }
 
 /**

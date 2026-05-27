@@ -45,7 +45,32 @@ describe('useShareableQuote', () => {
         to: 'USDC:GABC',
         amount: '100.5',
         slippage: '0.5',
+        side: undefined,
       });
+    });
+
+    it('parses side correctly', () => {
+      mockSearchParams.set('from', 'native');
+      mockSearchParams.set('to', 'USDC:GABC');
+      mockSearchParams.set('amount', '100');
+      mockSearchParams.set('side', 'buy');
+
+      const { result } = renderHook(() => useShareableQuote());
+      const params = result.current.parseParams();
+
+      expect(params?.side).toBe('buy');
+    });
+
+    it('parses type as side alias correctly', () => {
+      mockSearchParams.set('from', 'native');
+      mockSearchParams.set('to', 'USDC:GABC');
+      mockSearchParams.set('amount', '100');
+      mockSearchParams.set('type', 'buy');
+
+      const { result } = renderHook(() => useShareableQuote());
+      const params = result.current.parseParams();
+
+      expect(params?.side).toBe('buy');
     });
 
     it('sanitizes amount with invalid characters', () => {
@@ -109,6 +134,7 @@ describe('useShareableQuote', () => {
         to: 'USDC:GABC',
         amount: '100',
         slippage: '0.5',
+        side: 'buy',
       });
 
       expect(url).toContain('https://stellarroute.com/swap?');
@@ -116,6 +142,7 @@ describe('useShareableQuote', () => {
       expect(url).toContain('to=USDC%3AGABC');
       expect(url).toContain('amount=100');
       expect(url).toContain('slippage=0.5');
+      expect(url).toContain('side=buy');
       expect(url).toContain('ts=');
     });
 

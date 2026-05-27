@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PriceImpactIndicator } from "./PriceImpactIndicator";
+import { SpreadIndicator } from "./SpreadIndicator";
 import { Button } from "@/components/ui/button";
 import { useSwapI18n } from "@/lib/swap-i18n";
 import PriceSparkline from "@/components/shared/PriceSparkline";
@@ -16,6 +17,8 @@ import PriceSparkline from "@/components/shared/PriceSparkline";
 interface PriceInfoPanelProps {
   rate?: string;
   priceImpact?: number;
+  midpoint?: string;
+  spreadBps?: number;
   minReceived?: string;
   networkFee?: string;
   isLoading?: boolean;
@@ -26,6 +29,8 @@ interface PriceInfoPanelProps {
 export function PriceInfoPanel({
   rate,
   priceImpact = 0,
+  midpoint,
+  spreadBps,
   minReceived,
   networkFee,
   isLoading = false,
@@ -92,6 +97,12 @@ export function PriceInfoPanel({
         </div>
         <PriceImpactIndicator impact={priceImpact} />
       </div>
+
+      <SpreadIndicator
+        midpoint={midpoint}
+        spreadBps={spreadBps}
+        isLoading={isLoading}
+      />
 
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">

@@ -24,6 +24,7 @@ describe("useTradeFormStorage", () => {
     expect(result.current.deadline).toBe(30);
     expect(result.current.fromToken).toBe("native");
     expect(result.current.toToken).toBe(DEFAULT_TO_TOKEN);
+    expect(result.current.side).toBe("sell");
     expect(result.current.pendingRecovery).toBeNull();
     expect(result.current.isHydrated).toBe(true);
   });
@@ -37,6 +38,7 @@ describe("useTradeFormStorage", () => {
         deadline: 45,
         fromToken: "native",
         toToken: "EURC:GEXAMPLE",
+        side: "buy",
         savedAt: Date.now(),
       }),
     );
@@ -47,6 +49,7 @@ describe("useTradeFormStorage", () => {
     expect(result.current.amount).toBe("");
     expect(result.current.pendingRecovery?.amount).toBe("42.5");
     expect(result.current.pendingRecovery?.toToken).toBe("EURC:GEXAMPLE");
+    expect(result.current.pendingRecovery?.side).toBe("buy");
   });
 
   it("restores the pending draft when requested", async () => {

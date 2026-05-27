@@ -10,5 +10,5 @@ export { QuoteCard } from './QuoteCard';
 export { RouteRow } from './RouteRow';
 export { SlippageControl } from './SlippageControl';
 export { ExplorerLink } from './ExplorerLink';
-export { SwapViewState, ViewState } from './ViewState';
-export type { SwapViewStateKind, ViewStateVariant } from './ViewState';
+export { WalletSyncBanner } from './WalletSyncBanner';
+export { DiagnosticsPanel } from './DiagnosticsPanel';

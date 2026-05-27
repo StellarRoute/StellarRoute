@@ -28,6 +28,11 @@ describe("SettingsPanel Drawer", () => {
     onBypassConfirmationChange: vi.fn(),
     onExtendedRouteDetailsChange: vi.fn(),
     onReset: vi.fn(),
+    browserNotifications: false,
+    notificationPermissionState: 'default' as NotificationPermission,
+    notificationsDisabled: false,
+    onEnableNotifications: vi.fn().mockResolvedValue(undefined),
+    onDisableNotifications: vi.fn(),
   };
 
   it("renders trigger button successfully", () => {

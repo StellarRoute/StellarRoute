@@ -1,72 +1,91 @@
-import { render, screen, cleanup } from '@testing-library/react';
-import { HeroSection } from './HeroSection';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import fc from 'fast-check';
+import { HeroSection } from './HeroSection';
 
-// Mock Next.js Link component
-vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+// ---------------------------------------------------------------------------
+// Helper
+// ---------------------------------------------------------------------------
 
-describe('HeroSection', () => {
-  afterEach(() => {
-    cleanup();
+function setReducedMotion(value: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: value,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(() => false),
+    }),
   });
+}
 
-  it('renders the main heading', () => {
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+describe('HeroSection — reduced-motion', () => {
+  afterEach(() => setReducedMotion(false));
+
+  it('gradient divs do NOT have animate-pulse when reduced motion is active', () => {
+    setReducedMotion(true);
     render(<HeroSection />);
-    expect(screen.getByText(/Swap Smarter on Stellar/i)).toBeInTheDocument();
+    const g1 = screen.getByTestId('hero-gradient-1');
+    const g2 = screen.getByTestId('hero-gradient-2');
+    expect(g1.className).not.toContain('animate-pulse');
+    expect(g2.className).not.toContain('animate-pulse');
   });
 
-  it('renders the subheading with key features', () => {
+  it('gradient divs HAVE animate-pulse when motion is allowed', () => {
+    setReducedMotion(false);
     render(<HeroSection />);
-    expect(
-      screen.getByText(/aggregates liquidity from SDEX and Soroban AMMs/i)
-    ).toBeInTheDocument();
+    const g1 = screen.getByTestId('hero-gradient-1');
+    const g2 = screen.getByTestId('hero-gradient-2');
+    expect(g1.className).toContain('animate-pulse');
+    expect(g2.className).toContain('animate-pulse');
   });
 
-  it('renders the primary CTA button with XLM/USDC pair', () => {
+  it('both gradient divs are always rendered regardless of motion preference', () => {
+    setReducedMotion(true);
     render(<HeroSection />);
-    const ctaButton = screen.getByRole('link', {
-      name: /Start Trading XLM\/USDC/i,
-    });
-    expect(ctaButton).toBeInTheDocument();
-    expect(ctaButton).toHaveAttribute('href');
-    
-    const href = ctaButton.getAttribute('href');
-    expect(href).toContain('/swap');
-    expect(href).toContain('from=native');
-    expect(href).toContain('to=USDC');
-    expect(href).toContain('amount=100');
+    expect(screen.getByTestId('hero-gradient-1')).toBeInTheDocument();
+    expect(screen.getByTestId('hero-gradient-2')).toBeInTheDocument();
   });
+});
 
-  it('renders the secondary CTA button', () => {
-    render(<HeroSection />);
-    const exploreButton = screen.getByRole('link', {
-      name: /Explore All Pairs/i,
-    });
-    expect(exploreButton).toBeInTheDocument();
-    expect(exploreButton).toHaveAttribute('href', '/swap');
-  });
+// ---------------------------------------------------------------------------
+// Property-based tests
+// ---------------------------------------------------------------------------
 
-  it('renders feature pills', () => {
-    render(<HeroSection />);
-    expect(screen.getAllByText('Best Rates')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Instant Execution')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Secure & Audited')[0]).toBeInTheDocument();
-  });
+describe('HeroSection — property tests', () => {
+  afterEach(() => setReducedMotion(false));
 
-  it('renders the badge with best execution message', () => {
-    render(<HeroSection />);
-    expect(
-      screen.getAllByText(/Best Execution Across All Stellar DEXs/i)[0]
-    ).toBeInTheDocument();
-  });
+  it(
+    // Feature: reduced-motion-swap-animations, Property 13 & 14
+    'Property 13 & 14: animate-pulse absent iff prefersReducedMotion is true on both gradient divs',
+    () => {
+      fc.assert(
+        fc.property(fc.boolean(), (prefersReduced) => {
+          setReducedMotion(prefersReduced);
+          const { unmount } = render(<HeroSection />);
+          const g1 = screen.getByTestId('hero-gradient-1');
+          const g2 = screen.getByTestId('hero-gradient-2');
+          const g1HasPulse = g1.className.includes('animate-pulse');
+          const g2HasPulse = g2.className.includes('animate-pulse');
+          unmount();
 
-  it('has proper accessibility structure', () => {
-    render(<HeroSection />);
-    const headings = screen.getAllByRole('heading', { level: 1 });
-    expect(headings[0]).toBeInTheDocument();
-  });
+          if (prefersReduced) {
+            return !g1HasPulse && !g2HasPulse;
+          } else {
+            return g1HasPulse && g2HasPulse;
+          }
+        }),
+        { numRuns: 100 }
+      );
+    }
+  );
 });

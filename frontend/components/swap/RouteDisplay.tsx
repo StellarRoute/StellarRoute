@@ -3,6 +3,8 @@ import { useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { cn } from '@/lib/utils';
 
 import { ConfidenceIndicator } from './ConfidenceIndicator';
 import { RouteDisplaySkeleton } from './RouteDisplaySkeleton';
@@ -95,10 +97,12 @@ function AlternativeRouteButton({
   route,
   isSelected = false,
   onSelect,
+  prefersReducedMotion = false,
 }: {
   route: AlternativeRoute;
   isSelected?: boolean;
   onSelect?: (route: AlternativeRoute) => void;
+  prefersReducedMotion?: boolean;
 }) {
   return (
     <button
@@ -106,11 +110,13 @@ function AlternativeRouteButton({
       data-testid={`alternative-route-${route.id}`}
       aria-pressed={isSelected}
       data-selected={isSelected ? 'true' : undefined}
-      className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
+      className={cn(
+        'w-full flex flex-wrap items-center justify-between p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left',
+        !prefersReducedMotion && 'transition-all duration-150 active:scale-[0.99]',
         isSelected
           ? 'opacity-100 ring-2 ring-primary/40 bg-muted/50'
           : 'opacity-60 hover:opacity-100 focus:opacity-100'
-      }`}
+      )}
       onClick={() => onSelect?.(route)}
     >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -145,6 +151,7 @@ export function RouteDisplay({
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const prefersReducedMotion = useReducedMotion();
   const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -180,7 +187,10 @@ export function RouteDisplay({
   return (
     <div
       data-testid="route-display"
-      className="rounded-xl border border-border/50 p-4 space-y-4 transition-all duration-200 hover:border-border hover:shadow-sm focus-within:ring-2 focus-within:ring-primary/20"
+      className={cn(
+        'rounded-xl border border-border/50 p-4 space-y-4 focus-within:ring-2 focus-within:ring-primary/20',
+        !prefersReducedMotion && 'transition-all duration-200 hover:border-border hover:shadow-sm'
+      )}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -203,16 +213,26 @@ export function RouteDisplay({
             onClick={() => setShowDetails((prev) => !prev)}
             aria-expanded={showDetails}
             aria-label="Show route details"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-150 active:scale-95"
+            className={cn(
+              'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20',
+              !prefersReducedMotion && 'transition-all duration-150 active:scale-95'
+            )}
           >
             <ChevronDown
-              className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${showDetails ? 'rotate-180' : ''}`}
+              className={cn(
+                'h-4 w-4 text-muted-foreground',
+                !prefersReducedMotion && 'transition-transform duration-200',
+                showDetails && 'rotate-180'
+              )}
             />
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center bg-muted/50 rounded-lg p-3 overflow-hidden gap-1 sm:gap-0 sm:justify-between transition-colors duration-150 hover:bg-muted/70">
+      <div className={cn(
+        'flex flex-col sm:flex-row items-center bg-muted/50 rounded-lg p-3 overflow-hidden gap-1 sm:gap-0 sm:justify-between',
+        !prefersReducedMotion && 'transition-colors duration-150 hover:bg-muted/70'
+      )}>
         <div className="flex flex-col flex-shrink-0 min-w-[40px] items-center sm:items-start">
           <span className="text-xs font-semibold">XLM</span>
           <span className="text-[10px] text-muted-foreground leading-none">
@@ -274,6 +294,7 @@ export function RouteDisplay({
                       route={route}
                       isSelected={selectedRouteId === route.id}
                       onSelect={handleSelect}
+                      prefersReducedMotion={prefersReducedMotion}
                     />
                   </div>
                 );
@@ -287,6 +308,7 @@ export function RouteDisplay({
                   route={route}
                   isSelected={selectedRouteId === route.id}
                   onSelect={handleSelect}
+                  prefersReducedMotion={prefersReducedMotion}
                 />
               ))}
             </div>
@@ -351,7 +373,10 @@ export function RouteDisplay({
       {extendedRouteDetails && selectedRoute && (
         <div
           data-testid="extended-diagnostics"
-          className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3.5 space-y-2.5 font-mono text-[10px] text-amber-600 dark:text-amber-400 animate-in fade-in slide-in-from-bottom-2 duration-300"
+          className={cn(
+            'rounded-lg border border-amber-500/20 bg-amber-500/5 p-3.5 space-y-2.5 font-mono text-[10px] text-amber-600 dark:text-amber-400',
+            !prefersReducedMotion && 'animate-in fade-in slide-in-from-bottom-2 duration-300'
+          )}
         >
           <div className="flex items-center justify-between border-b border-amber-500/10 pb-1.5">
             <span className="font-bold uppercase tracking-wider">Extended Diagnostics</span>

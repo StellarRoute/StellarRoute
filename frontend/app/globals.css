@@ -144,6 +144,76 @@
   --sidebar-ring: #6366f1;
 }
 
+/* High Contrast Mode — light base */
+.high-contrast {
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #0000cc;
+  --primary-foreground: #ffffff;
+  --secondary: #e8e8e8;
+  --secondary-foreground: #000000;
+  --muted: #f0f0f0;
+  --muted-foreground: #1a1a1a;
+  --accent: #e8e8e8;
+  --accent-foreground: #000000;
+  --destructive: #cc0000;
+  --destructive-foreground: #ffffff;
+  --success: #006600;
+  --success-foreground: #ffffff;
+  --warning: #7a4f00;
+  --warning-foreground: #ffffff;
+  --border: #000000;
+  --input: #000000;
+  --ring: #0000cc;
+  --sidebar: #f0f0f0;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #0000cc;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e8e8;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: #000000;
+  --sidebar-ring: #0000cc;
+}
+
+/* High Contrast Mode — dark base */
+.dark.high-contrast {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #0a0a0a;
+  --card-foreground: #ffffff;
+  --popover: #0a0a0a;
+  --popover-foreground: #ffffff;
+  --primary: #6699ff;
+  --primary-foreground: #000000;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ffffff;
+  --muted: #1a1a1a;
+  --muted-foreground: #e0e0e0;
+  --accent: #1a1a1a;
+  --accent-foreground: #ffffff;
+  --destructive: #ff4444;
+  --destructive-foreground: #000000;
+  --success: #44ff44;
+  --success-foreground: #000000;
+  --warning: #ffcc00;
+  --warning-foreground: #000000;
+  --border: #ffffff;
+  --input: #ffffff;
+  --ring: #6699ff;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #6699ff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #ffffff;
+  --sidebar-ring: #6699ff;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -155,5 +225,46 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/**
+ * Reduced-motion: disable all decorative animations and transitions.
+ * Opacity-only transitions are preserved as they convey state without movement.
+ * Spinner/pulse animations on loading indicators are replaced with opacity.
+ */
+@media (prefers-reduced-motion: reduce) {
+  /* Kill all transitions and animations by default */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Restore opacity-only transitions for state feedback (e.g. hover, focus) */
+  .motion-safe-opacity {
+    transition-duration: 150ms !important;
+    transition-property: opacity !important;
+  }
+
+  /* tw-animate-css animate-in / animate-out: collapse to instant opacity */
+  [class*='animate-in'],
+  [class*='animate-out'] {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+
+  /* Skeleton pulse: keep a static dimmed appearance */
+  .animate-pulse {
+    animation: none !important;
+    opacity: 0.6 !important;
+  }
+
+  /* Spinner: keep visible but static */
+  .animate-spin {
+    animation: none !important;
   }
 }

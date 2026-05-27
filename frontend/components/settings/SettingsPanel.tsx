@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SlippageSettings } from "./SlippageSettings";
 import { DeadlineSettings } from "./DeadlineSettings";
 import { ExpertSettings } from "./ExpertSettings";
+import { BrowserNotificationSettings } from "./BrowserNotificationSettings";
 
 interface SettingsPanelProps {
   slippage: number;
@@ -26,6 +27,12 @@ interface SettingsPanelProps {
   onBypassConfirmationChange: (val: boolean) => void;
   onExtendedRouteDetailsChange: (val: boolean) => void;
   onReset: () => void;
+  // Browser notification settings
+  browserNotifications: boolean;
+  notificationPermissionState: NotificationPermission | 'unsupported';
+  notificationsDisabled: boolean;
+  onEnableNotifications: () => Promise<void>;
+  onDisableNotifications: () => void;
 }
 
 export function SettingsPanel({
@@ -40,6 +47,11 @@ export function SettingsPanel({
   onBypassConfirmationChange,
   onExtendedRouteDetailsChange,
   onReset,
+  browserNotifications,
+  notificationPermissionState,
+  notificationsDisabled,
+  onEnableNotifications,
+  onDisableNotifications,
 }: SettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -111,6 +123,13 @@ export function SettingsPanel({
             onExpertModeChange={onExpertModeChange}
             onBypassConfirmationChange={onBypassConfirmationChange}
             onExtendedRouteDetailsChange={onExtendedRouteDetailsChange}
+          />
+          <BrowserNotificationSettings
+            browserNotifications={browserNotifications}
+            permissionState={notificationPermissionState}
+            isDisabled={notificationsDisabled}
+            onEnable={onEnableNotifications}
+            onDisable={onDisableNotifications}
           />
         </div>
       </SheetContent>

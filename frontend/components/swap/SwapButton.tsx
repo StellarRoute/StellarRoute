@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSwapI18n } from "@/lib/swap-i18n";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 export type SwapButtonState = 
   | "no_wallet"
@@ -32,6 +33,7 @@ export function SwapButton({
   className,
 }: SwapButtonProps) {
   const { t } = useSwapI18n();
+  const prefersReducedMotion = useReducedMotion();
   
   const getButtonProps = () => {
     switch (state) {
@@ -72,22 +74,25 @@ export function SwapButton({
           onClick: onSwap,
           disabled: isLoading,
           variant: "destructive" as const,
-          icon: isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <AlertCircle className="mr-2 h-5 w-5" />,
-          className: "bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20 animate-pulse",
+          icon: isLoading ? <Loader2 className={cn("mr-2 h-5 w-5", !prefersReducedMotion && "animate-spin")} /> : <AlertCircle className="mr-2 h-5 w-5" />,
+          className: cn(
+            "bg-destructive hover:bg-destructive/90 shadow-lg shadow-destructive/20",
+            !prefersReducedMotion && "animate-pulse"
+          ),
         };
       case "executing":
         return {
           label: t("swap.cta.swapping"),
           disabled: true,
           variant: "default" as const,
-          icon: <Loader2 className="mr-2 h-5 w-5 animate-spin" />,
+          icon: <Loader2 className={cn("mr-2 h-5 w-5", !prefersReducedMotion && "animate-spin")} />,
         };
       case "refreshing_quote":
         return {
           label: t("swap.cta.loadingQuote"),
           disabled: true,
           variant: "outline" as const,
-          icon: <Loader2 className="mr-2 h-5 w-5 animate-spin" />,
+          icon: <Loader2 className={cn("mr-2 h-5 w-5", !prefersReducedMotion && "animate-spin")} />,
           className: "border-primary/40 text-primary",
         };
       case "error":
@@ -104,8 +109,11 @@ export function SwapButton({
           onClick: onSwap,
           disabled: isLoading,
           variant: "default" as const,
-          icon: isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null,
-          className: "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-[0.98] transition-all",
+          icon: isLoading ? <Loader2 className={cn("mr-2 h-5 w-5", !prefersReducedMotion && "animate-spin")} /> : null,
+          className: cn(
+            "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 hover:shadow-primary/30",
+            !prefersReducedMotion && "active:scale-[0.98] transition-all"
+          ),
         };
     }
   };
@@ -119,7 +127,8 @@ export function SwapButton({
       disabled={props.disabled}
       onClick={props.onClick}
       className={cn(
-        "h-14 w-full text-lg font-bold rounded-2xl shadow-md transition-all duration-300",
+        "h-14 w-full text-lg font-bold rounded-2xl shadow-md",
+        !prefersReducedMotion && "transition-all duration-300",
         props.className,
         className
       )}

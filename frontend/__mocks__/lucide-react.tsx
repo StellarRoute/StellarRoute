@@ -71,3 +71,11 @@ export const Inbox = Icon;
 export const Plus = Icon;
 export const Shield = Icon;
 export const Zap = Icon;
+
+// Browser notification settings icons
+export const Bell = Icon;
+export const BellOff = Icon;
+
+// Expert settings icons
+export const Compass = Icon;
+export const ShieldAlert = Icon;

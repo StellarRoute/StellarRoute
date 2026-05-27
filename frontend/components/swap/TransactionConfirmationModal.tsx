@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,7 @@ const STATUS_CONFIG = {
   review: {
     icon: ArrowRightLeft,
     iconClass: 'text-foreground',
+    iconMotionClass: '',
     bgClass: 'bg-muted/10',
     heading: 'Review Swap',
     description: 'Please review your swap details before confirming.',
@@ -47,7 +49,8 @@ const STATUS_CONFIG = {
   },
   pending: {
     icon: Loader2,
-    iconClass: 'text-amber-500 animate-spin',
+    iconClass: 'text-amber-500',
+    iconMotionClass: 'animate-spin',
     bgClass: 'bg-amber-500/10',
     heading: 'Waiting for wallet\u2026',
     description:
@@ -56,7 +59,8 @@ const STATUS_CONFIG = {
   },
   submitted: {
     icon: Loader2,
-    iconClass: 'text-amber-500 animate-spin',
+    iconClass: 'text-amber-500',
+    iconMotionClass: 'animate-spin',
     bgClass: 'bg-amber-500/10',
     heading: 'Awaiting confirmation',
     description: 'Transaction submitted, awaiting confirmation on the network.',
@@ -65,6 +69,7 @@ const STATUS_CONFIG = {
   confirmed: {
     icon: CheckCircle2,
     iconClass: 'text-green-500',
+    iconMotionClass: '',
     bgClass: 'bg-green-500/10',
     heading: 'Swap confirmed',
     description: 'Your swap has been confirmed on the Stellar network.',
@@ -73,6 +78,7 @@ const STATUS_CONFIG = {
   failed: {
     icon: XCircle,
     iconClass: 'text-destructive',
+    iconMotionClass: '',
     bgClass: 'bg-destructive/10',
     heading: 'Swap failed',
     description:
@@ -82,6 +88,7 @@ const STATUS_CONFIG = {
   dropped: {
     icon: Clock,
     iconClass: 'text-muted-foreground',
+    iconMotionClass: '',
     bgClass: 'bg-muted/20',
     heading: 'Transaction timed out',
     description:
@@ -109,6 +116,7 @@ export function TransactionConfirmationModal({
   onDone,
 }: TransactionConfirmationModalProps) {
   const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const prefersReducedMotion = useReducedMotion();
   const config = STATUS_CONFIG[status];
   const Icon = config.icon;
   const isInFlight = IN_FLIGHT_STATUSES.includes(status);
@@ -154,7 +162,14 @@ export function TransactionConfirmationModal({
                 config.bgClass
               )}
             >
-              <Icon className={cn('h-8 w-8', config.iconClass)} />
+              <Icon
+                data-testid="tcm-spinner"
+                className={cn(
+                  'h-8 w-8',
+                  config.iconClass,
+                  !prefersReducedMotion && config.iconMotionClass
+                )}
+              />
             </div>
             <DialogTitle className="text-2xl font-bold text-center tracking-tight">
               {config.heading}

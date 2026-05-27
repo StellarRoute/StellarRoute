@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown, RefreshCw } from 'lucide-react';
@@ -20,6 +21,9 @@ import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
+main
+import { useBrowserNotifications } from '@/hooks/useBrowserNotifications';
+main
 import {
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
@@ -45,6 +49,7 @@ import {
 export function SwapCard() {
   const { t } = useSwapI18n();
   const { isCompact, toggleCompact } = useCompactMode();
+  const prefersReducedMotion = useReducedMotion();
   const tradingPairContext = useOptionalTradingPair();
   
   // Wrap useSearchParams in try-catch for SSR
@@ -125,6 +130,14 @@ export function SwapCard() {
     updateExtendedRouteDetails,
   } = useExpertSettings();
 
+  const {
+    browserNotifications,
+    permissionState: notificationPermissionState,
+    isDisabled: notificationsDisabled,
+    enableNotifications: onEnableNotifications,
+    disableNotifications: onDisableNotifications,
+  } = useBrowserNotifications();
+
   const [isConnected, setIsConnected] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -168,6 +181,7 @@ export function SwapCard() {
         setSelectedRoute(id ? { id, venue: '', expectedAmount: '' } : null),
       refreshQuote: quote.refresh,
     },
+    notificationPreference: { enabled: browserNotifications },
   });
 
   // Handle background transaction toasts when bypassConfirmation is enabled
@@ -482,14 +496,21 @@ export function SwapCard() {
 
       <Card
         className={cn(
-          'relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px] transition-all duration-500 hover:shadow-primary/5',
+          'relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px]',
+          !prefersReducedMotion && 'transition-all duration-500 hover:shadow-primary/5',
           isCompact && 'rounded-2xl',
           expertMode && 'border-amber-500/30 hover:shadow-amber-500/10 shadow-amber-500/5'
         )}
       >
         {/* Animated Background Gradients */}
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-700" />
+        <div className={cn(
+          'absolute -top-24 -left-24 w-48 h-48 bg-primary/10 rounded-full blur-3xl',
+          !prefersReducedMotion && 'animate-pulse'
+        )} />
+        <div className={cn(
+          'absolute -bottom-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl',
+          !prefersReducedMotion && 'animate-pulse delay-700'
+        )} />
 
         <CardContent className={cn('space-y-4', isCompact ? 'p-4' : 'p-6')}>
           {/* Header */}
@@ -504,7 +525,10 @@ export function SwapCard() {
                 Swap
               </h2>
               {expertMode && (
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
+                <span className={cn(
+                  'text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20',
+                  !prefersReducedMotion && 'animate-pulse'
+                )}>
                   Expert
                 </span>
               )}
@@ -542,6 +566,11 @@ export function SwapCard() {
                   reset();
                   setSelectedRoute(null);
                 }}
+                browserNotifications={browserNotifications}
+                notificationPermissionState={notificationPermissionState}
+                notificationsDisabled={notificationsDisabled}
+                onEnableNotifications={onEnableNotifications}
+                onDisableNotifications={onDisableNotifications}
               />
               <Button
                 variant="ghost"
@@ -595,9 +624,17 @@ export function SwapCard() {
               variant="outline"
               size="icon"
               onClick={handleSwitchTokens}
-              className="absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 hover:scale-110 active:scale-95 transition-all duration-300 group"
+              className={cn(
+                'absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 active:scale-95 group',
+                prefersReducedMotion
+                  ? 'transition-colors'
+                  : 'hover:scale-110 transition-all duration-300'
+              )}
             >
-              <ArrowUpDown className="h-4 w-4 text-primary group-hover:rotate-180 transition-transform duration-500" />
+              <ArrowUpDown className={cn(
+                'h-4 w-4 text-primary',
+                !prefersReducedMotion && 'group-hover:rotate-180 transition-transform duration-500'
+              )} />
             </Button>
           </div>
 
@@ -631,8 +668,9 @@ export function SwapCard() {
           {parseFloat(fromAmount) > 0 && (
             <div
               className={cn(
-                'space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500',
-                isCompact ? 'space-y-2 pt-1' : 'pt-2'
+                'space-y-3',
+                isCompact ? 'space-y-2 pt-1' : 'pt-2',
+                !prefersReducedMotion && 'animate-in fade-in slide-in-from-bottom-2 duration-500'
               )}
             >
               <PriceInfoPanel
@@ -726,7 +764,10 @@ export function SwapCard() {
 
           {/* Status/Error Messages */}
           {quote.error && (
-            <p className="text-center text-xs font-medium text-destructive animate-pulse">
+            <p className={cn(
+              'text-center text-xs font-medium text-destructive',
+              !prefersReducedMotion && 'animate-pulse'
+            )}>
               {quote.error.message}
             </p>
           )}

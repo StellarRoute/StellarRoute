@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, TrendingUp, Zap, Shield } from 'lucide-react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 export function HeroSection() {
   // Featured pair: XLM to USDC
@@ -12,6 +14,8 @@ export function HeroSection() {
     to: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
     amount: '100',
   };
+
+  const prefersReducedMotion = useReducedMotion();
 
   // Generate URL with timestamp - useMemo to avoid calling Date.now() on every render
   const swapUrl = useMemo(
@@ -24,8 +28,20 @@ export function HeroSection() {
     <section className="relative overflow-hidden py-20 sm:py-28 lg:py-32">
       {/* Background Gradients */}
       <div className="absolute inset-0 -z-10">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-700" />
+        <div
+          data-testid="hero-gradient-1"
+          className={cn(
+            'absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl',
+            !prefersReducedMotion && 'animate-pulse'
+          )}
+        />
+        <div
+          data-testid="hero-gradient-2"
+          className={cn(
+            'absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl',
+            !prefersReducedMotion && 'animate-pulse delay-700'
+          )}
+        />
       </div>
 
       <div className="container mx-auto px-4">

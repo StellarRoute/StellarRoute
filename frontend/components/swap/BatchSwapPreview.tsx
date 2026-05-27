@@ -1,6 +1,8 @@
 "use client";
 
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 import { ViewState } from "@/components/shared/ViewState";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -35,11 +37,15 @@ export function BatchSwapPreview({
   onRetry,
 }: BatchSwapPreviewProps) {
   const isEnabled = useFeatureFlag("batchSwaps");
+  const prefersReducedMotion = useReducedMotion();
 
   // Gated behind feature flag
   if (!isEnabled) {
     return (
-      <Card className="p-6 border border-warning/20 bg-warning/5 backdrop-blur-md rounded-2xl flex flex-col items-center text-center gap-4 animate-in fade-in duration-300">
+      <Card className={cn(
+        'p-6 border border-warning/20 bg-warning/5 backdrop-blur-md rounded-2xl flex flex-col items-center text-center gap-4',
+        !prefersReducedMotion && 'animate-in fade-in duration-300'
+      )}>
         <div className="h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center text-warning shadow-[0_0_15px_rgba(245,158,11,0.15)]">
           <Lock className="h-5 w-5" />
         </div>
@@ -191,7 +197,10 @@ export function BatchSwapPreview({
                 </div>
 
                 <div className="flex flex-col items-center justify-center flex-1">
-                  <div className="h-8 w-8 rounded-full bg-muted/40 flex items-center justify-center border border-border/20 hover:scale-105 transition-transform duration-200">
+                  <div className={cn(
+                  'h-8 w-8 rounded-full bg-muted/40 flex items-center justify-center border border-border/20',
+                  !prefersReducedMotion && 'hover:scale-105 transition-transform duration-200'
+                )}>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                 </div>

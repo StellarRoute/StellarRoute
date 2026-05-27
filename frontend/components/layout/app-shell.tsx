@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { usePathname } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { Header } from './header';
 import { Footer } from './footer';
@@ -9,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { SessionRecoveryModal } from '@/components/modals/SessionRecoveryModal';
 import { useSessionRecoveryContext } from '@/components/providers/session-recovery-provider';
 import { WalletSyncBanner } from '@/components/shared';
+import { DebugOverlay } from '@/components/debug/DebugOverlay';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -78,6 +80,11 @@ export function AppShell({ children }: AppShellProps) {
         onRestore={handleRestore}
         onDismiss={dismissRecovery}
       />
+
+      {/* Developer debug overlay — hidden in production, toggle with Ctrl/Cmd+Shift+D or ?debug=1 */}
+      <Suspense fallback={null}>
+        <DebugOverlay />
+      </Suspense>
     </div>
   );
 }

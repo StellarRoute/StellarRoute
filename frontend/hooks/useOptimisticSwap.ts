@@ -5,12 +5,15 @@ import { useTransactionLifecycle } from './useTransactionLifecycle';
 import type { TradeParams } from './useTransactionLifecycle';
 import type { TransactionStatus } from '@/types/transaction';
 import type { PreSubmitSnapshot, RollbackTarget } from '@/types/transaction';
+import type { NotificationPreference } from '@/lib/notifications';
 
 export interface UseOptimisticSwapOptions {
   deadlineMs?: number;
   signTransaction?: (xdr: string) => Promise<string>;
   submitTransaction?: (signedXdr: string) => Promise<{ hash: string }>;
   rollbackTarget: RollbackTarget;
+  /** Notification preference — passed through to useTransactionLifecycle */
+  notificationPreference?: NotificationPreference;
 }
 
 export interface UseOptimisticSwapResult {

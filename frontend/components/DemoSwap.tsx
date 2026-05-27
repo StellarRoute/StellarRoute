@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TransactionConfirmationModal } from "@/components/shared/TransactionConfirmationModal";
 import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
+import { DiagnosticsPanel } from "@/components/shared/DiagnosticsPanel";
 import { usePairs } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
 import { useTransactionLifecycle } from "@/hooks/useTransactionLifecycle";
@@ -56,6 +57,7 @@ export function DemoSwap() {
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [sellRaw, setSellRaw] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
 
   const {
     status: txStatus,
@@ -179,186 +181,206 @@ export function DemoSwap() {
     quote && parseResult.status === "ok" ? quote.total : "—";
 
   return (
-    <Card className="p-6 max-w-lg mx-auto shadow-lg mt-8 border-primary/20 bg-background/50 backdrop-blur-sm">
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold mb-1">Swap Tokens</h2>
-          <p className="text-sm text-muted-foreground">
-            Demo swap with sell amount validation and debounced quotes
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <span className="text-sm font-medium">Pair</span>
-          {pairsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading pairs…</p>
-          ) : pairsError ? (
-            <p className="text-sm text-destructive">
-              Could not load pairs. Start the API to select a market.
-            </p>
-          ) : pairs && pairs.length > 0 ? (
-            <Select value={selectedKey} onValueChange={setSelectedKey}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select pair" />
-              </SelectTrigger>
-              <SelectContent>
-                {pairs.map((p) => (
-                  <SelectItem key={pairKey(p)} value={pairKey(p)}>
-                    {p.base} / {p.counter}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No pairs from the indexer yet. You can still try amount validation
-              (sell asset defaults to native precision).
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium">
-              Sell amount
-              {selectedPair ? ` (${selectedPair.base})` : " (XLM)"}
-            </span>
+    <>
+      <Card className="p-6 max-w-lg mx-auto shadow-lg mt-8 border-primary/20 bg-background/50 backdrop-blur-sm">
+        <div className="space-y-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-xl font-bold mb-1">Swap Tokens</h2>
+              <p className="text-sm text-muted-foreground">
+                Demo swap with sell amount validation and debounced quotes
+              </p>
+            </div>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-8"
-              disabled={!isConnected}
-              title={maxButtonTitle}
-              onClick={applyMax}
+              onClick={() => setIsDiagnosticsOpen(true)}
+              className="gap-2"
+              title="View diagnostics panel"
             >
-              Max
+              <Bug className="h-4 w-4" />
             </Button>
           </div>
-          <Input
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder="0.0"
-            value={sellRaw}
-            aria-invalid={amountInputInvalid}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSellRaw(e.target.value)}
-            className="text-lg font-medium"
-          />
-          <div className="min-h-[1.25rem] text-xs">
-            {parseResult.status === "precision_exceeded" && (
-              <span className="text-destructive">{parseResult.message}</span>
-            )}
-            {parseResult.status === "invalid" && (
-              <span className="text-destructive">{parseResult.message}</span>
-            )}
-            {parseResult.status === "ok" && (
-              <span className="text-muted-foreground">
-                Up to {sellMaxDecimals} decimals for this asset. Quotes update
-                after you stop typing.
-              </span>
-            )}
-            {parseResult.status === "empty" && sellRaw.trim() === "" && (
-              <span className="text-muted-foreground">
-                Paste amounts with US (1,234.56) or EU (1.234,56) grouping.
-                Scientific notation is not supported.
-              </span>
-            )}
-          </div>
-        </div>
 
-        <div className="space-y-4 bg-muted/20 p-4 rounded-lg border">
-          <div>
-            <span className="text-sm font-medium">Estimated receive</span>
-            <div className="text-2xl font-bold mt-1 text-success">
-              {quoteLoading && numericForQuote !== undefined ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  ~ …
-                </span>
-              ) : (
-                <>
-                  {receivePreview}
-                  {selectedPair ? ` ${selectedPair.counter}` : ""}
-                </>
-              )}
-            </div>
-            {quoteError && numericForQuote !== undefined && (
-              <p className="text-xs text-destructive mt-1">
-                Quote failed: {quoteError.message}
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Pair</span>
+            {pairsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading pairs…</p>
+            ) : pairsError ? (
+              <p className="text-sm text-destructive">
+                Could not load pairs. Start the API to select a market.
+              </p>
+            ) : pairs && pairs.length > 0 ? (
+              <Select value={selectedKey} onValueChange={setSelectedKey}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select pair" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pairs.map((p) => (
+                    <SelectItem key={pairKey(p)} value={pairKey(p)}>
+                      {p.base} / {p.counter}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No pairs from the indexer yet. You can still try amount validation
+                (sell asset defaults to native precision).
               </p>
             )}
           </div>
-          <div>
-            <span className="text-sm font-medium text-muted-foreground">
-              Reference price
-            </span>
-            <div className="text-sm mt-1">{quote?.price ?? "—"}</div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">
+                Sell amount
+                {selectedPair ? ` (${selectedPair.base})` : " (XLM)"}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                disabled={!isConnected}
+                title={maxButtonTitle}
+                onClick={applyMax}
+              >
+                Max
+              </Button>
+            </div>
+            <Input
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0.0"
+              value={sellRaw}
+              aria-invalid={amountInputInvalid}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSellRaw(e.target.value)}
+              className="text-lg font-medium"
+            />
+            <div className="min-h-[1.25rem] text-xs">
+              {parseResult.status === "precision_exceeded" && (
+                <span className="text-destructive">{parseResult.message}</span>
+              )}
+              {parseResult.status === "invalid" && (
+                <span className="text-destructive">{parseResult.message}</span>
+              )}
+              {parseResult.status === "ok" && (
+                <span className="text-muted-foreground">
+                  Up to {sellMaxDecimals} decimals for this asset. Quotes update
+                  after you stop typing.
+                </span>
+              )}
+              {parseResult.status === "empty" && sellRaw.trim() === "" && (
+                <span className="text-muted-foreground">
+                  Paste amounts with US (1,234.56) or EU (1.234,56) grouping.
+                  Scientific notation is not supported.
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={refreshDisabled}
-              onClick={() => refresh()}
-              className="gap-2"
-            >
-              {quoteLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              ) : (
-                <RefreshCw className="h-4 w-4" aria-hidden />
+          <div className="space-y-4 bg-muted/20 p-4 rounded-lg border">
+            <div>
+              <span className="text-sm font-medium">Estimated receive</span>
+              <div className="text-2xl font-bold mt-1 text-success">
+                {quoteLoading && numericForQuote !== undefined ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    ~ …
+                  </span>
+                ) : (
+                  <>
+                    {receivePreview}
+                    {selectedPair ? ` ${selectedPair.counter}` : ""}
+                  </>
+                )}
+              </div>
+              {quoteError && numericForQuote !== undefined && (
+                <p className="text-xs text-destructive mt-1">
+                  Quote failed: {quoteError.message}
+                </p>
               )}
-              Refresh quote
-            </Button>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-input"
-                checked={autoRefreshEnabled}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAutoRefreshEnabled(e.target.checked)}
-              />
-              Auto-refresh (~{Math.round(QUOTE_AUTO_REFRESH_INTERVAL_MS / 1000)}s,
-              pauses when tab hidden)
-            </label>
+            </div>
+            <div>
+              <span className="text-sm font-medium text-muted-foreground">
+                Reference price
+              </span>
+              <div className="text-sm mt-1">{quote?.price ?? "—"}</div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={refreshDisabled}
+                onClick={() => refresh()}
+                className="gap-2"
+              >
+                {quoteLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw className="h-4 w-4" aria-hidden />
+                )}
+                Refresh quote
+              </Button>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={autoRefreshEnabled}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAutoRefreshEnabled(e.target.checked)}
+                />
+                Auto-refresh (~{Math.round(QUOTE_AUTO_REFRESH_INTERVAL_MS / 1000)}s,
+                pauses when tab hidden)
+              </label>
+            </div>
           </div>
+
+          <Button
+            className="w-full text-lg h-12"
+            onClick={handleSwapClick}
+            disabled={!selectedPair || parseResult.status !== "ok"}
+          >
+            Review Swap
+          </Button>
         </div>
 
-        <Button
-          className="w-full text-lg h-12"
-          onClick={handleSwapClick}
-          disabled={!selectedPair || parseResult.status !== "ok"}
-        >
-          Review Swap
-        </Button>
-      </div>
+        <TransactionConfirmationModal
+          isOpen={isModalOpen}
+          onOpenChange={(open) => {
+            if (!open && txStatus !== "pending" && txStatus !== "submitted") {
+              setIsModalOpen(false);
+            }
+          }}
+          fromAsset={selectedPair?.base ?? "XLM"}
+          fromAmount={parseResult.status === "ok" ? parseResult.normalized : ""}
+          toAsset={selectedPair?.counter ?? "USDC"}
+          toAmount={quote?.total ?? "—"}
+          exchangeRate={quote?.price ?? "—"}
+          priceImpact="0.1%"
+          networkFee="0.00001"
+          slippageTolerancePct={settings?.slippageTolerance}
+          routePath={quote?.path?.length ? quote.path : mockRoute}
+          status={txStatus}
+          txHash={txHash}
+          errorMessage={errorMessage}
+          onConfirm={handleConfirm}
+          onCancel={cancel}
+          onTryAgain={handleTryAgain}
+          onResubmit={handleResubmit}
+          onDismiss={handleDismiss}
+          onDone={handleDone}
+        />
+      </Card>
 
-      <TransactionConfirmationModal
-        isOpen={isModalOpen}
-        onOpenChange={(open) => {
-          if (!open && txStatus !== "pending" && txStatus !== "submitted") {
-            setIsModalOpen(false);
-          }
-        }}
-        fromAsset={selectedPair?.base ?? "XLM"}
-        fromAmount={parseResult.status === "ok" ? parseResult.normalized : ""}
-        toAsset={selectedPair?.counter ?? "USDC"}
-        toAmount={quote?.total ?? "—"}
-        exchangeRate={quote?.price ?? "—"}
-        priceImpact="0.1%"
-        networkFee="0.00001"
-        slippageTolerancePct={settings?.slippageTolerance}
-        routePath={quote?.path?.length ? quote.path : mockRoute}
-        status={txStatus}
-        txHash={txHash}
-        errorMessage={errorMessage}
-        onConfirm={handleConfirm}
-        onCancel={cancel}
-        onTryAgain={handleTryAgain}
-        onResubmit={handleResubmit}
-        onDismiss={handleDismiss}
-        onDone={handleDone}
+      <DiagnosticsPanel
+        quote={quote}
+        isOpen={isDiagnosticsOpen}
+        onOpenChange={setIsDiagnosticsOpen}
       />
-    </Card>
+    </>
   );
 }

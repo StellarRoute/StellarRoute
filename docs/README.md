@@ -11,6 +11,10 @@ This directory contains project documentation.
 - `contracts/` - Smart contract documentation
 - `monitoring.md` - Monitoring and metrics documentation
 
+## Key development guides
+
+- [Wallet Integration Guide](development/wallet-integration.md)
+
 ## Getting Started
 
 See the main [README.md](../README.md) for an overview of the project.

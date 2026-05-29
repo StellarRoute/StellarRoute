@@ -93,6 +93,7 @@ SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
 - See [Architecture Documentation](../architecture/README.md) for system design
 - See [API Documentation](../api/README.md) for API reference
 - See [Contract Documentation](../contracts/README.md) for smart contract details
+- See [Wallet Integration Guide](./wallet-integration.md) for frontend wallet connection, signing, and testing patterns
 
 ## Troubleshooting
 

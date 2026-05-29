@@ -1,7 +1,8 @@
-export type FeatureFlagName = "routesBeta";
+export type FeatureFlagName = "routesBeta" | "batchSwaps";
 
 export interface FeatureFlags {
   routesBeta: boolean;
+  batchSwaps: boolean;
 }
 
 type PartialFeatureFlags = Partial<FeatureFlags>;
@@ -14,10 +15,12 @@ declare global {
 
 const DEFAULT_FLAGS: FeatureFlags = {
   routesBeta: false,
+  batchSwaps: false,
 };
 
 const ENV_FLAG_MAP: Record<FeatureFlagName, string> = {
   routesBeta: "NEXT_PUBLIC_FEATURE_ROUTES_BETA",
+  batchSwaps: "NEXT_PUBLIC_FEATURE_BATCH_SWAPS",
 };
 
 function parseBooleanFlag(value: string | undefined): boolean | undefined {
@@ -38,8 +41,13 @@ function parseBooleanFlag(value: string | undefined): boolean | undefined {
 
 function getEnvFlags(): PartialFeatureFlags {
   const routesBeta = parseBooleanFlag(process.env[ENV_FLAG_MAP.routesBeta]);
+  const batchSwaps = parseBooleanFlag(process.env[ENV_FLAG_MAP.batchSwaps]);
 
-  return routesBeta === undefined ? {} : { routesBeta };
+  const flags: PartialFeatureFlags = {};
+  if (routesBeta !== undefined) flags.routesBeta = routesBeta;
+  if (batchSwaps !== undefined) flags.batchSwaps = batchSwaps;
+
+  return flags;
 }
 
 function getRuntimeFlags(): PartialFeatureFlags {

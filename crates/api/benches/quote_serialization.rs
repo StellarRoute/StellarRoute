@@ -22,6 +22,7 @@ fn sample_quote_response() -> QuoteResponse {
         price: "0.9987421".to_string(),
         total: "24968.5525000".to_string(),
         quote_type: "sell".to_string(),
+        degraded: false,
         path: vec![
             PathStep {
                 from_asset: native.clone(),

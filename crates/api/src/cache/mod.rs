@@ -2,6 +2,7 @@
 
 pub mod adaptive_ttl;
 pub mod invalidation;
+pub mod invalidation_graph;
 pub mod jitter;
 pub mod prewarmer;
 

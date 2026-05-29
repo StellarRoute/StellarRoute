@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::cache::{CacheManager, SingleFlight};
+use crate::dependency_health::ExternalDependencyHealth;
 
 use crate::graph::GraphManager;
 use crate::models::{PreparedQuoteResponse, RoutesResponse};
@@ -16,6 +17,7 @@ use stellarroute_routing::canary::{CanaryConfig, CanaryEvaluation};
 use stellarroute_routing::health::circuit_breaker::CircuitBreakerRegistry;
 
 use crate::audit::AuditWriter;
+use crate::exactlyonce::DedupeLedger;
 use crate::indexer_lag::IndexerLagMonitor;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 
@@ -40,6 +42,11 @@ impl DatabasePools {
 
     pub fn write_pool(&self) -> &PgPool {
         &self.primary
+    }
+
+    /// Returns the replica pool if one is configured, otherwise `None`.
+    pub fn replica_pool(&self) -> Option<&PgPool> {
+        self.replica.as_ref()
     }
 }
 
@@ -154,6 +161,10 @@ pub struct AppState {
     pub audit_writer: Arc<AuditWriter>,
     /// Indexer lag monitor for sync drift detection
     pub indexer_lag: Arc<IndexerLagMonitor>,
+    /// Idempotency ledger for POST /api/v1/quote deduplication
+    pub idempotency_ledger: Arc<DedupeLedger>,
+    /// External dependency probes and dedicated circuit breakers.
+    pub external_dependency_health: Arc<ExternalDependencyHealth>,
 }
 
 impl AppState {
@@ -173,6 +184,13 @@ impl AppState {
         indexer_lag
             .clone()
             .start_polling(std::time::Duration::from_secs(30));
+
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+        let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
 
         Self {
             db,
@@ -198,6 +216,8 @@ impl AppState {
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
             indexer_lag,
+            idempotency_ledger,
+            external_dependency_health,
         }
     }
 
@@ -232,6 +252,13 @@ impl AppState {
             ks.start_sync();
         });
 
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+        let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+
         Self {
             db,
             cache: Some(cache_arc),
@@ -256,6 +283,8 @@ impl AppState {
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
             indexer_lag,
+            idempotency_ledger,
+            external_dependency_health,
         }
     }
 

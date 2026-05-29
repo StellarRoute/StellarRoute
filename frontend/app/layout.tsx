@@ -20,6 +20,20 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "StellarRoute - DEX Aggregator for Stellar",
   description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+
+  manifest: "/manifest.json",
+  themeColor: "#0b1220",
+
+  icons: {
+    icon: "/icons/icon-192.svg",
+    apple: "/icons/icon-192.svg"
+  },
+
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "StellarRoute"
+  }
 };
 
 export default function RootLayout({
@@ -41,8 +55,8 @@ export default function RootLayout({
           </Providers>
         </ErrorBoundary>
         <Toaster position="top-right" richColors closeButton />
+        <Toaster position="top-right" richColors closeButton />
       </body>
     </html>
   );
 }
-

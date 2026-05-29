@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TransactionRecord } from "@/types/transaction";
-
+import { generateTransactionsCSV, triggerCSVDownload } from "@/lib/transaction-csv-export";
 import { TransactionHistory } from "./TransactionHistory";
 
 const historyState = vi.hoisted(() => ({
@@ -13,6 +13,40 @@ const historyState = vi.hoisted(() => ({
 vi.mock("@/hooks/useTransactionHistory", () => ({
   useTransactionHistory: () => historyState,
 }));
+
+vi.mock("@/lib/transaction-csv-export", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/transaction-csv-export")>();
+  return {
+    ...actual,
+    generateTransactionsCSV: vi.fn(actual.generateTransactionsCSV),
+    triggerCSVDownload: vi.fn(),
+  };
+});
+
+vi.mock("@/components/ui/dropdown-menu", () => {
+  return {
+    DropdownMenu: ({ children }: any) => <div data-testid="dropdown-menu-mock">{children}</div>,
+    DropdownMenuTrigger: ({ children }: any) => <div data-testid="dropdown-menu-trigger-mock">{children}</div>,
+    DropdownMenuContent: ({ children }: any) => <div data-testid="dropdown-menu-content-mock">{children}</div>,
+    DropdownMenuLabel: ({ children }: any) => <div>{children}</div>,
+    DropdownMenuSeparator: () => <hr />,
+    DropdownMenuCheckboxItem: ({ children, checked, onCheckedChange, "data-testid": testId }: any) => (
+      <label data-testid={testId}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onCheckedChange(e.target.checked)}
+        />
+        {children}
+      </label>
+    ),
+    DropdownMenuItem: ({ children, onClick, disabled, "data-testid": testId }: any) => (
+      <button data-testid={testId} onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    ),
+  };
+});
 
 function createTransactions(count: number): TransactionRecord[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -32,6 +66,8 @@ function createTransactions(count: number): TransactionRecord[] {
     walletAddress: "GBSU...XYZ9",
   }));
 }
+
+
 
 describe("TransactionHistory", () => {
   beforeEach(() => {
@@ -124,5 +160,91 @@ describe("TransactionHistory", () => {
     });
 
     expect(screen.queryByTestId("tx-row-tx-0")).not.toBeInTheDocument();
+  });
+
+  describe("CSV Export and Column Selection", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      vi.clearAllMocks();
+      historyState.transactions = createTransactions(10);
+    });
+
+    it("should render Export button", async () => {
+      render(<TransactionHistory />);
+      await waitFor(() => {
+        expect(screen.getByTestId("csv-export-button")).toBeInTheDocument();
+      });
+    });
+
+    it("should save column selection to localStorage and load from it", async () => {
+      localStorage.setItem("stellar_route_csv_export_columns", JSON.stringify(["date", "status"]));
+      
+      const { unmount } = render(<TransactionHistory />);
+      unmount();
+      
+      const rendered = render(<TransactionHistory />);
+      const downloadBtn = rendered.getByTestId("csv-download-button");
+      fireEvent.click(downloadBtn);
+      
+      await waitFor(() => {
+        expect(generateTransactionsCSV).toHaveBeenCalledWith(
+          expect.any(Array),
+          ["date", "status"],
+          expect.any(Number),
+          expect.any(Function)
+        );
+      });
+    });
+
+    it("should update selected columns and persist to localStorage when checkboxes are toggled", async () => {
+      render(<TransactionHistory />);
+      
+      const statusCheckbox = screen.getByTestId("column-checkbox-status").querySelector("input")!;
+      expect(statusCheckbox.checked).toBe(true);
+      
+      fireEvent.click(statusCheckbox);
+      
+      expect(statusCheckbox.checked).toBe(false);
+      
+      const stored = localStorage.getItem("stellar_route_csv_export_columns");
+      expect(stored).not.toContain("status");
+      
+      const downloadBtn = screen.getByTestId("csv-download-button");
+      fireEvent.click(downloadBtn);
+      
+      await waitFor(() => {
+        expect(generateTransactionsCSV).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.not.arrayContaining(["status"]),
+          expect.any(Number),
+          expect.any(Function)
+        );
+      });
+    });
+
+    it("should respect current filters and header order when exporting (Acceptance Criteria: Export respects current filters, Tests validate CSV header order)", async () => {
+      render(<TransactionHistory />);
+      
+      const selects = screen.getAllByRole("combobox");
+      const assetFilter = selects[0];
+      
+      fireEvent.change(assetFilter, { target: { value: "XLM" } });
+      
+      const downloadBtn = screen.getByTestId("csv-download-button");
+      fireEvent.click(downloadBtn);
+      
+      await waitFor(() => {
+        expect(generateTransactionsCSV).toHaveBeenCalled();
+      });
+      
+      const calledTxs = (generateTransactionsCSV as any).mock.calls[0][0] as TransactionRecord[];
+      
+      expect(calledTxs.length).toBeGreaterThan(0);
+      calledTxs.forEach((tx) => {
+        expect(tx.fromAsset === "XLM" || tx.toAsset === "XLM").toBe(true);
+      });
+      
+      expect(triggerCSVDownload).toHaveBeenCalled();
+    });
   });
 });

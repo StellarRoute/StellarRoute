@@ -9,12 +9,16 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PriceImpactIndicator } from "./PriceImpactIndicator";
+import { SpreadIndicator } from "./SpreadIndicator";
 import { Button } from "@/components/ui/button";
 import { useSwapI18n } from "@/lib/swap-i18n";
+import PriceSparkline from "@/components/shared/PriceSparkline";
 
 interface PriceInfoPanelProps {
   rate?: string;
   priceImpact?: number;
+  midpoint?: string;
+  spreadBps?: number;
   minReceived?: string;
   networkFee?: string;
   isLoading?: boolean;
@@ -25,6 +29,8 @@ interface PriceInfoPanelProps {
 export function PriceInfoPanel({
   rate,
   priceImpact = 0,
+  midpoint,
+  spreadBps,
   minReceived,
   networkFee,
   isLoading = false,
@@ -32,6 +38,18 @@ export function PriceInfoPanel({
   onExportCsv,
 }: PriceInfoPanelProps) {
   const { t } = useSwapI18n();
+
+  // ✅ TEMP MOCK DATA (replace later with real API)
+  const mockPriceData = [
+    { timestamp: 1710000000000, price: 100 },
+    { timestamp: 1710003600000, price: 105 },
+    { timestamp: 1710007200000, price: 102 },
+    { timestamp: 1710010800000, price: 110 },
+    { timestamp: 1710014400000, price: 108 },
+    { timestamp: 1710018000000, price: 112 },
+    { timestamp: 1710021600000, price: 109 },
+  ];
+
   if (isLoading) {
     return (
       <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3">
@@ -43,7 +61,17 @@ export function PriceInfoPanel({
   }
 
   return (
-    <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20">
+    <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-4 transition-all duration-300 hover:border-primary/20">
+      
+      {/* 🔥 NEW: Sparkline Section */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-1">
+          24h Price Trend
+        </div>
+        <PriceSparkline data={mockPriceData} />
+      </div>
+
+      {/* Existing UI */}
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
           <span>{t("swap.quote.rate")}</span>
@@ -69,6 +97,12 @@ export function PriceInfoPanel({
         </div>
         <PriceImpactIndicator impact={priceImpact} />
       </div>
+
+      <SpreadIndicator
+        midpoint={midpoint}
+        spreadBps={spreadBps}
+        isLoading={isLoading}
+      />
 
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
@@ -107,6 +141,7 @@ export function PriceInfoPanel({
           {networkFee || '—'}
         </span>
       </div>
+
       <div className="pt-2 flex flex-wrap justify-end gap-2">
         <Button size="sm" variant="outline" type="button" onClick={onExportJson}>
           {t("swap.quote.exportJson")}

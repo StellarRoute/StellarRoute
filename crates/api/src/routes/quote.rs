@@ -25,6 +25,7 @@ use stellarroute_routing::health::scorer::{
 
 use crate::{
     audit::{AuditExclusion, AuditInputs, AuditOutcome, AuditPathStep, AuditSelected},
+    budget::{BudgetConfig, BudgetTracker, PipelineStage},
     cache,
     error::{ApiError, Result},
     middleware::{validation::ValidatedQuoteRequest, RequestId},
@@ -53,9 +54,48 @@ use crate::{
     ),
     responses(
         (status = 200, description = "Price quote", body = QuoteResponse),
-        (status = 400, description = "Invalid parameters", body = ErrorResponse),
-        (status = 404, description = "No route found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse),
+        (
+            status = 400,
+            description = "Invalid parameters",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "validation_error",
+                    "message": "Amount must be greater than zero"
+                }
+            })
+        ),
+        (
+            status = 404,
+            description = "No route found",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "no_route",
+                    "message": "No trading route found for this pair"
+                }
+            })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "internal_error",
+                    "message": "An internal error occurred"
+                }
+            })
+        ),
     )
 )]
 pub async fn get_quote(
@@ -469,7 +509,7 @@ fn batch_error_from_api_error(e: &ApiError) -> (String, String) {
     }
 }
 
-async fn get_quote_inner(
+pub(crate) async fn get_quote_inner(
     state: Arc<AppState>,
     base_asset: AssetPath,
     quote_asset: AssetPath,
@@ -632,6 +672,8 @@ async fn compute_quote_response(
         freshness_outcome,
         fresh_timestamps,
         liquidity_snapshot,
+        midpoint,
+        spread_bps,
     ) = find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await?;
 
     let stale_count = freshness_outcome.stale.len();
@@ -666,6 +708,7 @@ async fn compute_quote_response(
         price: format!("{:.7}", price),
         total: format!("{:.7}", total),
         quote_type: quote_type_str.to_string(),
+        degraded: state.external_dependency_health.soroban_breaker_is_open(),
         path,
         timestamp,
         expires_at,
@@ -674,6 +717,8 @@ async fn compute_quote_response(
         rationale: Some(rationale),
         exclusion_diagnostics: Some(api_diagnostics),
         data_freshness,
+        midpoint: midpoint.map(|m| format!("{:.7}", m)),
+        spread_bps,
         price_impact: None,
     };
 
@@ -778,6 +823,8 @@ type FindBestPriceResult = (
     FreshnessOutcome,
     Vec<chrono::DateTime<chrono::Utc>>,
     Vec<crate::replay::artifact::LiquidityCandidate>, // snapshot for replay capture
+    Option<f64>, // midpoint
+    Option<u32>, // spread_bps
 );
 
 #[tracing::instrument(
@@ -798,11 +845,14 @@ async fn find_best_price(
     quote_id: uuid::Uuid,
     amount: f64,
 ) -> Result<FindBestPriceResult> {
-    // Parallel multi-source quote computation with adaptive timeouts
+    // Initialize budget tracker for per-stage timing enforcement
+    let mut budget_tracker = BudgetTracker::new(BudgetConfig::realtime());
+
+    // Stage 1: Fetch candidates from data sources
     let health_score = state.calculate_health_score().await;
     let dynamic_timeout = state.timeout_controller.calculate_timeout(health_score);
 
-    let start_fetch = std::time::Instant::now();
+    let fetch_guard = budget_tracker.stage(PipelineStage::FetchCandidates);
     let sdex_task = fetch_source_candidates(state, base_id, quote_id, "sdex");
     let amm_task = fetch_source_candidates(state, base_id, quote_id, "amm");
 
@@ -811,8 +861,11 @@ async fn find_best_price(
         timeout(dynamic_timeout, amm_task)
     );
 
-    let fetch_latency = start_fetch.elapsed();
-    state.timeout_controller.record_latency(fetch_latency);
+    let fetch_result = fetch_guard.complete();
+    budget_tracker.record(PipelineStage::FetchCandidates, fetch_result);
+    state
+        .timeout_controller
+        .record_latency(fetch_result.duration());
 
     // Record metrics
     crate::metrics::record_adaptive_timeout(
@@ -835,8 +888,22 @@ async fn find_best_price(
         Err(_) => warn!("AMM source timed out after {:?}", dynamic_timeout),
     }
 
-    // Deterministic merge: sort by price, then venue type, then ref
-    candidates.sort_by(|a, b| {
+    // Split candidates into direct and inverse (for midpoint/spread calculation)
+    let direct_candidates: Vec<DirectVenueCandidate> = candidates
+        .iter()
+        .filter(|c| !c.is_inverse)
+        .cloned()
+        .collect();
+    
+    let inverse_candidates: Vec<DirectVenueCandidate> = candidates
+        .iter()
+        .filter(|c| c.is_inverse)
+        .cloned()
+        .collect();
+
+    // Deterministic merge for direct candidates (Req 2.1)
+    let mut sorted_direct = direct_candidates.clone();
+    sorted_direct.sort_by(|a, b| {
         a.price
             .partial_cmp(&b.price)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -844,11 +911,31 @@ async fn find_best_price(
             .then_with(|| a.venue_ref.cmp(&b.venue_ref))
     });
 
-    // Capture a single wall-clock instant for both scorer_inputs construction and freshness eval
-    let now = chrono::Utc::now();
+    // Calculate market midpoint and spread across all fresh venues (Req 5.1)
+    let best_ask = direct_candidates
+        .iter()
+        .filter(|c| c.price > 0.0)
+        .map(|c| c.price)
+        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    
+    let best_bid = inverse_candidates
+        .iter()
+        .filter(|c| c.price > 0.0)
+        .map(|c| 1.0 / c.price)
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Build VenueScorerInput from candidates
-    let scorer_inputs: Vec<VenueScorerInput> = candidates
+    let (midpoint, spread_bps) = match (best_ask, best_bid) {
+        (Some(ask), Some(bid)) if ask > 0.0 && bid > 0.0 => {
+            let mid = (ask + bid) / 2.0;
+            let spread = (ask - bid) / mid;
+            (Some(mid), Some((spread * 10000.0).max(0.0) as u32))
+        }
+        _ => (None, None),
+    };
+
+    // Stage 2: Freshness evaluation (only for direct candidates)
+    let now = chrono::Utc::now();
+    let scorer_inputs: Vec<VenueScorerInput> = direct_candidates
         .iter()
         .map(|c| {
             if c.venue_type == "amm" {
@@ -879,13 +966,11 @@ async fn find_best_price(
         })
         .collect();
 
-    // Health scoring / exclusion policy (defaults match routing `HealthScoringConfig`)
+    let freshness_guard = budget_tracker.stage(PipelineStage::FreshnessEval);
     let health_config = HealthScoringConfig::default();
     let freshness_outcome =
         FreshnessGuard::evaluate(&scorer_inputs, &health_config.freshness_threshold_secs, now);
-
-    tracing::Span::current().record("stale_count", freshness_outcome.stale.len());
-    tracing::Span::current().record("fresh_count", freshness_outcome.fresh.len());
+    budget_tracker.record(PipelineStage::FreshnessEval, freshness_guard.complete());
 
     if freshness_outcome.fresh.is_empty() {
         state.cache_metrics.inc_stale_rejection();
@@ -900,7 +985,7 @@ async fn find_best_price(
     let fresh_candidates: Vec<DirectVenueCandidate> = freshness_outcome
         .fresh
         .iter()
-        .filter_map(|&idx| candidates.get(idx).cloned())
+        .filter_map(|&idx| direct_candidates.get(idx).cloned())
         .collect();
     let fresh_scorer_inputs: Vec<&VenueScorerInput> = freshness_outcome
         .fresh
@@ -910,7 +995,7 @@ async fn find_best_price(
     let mut stale_exclusion_entries: Vec<ApiExcludedVenueInfo> = freshness_outcome
         .stale
         .iter()
-        .filter_map(|&idx| candidates.get(idx))
+        .filter_map(|&idx| direct_candidates.get(idx))
         .map(|candidate| ApiExcludedVenueInfo {
             venue_ref: candidate.venue_ref.clone(),
             reason: ApiExclusionReason::StaleData,
@@ -945,7 +1030,13 @@ async fn find_best_price(
             last_updated_at: input.last_updated_at,
         })
         .collect();
+    // Stage 3: Health scoring
+    let health_scoring_guard = budget_tracker.stage(PipelineStage::HealthScoring);
     let scored = scorer.score_venues(&fresh_inputs_owned);
+    budget_tracker.record(
+        PipelineStage::HealthScoring,
+        health_scoring_guard.complete(),
+    );
 
     let mut overrides = state.kill_switch.get_override_registry().await;
     // Merge static config overrides into dynamic ones
@@ -961,9 +1052,12 @@ async fn find_best_price(
         circuit_breaker: Some(state.circuit_breaker.clone()),
     };
 
+    // Stage 4: Policy filter
+    let policy_filter_guard = budget_tracker.stage(PipelineStage::PolicyFilter);
     // Apply filter (pass empty edges — we just need diagnostics for this single-hop path)
     let filter = GraphFilter::new(&policy);
     let (_, routing_diagnostics) = filter.filter_edges(&[], &scored);
+    budget_tracker.record(PipelineStage::PolicyFilter, policy_filter_guard.complete());
 
     tracing::info!(
         stage = "policy_filter",
@@ -1004,8 +1098,24 @@ async fn find_best_price(
         excluded_venues: stale_exclusion_entries,
     };
 
+    // Stage 5: Venue selection
+    let venue_selection_guard = budget_tracker.stage(PipelineStage::VenueSelection);
     // Pass only fresh candidates to price evaluation (Req 2.2, 6.1)
     let (selected, rationale) = evaluate_single_hop_direct_venues(fresh_candidates, amount)?;
+    budget_tracker.record(
+        PipelineStage::VenueSelection,
+        venue_selection_guard.complete(),
+    );
+
+    // Finalize budget tracking
+    let budget_summary = budget_tracker.finish();
+    if budget_summary.has_overruns() {
+        warn!(
+            overbudget_stages = ?budget_summary.overbudget_stages,
+            total_duration_ms = budget_summary.total_duration.as_millis() as u64,
+            "Quote pipeline budget overruns detected"
+        );
+    }
 
     // Collect last_updated_at timestamps for fresh scorer inputs (for source_timestamp, Req 3.1)
     let fresh_timestamps: Vec<chrono::DateTime<chrono::Utc>> = freshness_outcome
@@ -1022,6 +1132,7 @@ async fn find_best_price(
             venue_ref: c.venue_ref.clone(),
             price: format!("{:.7}", c.price),
             available_amount: format!("{:.7}", c.available_amount),
+            fee_bps: Some(c.fee_bps),
         })
         .collect();
 
@@ -1030,6 +1141,8 @@ async fn find_best_price(
         to_asset: asset_path_to_info(quote),
         price: format!("{:.7}", selected.price),
         source: selected.path_source(),
+        liquidity_depth: Some(format!("{:.7}", selected.available_amount)),
+        fee_bps: Some(selected.fee_bps),
     }];
 
     Ok((
@@ -1040,6 +1153,8 @@ async fn find_best_price(
         freshness_outcome,
         fresh_timestamps,
         liquidity_snapshot,
+        midpoint,
+        spread_bps,
     ))
 }
 
@@ -1051,6 +1166,8 @@ struct DirectVenueCandidate {
     available_amount: f64,
     price_e7: i64,
     available_amount_e7: i64,
+    fee_bps: u32,
+    is_inverse: bool,
 }
 
 impl DirectVenueCandidate {
@@ -1156,17 +1273,20 @@ async fn fetch_source_candidates(
 ) -> Result<Vec<DirectVenueCandidate>> {
     let rows = sqlx::query(
         r#"
-                select
-                    venue_type,
-                    venue_ref,
-                    price::text as price,
-                    available_amount::text as available_amount,
-                    price_e7,
-                    available_amount_e7
-                from normalized_liquidity
-        where selling_asset_id = $1
-          and buying_asset_id = $2
-          and venue_type = $3
+        select
+            nl.venue_type,
+            nl.venue_ref,
+            nl.price::text as price,
+            nl.available_amount::text as available_amount,
+            nl.price_e7,
+            nl.available_amount_e7,
+            nl.selling_asset_id,
+            coalesce(amm.fee_bps, 0)::integer as fee_bps
+        from normalized_liquidity nl
+        left join amm_pool_reserves amm on nl.venue_type = 'amm' and nl.venue_ref = amm.pool_address
+        where ((selling_asset_id = $1 and buying_asset_id = $2)
+           or (selling_asset_id = $2 and buying_asset_id = $1))
+          and nl.venue_type = $3
         "#,
     )
     .bind(base_id)
@@ -1187,6 +1307,9 @@ async fn fetch_source_candidates(
                 .unwrap_or(0.0);
             let price_e7: i64 = row.get("price_e7");
             let available_amount_e7: i64 = row.get("available_amount_e7");
+            let fee_bps: i32 = row.get("fee_bps");
+            let selling_id: uuid::Uuid = row.get("selling_asset_id");
+            
             DirectVenueCandidate {
                 venue_type,
                 venue_ref,
@@ -1194,6 +1317,8 @@ async fn fetch_source_candidates(
                 available_amount,
                 price_e7,
                 available_amount_e7,
+                fee_bps: fee_bps as u32,
+                is_inverse: selling_id == quote_id,
             }
         })
         .collect())
@@ -1353,6 +1478,7 @@ mod tests {
         venue_ref: &str,
         price: f64,
         available_amount: f64,
+        fee_bps: u32,
     ) -> DirectVenueCandidate {
         DirectVenueCandidate {
             venue_type: venue_type.to_string(),
@@ -1361,15 +1487,17 @@ mod tests {
             available_amount,
             price_e7: (price * 1e7) as i64,
             available_amount_e7: (available_amount * 1e7) as i64,
+            fee_bps,
+            is_inverse: false,
         }
     }
 
     #[test]
     fn selects_best_executable_direct_venue() {
         let candidates = vec![
-            candidate("amm", "pool1", 1.02, 100.0),
-            candidate("sdex", "offer2", 1.01, 25.0),
-            candidate("sdex", "offer1", 1.00, 75.0),
+            candidate("amm", "pool1", 1.02, 100.0, 30),
+            candidate("sdex", "offer2", 1.01, 25.0, 0),
+            candidate("sdex", "offer1", 1.00, 75.0, 0),
         ];
 
         let (selected, rationale) =

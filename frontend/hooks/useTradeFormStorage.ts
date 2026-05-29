@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { QuoteType } from "@/types";
 
 export const STORAGE_KEY = "stellar-route-trade-form";
 export const DEFAULT_AMOUNT = "";
@@ -9,6 +10,7 @@ export const DEFAULT_DEADLINE = 30;
 export const DEFAULT_FROM_TOKEN = "native";
 export const DEFAULT_TO_TOKEN =
   "USDC:GA5ZSEJYB37JRC5AVCIAZDL2Y343IFRMA2EO3HJWV2XG7H5V5CQRUP7W";
+export const DEFAULT_SIDE: QuoteType = "sell";
 export const SESSION_RECOVERY_THRESHOLD_MS = 60_000;
 
 export interface TradeFormSnapshot {
@@ -17,6 +19,7 @@ export interface TradeFormSnapshot {
   deadline: number;
   fromToken: string;
   toToken: string;
+  side: QuoteType;
   savedAt: number;
 }
 
@@ -45,6 +48,10 @@ function parseSnapshot(raw: string | null): TradeFormSnapshot | null {
       typeof parsed.toToken === "string" && parsed.toToken.length > 0
         ? parsed.toToken
         : DEFAULT_TO_TOKEN;
+    const side =
+      parsed.side === "sell" || parsed.side === "buy"
+        ? parsed.side
+        : DEFAULT_SIDE;
     const savedAt =
       typeof parsed.savedAt === "number" && Number.isFinite(parsed.savedAt)
         ? parsed.savedAt
@@ -56,6 +63,7 @@ function parseSnapshot(raw: string | null): TradeFormSnapshot | null {
       deadline,
       fromToken,
       toToken,
+      side,
       savedAt,
     };
   } catch {
@@ -87,7 +95,8 @@ function isRecoverableSnapshot(snapshot: TradeFormSnapshot | null): boolean {
     snapshot.slippage !== DEFAULT_SLIPPAGE ||
     snapshot.deadline !== DEFAULT_DEADLINE ||
     snapshot.fromToken !== DEFAULT_FROM_TOKEN ||
-    snapshot.toToken !== DEFAULT_TO_TOKEN
+    snapshot.toToken !== DEFAULT_TO_TOKEN ||
+    snapshot.side !== DEFAULT_SIDE
   );
 }
 
@@ -97,6 +106,7 @@ function buildSnapshot(
   deadline: number,
   fromToken: string,
   toToken: string,
+  side: QuoteType,
 ): TradeFormSnapshot {
   return {
     amount,
@@ -104,6 +114,7 @@ function buildSnapshot(
     deadline,
     fromToken,
     toToken,
+    side,
     savedAt: Date.now(),
   };
 }
@@ -119,6 +130,8 @@ export interface UseTradeFormStorageResult {
   setFromToken: (value: string) => void;
   toToken: string;
   setToToken: (value: string) => void;
+  side: QuoteType;
+  setSide: (value: QuoteType) => void;
   setTokenPair: (nextFromToken: string, nextToToken: string) => void;
   pendingRecovery: TradeFormSnapshot | null;
   restorePending: () => void;
@@ -140,6 +153,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
   const [deadline, setDeadlineState] = useState(DEFAULT_DEADLINE);
   const [fromToken, setFromTokenState] = useState(DEFAULT_FROM_TOKEN);
   const [toToken, setToTokenState] = useState(DEFAULT_TO_TOKEN);
+  const [side, setSideState] = useState<QuoteType>(DEFAULT_SIDE);
   const [pendingRecovery, setPendingRecovery] =
     useState<TradeFormSnapshot | null>(null);
   const stateRef = useRef({
@@ -148,6 +162,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
     deadline: DEFAULT_DEADLINE,
     fromToken: DEFAULT_FROM_TOKEN,
     toToken: DEFAULT_TO_TOKEN,
+    side: DEFAULT_SIDE,
   });
 
   useEffect(() => {
@@ -167,6 +182,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
       nextDeadline: number,
       nextFromToken: string,
       nextToToken: string,
+      nextSide: QuoteType,
     ) => {
       const snapshot = buildSnapshot(
         nextAmount,
@@ -174,6 +190,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
         nextDeadline,
         nextFromToken,
         nextToToken,
+        nextSide,
       );
       saveSnapshot(snapshot);
     },
@@ -191,6 +208,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
           stateRef.current.deadline,
           stateRef.current.fromToken,
           stateRef.current.toToken,
+          stateRef.current.side,
         );
       }
     },
@@ -208,6 +226,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
           stateRef.current.deadline,
           stateRef.current.fromToken,
           stateRef.current.toToken,
+          stateRef.current.side,
         );
       }
     },
@@ -225,6 +244,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
           value,
           stateRef.current.fromToken,
           stateRef.current.toToken,
+          stateRef.current.side,
         );
       }
     },
@@ -242,6 +262,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
           stateRef.current.deadline,
           value,
           stateRef.current.toToken,
+          stateRef.current.side,
         );
       }
     },
@@ -258,6 +279,25 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
           stateRef.current.slippage,
           stateRef.current.deadline,
           stateRef.current.fromToken,
+          value,
+          stateRef.current.side,
+        );
+      }
+    },
+    [isHydrated, persist],
+  );
+
+  const setSide = useCallback(
+    (value: QuoteType) => {
+      setSideState(value);
+      stateRef.current.side = value;
+      if (isHydrated) {
+        persist(
+          stateRef.current.amount,
+          stateRef.current.slippage,
+          stateRef.current.deadline,
+          stateRef.current.fromToken,
+          stateRef.current.toToken,
           value,
         );
       }
@@ -278,6 +318,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
           stateRef.current.deadline,
           nextFromToken,
           nextToToken,
+          stateRef.current.side,
         );
       }
     },
@@ -292,12 +333,14 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
     setDeadlineState(pendingRecovery.deadline);
     setFromTokenState(pendingRecovery.fromToken);
     setToTokenState(pendingRecovery.toToken);
+    setSideState(pendingRecovery.side);
     stateRef.current = {
       amount: pendingRecovery.amount,
       slippage: pendingRecovery.slippage,
       deadline: pendingRecovery.deadline,
       fromToken: pendingRecovery.fromToken,
       toToken: pendingRecovery.toToken,
+      side: pendingRecovery.side,
     };
     persist(
       pendingRecovery.amount,
@@ -305,6 +348,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
       pendingRecovery.deadline,
       pendingRecovery.fromToken,
       pendingRecovery.toToken,
+      pendingRecovery.side,
     );
     setPendingRecovery(null);
   }, [pendingRecovery, persist]);
@@ -320,21 +364,23 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
     setDeadlineState(DEFAULT_DEADLINE);
     setFromTokenState(DEFAULT_FROM_TOKEN);
     setToTokenState(DEFAULT_TO_TOKEN);
+    setSideState(DEFAULT_SIDE);
     stateRef.current = {
       amount: DEFAULT_AMOUNT,
       slippage: DEFAULT_SLIPPAGE,
       deadline: DEFAULT_DEADLINE,
       fromToken: DEFAULT_FROM_TOKEN,
       toToken: DEFAULT_TO_TOKEN,
+      side: DEFAULT_SIDE,
     };
     setPendingRecovery(null);
     clearStorage();
   }, []);
 
   const snapshotCurrent = useCallback(() => {
-    const snapshot = buildSnapshot(amount, slippage, deadline, fromToken, toToken);
+    const snapshot = buildSnapshot(amount, slippage, deadline, fromToken, toToken, side);
     return isRecoverableSnapshot(snapshot) ? snapshot : null;
-  }, [amount, deadline, fromToken, slippage, toToken]);
+  }, [amount, deadline, fromToken, slippage, toToken, side]);
 
   return {
     amount,
@@ -347,6 +393,8 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
     setFromToken,
     toToken,
     setToToken,
+    side,
+    setSide,
     setTokenPair,
     pendingRecovery,
     restorePending,

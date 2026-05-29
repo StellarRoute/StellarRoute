@@ -196,6 +196,8 @@ pub struct QuoteResponse {
     pub price: String,
     pub total: String,
     pub quote_type: String,
+    #[serde(default)]
+    pub degraded: bool,
     pub path: Vec<PathStep>,
     /// Unix timestamp (ms) when this quote was generated
     pub timestamp: i64,
@@ -220,6 +222,12 @@ pub struct QuoteResponse {
     /// Freshness metadata about the data sources used to compute this quote
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_freshness: Option<DataFreshness>,
+    /// Market midpoint price (average of best bid and best ask across all venues)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midpoint: Option<String>,
+    /// Market spread in basis points
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<u32>,
 }
 
 /// Prepared quote payload that can be returned without re-serializing on hot paths.
@@ -457,6 +465,12 @@ pub struct PathStep {
     pub to_asset: AssetInfo,
     pub price: String,
     pub source: String, // "sdex" or "amm:{pool_address}"
+    /// Total liquidity depth available at this hop's price
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_depth: Option<String>,
+    /// Fee in basis points for this hop (e.g., 30 for 0.3%)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_bps: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +693,7 @@ mod tests {
             price: "1.0000000".to_string(),
             total: "100.0000000".to_string(),
             quote_type: "sell".to_string(),
+            degraded: false,
             path: vec![PathStep {
                 from_asset: AssetInfo::native(),
                 to_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),

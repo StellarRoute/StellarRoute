@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { WalletProvider, useWallet } from '../wallet-provider';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import * as freighter from '@stellar/freighter-api';
+import { WalletProvider, useWallet } from './wallet-provider';
 import * as walletLib from '@/lib/wallet';
 
 // Mock the wallet library
@@ -10,6 +12,8 @@ vi.mock('@/lib/wallet', () => ({
   disconnectWallet: vi.fn(),
   refreshWalletSession: vi.fn(),
 }));
+
+const mockWalletLib = vi.mocked(walletLib);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,11 +40,14 @@ function TestComponent() {
     reconnect,
     disconnect,
     setAutoReconnectPreferred,
+    isTransactionPending,
+    setTransactionPending,
+    refreshAccount,
   } = useWallet();
 
   return (
     <div>
-      <span data-testid="connected">{String(isConnected)}</span>
+      <span data-testid="connected">{isConnected ? 'Connected' : 'Disconnected'}</span>
       <span data-testid="address">{address ?? "none"}</span>
       <span data-testid="network">{network}</span>
       <span data-testid="walletId">{walletId ?? "none"}</span>
@@ -49,12 +56,26 @@ function TestComponent() {
       <span data-testid="mismatch">{String(networkMismatch)}</span>
       <span data-testid="balance">{stubSpendableBalance ?? "none"}</span>
       <span data-testid="autoReconnect">{String(autoReconnectPreferred)}</span>
+      <span data-testid="transaction-pending">{isTransactionPending ? 'Pending' : 'Not pending'}</span>
+      
+      <button onClick={() => connect("freighter")}>Connect</button>
       <button onClick={() => connect("freighter")}>Connect Freighter</button>
       <button onClick={reconnect}>Reconnect</button>
       <button onClick={disconnect}>Disconnect</button>
       <button onClick={() => setAutoReconnectPreferred(false)}>Disable auto reconnect</button>
       <button onClick={() => setAutoReconnectPreferred(true)}>Enable auto reconnect</button>
+      <button onClick={() => setTransactionPending(true)}>Start Transaction</button>
+      <button onClick={() => setTransactionPending(false)}>End Transaction</button>
+      <button onClick={refreshAccount}>Refresh Account</button>
     </div>
+  );
+}
+
+function renderWithProvider() {
+  return render(
+    <WalletProvider>
+      <TestComponent />
+    </WalletProvider>
   );
 }
 
@@ -362,7 +383,7 @@ describe('WalletProvider Account Switching', () => {
     renderWithProvider();
 
     await waitFor(() => {
-      expect(screen.getByTestId("connected").textContent).toBe("true");
+      expect(screen.getByTestId("connected").textContent).toBe("Connected");
     });
     expect(screen.getByTestId("walletId").textContent).toBe("freighter");
   });
@@ -374,7 +395,7 @@ describe('WalletProvider Account Switching', () => {
     renderWithProvider();
 
     await waitFor(() => {
-      expect(screen.getByTestId("connected").textContent).toBe("false");
+      expect(screen.getByTestId("connected").textContent).toBe("Disconnected");
     });
     expect(freighter.requestAccess).not.toHaveBeenCalled();
   });
@@ -400,7 +421,7 @@ describe('WalletProvider Account Switching', () => {
     await user.click(screen.getByRole("button", { name: "Reconnect" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("connected").textContent).toBe("true");
+      expect(screen.getByTestId("connected").textContent).toBe("Connected");
     });
     expect(screen.getByTestId("walletId").textContent).toBe("freighter");
   });

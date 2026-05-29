@@ -2,6 +2,8 @@
 
 import { AlertTriangle, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +43,7 @@ export function ConfidenceIndicator({
 }: ConfidenceIndicatorProps) {
   const level = getConfidenceLevel(score);
   const isHighVolatility = volatility === "high";
+  const prefersReducedMotion = useReducedMotion();
 
   const config = {
     high: {
@@ -76,8 +79,12 @@ export function ConfidenceIndicator({
             </Badge>
             {isHighVolatility && (
               <Badge
+                data-testid="volatile-badge"
                 variant="outline"
-                className="text-xs bg-warning/10 text-warning border-warning/20 flex items-center gap-1 animate-pulse"
+                className={cn(
+                  'text-xs bg-warning/10 text-warning border-warning/20 flex items-center gap-1',
+                  !prefersReducedMotion && 'animate-pulse'
+                )}
               >
                 <AlertTriangle className="h-3 w-3" />
                 Volatile

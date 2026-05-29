@@ -4,6 +4,10 @@ import { useCallback, useRef, useState } from "react";
 import { useTransactionHistory } from "./useTransactionHistory";
 import { TransactionStatus } from "@/types/transaction";
 import type { PathStep } from "@/types";
+import {
+  dispatchTransactionNotification,
+  type NotificationPreference,
+} from "@/lib/notifications";
 
 export interface TradeParams {
   fromAsset: string;
@@ -44,6 +48,11 @@ interface UseTransactionLifecycleOptions {
    * Signature: (signedXdr: string) => Promise<{ hash: string }>
    */
   submitTransaction?: (signedXdr: string) => Promise<{ hash: string }>;
+  /**
+   * Notification preference — injected to keep the hook testable without a real settings store.
+   * Defaults to { enabled: false } so notifications are opt-in.
+   */
+  notificationPreference?: NotificationPreference;
 }
 
 /** Default stub: simulates a successful wallet signature */
@@ -76,6 +85,7 @@ export function useTransactionLifecycle(
     deadlineMs = 60_000,
     signTransaction = defaultSignTransaction,
     submitTransaction = defaultSubmitTransaction,
+    notificationPreference = { enabled: false },
   } = options;
 
   const [status, setStatus] = useState<TransactionStatus | "review">("review");
@@ -151,6 +161,17 @@ export function useTransactionLifecycle(
         updateTransactionStatus(tempId, "failed", {
           errorMessage: userFacingMsg,
         });
+        dispatchTransactionNotification(
+          {
+            status: "failed",
+            fromAsset: params.fromAsset,
+            fromAmount: params.fromAmount,
+            toAsset: params.toAsset,
+            toAmount: params.toAmount,
+            txId: tempId,
+          },
+          notificationPreference,
+        );
         return;
       }
 
@@ -165,6 +186,17 @@ export function useTransactionLifecycle(
         setStatus((current) => {
           if (current === "submitted") {
             updateTransactionStatus(tempId, "dropped");
+            dispatchTransactionNotification(
+              {
+                status: "dropped",
+                fromAsset: params.fromAsset,
+                fromAmount: params.fromAmount,
+                toAsset: params.toAsset,
+                toAmount: params.toAmount,
+                txId: tempId,
+              },
+              notificationPreference,
+            );
             return "dropped";
           }
           return current;
@@ -181,6 +213,18 @@ export function useTransactionLifecycle(
         setTxHash(hash);
         setStatus("confirmed");
         updateTransactionStatus(tempId, "confirmed", { hash });
+        dispatchTransactionNotification(
+          {
+            status: "confirmed",
+            txHash: hash,
+            fromAsset: params.fromAsset,
+            fromAmount: params.fromAmount,
+            toAsset: params.toAsset,
+            toAmount: params.toAmount,
+            txId: tempId,
+          },
+          notificationPreference,
+        );
       } catch (err: unknown) {
         clearDeadlineTimer();
         if (cancelledRef.current) return;
@@ -190,12 +234,24 @@ export function useTransactionLifecycle(
         setErrorMessage(msg);
         setStatus("failed");
         updateTransactionStatus(tempId, "failed", { errorMessage: msg });
+        dispatchTransactionNotification(
+          {
+            status: "failed",
+            fromAsset: params.fromAsset,
+            fromAmount: params.fromAmount,
+            toAsset: params.toAsset,
+            toAmount: params.toAmount,
+            txId: tempId,
+          },
+          notificationPreference,
+        );
       }
     },
     [
       signTransaction,
       submitTransaction,
       deadlineMs,
+      notificationPreference,
       addTransaction,
       updateTransactionStatus,
       clearDeadlineTimer,

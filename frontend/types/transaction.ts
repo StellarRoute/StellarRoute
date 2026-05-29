@@ -77,3 +77,20 @@ export interface TransactionRecord {
   
   walletAddress: string; // to track history per-wallet
 }
+
+export interface PreSubmitSnapshot {
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  slippage: number;
+  selectedRouteId: string | null;
+}
+
+export interface RollbackTarget {
+  setFromToken: (v: string) => void;
+  setToToken: (v: string) => void;
+  setFromAmount: (v: string) => void;
+  setSlippage: (v: number) => void;
+  setSelectedRoute: (id: string | null) => void;
+  refreshQuote: () => void;
+}

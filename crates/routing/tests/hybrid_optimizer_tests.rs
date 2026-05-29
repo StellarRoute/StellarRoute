@@ -184,6 +184,7 @@ fn test_policy_constraints() {
         max_impact_bps: 10,     // Very low impact tolerance
         max_compute_time_ms: 1, // Very low time tolerance
         environment: "restrictive".to_string(),
+        scorer: None,
     };
 
     optimizer.add_policy(restrictive_policy).unwrap();
@@ -216,6 +217,7 @@ fn test_custom_policy() {
         max_impact_bps: 1000,
         max_compute_time_ms: 50,
         environment: "latency_first".to_string(),
+        scorer: None,
     };
 
     optimizer.add_policy(latency_first_policy).unwrap();

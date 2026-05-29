@@ -1,11 +1,9 @@
-import { createContext, useContext, ReactNode, useState } from 'react';
-
-interface WalletContextType {
 'use client';
 
 import * as React from 'react';
 import { toast } from 'sonner';
-
+import { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 import {
   connectWallet,
   disconnectWallet,
@@ -42,9 +40,12 @@ interface WalletContextValue {
   accountSwitchState: AccountSwitchState;
   isTransactionPending: boolean;
   setTransactionPending: (pending: boolean) => void;
+  syncMismatch: boolean;
+  resyncWallet: () => Promise<void>;
+  dismissSyncMismatch: () => void;
 }
 
-const WalletContext = createContext<WalletContextType | undefined>(undefined);
+const WalletContext = createContext<WalletContextValue | undefined>(undefined);
 
 const AUTO_RECONNECT_PREFERENCE_KEY = 'stellarroute.wallet.autoReconnect';
 const LAST_WALLET_ID_KEY = 'stellarroute.wallet.lastWalletId';
@@ -68,6 +69,12 @@ export function WalletProvider({
   const [error, setError] = React.useState<WalletError | null>(null);
   const [autoReconnectPreferred, setAutoReconnectPreferredState] = React.useState(true);
   const [didLoadReconnectPreference, setDidLoadReconnectPreference] = React.useState(false);
+  const [accountSwitchState, setAccountSwitchState] = React.useState<AccountSwitchState>({
+    isDetecting: false,
+    hasChanged: false,
+    previousAddress: null,
+  });
+  const [isTransactionPending, setIsTransactionPending] = React.useState(false);
   const didAttemptInitialReconnect = React.useRef(false);
   const reconnectThrottleUntilMs = React.useRef(0);
 
@@ -145,7 +152,7 @@ export function WalletProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [setLastWalletId]);
+  }, [setLastWalletId, isTransactionPending]);
 
   const reconnect = React.useCallback(async () => {
     if (typeof window === 'undefined') {
@@ -267,6 +274,90 @@ export function WalletProvider({
     };
   }, [autoReconnectPreferred, isConnected, isLoading, reconnect]);
 
+  const [syncMismatch, setSyncMismatch] = React.useState(false);
+
+  const addressRef = React.useRef(address);
+  const walletIdRef = React.useRef(walletId);
+
+  React.useEffect(() => {
+    addressRef.current = address;
+  }, [address]);
+
+  React.useEffect(() => {
+    walletIdRef.current = walletId;
+  }, [walletId]);
+
+  // Persist wallet state to localStorage
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (address) {
+      window.localStorage.setItem('stellarroute.wallet.address', address);
+    } else {
+      window.localStorage.removeItem('stellarroute.wallet.address');
+    }
+  }, [address]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (walletId) {
+      window.localStorage.setItem('stellarroute.wallet.walletId', walletId);
+    } else {
+      window.localStorage.removeItem('stellarroute.wallet.walletId');
+    }
+  }, [walletId]);
+
+  // Listen for storage events from other tabs
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (
+        e.key === 'stellarroute.wallet.address' ||
+        e.key === 'stellarroute.wallet.walletId'
+      ) {
+        const storedAddress = window.localStorage.getItem('stellarroute.wallet.address');
+        const storedWalletId = window.localStorage.getItem('stellarroute.wallet.walletId') as SupportedWallet | null;
+
+        const currentAddress = addressRef.current;
+        const currentWalletId = walletIdRef.current;
+
+        if (storedAddress !== currentAddress || storedWalletId !== currentWalletId) {
+          setSyncMismatch(true);
+        } else {
+          setSyncMismatch(false);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  const resyncWallet = React.useCallback(async () => {
+    if (typeof window === 'undefined') return;
+
+    if (isTransactionPending) {
+      setError({ message: 'Cannot resync wallet during a pending transaction' });
+      return;
+    }
+
+    const storedAddress = window.localStorage.getItem('stellarroute.wallet.address');
+    const storedWalletId = window.localStorage.getItem('stellarroute.wallet.walletId') as SupportedWallet | null;
+
+    if (storedWalletId && storedAddress) {
+      await connect(storedWalletId);
+    } else {
+      disconnect();
+    }
+    setSyncMismatch(false);
+  }, [connect, disconnect, isTransactionPending]);
+
+  const dismissSyncMismatch = React.useCallback(() => {
+    setSyncMismatch(false);
+  }, []);
+
   const networkMismatch = isConnected && walletNetwork !== null && walletNetwork !== network;
   const stubSpendableBalance = isConnected ? '10000.0000000' : null;
 
@@ -294,6 +385,9 @@ export function WalletProvider({
     setTransactionPending: React.useCallback((pending: boolean) => {
       setIsTransactionPending(pending);
     }, []),
+    syncMismatch,
+    resyncWallet,
+    dismissSyncMismatch,
   };
 
   return (

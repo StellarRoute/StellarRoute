@@ -200,6 +200,7 @@ async fn broadcaster_loop(
                     price: format!("{:.7}", price),
                     total: format!("{:.7}", amount * price),
                     quote_type: "sell".to_string(),
+                    degraded: false,
                     path,
                     timestamp,
                     expires_at: None,
@@ -395,14 +396,16 @@ async fn find_best_price(
     let rows = sqlx::query(
         r#"
         select
-            venue_type,
-            venue_ref,
-            price::text as price,
-            available_amount::text as available_amount
-        from normalized_liquidity
+            nl.venue_type,
+            nl.venue_ref,
+            nl.price::text as price,
+            nl.available_amount::text as available_amount,
+            coalesce(amm.fee_bps, 0)::integer as fee_bps
+        from normalized_liquidity nl
+        left join amm_pool_reserves amm on nl.venue_type = 'amm' and nl.venue_ref = amm.pool_address
         where selling_asset_id = $1
           and buying_asset_id = $2
-        order by price asc, venue_type asc, venue_ref asc
+        order by nl.price asc, nl.venue_type asc, nl.venue_ref asc
         "#,
     )
     .bind(base_id)
@@ -414,7 +417,7 @@ async fn find_best_price(
         return Err(ApiError::NoRouteFound);
     }
 
-    let mut candidates: Vec<(String, String, f64, f64)> = rows
+    let mut candidates: Vec<(String, String, f64, f64, u32)> = rows
         .into_iter()
         .map(|row| {
             let venue_type: String = row.get("venue_type");
@@ -424,7 +427,8 @@ async fn find_best_price(
                 .get::<String, _>("available_amount")
                 .parse()
                 .unwrap_or(0.0);
-            (venue_type, venue_ref, price, available)
+            let fee_bps: i32 = row.get("fee_bps");
+            (venue_type, venue_ref, price, available, fee_bps as u32)
         })
         .collect();
 
@@ -438,7 +442,7 @@ async fn find_best_price(
 
     let compared_venues: Vec<VenueEvaluation> = candidates
         .iter()
-        .map(|(vt, vr, price, avail)| VenueEvaluation {
+        .map(|(vt, vr, price, avail, _)| VenueEvaluation {
             source: format!("{}:{}", vt, vr),
             price: format!("{:.7}", price),
             available_amount: format!("{:.7}", avail),
@@ -448,11 +452,11 @@ async fn find_best_price(
 
     let selected = candidates
         .iter()
-        .find(|(_, _, price, avail)| *avail >= amount && *price > 0.0)
+        .find(|(_, _, price, avail, _)| *avail >= amount && *price > 0.0)
         .cloned()
         .ok_or(ApiError::NoRouteFound)?;
 
-    let (venue_type, venue_ref, price, _) = selected;
+    let (venue_type, venue_ref, price, avail, fee_bps) = selected;
     let source = if venue_type == "amm" {
         format!("amm:{}", venue_ref)
     } else {
@@ -465,6 +469,8 @@ async fn find_best_price(
         to_asset: asset_path_to_info(quote),
         price: format!("{:.7}", price),
         source,
+        liquidity_depth: Some(format!("{:.7}", avail)),
+        fee_bps: Some(fee_bps),
     }];
 
     let rationale = QuoteRationaleMetadata {

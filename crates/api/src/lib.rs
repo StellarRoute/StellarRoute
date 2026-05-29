@@ -3,7 +3,9 @@
 //! Provides REST API endpoints for price quotes and orderbook data.
 
 pub mod audit;
+pub mod budget;
 pub mod cache;
+pub mod dependency_health;
 pub mod docs;
 pub mod error;
 pub mod exactlyonce;
@@ -15,11 +17,15 @@ pub mod load_test;
 pub mod metrics;
 pub mod middleware;
 pub mod models;
+pub mod ordering;
+pub mod reconciliation;
 pub mod regions;
 pub mod replay;
 pub mod routes;
+pub mod serialization;
 pub mod server;
 pub mod shutdown;
+pub mod simulation;
 pub mod state;
 pub mod telemetry;
 pub mod tracing_config;

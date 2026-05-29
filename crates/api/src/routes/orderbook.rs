@@ -28,9 +28,48 @@ use crate::{
     ),
     responses(
         (status = 200, description = "Orderbook data", body = OrderbookResponse),
-        (status = 400, description = "Invalid asset", body = ErrorResponse),
-        (status = 404, description = "Asset not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse),
+        (
+            status = 400,
+            description = "Invalid asset",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "invalid_asset",
+                    "message": "Invalid base asset: unknown asset format"
+                }
+            })
+        ),
+        (
+            status = 404,
+            description = "Asset not found",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "not_found",
+                    "message": "Asset not found in orderbook"
+                }
+            })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = crate::models::ErrorResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1740312000000_i64,
+                "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+                "data": {
+                    "error": "internal_error",
+                    "message": "An internal error occurred"
+                }
+            })
+        ),
     )
 )]
 pub async fn get_orderbook(

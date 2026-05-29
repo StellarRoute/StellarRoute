@@ -16,6 +16,8 @@ export function useSwapState() {
     setFromToken,
     toToken,
     setToToken,
+    side,
+    setSide,
     setTokenPair,
     pendingRecovery,
     restorePending,
@@ -34,7 +36,7 @@ export function useSwapState() {
     fromToken,
     toToken,
     amount: parsedAmount,
-    type: 'sell',
+    type: side,
   });
 
   const switchTokens = useCallback(() => {
@@ -60,6 +62,8 @@ export function useSwapState() {
     fromAmount,
     setFromAmount,
     toAmount: quote.outputAmount > 0 ? quote.outputAmount.toString() : '',
+    side,
+    setSide,
     slippage,
     setSlippage,
     deadline,

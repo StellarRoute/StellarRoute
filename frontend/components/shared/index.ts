@@ -10,3 +10,5 @@ export { QuoteCard } from './QuoteCard';
 export { RouteRow } from './RouteRow';
 export { SlippageControl } from './SlippageControl';
 export { ExplorerLink } from './ExplorerLink';
+export { WalletSyncBanner } from './WalletSyncBanner';
+

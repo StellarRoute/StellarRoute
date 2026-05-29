@@ -25,6 +25,9 @@ pub struct LiquidityCandidate {
     pub price: String,
     /// Available amount as a 7-decimal string
     pub available_amount: String,
+    /// Fee in basis points (optional, present for AMM)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_bps: Option<u32>,
 }
 
 /// Snapshot of the `HealthScoringConfig` values used during the original quote.

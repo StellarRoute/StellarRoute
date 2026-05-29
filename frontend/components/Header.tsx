@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
 import { WalletButton } from "@/components/shared/wallet-button";
+import { NotificationInbox } from "@/components/NotificationInbox";
 
 export function Header() {
   return (
@@ -29,6 +30,7 @@ export function Header() {
               History
             </Link>
 
+            <NotificationInbox />
             <WalletButton />
             <ThemeToggle />
           </nav>

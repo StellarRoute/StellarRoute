@@ -389,6 +389,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Horizon API Reference**: https://developers.stellar.org/api/horizon
 - **Project Roadmap**: [Roadmap.md](Roadmap.md)
 - **Development Setup**: [docs/development/SETUP.md](docs/development/SETUP.md)
+- **API Documentation**: [docs/api/](docs/api/)
+  - [WebSocket Quote Stream](docs/api/websocket.md)
+  - [REST API Routes](docs/api/routes_endpoint.md)
+  - [Error Taxonomy](docs/api/error_taxonomy.md)
 - **TypeScript SDK Quickstart**: [sdk-js/README.md](sdk-js/README.md)
 - **TypeScript SDK API Docs**: [docs/sdk-js/api](docs/sdk-js/api)
 

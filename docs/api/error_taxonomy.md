@@ -42,3 +42,15 @@ The JS SDK (`@stellarroute/sdk-js`) maps these codes to the `StellarRouteApiErro
 | `isNotFound()` | `status === 404 \|\| code === 'not_found'` |
 | `isRateLimited()` | `status === 429 \|\| code === 'rate_limit_exceeded'` |
 | `isValidationError()` | `status === 400 \|\| ['validation_error', 'invalid_asset'].includes(code)` |
+
+## WebSocket Errors
+
+WebSocket endpoints use the same error codes as REST endpoints, plus additional WebSocket-specific codes:
+
+| Code | Description |
+|------|-------------|
+| `unknown_action` | The `action` field in a client message is not recognized. |
+| `invalid_subscription` | Subscription object is malformed or missing required fields. |
+| `too_many_subscriptions` | Connection has reached the maximum subscriptions per connection limit. |
+
+See [WebSocket Quote Stream API](websocket.md) for complete WebSocket protocol documentation and error handling guidance.

@@ -163,6 +163,8 @@ Every code contribution **must** include appropriate tests.
 
 ### Running Tests
 
+For the full matrix of Rust, contract, integration, benchmark, and frontend Vitest guidance, see [docs/development/testing-guide.md](docs/development/testing-guide.md).
+
 ```bash
 # All unit tests (no external deps needed)
 cargo test

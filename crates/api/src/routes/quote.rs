@@ -570,7 +570,7 @@ pub(crate) async fn get_quote_inner(
     // Use single-flight to coalesce identical concurrent requests
     let result_arc: Arc<crate::error::Result<(PreparedQuoteResponse, bool)>> = state
         .quote_single_flight
-        .execute(&quote_cache_key, || async move {
+        .execute_with_label(&quote_cache_key, "quote", || async move {
             let state = state_c;
             let base = base_c;
             let quote = quote_c;

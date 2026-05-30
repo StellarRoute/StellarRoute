@@ -87,6 +87,14 @@ lazy_static! {
     )
     .expect("Can't create SINGLE_FLIGHT_COALESCED counter");
 
+    /// Total single-flight unique leader computations (requests that executed the work)
+    pub static ref SINGLE_FLIGHT_UNIQUE: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_single_flight_unique_total",
+        "Total requests that became single-flight leaders and performed the compute",
+        &["type"]
+    )
+    .expect("Can't create SINGLE_FLIGHT_UNIQUE counter");
+
     // ── Priority queue metrics ────────────────────────────────────────────
 
     /// Total jobs submitted to the priority queue, labelled by priority band.
@@ -232,6 +240,13 @@ pub fn record_adaptive_timeout(timeout_ms: u64, ema_ms: u64, environment: &str) 
 /// Record a single-flight coalesced request.
 pub fn record_single_flight_coalesced(request_type: &str) {
     SINGLE_FLIGHT_COALESCED
+        .with_label_values(&[request_type])
+        .inc();
+}
+
+/// Record a single-flight unique leader computation.
+pub fn record_single_flight_unique(request_type: &str) {
+    SINGLE_FLIGHT_UNIQUE
         .with_label_values(&[request_type])
         .inc();
 }

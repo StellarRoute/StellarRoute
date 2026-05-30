@@ -20,7 +20,10 @@ pub mod diff;
 pub mod engine;
 pub mod redactor;
 
-pub use artifact::{ArtifactSummary, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact};
+pub use artifact::{
+	ArtifactSummary, DecisionGraphNode, DecisionGraphSnapshot, HealthConfigSnapshot,
+	LiquidityCandidate, ReplayArtifact,
+};
 pub use capture::CaptureHook;
 pub use diff::{DiffEngine, DiffReport, FieldDivergence};
 pub use engine::{ReplayEngine, ReplayOutput};

@@ -80,6 +80,22 @@ impl DiffEngine {
             });
         }
 
+        // ── rationale.compared_venues ───────────────────────────────────────
+        let orig_compared = orig
+            .get("rationale")
+            .and_then(|r| r.get("compared_venues"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let replay_compared = serde_json::to_value(&replay.compared_venues)
+            .unwrap_or(serde_json::Value::Null);
+        if orig_compared != serde_json::Value::Null && orig_compared != replay_compared {
+            divergences.push(FieldDivergence {
+                field: "rationale.compared_venues".to_string(),
+                original: orig_compared,
+                replayed: replay_compared,
+            });
+        }
+
         // ── path[0].source ───────────────────────────────────────────────────
         let orig_path_source = orig
             .get("path")
@@ -142,7 +158,8 @@ mod tests {
     use super::*;
     use crate::models::{AssetInfo, PathStep};
     use crate::replay::artifact::{
-        HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION,
+        DecisionGraphSnapshot, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact,
+        CURRENT_SCHEMA_VERSION,
     };
     use chrono::Utc;
     use proptest::prelude::*;
@@ -163,8 +180,9 @@ mod tests {
                 venue_ref: "offer1".to_string(),
                 price: price.to_string(),
                 available_amount: "100.0000000".to_string(),
-                fee_bps: None,
+                fee_bps: Some(0),
             }],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -188,9 +206,8 @@ mod tests {
                 to_asset: AssetInfo::native(),
                 price: price.to_string(),
                 source: source.to_string(),
-                liquidity_depth: None,
-                fee_bps: None,
             }],
+            compared_venues: vec![],
             is_deterministic: true,
             replayed_at: Utc::now(),
         }

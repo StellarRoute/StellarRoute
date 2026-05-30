@@ -3,10 +3,10 @@ use arc_swap::ArcSwap;
 use sqlx::{postgres::PgListener, PgPool, Row};
 use std::sync::Arc;
 use stellarroute_routing::health::anomaly::LiquidityAnomalyDetector;
+use stellarroute_routing::pathfinder::LiquidityEdge;
 use tracing::{debug, error, info, warn};
 
 use stellarroute_routing::compaction::CompactedGraph;
-use stellarroute_routing::pathfinder::LiquidityEdge;
 
 /// Daemon that maintains an active in-memory cache of the routing graph
 pub struct GraphManager {

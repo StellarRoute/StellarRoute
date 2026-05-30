@@ -40,9 +40,9 @@ pub struct TraceContext {
 impl TraceContext {
     pub fn current() -> Self {
         let span = Span::current();
-        let ctx = span.context();
-        let span_ref = ctx.span();
-        let span_ctx = span_ref.span_context();
+        let otel_ctx = span.context();
+        let otel_span = otel_ctx.span();
+        let span_ctx = otel_span.span_context();
 
         Self {
             trace_id: span_ctx.trace_id().to_string(),

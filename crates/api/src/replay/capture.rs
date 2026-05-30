@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use crate::models::QuoteResponse;
 use crate::replay::artifact::{
-    HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION,
+    DecisionGraphSnapshot, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact,
+    CURRENT_SCHEMA_VERSION,
 };
 use crate::replay::Redactor;
 
@@ -55,6 +56,7 @@ impl CaptureHook {
     /// * `slippage_bps` – slippage tolerance
     /// * `quote_type` – `"sell"` or `"buy"`
     /// * `liquidity_snapshot` – all candidates fetched from `normalized_liquidity`
+    /// * `decision_graph` – all intermediate quote decision nodes captured live
     /// * `health_config` – health scoring config snapshot used during computation
     /// * `response` – the `QuoteResponse` produced by the live pipeline
     /// * `incident_id` – optional incident label
@@ -67,6 +69,7 @@ impl CaptureHook {
         slippage_bps: u32,
         quote_type: &str,
         liquidity_snapshot: Vec<LiquidityCandidate>,
+        decision_graph: DecisionGraphSnapshot,
         health_config: HealthConfigSnapshot,
         response: &QuoteResponse,
         incident_id: Option<String>,
@@ -95,6 +98,7 @@ impl CaptureHook {
             slippage_bps,
             quote_type: quote_type.to_string(),
             liquidity_snapshot,
+            decision_graph,
             health_config_snapshot: health_config,
             original_output,
         };
@@ -143,8 +147,6 @@ mod tests {
                 to_asset: AssetInfo::native(),
                 price: "1.0000000".to_string(),
                 source: "sdex".to_string(),
-                liquidity_depth: None,
-                fee_bps: None,
             }],
             timestamp: 0,
             expires_at: None,
@@ -158,8 +160,6 @@ mod tests {
                 stale_count: 0,
                 max_staleness_secs: 0,
             }),
-            midpoint: None,
-            spread_bps: None,
         }
     }
 
@@ -169,8 +169,17 @@ mod tests {
             venue_ref: "offer1".to_string(),
             price: "1.0000000".to_string(),
             available_amount: "100.0000000".to_string(),
-            fee_bps: None,
+            fee_bps: Some(0),
         }]
+    }
+
+    fn make_decision_graph() -> crate::replay::artifact::DecisionGraphSnapshot {
+        crate::replay::artifact::DecisionGraphSnapshot {
+            nodes: vec![crate::replay::artifact::DecisionGraphNode {
+                stage: "fetch_candidates".to_string(),
+                payload: serde_json::json!({"count": 1}),
+            }],
+        }
     }
 
     fn make_health_config() -> HealthConfigSnapshot {
@@ -241,6 +250,7 @@ mod tests {
     fn artifact_fields_are_correct() {
         let response = make_response();
         let snapshot = make_snapshot();
+        let decision_graph = make_decision_graph();
         let health = make_health_config();
 
         let original_output = serde_json::to_value(&response).expect("serialize");
@@ -256,6 +266,7 @@ mod tests {
             slippage_bps: 50,
             quote_type: "sell".to_string(),
             liquidity_snapshot: snapshot,
+            decision_graph,
             health_config_snapshot: health,
             original_output,
         };

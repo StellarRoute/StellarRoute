@@ -39,6 +39,21 @@ pub struct HealthConfigSnapshot {
     pub min_tvl_threshold_e7: i128,
 }
 
+/// One captured node in the quote decision graph.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DecisionGraphNode {
+    /// Stable stage key (e.g. "fetch_candidates", "freshness_eval").
+    pub stage: String,
+    /// Stage payload with deterministic ordering baked in by the caller.
+    pub payload: serde_json::Value,
+}
+
+/// Full quote decision graph snapshot captured during live execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DecisionGraphSnapshot {
+    pub nodes: Vec<DecisionGraphNode>,
+}
+
 /// A stored, redacted snapshot of a single quote computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplayArtifact {
@@ -65,6 +80,8 @@ pub struct ReplayArtifact {
     // ── Snapshots ───────────────────────────────────────────────────────────
     /// All liquidity candidates queried from `normalized_liquidity` at capture time.
     pub liquidity_snapshot: Vec<LiquidityCandidate>,
+    /// Full decision graph emitted by the quote pipeline.
+    pub decision_graph: DecisionGraphSnapshot,
     /// Health scoring configuration used during the original computation.
     pub health_config_snapshot: HealthConfigSnapshot,
     /// The full `QuoteResponse` produced by the live pipeline (asset_issuer redacted).
@@ -231,8 +248,9 @@ mod tests {
                 venue_ref: "offer1".to_string(),
                 price: "1.0000000".to_string(),
                 available_amount: "100.0000000".to_string(),
-                fee_bps: None,
+                fee_bps: Some(0),
             }],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -276,7 +294,7 @@ mod tests {
                 venue_ref,
                 price: format!("{:.7}", price_int as f64 / 1_000_000.0),
                 available_amount: format!("{:.7}", amount_int as f64 / 1_000_000.0),
-                fee_bps: None,
+                fee_bps: Some(0),
             }
         }
     }
@@ -303,6 +321,7 @@ mod tests {
                 slippage_bps: 50,
                 quote_type: "sell".to_string(),
                 liquidity_snapshot: candidates,
+                decision_graph: DecisionGraphSnapshot::default(),
                 health_config_snapshot: HealthConfigSnapshot {
                     freshness_threshold_secs_sdex: 30,
                     freshness_threshold_secs_amm: 60,

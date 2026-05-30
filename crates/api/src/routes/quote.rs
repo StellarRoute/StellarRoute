@@ -142,11 +142,8 @@ pub async fn get_quote(
         )
         .await
         {
-            Ok((prepared, cache_hit)) => {
-                let quote_resp = match prepared.into_quote() {
-                    Ok(q) => q,
-                    Err(e) => return Err(e),
-                };
+            Ok((quote_resp, cache_hit)) => {
+                let quote_resp = quote_resp.into_quote()?;
                 let error_class = "none";
                 let latency_ms = start_time.elapsed().as_millis() as u64;
 
@@ -425,6 +422,7 @@ pub async fn get_batch_quotes(
                         .quote_type
                         .unwrap_or(crate::models::request::QuoteType::Sell),
                     explain: None,
+                    fields: None,
                 };
 
                 let base_asset = match AssetPath::parse(&item.base) {
@@ -453,8 +451,8 @@ pub async fn get_batch_quotes(
                 };
 
                 match get_quote_inner(state, base_asset, quote_asset, params, false).await {
-                    Ok((prepared, _cache_hit)) => match prepared.into_quote() {
-                        Ok(q) => BatchQuoteItemResult::ok(i, q),
+                    Ok((quote, _cache_hit)) => match quote.into_quote() {
+                        Ok(decoded) => BatchQuoteItemResult::ok(i, decoded),
                         Err(e) => {
                             let (code, message) = batch_error_from_api_error(&e);
                             BatchQuoteItemResult::err(i, BatchItemError { code, message })
@@ -644,7 +642,7 @@ pub(crate) async fn get_quote_inner(
     }
 }
 
-pub async fn compute_quote_response(
+async fn compute_quote_response(
     state: Arc<AppState>,
     base_asset: AssetPath,
     quote_asset: AssetPath,
@@ -681,6 +679,7 @@ pub async fn compute_quote_response(
         api_diagnostics,
         freshness_outcome,
         fresh_timestamps,
+        decision_graph,
         liquidity_snapshot,
         midpoint,
         spread_bps,
@@ -748,6 +747,7 @@ pub async fn compute_quote_response(
             params.slippage_bps(),
             quote_type_str,
             liquidity_snapshot,
+            decision_graph,
             health_config,
             &response,
             None,
@@ -808,7 +808,7 @@ pub async fn get_route(
     let quote_id = find_asset_id(&state, &quote_asset).await?;
 
     // For route endpoint, we reuse the same logic but return a simplified response
-    let (_, path, _, _, _, _, _, _, _) =
+    let (_, path, _, _, _, _, _, _, _, _) =
         find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await?;
 
     let response = crate::models::RouteResponse {
@@ -832,6 +832,7 @@ type FindBestPriceResult = (
     ApiExclusionDiagnostics,
     FreshnessOutcome,
     Vec<chrono::DateTime<chrono::Utc>>,
+    crate::replay::artifact::DecisionGraphSnapshot,
     Vec<crate::replay::artifact::LiquidityCandidate>, // snapshot for replay capture
     Option<f64>, // midpoint
     Option<u32>, // spread_bps
@@ -857,6 +858,7 @@ async fn find_best_price(
 ) -> Result<FindBestPriceResult> {
     // Initialize budget tracker for per-stage timing enforcement
     let mut budget_tracker = BudgetTracker::new(BudgetConfig::realtime());
+    let mut decision_nodes: Vec<crate::replay::artifact::DecisionGraphNode> = Vec::new();
 
     // Stage 1: Fetch candidates from data sources
     let health_score = state.calculate_health_score().await;
@@ -872,10 +874,11 @@ async fn find_best_price(
     );
 
     let fetch_result = fetch_guard.complete();
-    budget_tracker.record(PipelineStage::FetchCandidates, fetch_result.clone());
+    let fetch_duration = fetch_result.duration();
+    budget_tracker.record(PipelineStage::FetchCandidates, fetch_result);
     state
         .timeout_controller
-        .record_latency(fetch_result.duration());
+        .record_latency(fetch_duration);
 
     // Record metrics
     crate::metrics::record_adaptive_timeout(
@@ -919,6 +922,20 @@ async fn find_best_price(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.venue_type.cmp(&b.venue_type))
             .then_with(|| a.venue_ref.cmp(&b.venue_ref))
+    });
+
+    decision_nodes.push(crate::replay::artifact::DecisionGraphNode {
+        stage: "fetch_candidates".to_string(),
+        payload: serde_json::json!({
+            "direct_candidates": sorted_direct.iter().map(|c| serde_json::json!({
+                "venue_type": c.venue_type,
+                "venue_ref": c.venue_ref,
+                "price": c.price,
+                "available_amount": c.available_amount,
+                "fee_bps": c.fee_bps,
+            })).collect::<Vec<_>>(),
+            "inverse_count": inverse_candidates.len(),
+        }),
     });
 
     // Calculate market midpoint and spread across all fresh venues (Req 5.1)
@@ -981,6 +998,15 @@ async fn find_best_price(
     let freshness_outcome =
         FreshnessGuard::evaluate(&scorer_inputs, &health_config.freshness_threshold_secs, now);
     budget_tracker.record(PipelineStage::FreshnessEval, freshness_guard.complete());
+
+    decision_nodes.push(crate::replay::artifact::DecisionGraphNode {
+        stage: "freshness_eval".to_string(),
+        payload: serde_json::json!({
+            "fresh_venue_refs": freshness_outcome.fresh.iter().filter_map(|&idx| direct_candidates.get(idx).map(|c| c.venue_ref.clone())).collect::<Vec<_>>(),
+            "stale_venue_refs": freshness_outcome.stale.iter().filter_map(|&idx| direct_candidates.get(idx).map(|c| c.venue_ref.clone())).collect::<Vec<_>>(),
+            "max_staleness_secs": freshness_outcome.max_staleness_secs,
+        }),
+    });
 
     if freshness_outcome.fresh.is_empty() {
         state.cache_metrics.inc_stale_rejection();
@@ -1048,6 +1074,21 @@ async fn find_best_price(
         health_scoring_guard.complete(),
     );
 
+    decision_nodes.push(crate::replay::artifact::DecisionGraphNode {
+        stage: "health_scoring".to_string(),
+        payload: serde_json::json!(
+            scored.iter().map(|s| serde_json::json!({
+                "venue_ref": s.venue_ref,
+                "venue_type": match s.venue_type {
+                    VenueType::Sdex => "sdex",
+                    VenueType::Amm => "amm",
+                },
+                "score": s.record.score,
+                "signals": s.record.signals,
+            })).collect::<Vec<_>>()
+        ),
+    });
+
     let mut overrides = state.kill_switch.get_override_registry().await;
     // Merge static config overrides into dynamic ones
     for entry in health_config.overrides.clone() {
@@ -1068,6 +1109,16 @@ async fn find_best_price(
     let filter = GraphFilter::new(&policy);
     let (_, routing_diagnostics) = filter.filter_edges(&[], &scored);
     budget_tracker.record(PipelineStage::PolicyFilter, policy_filter_guard.complete());
+
+    decision_nodes.push(crate::replay::artifact::DecisionGraphNode {
+        stage: "policy_filter".to_string(),
+        payload: serde_json::json!({
+            "excluded_venues": routing_diagnostics.excluded_venues.iter().map(|v| serde_json::json!({
+                "venue_ref": v.venue_ref,
+                "reason": format!("{:?}", v.reason),
+            })).collect::<Vec<_>>(),
+        }),
+    });
 
     tracing::info!(
         stage = "policy_filter",
@@ -1117,6 +1168,34 @@ async fn find_best_price(
         venue_selection_guard.complete(),
     );
 
+    decision_nodes.push(crate::replay::artifact::DecisionGraphNode {
+        stage: "venue_selection_input".to_string(),
+        payload: serde_json::json!(
+            rationale.compared_venues.iter().map(|v| {
+                let parts: Vec<&str> = v.source.splitn(2, ':').collect();
+                let (venue_type, venue_ref) = if parts.len() == 2 {
+                    (parts[0], parts[1])
+                } else {
+                    ("sdex", "")
+                };
+                serde_json::json!({
+                    "venue_type": venue_type,
+                    "venue_ref": venue_ref,
+                    "price": v.price.parse::<f64>().unwrap_or(0.0),
+                    "available_amount": v.available_amount.parse::<f64>().unwrap_or(0.0),
+                    "fee_bps": if venue_type == "amm" { selected.fee_bps } else { 0 },
+                    "executable": v.executable,
+                })
+            }).collect::<Vec<_>>()
+        ),
+    });
+    decision_nodes.push(crate::replay::artifact::DecisionGraphNode {
+        stage: "venue_selection_result".to_string(),
+        payload: serde_json::json!({
+            "selected_source": rationale.selected_source,
+        }),
+    });
+
     // Finalize budget tracking
     let budget_summary = budget_tracker.finish();
     if budget_summary.has_overruns() {
@@ -1162,6 +1241,9 @@ async fn find_best_price(
         api_diagnostics,
         freshness_outcome,
         fresh_timestamps,
+        crate::replay::artifact::DecisionGraphSnapshot {
+            nodes: decision_nodes,
+        },
         liquidity_snapshot,
         midpoint,
         spread_bps,
@@ -1522,9 +1604,9 @@ mod tests {
     #[test]
     fn tie_break_is_deterministic_by_venue_then_ref() {
         let candidates = vec![
-            candidate("sdex", "offer2", 1.0, 100.0, 0),
-            candidate("amm", "pool1", 1.0, 100.0, 30),
-            candidate("sdex", "offer1", 1.0, 100.0, 0),
+            candidate("sdex", "offer2", 1.0, 100.0),
+            candidate("amm", "pool1", 1.0, 100.0),
+            candidate("sdex", "offer1", 1.0, 100.0),
         ];
 
         let (selected, rationale) =
@@ -1548,8 +1630,8 @@ mod tests {
     #[test]
     fn insufficient_liquidity_returns_no_route() {
         let candidates = vec![
-            candidate("amm", "pool1", 1.0, 5.0, 30),
-            candidate("sdex", "offer1", 0.99, 2.0, 0),
+            candidate("amm", "pool1", 1.0, 5.0),
+            candidate("sdex", "offer1", 0.99, 2.0),
         ];
 
         let result = evaluate_single_hop_direct_venues(candidates, 10.0);
@@ -1647,7 +1729,7 @@ mod tests {
         // The stale candidate has been excluded by freshness filtering before this call.
         // Only the fresh-but-low-liquidity candidate reaches evaluate_single_hop_direct_venues.
         let fresh_candidates = vec![
-            candidate("sdex", "offer_fresh", 1.0, 5.0, 0), // fresh but only 5 units available
+            candidate("sdex", "offer_fresh", 1.0, 5.0), // fresh but only 5 units available
         ];
         // Request 100 units — exceeds the fresh candidate's available_amount.
         let result = evaluate_single_hop_direct_venues(fresh_candidates, 100.0);
@@ -1669,8 +1751,8 @@ mod tests {
     fn mixed_freshness_with_sufficient_fresh_liquidity_succeeds() {
         // Stale candidate already filtered out; only these fresh candidates remain.
         let fresh_candidates = vec![
-            candidate("amm", "pool_fresh", 1.05, 200.0, 30),
-            candidate("sdex", "offer_fresh", 1.02, 150.0, 0),
+            candidate("amm", "pool_fresh", 1.05, 200.0),
+            candidate("sdex", "offer_fresh", 1.02, 150.0),
         ];
         let amount = 100.0;
 

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, ChevronDown, Info } from 'lucide-react';
+import { ArrowDown, ArrowRight, ChevronDown, Info, AlertCircle } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,9 @@ export interface AlternativeRoute {
   id: string;
   venue: string;
   expectedAmount: string;
+  score?: number;
+  impactBps?: number;
+  hopCount?: number;
   hops?: Array<{
     id: string;
     fromAsset: string;
@@ -32,6 +35,10 @@ interface RouteDisplayProps {
   volatility?: 'high' | 'medium' | 'low';
   /** Show loading skeleton */
   isLoading?: boolean;
+  /** Show routes data is being fetched */
+  isRoutesLoading?: boolean;
+  /** Routes fetch error */
+  routesError?: string | null;
   /** Optional alternative route fixture data */
   alternativeRoutes?: AlternativeRoute[];
   /** Callback when an alternative route is selected */
@@ -44,6 +51,32 @@ const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
 const ROUTE_ROW_HEIGHT = 44;
 const ROUTE_OVERSCAN = 2;
 
+function getVenueBadgeClass(venue: string): string {
+  const lower = venue.toLowerCase();
+  if (lower.includes('sdex')) {
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200 border-transparent';
+  }
+  if (lower.includes('amm') || lower.includes('pool')) {
+    return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200 border-transparent';
+  }
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200 border-transparent';
+}
+
+function getVenueLabel(venue: string): string {
+  const lower = venue.toLowerCase();
+  if (lower.includes('sdex')) return 'SDEX';
+  if (lower.includes('amm')) return 'AMM';
+  if (lower.includes('pool')) return 'AMM';
+  return 'Hybrid';
+}
+
+function formatDelta(bestAmount: number, routeAmount: number): string {
+  if (bestAmount === 0) return '—';
+  const pct = ((routeAmount - bestAmount) / bestAmount) * 100;
+  const sign = pct >= 0 ? '+' : '';
+  return `${sign}${pct.toFixed(2)}%`;
+}
+
 function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
   const venues = ['AQUA Pool', 'SDEX', 'Blend Pool', 'Phoenix AMM'];
   const baseAmount = Number.parseFloat(amountOut || '0');
@@ -52,6 +85,9 @@ function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
     id: `route-${index}`,
     venue,
     expectedAmount: `≈ ${(baseAmount * (0.995 - index * 0.0015)).toFixed(4)}`,
+    score: Math.max(0, 94.5 - index * 3),
+    impactBps: 30 + index * 5,
+    hopCount: index % 2 === 0 ? 1 : 2,
     hops:
       index % 2 === 0
         ? [
@@ -100,12 +136,18 @@ function AlternativeRouteButton({
   isSelected = false,
   onSelect,
   prefersReducedMotion = false,
+  bestAmount,
 }: {
   route: AlternativeRoute;
   isSelected?: boolean;
   onSelect?: (route: AlternativeRoute) => void;
   prefersReducedMotion?: boolean;
+  bestAmount: number;
 }) {
+  const routeAmount = Number.parseFloat(route.expectedAmount.replace(/^≈\s*/, ''));
+  const delta = formatDelta(bestAmount, routeAmount);
+  const isBest = delta === '+0.00%' || delta === '—';
+
   return (
     <button
       type="button"
@@ -113,7 +155,7 @@ function AlternativeRouteButton({
       aria-pressed={isSelected}
       data-selected={isSelected ? 'true' : undefined}
       className={cn(
-        'w-full flex flex-wrap items-center justify-between p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left',
+        'w-full flex flex-wrap items-center justify-between p-1.5 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left',
         !prefersReducedMotion && 'transition-all duration-150 active:scale-[0.99]',
         isSelected
           ? 'opacity-100 ring-2 ring-primary/40 bg-muted/50'
@@ -121,22 +163,38 @@ function AlternativeRouteButton({
       )}
       onClick={() => onSelect?.(route)}
     >
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="font-medium">XLM</span>
-        <ArrowRight className="h-3 w-3" />
-        <span className="border border-border/50 rounded bg-background px-1.5 py-0.5 text-[10px]">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+        <span className="border border-border/50 rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold">
+          {getVenueLabel(route.venue)}
+        </span>
+        <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
           {route.venue}
         </span>
-        <ArrowRight className="h-3 w-3" />
-        <span className="font-medium">USDC</span>
+        {route.hopCount !== undefined && (
+          <span className="text-[10px] text-muted-foreground">
+            {route.hopCount}h
+          </span>
+        )}
       </div>
-      <div className="flex flex-col items-end gap-0.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          {route.expectedAmount}
-        </span>
-        <span className="text-[11px] font-medium text-foreground/70 tabular-nums">
-          {formatNetworkFeeFromHops(route.hops)}
-        </span>
+      <div className="flex items-center gap-2">
+        <Badge
+          variant="secondary"
+          className={cn(
+            'text-[10px] font-mono px-1.5 py-0',
+            isBest
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              : delta.startsWith('-')
+                ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                : 'bg-muted text-muted-foreground'
+          )}
+        >
+          {delta}
+        </Badge>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-xs font-medium text-muted-foreground">
+            {route.expectedAmount}
+          </span>
+        </div>
       </div>
     </button>
   );
@@ -147,6 +205,8 @@ export function RouteDisplay({
   confidenceScore = 85,
   volatility = 'low',
   isLoading = false,
+  isRoutesLoading = false,
+  routesError = null,
   alternativeRoutes,
   onSelect,
   extendedRouteDetails = false,
@@ -181,6 +241,9 @@ export function RouteDisplay({
     (sum, hop) => sum + parseFeeToNumber(hop.fee),
     0
   );
+  const bestAmount = routes.length > 0
+    ? Math.max(...routes.map((r) => Number.parseFloat(r.expectedAmount.replace(/^≈\s*/, '') || '0')))
+    : 0;
 
   if (isLoading) {
     return <RouteDisplaySkeleton />;
@@ -280,55 +343,79 @@ export function RouteDisplay({
         <h4 className="text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">
           Alternative Routes
         </h4>
-        <div
-          ref={scrollRef}
-          data-testid="alternative-routes-scroll"
-          className={shouldVirtualize ? 'max-h-44 overflow-auto pr-1' : ''}
-        >
-          {shouldVirtualize ? (
-            <div
-              style={{
-                height: virtualWindow.totalHeight,
-                position: 'relative',
-              }}
-            >
-              {visibleRoutes.map((route, index) => {
-                const absoluteIndex = virtualWindow.startIndex + index;
-                return (
-                  <div
+        {isRoutesLoading ? (
+          <div className="py-3 text-center">
+            <div className="h-3 w-3 animate-spin rounded-full border border-primary border-r-transparent mx-auto" />
+            <p className="text-xs text-muted-foreground mt-2">Loading routes...</p>
+          </div>
+        ) : routesError ? (
+          <div
+            data-testid="routes-error"
+            className="flex items-center gap-2 py-2 text-xs text-red-500"
+          >
+            <AlertCircle className="h-3 w-3 flex-shrink-0" />
+            <span>{routesError}</span>
+          </div>
+        ) : routes.length === 0 ? (
+          <p
+            data-testid="routes-empty"
+            className="text-xs text-muted-foreground py-2 text-center"
+          >
+            No alternative routes available
+          </p>
+        ) : (
+          <div
+            ref={scrollRef}
+            data-testid="alternative-routes-scroll"
+            className={shouldVirtualize ? 'max-h-44 overflow-auto pr-1' : ''}
+          >
+            {shouldVirtualize ? (
+              <div
+                style={{
+                  height: virtualWindow.totalHeight,
+                  position: 'relative',
+                }}
+              >
+                {visibleRoutes.map((route, index) => {
+                  const absoluteIndex = virtualWindow.startIndex + index;
+                  return (
+                    <div
+                      key={route.id}
+                      style={{
+                        position: 'absolute',
+                        top: absoluteIndex * ROUTE_ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        height: ROUTE_ROW_HEIGHT,
+                      }}
+                    >
+                      <AlternativeRouteButton
+                        route={route}
+                        isSelected={selectedRouteId === route.id}
+                        onSelect={handleSelect}
+                        prefersReducedMotion={prefersReducedMotion}
+                        bestAmount={bestAmount}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {visibleRoutes.map((route) => (
+                  <AlternativeRouteButton
                     key={route.id}
-                    style={{
-                      position: 'absolute',
-                      top: absoluteIndex * ROUTE_ROW_HEIGHT,
-                      left: 0,
-                      right: 0,
-                      height: ROUTE_ROW_HEIGHT,
-                    }}
-                  >
-                    <AlternativeRouteButton
-                      route={route}
-                      isSelected={selectedRouteId === route.id}
-                      onSelect={handleSelect}
-                      prefersReducedMotion={prefersReducedMotion}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {visibleRoutes.map((route) => (
-                <AlternativeRouteButton
-                  key={route.id}
-                  route={route}
-                  isSelected={selectedRouteId === route.id}
-                  onSelect={handleSelect}
-                  prefersReducedMotion={prefersReducedMotion}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+                    route={route}
+                    isSelected={selectedRouteId === route.id}
+                    onSelect={handleSelect}
+                    prefersReducedMotion={prefersReducedMotion}
+                    bestAmount={bestAmount}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showDetails && selectedRoute && (

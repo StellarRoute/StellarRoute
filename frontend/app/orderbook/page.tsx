@@ -1,16 +1,122 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ViewState } from "@/components/shared/ViewState";
 import { useOrderbook, usePairs } from "@/hooks/useApi";
 import { useOptionalTradingPair } from "@/contexts/TradingPairContext";
-import type { TradingPair } from "@/types";
+import { useVirtualWindow } from "@/hooks/useVirtualWindow";
+import type { OrderbookEntry, TradingPair } from "@/types";
 import { cn } from "@/lib/utils";
+
+const ROW_HEIGHT = 36;
+const OVERSCAN = 5;
+const MAX_VISIBLE_ROWS = 100;
 
 function pairKey(pair: TradingPair): string {
   return `${pair.base_asset}__${pair.counter_asset}`;
+}
+
+function VirtualizedOrderSide({
+  entries,
+  side,
+  highlighted,
+}: {
+  entries: OrderbookEntry[];
+  side: "bid" | "ask";
+  highlighted: boolean;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isBid = side === "bid";
+
+  const virtualWindow = useVirtualWindow({
+    containerRef: scrollRef,
+    itemCount: entries.length,
+    itemHeight: ROW_HEIGHT,
+    overscan: OVERSCAN,
+    defaultViewportHeight: ROW_HEIGHT * 15,
+  });
+
+  if (entries.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground py-4 text-center">
+        No {side}s available
+      </p>
+    );
+  }
+
+  const visibleEntries = virtualWindow.isVirtualized
+    ? entries.slice(virtualWindow.startIndex, virtualWindow.endIndex)
+    : entries;
+
+  return (
+    <div className="space-y-1 text-sm">
+      <div className="sticky top-0 z-10 bg-card grid grid-cols-3 text-xs text-muted-foreground font-medium pb-2 border-b">
+        <span>Price</span>
+        <span>Amount</span>
+        <span>Total</span>
+      </div>
+      <div
+        ref={scrollRef}
+        className="overflow-auto"
+        style={{ height: `${Math.min(entries.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT}px` }}
+        data-testid={`${side}-virtual-list`}
+      >
+        <div
+          style={{
+            height: `${virtualWindow.totalHeight}px`,
+            position: "relative",
+          }}
+        >
+          {virtualWindow.topSpacerHeight > 0 && (
+            <div style={{ height: `${virtualWindow.topSpacerHeight}px` }} />
+          )}
+          {visibleEntries.map((entry, index) => {
+            const absoluteIndex = virtualWindow.isVirtualized
+              ? virtualWindow.startIndex + index
+              : index;
+            return (
+              <div
+                key={`${entry.price}-${absoluteIndex}`}
+                data-testid={
+                  highlighted
+                    ? `highlighted-${side}-row`
+                    : `${side}-row`
+                }
+                className={cn(
+                  "grid grid-cols-3 py-1.5 px-2 rounded",
+                  isBid
+                    ? "hover:bg-emerald-500/10 cursor-pointer"
+                    : "hover:bg-red-500/10 cursor-pointer",
+                  highlighted && (isBid ? "bg-emerald-500/5" : "bg-red-500/5")
+                )}
+                style={{ height: `${ROW_HEIGHT}px` }}
+              >
+                <span
+                  className={cn(
+                    "font-medium",
+                    isBid ? "text-emerald-600" : "text-red-500"
+                  )}
+                >
+                  {entry.price}
+                </span>
+                <span className="text-muted-foreground truncate">
+                  {entry.amount}
+                </span>
+                <span className="text-muted-foreground truncate">
+                  {entry.total}
+                </span>
+              </div>
+            );
+          })}
+          {virtualWindow.bottomSpacerHeight > 0 && (
+            <div style={{ height: `${virtualWindow.bottomSpacerHeight}px` }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function OrderbookPage() {
@@ -33,21 +139,16 @@ export default function OrderbookPage() {
     [pairs, selectedPairKey],
   );
 
-  // Check if current orderbook pair matches the trading pair from swap context
   const isHighlightedPair = useMemo(() => {
     if (!tradingPairContext?.fromAsset || !tradingPairContext?.toAsset || !selectedPair) {
       return false;
     }
-    
-    // Check both directions (from->to and to->from)
-    const matchesForward = 
+    const matchesForward =
       selectedPair.base_asset === tradingPairContext.fromAsset &&
       selectedPair.counter_asset === tradingPairContext.toAsset;
-    
-    const matchesReverse = 
+    const matchesReverse =
       selectedPair.base_asset === tradingPairContext.toAsset &&
       selectedPair.counter_asset === tradingPairContext.fromAsset;
-    
     return matchesForward || matchesReverse;
   }, [tradingPairContext, selectedPair]);
 
@@ -105,7 +206,6 @@ export default function OrderbookPage() {
             {pairs.map((pair) => {
               const key = pairKey(pair);
               const isActive = key === selectedPairKey;
-
               return (
                 <Button
                   key={key}
@@ -145,7 +245,7 @@ export default function OrderbookPage() {
           ) : (
             <>
               {isHighlightedPair && (
-                <div 
+                <div
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/20"
                   data-testid="highlighted-pair-indicator"
                 >
@@ -155,64 +255,38 @@ export default function OrderbookPage() {
                   </span>
                 </div>
               )}
-              
+
               <div className="grid gap-4 md:grid-cols-2">
-                <Card className={cn(
-                  "p-4 space-y-3 transition-all duration-300",
-                  isHighlightedPair && "ring-2 ring-primary/30 shadow-lg shadow-primary/10"
-                )}>
-                  <h2 className="font-semibold">Bids</h2>
-                  <div className="space-y-1 text-sm">
-                    <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium pb-2 border-b">
-                      <span>Price</span>
-                      <span>Amount</span>
-                      <span>Total</span>
-                    </div>
-                    {orderbook.bids.slice(0, 10).map((bid, index) => (
-                      <div 
-                        key={`${bid.price}-${index}`} 
-                        className={cn(
-                          "grid grid-cols-3 py-1.5 px-2 rounded transition-all duration-200",
-                          "hover:bg-emerald-500/10 hover:scale-[1.02] cursor-pointer",
-                          isHighlightedPair && "bg-emerald-500/5"
-                        )}
-                        data-testid={isHighlightedPair ? "highlighted-bid-row" : "bid-row"}
-                      >
-                        <span className="text-emerald-600 font-medium">{bid.price}</span>
-                        <span className="text-muted-foreground">{bid.amount}</span>
-                        <span className="text-muted-foreground">{bid.total}</span>
-                      </div>
-                    ))}
-                  </div>
+                <Card
+                  className={cn(
+                    "p-4 space-y-3 transition-all duration-300",
+                    isHighlightedPair &&
+                      "ring-2 ring-primary/30 shadow-lg shadow-primary/10"
+                  )}
+                >
+                  <h2 className="font-semibold">Bids ({orderbook.bids.length})</h2>
+                  <VirtualizedOrderSide
+                    entries={orderbook.bids}
+                    side="bid"
+                    highlighted={isHighlightedPair}
+                  />
                 </Card>
 
-                <Card className={cn(
-                  "p-4 space-y-3 transition-all duration-300",
-                  isHighlightedPair && "ring-2 ring-primary/30 shadow-lg shadow-primary/10"
-                )}>
-                  <h2 className="font-semibold">Asks</h2>
-                  <div className="space-y-1 text-sm">
-                    <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium pb-2 border-b">
-                      <span>Price</span>
-                      <span>Amount</span>
-                      <span>Total</span>
-                    </div>
-                    {orderbook.asks.slice(0, 10).map((ask, index) => (
-                      <div 
-                        key={`${ask.price}-${index}`} 
-                        className={cn(
-                          "grid grid-cols-3 py-1.5 px-2 rounded transition-all duration-200",
-                          "hover:bg-red-500/10 hover:scale-[1.02] cursor-pointer",
-                          isHighlightedPair && "bg-red-500/5"
-                        )}
-                        data-testid={isHighlightedPair ? "highlighted-ask-row" : "ask-row"}
-                      >
-                        <span className="text-red-500 font-medium">{ask.price}</span>
-                        <span className="text-muted-foreground">{ask.amount}</span>
-                        <span className="text-muted-foreground">{ask.total}</span>
-                      </div>
-                    ))}
-                  </div>
+                <Card
+                  className={cn(
+                    "p-4 space-y-3 transition-all duration-300",
+                    isHighlightedPair &&
+                      "ring-2 ring-primary/30 shadow-lg shadow-primary/10"
+                  )}
+                >
+                  <h2 className="font-semibold">
+                    Asks ({orderbook.asks.length})
+                  </h2>
+                  <VirtualizedOrderSide
+                    entries={orderbook.asks}
+                    side="ask"
+                    highlighted={isHighlightedPair}
+                  />
                 </Card>
               </div>
             </>

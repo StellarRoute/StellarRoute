@@ -112,4 +112,29 @@ export interface ApiError {
   details?: unknown;
 }
 
+export interface RouteHop {
+  from_asset: Asset;
+  to_asset: Asset;
+  price: string;
+  amount_out_of_hop?: string;
+  fee_bps?: number;
+  source: string;
+}
+
+export interface RouteCandidate {
+  score: number;
+  impact_bps: number;
+  estimated_output: string;
+  policy_used?: string;
+  path: RouteHop[];
+}
+
+export interface RoutesResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  amount: string;
+  timestamp: number;
+  routes: RouteCandidate[];
+}
+
 export * from './route';

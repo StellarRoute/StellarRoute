@@ -1,3 +1,19 @@
+/**
+ * StellarRoute i18n module
+ *
+ * ## Adding a new locale
+ *
+ * 1. Add your locale code (e.g. "fr-FR") to the `SupportedSwapLocale` union type.
+ * 2. Add a `SWAP_LOCALE_ALIASES` entry mapping the full `Locale` to your
+ *    supported locale code.
+ * 3. Add a full `SwapTranslations` record for every `SwapTranslationKey` in
+ *    the `SWAP_TRANSLATIONS` dictionary.
+ * 4. If your locale uses a different number format, ensure
+ *    `SUPPORTED_LOCALES` in `lib/formatting.ts` includes a display name.
+ * 5. Add a test in `swap-i18n.test.ts` that verifies your locale resolves
+ *    correctly and returns the expected translated strings.
+ */
+
 import { useOptionalSettings } from "@/components/providers/settings-provider";
 import {
   DEFAULT_LOCALE,
@@ -9,7 +25,7 @@ const SETTINGS_STORAGE_KEY = "stellar_route_settings";
 
 export const SWAP_FALLBACK_LOCALE: Locale = DEFAULT_LOCALE;
 
-type SupportedSwapLocale = "en-US" | "zh-CN";
+type SupportedSwapLocale = "en-US" | "es-ES" | "zh-CN";
 
 type SwapTranslationKey =
   | "swap.card.title"
@@ -97,7 +113,17 @@ type SwapTranslationKey =
   | "swap.shortcuts.closeHelp"
   | "swap.shortcuts.focusPayAmount"
   | "swap.shortcuts.focusReceiveAmount"
-  | "swap.shortcuts.refreshQuote";
+  | "swap.shortcuts.refreshQuote"
+  | "swap.shortcuts.flipPair"
+  | "swap.shortcuts.maxAmount"
+  | "common.appName"
+  | "common.nav.history"
+  | "common.nav.swap"
+  | "common.nav.orderbook"
+  | "common.nav.settings"
+  | "common.error.generic"
+  | "common.error.network"
+  | "common.error.timeout";
 
 type SwapTranslations = Record<SwapTranslationKey, string>;
 
@@ -109,6 +135,16 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.card.clearForm": "Clear form",
     "swap.card.offlineQuoteError": "You are offline. Reconnect to refresh quote.",
     "swap.card.retryQuote": "Retry quote",
+    "swap.shortcuts.flipPair": "Flip pay/receive pair",
+    "swap.shortcuts.maxAmount": "Set max pay amount",
+    "common.appName": "StellarRoute",
+    "common.nav.history": "History",
+    "common.nav.swap": "Swap",
+    "common.nav.orderbook": "Orderbook",
+    "common.nav.settings": "Settings",
+    "common.error.generic": "Something went wrong. Please try again.",
+    "common.error.network": "Network error. Check your connection.",
+    "common.error.timeout": "Request timed out. Please try again.",
     "swap.pair.youPay": "You Pay",
     "swap.pair.youReceive": "You Receive",
     "swap.pair.amountPlaceholder": "0.00",
@@ -201,6 +237,115 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.shortcuts.focusReceiveAmount": "Focus receive amount",
     "swap.shortcuts.refreshQuote": "Refresh quote",
   },
+  "es-ES": {
+    "swap.card.title": "Intercambiar",
+    "swap.card.offlineBanner":
+      "Estás desconectado. La actualización de cotizaciones y el envío de intercambios se pausarán hasta que se restaure la conexión.",
+    "swap.card.clearForm": "Limpiar formulario",
+    "swap.card.offlineQuoteError": "Estás desconectado. Reconéctate para actualizar la cotización.",
+    "swap.card.retryQuote": "Reintentar cotización",
+    "swap.shortcuts.flipPair": "Intercambiar par de pago/recepción",
+    "swap.shortcuts.maxAmount": "Establecer cantidad máxima de pago",
+    "common.appName": "StellarRoute",
+    "common.nav.history": "Historial",
+    "common.nav.swap": "Intercambiar",
+    "common.nav.orderbook": "Libro de órdenes",
+    "common.nav.settings": "Ajustes",
+    "common.error.generic": "Algo salió mal. Inténtalo de nuevo.",
+    "common.error.network": "Error de red. Verifica tu conexión.",
+    "common.error.timeout": "La solicitud expiró. Inténtalo de nuevo.",
+    "swap.pair.youPay": "Tú pagas",
+    "swap.pair.youReceive": "Tú recibes",
+    "swap.pair.amountPlaceholder": "0.00",
+    "swap.pair.payAmountAriaLabel": "Cantidad a pagar",
+    "swap.pair.receiveAmountAriaLabel": "Cantidad a recibir",
+    "swap.pair.selectPayTokenAriaLabel": "Seleccionar token para pagar",
+    "swap.pair.selectReceiveTokenAriaLabel": "Seleccionar token para recibir",
+    "swap.pair.swapTokensAriaLabel": "Intercambiar tokens de pago y recepción",
+    "swap.pair.balance": "Saldo: {amount}",
+    "swap.quote.rate": "Tasa",
+    "swap.quote.networkFee": "Comisión de red",
+    "swap.quote.priceImpact": "Impacto en el precio",
+    "swap.quote.minimumReceived": "Mínimo a recibir",
+    "swap.quote.exchangeRateTooltip":
+      "Tasa de mercado actual para este par de trading, incluido el enrutamiento de ruta.",
+    "swap.quote.minimumReceivedTooltip":
+      "La transacción se revertirá si hay un movimiento de precio desfavorable grande antes de que se confirme.",
+    "swap.quote.networkFeeTooltip":
+      "Costo estimado para ejecutar esta transacción en la red Stellar.",
+    "swap.quote.exportJson": "Exportar JSON",
+    "swap.quote.exportCsv": "Exportar CSV",
+    "swap.quote.exportSuccess": "Resumen de cotización exportado como {format}",
+    "swap.settings.buttonLabel": "Ajustes",
+    "swap.settings.menuTitle": "Ajustes de transacción",
+    "swap.settings.slippageTolerance": "Tolerancia de deslizamiento",
+    "swap.simulation.errorTitle": "Error de simulación",
+    "swap.simulation.emptyState": "Introduce una cantidad para ver la simulación",
+    "swap.simulation.title": "Simulación de intercambio",
+    "swap.simulation.slippageBadge": "{value}% deslizamiento",
+    "swap.simulation.highImpact": "Alto impacto",
+    "swap.simulation.expectedOutput": "Salida esperada",
+    "swap.simulation.minReceived": "Mínimo recibido",
+    "swap.simulation.fromSlippage": "-{amount} por deslizamiento",
+    "swap.simulation.effectiveRate": "Tasa efectiva",
+    "swap.simulation.priceImpact": "Impacto en el precio",
+    "swap.simulation.highImpactTitle": "Alto impacto en el precio:",
+    "swap.simulation.highImpactBody":
+      "Esta operación puede afectar significativamente el precio del mercado. Considera dividirla en órdenes más pequeñas.",
+    "swap.route.title": "Mejor ruta",
+    "swap.route.optimal": "Óptimo",
+    "swap.route.showDetails": "Mostrar detalles de la ruta",
+    "swap.route.expectedAmount": "{amount} esperado",
+    "swap.route.expectedShort": "{amount} esp.",
+    "swap.route.alternativeRoutes": "Rutas alternativas",
+    "swap.route.poolLabel": "Pool AQUA",
+    "swap.route.altVenue": "SDEX",
+    "swap.fees.unavailableTitle": "Estimación de comisiones",
+    "swap.fees.unavailableBody":
+      "Las estimaciones de comisiones no están disponibles actualmente. Inténtalo de nuevo más tarde.",
+    "swap.fees.title": "Desglose de comisiones",
+    "swap.fees.protocolSection": "Comisiones de protocolo",
+    "swap.fees.networkSection": "Costos de red",
+    "swap.fees.total": "Comisiones totales",
+    "swap.fees.netOutput": "Salida neta",
+    "swap.fees.routerFee.name": "Comisión de enrutador",
+    "swap.fees.routerFee.description":
+      "Comisión por usar el agregador StellarRoute",
+    "swap.fees.poolFee.name": "Comisión del pool",
+    "swap.fees.poolFee.description":
+      "Comisión del proveedor de liquidez para el pool AQUA",
+    "swap.fees.baseFee.name": "Comisión base",
+    "swap.fees.baseFee.description":
+      "Comisión base de transacción de la red Stellar",
+    "swap.fees.operationFee.name": "Comisión de operación",
+    "swap.fees.operationFee.description":
+      "Comisión por operaciones de pago de ruta",
+    "swap.cta.reviewSwap": "Revisar intercambio",
+    "swap.cta.offline": "Desconectado",
+    "swap.cta.selectTokens": "Seleccionar tokens",
+    "swap.cta.enterAmount": "Introducir cantidad",
+    "swap.cta.invalidSlippage": "Deslizamiento no válido",
+    "swap.cta.loadingQuote": "Cargando cotización...",
+    "swap.cta.connectWallet": "Conectar billetera",
+    "swap.cta.insufficientBalance": "Saldo insuficiente",
+    "swap.cta.swapAnyway": "Intercambiar de todos modos",
+    "swap.cta.swapping": "Intercambiando...",
+    "swap.cta.errorFetchingQuote": "Error al obtener cotización",
+    "swap.card.refreshQuote": "Actualizar cotización",
+    "swap.card.outdated": "Cotización desactualizada — actualiza para obtener el precio más reciente",
+    "swap.card.recoveringQuote": "Reintentando cotización...",
+    "swap.card.recoveringQuoteCountdown": "Reintentando cotización en {seconds}s...",
+    "swap.card.cancelRetry": "Cancelar reintento",
+    "swap.card.sessionRestored":
+      "Sesión restaurada — obteniendo una cotización nueva antes de intercambiar",
+    "swap.card.poweredBy": "Desarrollado por StellarRoute Aggregator",
+    "swap.shortcuts.title": "Atajos de teclado",
+    "swap.shortcuts.openHelp": "Abrir ayuda de atajos",
+    "swap.shortcuts.closeHelp": "Cerrar modal",
+    "swap.shortcuts.focusPayAmount": "Enfocar cantidad de pago",
+    "swap.shortcuts.focusReceiveAmount": "Enfocar cantidad a recibir",
+    "swap.shortcuts.refreshQuote": "Actualizar cotización",
+  },
   "zh-CN": {
     "swap.card.title": "兑换",
     "swap.card.offlineBanner":
@@ -208,6 +353,16 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.card.clearForm": "清空表单",
     "swap.card.offlineQuoteError": "你当前处于离线状态。恢复网络后再刷新报价。",
     "swap.card.retryQuote": "重试报价",
+    "swap.shortcuts.flipPair": "交换支付/接收代币对",
+    "swap.shortcuts.maxAmount": "设置最大支付金额",
+    "common.appName": "StellarRoute",
+    "common.nav.history": "历史",
+    "common.nav.swap": "兑换",
+    "common.nav.orderbook": "订单簿",
+    "common.nav.settings": "设置",
+    "common.error.generic": "出了点问题。请重试。",
+    "common.error.network": "网络错误。检查你的连接。",
+    "common.error.timeout": "请求超时。请重试。",
     "swap.pair.youPay": "你支付",
     "swap.pair.youReceive": "你收到",
     "swap.pair.amountPlaceholder": "0.00",
@@ -299,7 +454,7 @@ const SWAP_LOCALE_ALIASES: Record<Locale, SupportedSwapLocale> = {
   "en-GB": "en-US",
   "de-DE": "en-US",
   "fr-FR": "en-US",
-  "es-ES": "en-US",
+  "es-ES": "es-ES",
   "ja-JP": "en-US",
   "zh-CN": "zh-CN",
 };

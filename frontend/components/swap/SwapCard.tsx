@@ -10,6 +10,7 @@ import { TokenSelector } from './TokenSelector';
 import { PriceInfoPanel } from './PriceInfoPanel';
 import RouteDisplay from './RoutePanelAsync';
 import type { AlternativeRoute } from './RouteDisplay';
+import { useRoutes } from '@/hooks/useApi';
 import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
@@ -185,6 +186,32 @@ export function SwapCard() {
     },
     notificationPreference: { enabled: browserNotifications },
   });
+
+  const fromAmountNum = fromAmount ? Number.parseFloat(fromAmount) : undefined;
+  const {
+    data: routesData,
+    loading: routesLoading,
+    error: routesError,
+  } = useRoutes(fromToken, toToken, fromAmountNum);
+
+  const alternativeRoutes: AlternativeRoute[] | undefined = useMemo(() => {
+    if (!routesData?.routes?.length) return undefined;
+    return routesData.routes.map((r, i) => ({
+      id: `api-route-${i}`,
+      venue: r.path?.[0]?.source ?? 'unknown',
+      expectedAmount: `≈ ${r.estimated_output}`,
+      score: r.score,
+      impactBps: r.impact_bps,
+      hopCount: r.path?.length ?? 0,
+      hops: r.path?.map((hop, j) => ({
+        id: `${i}-${j}`,
+        fromAsset: hop.from_asset?.asset_code ?? 'native',
+        toAsset: hop.to_asset?.asset_code ?? 'native',
+        venue: hop.source,
+        fee: hop.fee_bps ? `${hop.fee_bps} bps` : '0 bps',
+      })),
+    }));
+  }, [routesData]);
 
   // Handle background transaction toasts when bypassConfirmation is enabled
   useEffect(() => {
@@ -403,11 +430,21 @@ export function SwapCard() {
           .querySelectorAll<HTMLInputElement>('input[placeholder="0.00"]')[1]
           ?.focus();
       }
+
+      if (event.key.toLowerCase() === 'f' && event.shiftKey && !isEditable) {
+        event.preventDefault();
+        handleSwitchTokens();
+      }
+
+      if (event.key.toLowerCase() === 'm' && event.shiftKey && !isEditable) {
+        event.preventDefault();
+        handleMax();
+      }
     };
 
     window.addEventListener('keydown', onKeydown);
     return () => window.removeEventListener('keydown', onKeydown);
-  }, [quote]);
+  }, [quote, handleSwitchTokens, handleMax]);
 
   const handleShortcutOpenChange = useCallback((open: boolean) => {
     setShortcutHelpOpen(open);
@@ -708,6 +745,9 @@ export function SwapCard() {
                 isLoading={quote.loading}
                 onSelect={setSelectedRoute}
                 extendedRouteDetails={extendedRouteDetails}
+                alternativeRoutes={alternativeRoutes}
+                isRoutesLoading={routesLoading}
+                routesError={routesError?.message ?? null}
               />
               {/* Share Quote Button */}
               <div className="flex justify-end">
@@ -879,6 +919,14 @@ export function SwapCard() {
             <li className="flex justify-between">
               <span>{t('swap.shortcuts.focusReceiveAmount')}</span>
               <kbd className="font-mono">Alt+2</kbd>
+            </li>
+            <li className="flex justify-between">
+              <span>{t('swap.shortcuts.flipPair')}</span>
+              <kbd className="font-mono">Shift+F</kbd>
+            </li>
+            <li className="flex justify-between">
+              <span>{t('swap.shortcuts.maxAmount')}</span>
+              <kbd className="font-mono">Shift+M</kbd>
             </li>
           </ul>
         </DialogContent>

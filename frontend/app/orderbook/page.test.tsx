@@ -177,7 +177,7 @@ describe('OrderbookPage with highlighting', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Bids' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Bids/ })).toBeInTheDocument();
     });
 
     const bidRows = screen.getAllByTestId('bid-row');

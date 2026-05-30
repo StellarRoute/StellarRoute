@@ -77,6 +77,7 @@ DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarro
 The API will be available at `http://localhost:3000`. Visit `http://localhost:3000/swagger-ui` for interactive API docs.
 
 For a more detailed environment setup, see [docs/development/SETUP.md](docs/development/SETUP.md).
+For indexer-specific runbook and troubleshooting steps, see [docs/development/indexer-guide.md](docs/development/indexer-guide.md).
 
 For frontend-specific setup and workflows, see [docs/development/frontend-guide.md](docs/development/frontend-guide.md).
 

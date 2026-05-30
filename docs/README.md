@@ -24,6 +24,10 @@ This directory contains project documentation.
 
 See the main [README.md](../README.md) for an overview of the project.
 
+## Development Guides
+
+- [Local environment setup](./development/SETUP.md)
+- [Indexer service operations and troubleshooting](./development/indexer-guide.md)
 Development guides:
 
 - [Development Setup](development/SETUP.md)

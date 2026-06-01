@@ -79,6 +79,14 @@ lazy_static! {
     )
     .expect("Can't create EMA_LATENCY_MS gauge");
 
+    /// Total single-flight coalesced requests (stampede prevention).
+    pub static ref SINGLE_FLIGHT_COALESCED: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_single_flight_coalesced_total",
+        "Total requests coalesced by single-flight (stampede prevention)",
+        &["type"]
+    )
+    .expect("Can't create SINGLE_FLIGHT_COALESCED counter");
+
     // ── Priority queue metrics ────────────────────────────────────────────
 
     /// Total jobs submitted to the priority queue, labelled by priority band.
@@ -219,6 +227,13 @@ pub fn record_adaptive_timeout(timeout_ms: u64, ema_ms: u64, environment: &str) 
     EMA_LATENCY_MS
         .with_label_values(&[environment])
         .set(ema_ms as i64);
+}
+
+/// Record a single-flight coalesced request.
+pub fn record_single_flight_coalesced(request_type: &str) {
+    SINGLE_FLIGHT_COALESCED
+        .with_label_values(&[request_type])
+        .inc();
 }
 
 // ── Priority queue metric helpers ─────────────────────────────────────────────

@@ -42,7 +42,6 @@ pub async fn update_kill_switch(
         .kill_switch
         .update_state(payload)
         .await
-        .map_err(|e| crate::error::ApiError::Internal(e))?;
 
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }

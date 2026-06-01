@@ -45,7 +45,7 @@ pub mod engine;
 pub mod metrics;
 pub mod repair;
 
-pub use backfill::{BackfillManager, BackfillStatus, BackfillCheckpoint};
+pub use backfill::{BackfillCheckpoint, BackfillManager, BackfillStatus};
 pub use consistency::{CheckThresholds, CheckType, ConsistencyCheckResult, DriftSeverity};
 pub use engine::{ReconciliationEngine, ReconciliationRun};
 pub use metrics::{DriftMetrics, MetricsSnapshot, ReconciliationMetrics};

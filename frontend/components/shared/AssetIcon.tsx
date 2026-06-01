@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
+export type AssetIconSize = 16 | 20 | 24;
+
 export interface AssetIconProps {
   symbol: string;
   src?: string;
@@ -12,6 +14,7 @@ export interface AssetIconProps {
   imageClassName?: string;
   fallbackClassName?: string;
   maxCharacters?: number;
+  size?: AssetIconSize;
 }
 
 function getFallbackLabel(symbol: string, maxCharacters: number): string {
@@ -27,6 +30,12 @@ function getFallbackLabel(symbol: string, maxCharacters: number): string {
   return normalized.slice(0, Math.max(1, maxCharacters));
 }
 
+const sizeClassMap: Record<AssetIconSize, string> = {
+  16: "h-4 w-4",
+  20: "h-5 w-5",
+  24: "h-6 w-6",
+};
+
 export function AssetIcon({
   symbol,
   src,
@@ -35,6 +44,7 @@ export function AssetIcon({
   imageClassName,
   fallbackClassName,
   maxCharacters = 2,
+  size = 20,
 }: AssetIconProps) {
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -53,9 +63,9 @@ export function AssetIcon({
     <span
       className={cn(
         "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted text-[0.65rem] font-semibold uppercase text-foreground/80",
+        sizeClassMap[size],
         className
       )}
-      aria-hidden="true"
     >
       {showImage ? (
         <img

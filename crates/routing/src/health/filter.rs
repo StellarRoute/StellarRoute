@@ -58,6 +58,8 @@ mod tests {
             liquidity: 1_000_000_000,
             price: 1.0,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }
     }
 

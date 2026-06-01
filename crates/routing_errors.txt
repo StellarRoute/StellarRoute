@@ -1,0 +1,90 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/victor/Desktop/StellarRoute/crates/contracts/Cargo.toml
+workspace: /Users/victor/Desktop/StellarRoute/Cargo.toml
+   Compiling serde_core v1.0.228
+   Compiling num-traits v0.2.19
+    Checking smallvec v1.15.1
+   Compiling serde v1.0.228
+   Compiling syn v2.0.117
+    Checking getrandom v0.2.17
+   Compiling serde_json v1.0.149
+    Checking tracing-core v0.1.36
+    Checking memchr v2.8.0
+    Checking rand_core v0.6.4
+    Checking parking_lot_core v0.9.12
+    Checking rand_chacha v0.3.1
+    Checking parking_lot v0.12.5
+    Checking dashmap v5.5.3
+    Checking rand v0.8.6
+   Compiling serde_derive v1.0.228
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+    Checking tracing v0.1.44
+    Checking thiserror v1.0.69
+    Checking chrono v0.4.44
+    Checking stellarroute-routing v0.1.0 (/Users/victor/Desktop/StellarRoute/crates/routing)
+error[E0063]: missing fields `anomaly_reasons` and `anomaly_score` in initializer of `LiquidityEdge`
+   --> crates/routing/src/fixtures.rs:307:24
+    |
+307 |             edges.push(LiquidityEdge {
+    |                        ^^^^^^^^^^^^^ missing `anomaly_reasons` and `anomaly_score`
+
+error[E0063]: missing fields `anomaly_reasons` and `anomaly_score` in initializer of `LiquidityEdge`
+   --> crates/routing/src/fixtures.rs:333:24
+    |
+333 |             edges.push(LiquidityEdge {
+    |                        ^^^^^^^^^^^^^ missing `anomaly_reasons` and `anomaly_score`
+
+error[E0063]: missing fields `anomaly_reasons` and `anomaly_score` in initializer of `LiquidityEdge`
+   --> crates/routing/src/fixtures.rs:344:24
+    |
+344 |             edges.push(LiquidityEdge {
+    |                        ^^^^^^^^^^^^^ missing `anomaly_reasons` and `anomaly_score`
+
+error[E0063]: missing field `anomaly` in initializer of `HealthScoringConfig`
+   --> crates/routing/src/health/scorer.rs:310:9
+    |
+310 |         Self {
+    |         ^^^^ missing `anomaly`
+
+error[E0063]: missing field `flagged_venues` in initializer of `OptimizerDiagnostics`
+   --> crates/routing/src/optimizer.rs:323:12
+    |
+323 |         Ok(OptimizerDiagnostics {
+    |            ^^^^^^^^^^^^^^^^^^^^ missing `flagged_venues`
+
+error[E0063]: missing fields `anomaly_reasons` and `anomaly_score` in initializer of `PathHop`
+   --> crates/routing/src/pathfinder.rs:189:31
+    |
+189 |                     let hop = PathHop {
+    |                               ^^^^^^^ missing `anomaly_reasons` and `anomaly_score`
+
+error[E0004]: non-exhaustive patterns: `(Some(&OverrideDirective::ForceExclude), None)` not covered
+   --> crates/routing/src/health/policy.rs:115:19
+    |
+115 |             match (source_directive, venue_directive) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ pattern `(Some(&OverrideDirective::ForceExclude), None)` not covered
+    |
+    = note: the matched value is of type `(std::option::Option<&OverrideDirective>, std::option::Option<&OverrideDirective>)`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+    |
+157 ~                 },
+158 +                 (Some(&OverrideDirective::ForceExclude), None) => todo!()
+    |
+
+error[E0004]: non-exhaustive patterns: `(Some(&OverrideDirective::ForceExclude), None)` not covered
+   --> crates/routing/src/health/policy.rs:174:15
+    |
+174 |         match (source_directive, venue_directive) {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ pattern `(Some(&OverrideDirective::ForceExclude), None)` not covered
+    |
+    = note: the matched value is of type `(std::option::Option<&OverrideDirective>, std::option::Option<&OverrideDirective>)`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+    |
+185 ~             },
+186 +             (Some(&OverrideDirective::ForceExclude), None) => todo!()
+    |
+
+Some errors have detailed explanations: E0004, E0063.
+For more information about an error, try `rustc --explain E0004`.
+error: could not compile `stellarroute-routing` (lib) due to 8 previous errors

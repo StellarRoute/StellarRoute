@@ -52,10 +52,10 @@ Add the following to your `prometheus.yml`:
 
 ```yaml
 scrape_configs:
-  - job_name: 'stellarroute'
+  - job_name: "stellarroute"
     static_configs:
-      - targets: ['your-stellarroute-host:3000']
-    metrics_path: '/metrics'
+      - targets: ["your-stellarroute-host:3000"]
+    metrics_path: "/metrics"
 ```
 
 ## Grafana Dashboard
@@ -133,3 +133,22 @@ annotations:
   summary: "Cache hit ratio is low"
   description: "Cache hit ratio dropped below 50%"
 ```
+
+## External Dependency Circuit Breakers
+
+`GET /health/deps` now performs lightweight probes with independent breakers:
+
+- Horizon probe: `GET {STELLAR_HORIZON_URL}/health`
+- Soroban probe: JSON-RPC `getHealth` to `SOROBAN_RPC_URL`
+
+Each dependency has its own breaker state (`closed`, `open`, `half_open`), so one provider can degrade while the other remains healthy.
+
+### Half-open Recovery Behavior
+
+- When a breaker opens, active probes are suppressed and the dependency is reported as `degraded (circuit_open)`.
+- After `recovery_timeout_secs`, the breaker transitions to half-open automatically.
+- In half-open, a normal health probe is attempted.
+- Consecutive probe successes (`success_threshold`) close the breaker.
+- Any failure during half-open re-opens the breaker immediately.
+
+This keeps Soroban RPC outages isolated from Horizon health while still allowing automatic, probe-driven recovery.

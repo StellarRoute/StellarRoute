@@ -301,6 +301,8 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
 
 For detailed setup instructions, see the [Development Setup Guide](docs/development/SETUP.md).
 
+Frontend contributors should also use the [Frontend Developer Onboarding Guide](docs/development/frontend-guide.md).
+
 ---
 
 ## 📦 Project Structure
@@ -389,8 +391,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Horizon API Reference**: https://developers.stellar.org/api/horizon
 - **Project Roadmap**: [Roadmap.md](Roadmap.md)
 - **Development Setup**: [docs/development/SETUP.md](docs/development/SETUP.md)
+- **Frontend Onboarding**: [docs/development/frontend-guide.md](docs/development/frontend-guide.md)
+- **API Documentation**: [docs/api/](docs/api/)
+  - [WebSocket Quote Stream](docs/api/websocket.md)
+  - [REST API Routes](docs/api/routes_endpoint.md)
+  - [Error Taxonomy](docs/api/error_taxonomy.md)
+- **Wallet Integration Guide**: [docs/development/wallet-integration.md](docs/development/wallet-integration.md)
 - **TypeScript SDK Quickstart**: [sdk-js/README.md](sdk-js/README.md)
 - **TypeScript SDK API Docs**: [docs/sdk-js/api](docs/sdk-js/api)
+- **Rust SDK Guide**: [docs/sdk-rust/README.md](docs/sdk-rust/README.md)
 
 ---
 

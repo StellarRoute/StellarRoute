@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ThemeSetting } from '@/types/settings';
 import { toast } from 'sonner';
 import { LocaleSelector } from '@/components/settings/LocaleSelector';
+import { AccentColorPicker } from '@/components/settings/AccentColorPicker';
+import { FontScaleControl } from '@/components/settings/FontScaleControl';
 
 export default function SettingsPage() {
   const { settings, updateSlippage, updateTheme, resetSettings } = useSettings();
@@ -36,7 +38,7 @@ export default function SettingsPage() {
   return (
     <div className="container mx-auto py-10 px-4 max-w-2xl">
       <h1 className="text-3xl font-bold mb-6">Settings</h1>
-      
+
       <div className="space-y-6">
         <LocaleSelector />
 
@@ -76,7 +78,8 @@ export default function SettingsPage() {
               Customize how StellarRoute looks on your device.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
+            {/* Theme selector */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Theme</label>
               <Select
@@ -93,6 +96,22 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Accent colour picker — issue #521 */}
+            <AccentColorPicker />
+          </CardContent>
+        </Card>
+
+        {/* Font scale control — issue #522 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Accessibility</CardTitle>
+            <CardDescription>
+              Adjust text size and other accessibility options.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FontScaleControl />
           </CardContent>
         </Card>
 

@@ -79,7 +79,11 @@ impl ServerMessage {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        Self { v: 1, timestamp, payload }
+        Self {
+            v: 1,
+            timestamp,
+            payload,
+        }
     }
 }
 
@@ -96,19 +100,14 @@ impl ServerMessage {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerPayload {
     /// Sent after a successful subscription.
-    SubscriptionConfirmed {
-        subscription_id: SubscriptionId,
-    },
+    SubscriptionConfirmed { subscription_id: SubscriptionId },
     /// Sent when a new quote is available for a subscription.
     QuoteUpdate {
         subscription_id: SubscriptionId,
-        quote: QuoteResponse,
+        quote: Box<QuoteResponse>,
     },
     /// Sent when an error occurs (connection remains open unless noted).
-    Error {
-        code: String,
-        message: String,
-    },
+    Error { code: String, message: String },
     /// Keepalive ping sent every 30 seconds.
     Ping,
 }

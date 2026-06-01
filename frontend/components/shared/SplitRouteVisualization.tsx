@@ -13,6 +13,12 @@ import {
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   describeTradeRoute,
@@ -74,6 +80,9 @@ function PathVisualization({
           const { isSDEX, poolName } = parseSource(step.source);
           const fromCode = getAssetCode(step.from_asset);
           const toCode = getAssetCode(step.to_asset);
+          const venue = isSDEX ? 'SDEX' : poolName || 'AMM';
+          const depth = step.liquidity_depth;
+          const feeBps = step.fee_bps;
 
           return (
             <div
@@ -106,18 +115,45 @@ function PathVisualization({
 
               <div className="flex flex-col items-center px-1 sm:px-2" aria-hidden="true">
                 <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    'text-xs mt-1 max-w-[5rem] truncate',
-                    isSDEX
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
-                      : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200'
-                  )}
-                  title={isSDEX ? 'SDEX' : poolName || 'AMM'}
-                >
-                  {isSDEX ? 'SDEX' : poolName || 'AMM'}
-                </Badge>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          'text-xs mt-1 max-w-[5rem] truncate cursor-help',
+                          isSDEX
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
+                            : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200'
+                        )}
+                        tabIndex={0}
+                      >
+                        {venue}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="p-3">
+                      <div className="space-y-1.5 text-xs">
+                        <p className="font-semibold">{venue} Details</p>
+                        {depth && (
+                          <div className="flex justify-between gap-4">
+                            <span className="text-muted-foreground">Liquidity Depth:</span>
+                            <span className="font-medium">{depth}</span>
+                          </div>
+                        )}
+                        {feeBps !== undefined && (
+                          <div className="flex justify-between gap-4">
+                            <span className="text-muted-foreground">Fee:</span>
+                            <span className="font-medium">{(feeBps / 100).toFixed(2)}%</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">Price:</span>
+                          <span className="font-medium">{parseFloat(step.price).toFixed(6)}</span>
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
 
               <div
@@ -344,8 +380,14 @@ export function SplitRouteVisualization({
                           {isSDEX ? 'SDEX' : poolName || 'AMM'}
                         </Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        Rate: {parseFloat(step.price).toFixed(6)}
+                      <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div>Rate: {parseFloat(step.price).toFixed(6)}</div>
+                        {step.liquidity_depth && (
+                          <div>Depth: {step.liquidity_depth}</div>
+                        )}
+                        {step.fee_bps !== undefined && (
+                          <div>Fee: {(step.fee_bps / 100).toFixed(2)}%</div>
+                        )}
                       </div>
                     </div>
                   );

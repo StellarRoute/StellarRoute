@@ -4,9 +4,9 @@ import { useEffect, useId, useState } from 'react';
 import { PathStep } from '@/types';
 import { ChevronDown, ChevronUp, Info, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AssetIcon } from '@/components/shared/AssetIcon';
+import { VenueTypeBadge } from '@/components/shared/VenueTypeBadge';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -156,6 +156,10 @@ function RouteEdgeComponent({
   edge: RouteEdge;
   showAnimation: boolean;
 }) {
+  const venue = edge.isSDEX ? 'SDEX' : edge.poolName || 'AMM';
+  const depth = edge.step.liquidity_depth;
+  const feeBps = edge.step.fee_bps;
+
   return (
     <div
       className="flex flex-col items-center justify-center px-2 sm:px-4 relative min-w-[4rem] sm:min-w-[5rem]"
@@ -181,24 +185,46 @@ function RouteEdgeComponent({
         className="absolute w-4 h-4 text-muted-foreground"
         aria-hidden="true"
       />
-      <Badge
-        variant="secondary"
-        className={cn(
-          'mt-2 text-xs max-w-[5.5rem] truncate',
-          edge.isSDEX
-            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
-            : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200'
-        )}
-        title={edge.isSDEX ? 'SDEX' : edge.poolName || 'AMM'}
-      >
-        {edge.isSDEX ? 'SDEX' : edge.poolName || 'AMM'}
-      </Badge>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <VenueTypeBadge
+              type={edge.isSDEX ? 'SDEX' : 'AMM'}
+              size={16}
+              className="mt-2 cursor-help"
+            />
+          </TooltipTrigger>
+          <TooltipContent className="p-3">
+            <div className="space-y-1.5 text-xs">
+              <p className="font-semibold">{venue} Details</p>
+              {depth && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Liquidity Depth:</span>
+                  <span className="font-medium">{depth}</span>
+                </div>
+              )}
+              {feeBps !== undefined && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Fee:</span>
+                  <span className="font-medium">{(feeBps / 100).toFixed(2)}%</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Price:</span>
+                <span className="font-medium">{parseFloat(edge.step.price).toFixed(6)}</span>
+              </div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
 
 function RouteVerticalConnector({ edge }: { edge: RouteEdge }) {
   const venue = edge.isSDEX ? 'SDEX' : edge.poolName || 'AMM';
+  const depth = edge.step.liquidity_depth;
+  const feeBps = edge.step.fee_bps;
 
   return (
     <div
@@ -206,18 +232,38 @@ function RouteVerticalConnector({ edge }: { edge: RouteEdge }) {
       role="presentation"
     >
       <div className="h-6 w-0.5 bg-border rounded-full" aria-hidden="true" />
-      <Badge
-        variant="secondary"
-        className={cn(
-          'my-1 text-xs max-w-[min(100%,10rem)] truncate',
-          edge.isSDEX
-            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
-            : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200'
-        )}
-        title={venue}
-      >
-        {edge.isSDEX ? 'SDEX' : edge.poolName || 'AMM'}
-      </Badge>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <VenueTypeBadge
+              type={edge.isSDEX ? 'SDEX' : 'AMM'}
+              size={16}
+              className="my-1 cursor-help"
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="p-3">
+            <div className="space-y-1.5 text-xs">
+              <p className="font-semibold">{venue} Details</p>
+              {depth && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Liquidity Depth:</span>
+                  <span className="font-medium">{depth}</span>
+                </div>
+              )}
+              {feeBps !== undefined && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Fee:</span>
+                  <span className="font-medium">{(feeBps / 100).toFixed(2)}%</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Price:</span>
+                <span className="font-medium">{parseFloat(edge.step.price).toFixed(6)}</span>
+              </div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <div className="h-6 w-0.5 bg-border rounded-full" aria-hidden="true" />
     </div>
   );
@@ -234,9 +280,7 @@ function RouteDetails({ step, index }: { step: PathStep; index: number }) {
         <span className="text-sm font-medium">
           Hop {index + 1}: {fromCode} → {toCode}
         </span>
-        <Badge variant={isSDEX ? 'default' : 'secondary'}>
-          {isSDEX ? 'SDEX' : poolName || 'AMM Pool'}
-        </Badge>
+        <VenueTypeBadge type={isSDEX ? 'SDEX' : 'AMM'} size={16} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
         <div>
@@ -247,6 +291,18 @@ function RouteDetails({ step, index }: { step: PathStep; index: number }) {
           <span className="text-muted-foreground">Source:</span>
           <p className="font-medium break-all">{step.source}</p>
         </div>
+        {step.liquidity_depth && (
+          <div>
+            <span className="text-muted-foreground">Liquidity Depth:</span>
+            <p className="font-medium">{step.liquidity_depth}</p>
+          </div>
+        )}
+        {step.fee_bps !== undefined && (
+          <div>
+            <span className="text-muted-foreground">Fee:</span>
+            <p className="font-medium">{(step.fee_bps / 100).toFixed(2)}%</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -310,6 +366,10 @@ export function RouteVisualization({
   const { nodes, edges } = buildRouteGraph(path);
   const hopCount = path.length;
   const routeSummary = describeTradeRoute(path);
+  const routeType =
+    edges.every((edge) => edge.isSDEX) ? 'SDEX' :
+    edges.every((edge) => !edge.isSDEX) ? 'AMM' :
+    'Hybrid';
   const breakdownHops = breakdown?.hops ?? hopCount;
   const breakdownFees = breakdown?.totalFees ?? 'N/A';
   const breakdownImpact = breakdown?.priceImpact ?? 'N/A';
@@ -322,6 +382,7 @@ export function RouteVisualization({
             <h3 id={titleId} className="text-sm font-semibold">
               Trade Route
             </h3>
+            <VenueTypeBadge type={routeType} size={16} />
             <Badge variant="outline">
               {hopCount} {hopCount === 1 ? 'Hop' : 'Hops'}
             </Badge>

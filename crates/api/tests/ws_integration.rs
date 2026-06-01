@@ -4,13 +4,12 @@
 //! Live tests (10–12) require DATABASE_URL and are `#[ignore]`:
 //!   DATABASE_URL=postgres://... cargo test -p stellarroute-api --test ws_integration -- --ignored
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use stellarroute_api::routes::ws::{
-    messages::{ClientMessage, ServerMessage, ServerPayload, SubscriptionRequest},
-    registry::{ConnId, Subscription, SubscriptionRegistry},
+    messages::{ClientMessage, ServerMessage, ServerPayload},
     rate_limit::MessageRateLimiter,
+    registry::{ConnId, Subscription, SubscriptionRegistry},
 };
-use stellarroute_api::state::DatabasePools;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -24,14 +23,22 @@ fn test_ws_message_types_serialize_correctly() {
     let msg = ServerMessage {
         v: 1,
         timestamp: 1_700_000_000_000,
-        payload: ServerPayload::SubscriptionConfirmed { subscription_id: sub_id },
+        payload: ServerPayload::SubscriptionConfirmed {
+            subscription_id: sub_id,
+        },
     };
 
     let json: Value = serde_json::to_value(&msg).expect("serialization failed");
 
     assert_eq!(json["v"], 1, "v must be 1");
-    assert_eq!(json["timestamp"], 1_700_000_000_000i64, "timestamp must match");
-    assert_eq!(json["type"], "subscription_confirmed", "type field must be present");
+    assert_eq!(
+        json["timestamp"], 1_700_000_000_000i64,
+        "timestamp must match"
+    );
+    assert_eq!(
+        json["type"], "subscription_confirmed",
+        "type field must be present"
+    );
     assert_eq!(json["subscription_id"], sub_id.to_string());
 }
 
@@ -50,8 +57,7 @@ fn test_client_message_subscribe_deserializes() {
         }
     });
 
-    let msg: ClientMessage =
-        serde_json::from_value(raw).expect("subscribe deserialization failed");
+    let msg: ClientMessage = serde_json::from_value(raw).expect("subscribe deserialization failed");
 
     match msg {
         ClientMessage::Subscribe { subscription } => {
@@ -102,8 +108,14 @@ fn test_server_message_error_shape() {
     assert_eq!(json["v"], 1);
     assert_eq!(json["type"], "error");
     assert_eq!(json["code"], "no_route_found");
-    assert!(json["message"].as_str().is_some(), "message must be a string");
-    assert!(json["timestamp"].as_i64().is_some(), "timestamp must be an integer");
+    assert!(
+        json["message"].as_str().is_some(),
+        "message must be a string"
+    );
+    assert!(
+        json["timestamp"].as_i64().is_some(),
+        "timestamp must be an integer"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +222,10 @@ fn test_subscription_registry_connection_cleanup() {
 
     // All subscriptions should be gone
     let all_pairs_after = registry.all_pairs();
-    assert!(all_pairs_after.is_empty(), "all subscriptions should be cleared after remove_connection");
+    assert!(
+        all_pairs_after.is_empty(),
+        "all subscriptions should be cleared after remove_connection"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -252,14 +267,11 @@ fn test_rate_limiter_rejects_61st() {
 mod live {
     use std::sync::Arc;
 
-    use axum::Router;
     use futures_util::{SinkExt, StreamExt};
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use sqlx::PgPool;
     use stellarroute_api::state::AppState;
     use stellarroute_api::state::DatabasePools;
-    use stellarroute_api::server::{Server, ServerConfig};
-    use stellarroute_api::routes::ws::WsState;
     use tokio::net::TcpListener;
     use tokio_tungstenite::{connect_async, tungstenite::Message};
 
@@ -273,10 +285,10 @@ mod live {
     async fn spawn_test_server(pool: PgPool, max_connections: usize) -> String {
         let ws_state = {
             // Override max_connections for the test
-            use std::sync::atomic::AtomicUsize;
             use std::collections::HashMap;
-            use tokio::sync::Mutex;
+            use std::sync::atomic::AtomicUsize;
             use stellarroute_api::routes::ws::registry::SubscriptionRegistry;
+            use tokio::sync::Mutex;
 
             Arc::new(stellarroute_api::routes::ws::WsState {
                 registry: SubscriptionRegistry::shared(),
@@ -324,9 +336,7 @@ mod live {
         let addr = spawn_test_server(pool, 500).await;
         let url = format!("ws://{addr}/ws");
 
-        let (mut ws, response) = connect_async(&url)
-            .await
-            .expect("WebSocket upgrade failed");
+        let (mut ws, response) = connect_async(&url).await.expect("WebSocket upgrade failed");
 
         // HTTP 101 Switching Protocols is indicated by a successful connect
         assert_eq!(
@@ -386,9 +396,7 @@ mod live {
         let addr = spawn_test_server(pool, 500).await;
         let url = format!("ws://{addr}/ws");
 
-        let (mut ws, _) = connect_async(&url)
-            .await
-            .expect("WebSocket upgrade failed");
+        let (mut ws, _) = connect_async(&url).await.expect("WebSocket upgrade failed");
 
         // Send a subscribe message
         let subscribe_msg = json!({
@@ -399,7 +407,7 @@ mod live {
             }
         });
 
-        ws.send(Message::Text(subscribe_msg.to_string().into()))
+        ws.send(Message::Text(subscribe_msg.to_string()))
             .await
             .expect("failed to send subscribe");
 
@@ -417,8 +425,14 @@ mod live {
 
         let json: Value = serde_json::from_str(&text).expect("invalid JSON");
         assert_eq!(json["v"], 1, "v must be 1");
-        assert_eq!(json["type"], "subscription_confirmed", "expected subscription_confirmed");
-        assert!(json["subscription_id"].as_str().is_some(), "subscription_id must be present");
+        assert_eq!(
+            json["type"], "subscription_confirmed",
+            "expected subscription_confirmed"
+        );
+        assert!(
+            json["subscription_id"].as_str().is_some(),
+            "subscription_id must be present"
+        );
 
         // Graceful disconnect
         ws.close(None).await.ok();

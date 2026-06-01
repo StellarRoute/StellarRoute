@@ -6,12 +6,12 @@
 //! pings. On exit it cleans up the registry and decrements the connection
 //! counter.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, WebSocket};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, sleep};
 use uuid::Uuid;
 
@@ -81,7 +81,9 @@ pub async fn run_connection(
         // Compute how long until the backpressure deadline fires (if active).
         let bp_remaining = backpressure_since.map(|s| {
             let elapsed = s.elapsed();
-            BACKPRESSURE_TIMEOUT.checked_sub(elapsed).unwrap_or(Duration::ZERO)
+            BACKPRESSURE_TIMEOUT
+                .checked_sub(elapsed)
+                .unwrap_or(Duration::ZERO)
         });
 
         tokio::select! {

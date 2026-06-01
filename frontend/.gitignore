@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# performance budget outputs
+perf-results.json
+perf-contributor-report.txt

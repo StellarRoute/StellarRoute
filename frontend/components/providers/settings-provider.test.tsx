@@ -1,25 +1,31 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SettingsProvider, useSettings } from "@/components/providers/settings-provider";
 
 function TestConsumer() {
-  const { settings, updateSlippage } = useSettings();
+  const { settings, updateSlippage, updateHighContrast } = useSettings();
 
   return (
     <>
       <div data-testid="slippage">{settings.slippageTolerance}</div>
+      <div data-testid="high-contrast">{String(settings.highContrast)}</div>
       <button onClick={() => updateSlippage(2)}>Set 2%</button>
       <button onClick={() => updateSlippage(100)}>Set 100%</button>
+      <button onClick={() => updateHighContrast(true)}>Enable HC</button>
+      <button onClick={() => updateHighContrast(false)}>Disable HC</button>
     </>
   );
 }
 
 describe("SettingsProvider", () => {
-  it("initializes to default settings and persists updates", async () => {
+  beforeEach(() => {
     window.localStorage.clear();
+    document.documentElement.classList.remove("high-contrast");
+  });
 
+  it("initializes to default settings and persists updates", async () => {
     render(
       <SettingsProvider>
         <TestConsumer />
@@ -36,8 +42,6 @@ describe("SettingsProvider", () => {
   });
 
   it("prevents invalid slippage values outside 0-50", async () => {
-    window.localStorage.clear();
-
     render(
       <SettingsProvider>
         <TestConsumer />
@@ -55,5 +59,72 @@ describe("SettingsProvider", () => {
 
     const stored = JSON.parse(window.localStorage.getItem("stellar_route_settings") ?? "{}");
     expect(stored.slippageTolerance).toBe(2);
+  });
+
+  it("defaults highContrast to false", () => {
+    render(
+      <SettingsProvider>
+        <TestConsumer />
+      </SettingsProvider>,
+    );
+
+    expect(screen.getByTestId("high-contrast").textContent).toBe("false");
+    expect(document.documentElement.classList.contains("high-contrast")).toBe(false);
+  });
+
+  it("adds high-contrast class to <html> when enabled", async () => {
+    render(
+      <SettingsProvider>
+        <TestConsumer />
+      </SettingsProvider>,
+    );
+
+    await userEvent.click(screen.getByText("Enable HC"));
+
+    expect(screen.getByTestId("high-contrast").textContent).toBe("true");
+    expect(document.documentElement.classList.contains("high-contrast")).toBe(true);
+  });
+
+  it("removes high-contrast class from <html> when disabled", async () => {
+    render(
+      <SettingsProvider>
+        <TestConsumer />
+      </SettingsProvider>,
+    );
+
+    await userEvent.click(screen.getByText("Enable HC"));
+    expect(document.documentElement.classList.contains("high-contrast")).toBe(true);
+
+    await userEvent.click(screen.getByText("Disable HC"));
+    expect(document.documentElement.classList.contains("high-contrast")).toBe(false);
+  });
+
+  it("persists highContrast to localStorage", async () => {
+    render(
+      <SettingsProvider>
+        <TestConsumer />
+      </SettingsProvider>,
+    );
+
+    await userEvent.click(screen.getByText("Enable HC"));
+
+    const stored = JSON.parse(window.localStorage.getItem("stellar_route_settings") ?? "{}");
+    expect(stored.highContrast).toBe(true);
+  });
+
+  it("restores highContrast from localStorage on mount", () => {
+    window.localStorage.setItem(
+      "stellar_route_settings",
+      JSON.stringify({ highContrast: true, slippageTolerance: 0.5 }),
+    );
+
+    render(
+      <SettingsProvider>
+        <TestConsumer />
+      </SettingsProvider>,
+    );
+
+    expect(screen.getByTestId("high-contrast").textContent).toBe("true");
+    expect(document.documentElement.classList.contains("high-contrast")).toBe(true);
   });
 });

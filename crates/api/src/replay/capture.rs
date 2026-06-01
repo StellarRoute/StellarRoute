@@ -58,6 +58,7 @@ impl CaptureHook {
     /// * `health_config` – health scoring config snapshot used during computation
     /// * `response` – the `QuoteResponse` produced by the live pipeline
     /// * `incident_id` – optional incident label
+    #[allow(clippy::too_many_arguments)]
     pub fn capture(
         &self,
         base: &str,
@@ -136,6 +137,7 @@ mod tests {
             price: "1.0000000".to_string(),
             total: "100.0000000".to_string(),
             quote_type: "sell".to_string(),
+            degraded: false,
             path: vec![PathStep {
                 from_asset: AssetInfo::native(),
                 to_asset: AssetInfo::native(),

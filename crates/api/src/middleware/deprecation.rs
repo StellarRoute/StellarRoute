@@ -43,8 +43,7 @@ mod tests {
 
     #[test]
     fn successor_path_preserves_query_string() {
-        let successor =
-            successor_path("/api/v1/route/native/USDC?amount=10&slippage_bps=25");
+        let successor = successor_path("/api/v1/route/native/USDC?amount=10&slippage_bps=25");
         assert_eq!(
             successor,
             "/api/v1/routes/native/USDC?amount=10&slippage_bps=25"

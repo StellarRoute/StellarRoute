@@ -119,3 +119,72 @@ export async function signTransactionStub(xdr: string) {
     xdr,
   };
 }
+
+/** Check if the current wallet address has changed */
+export async function checkAddressChange(
+  walletId: SupportedWallet,
+  currentAddress: string | null
+): Promise<string | null> {
+  if (!currentAddress) return null;
+
+  try {
+    if (walletId === "freighter") {
+      const addressRes = await getAddress();
+      if (addressRes.error) return null;
+      return addressRes.address !== currentAddress ? addressRes.address : null;
+    }
+
+    if (walletId === "xbull") {
+      // xBull doesn't have a passive address check, would need to reconnect
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/** Refresh the current session to get updated account info */
+export async function refreshWalletSession(
+  walletId: SupportedWallet
+): Promise<WalletSession> {
+  if (walletId === "freighter") {
+    const addressRes = await getAddress();
+    if (addressRes.error) {
+      throw new Error(addressRes.error.message ?? "Failed to get address");
+    }
+
+    const networkRes = await getNetworkDetails();
+    if (networkRes.error) {
+      throw new Error(networkRes.error.message ?? "Failed to get network");
+    }
+
+    return {
+      walletId,
+      address: addressRes.address,
+      network: networkRes.network,
+      isConnected: true,
+    };
+  }
+
+  if (walletId === "xbull") {
+    const xbull = (window as unknown as Record<string, unknown>).xbull as
+      | { connect: () => Promise<{ publicKey: string }> }
+      | undefined;
+
+    if (!xbull) {
+      throw new Error("xBull not installed");
+    }
+
+    const result = await xbull.connect();
+    return {
+      walletId,
+      address: result.publicKey,
+      network: "testnet",
+      isConnected: true,
+    };
+  }
+
+  throw new Error(`Unsupported wallet: ${walletId}`);
+}

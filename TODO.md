@@ -1,0 +1,3 @@
+- [x] M4 — Route Comparison: show per-candidate route estimated network fees in `frontend/components/swap/RouteDisplay.tsx`
+- [x] Update `frontend/components/swap/RouteDisplay.test.tsx` to assert fee text is rendered for candidate routes
+- [ ] Run frontend tests (vitest) and verify existing route drawer behavior remains correct

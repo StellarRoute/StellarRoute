@@ -22,6 +22,7 @@ import type {
   PairsResponse,
   PriceQuote,
   QuoteType,
+  RoutesResponse,
   TradingPair,
 } from '@/types';
 
@@ -53,7 +54,10 @@ function useFetch<T>(
 
   // Stable ref so the interval callback always sees the latest fetcher
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
@@ -142,6 +146,29 @@ export function useOrderbook(
     (signal) => stellarRouteClient.getOrderbook(base, quote, { signal }),
     [base, quote],
     refreshIntervalMs,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// useRoutes — fetch ranked route candidates
+// ---------------------------------------------------------------------------
+
+export function useRoutes(
+  base: string,
+  quote: string,
+  amount?: number,
+  limit = 5,
+  maxHops = 3,
+): UseApiState<RoutesResponse> & { refresh: () => void } {
+  const skip = !base || !quote;
+  return useFetch(
+    (signal) =>
+      stellarRouteClient.getRoutes(base, quote, amount, limit, maxHops, {
+        signal,
+      }),
+    [base, quote, amount, limit, maxHops],
+    undefined,
+    skip,
   );
 }
 

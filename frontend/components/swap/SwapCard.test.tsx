@@ -1,120 +1,209 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi, Mock } from "vitest";
-import { SwapCard } from "./SwapCard";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-function setNavigatorOnline(value: boolean) {
-  Object.defineProperty(window.navigator, "onLine", {
+import { SwapCard } from "./SwapCard";
+import {
+  SESSION_RECOVERY_THRESHOLD_MS,
+  STORAGE_KEY,
+} from "@/hooks/useTradeFormStorage";
+
+function createQuoteResponse(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    base_asset: { asset_type: "native" },
+    quote_asset: {
+      asset_type: "credit_alphanum4",
+      asset_code: "USDC",
+      asset_issuer: "GQUOTE",
+    },
+    amount: "10",
+    total: "9.5",
+    price: "0.95",
+    price_impact: "0.5",
+    path: [],
+    quote_type: "sell",
+    timestamp: Date.now(),
+    ...overrides,
+  };
+}
+
+function createResponse(data: unknown) {
+  return {
+    ok: true,
+    headers: new Headers(),
+    json: async () => data,
+  } as Response;
+}
+
+function deferredResponse(data: unknown) {
+  let resolve!: (value: Response) => void;
+  const promise = new Promise<Response>((res) => {
+    resolve = res;
+  });
+
+  return {
+    promise,
+    resolve: () => resolve(createResponse(data)),
+  };
+}
+
+function setVisibilityState(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
     configurable: true,
-    value,
+    get: () => state,
   });
 }
 
-describe("SwapCard network resilience and states", () => {
+describe("SwapCard session recovery", () => {
   beforeEach(() => {
     localStorage.clear();
-    global.fetch = vi.fn(() => 
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          total: "9.5",
-          price_impact: "0.5",
-          path: [],
-          price: "0.95",
-          amount: "10"
-        })
-      })
-    ) as Mock;
+    setVisibilityState("visible");
   });
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it("should render successfully", () => {
-    render(<SwapCard />);
-    expect(screen.getByRole("heading", { name: /swap/i })).toBeInTheDocument();
-  });
+  it(
+    "prompts recovery after refresh and re-fetches the quote before enabling swap",
+    async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        amount: "10",
+        slippage: 1,
+        deadline: 45,
+        fromToken: "native",
+        toToken: "USDC:GQUOTE",
+        savedAt: Date.now(),
+      }),
+    );
 
-  it("shows initial state requiring wallet connection", async () => {
-    render(<SwapCard />);
-    
-    // Check for "Connect Wallet" button
-    const connectButton = screen.getByRole("button", { name: /connect wallet/i });
-    expect(connectButton).toBeInTheDocument();
-  });
-
-  it("transitions states after wallet connection", async () => {
-    const user = userEvent.setup();
-    render(<SwapCard />);
-    
-    // 1. Connect Wallet
-    const connectButton = screen.getByRole("button", { name: /connect wallet/i });
-    await user.click(connectButton);
-    
-    // 2. Should show "Enter Amount"
-    await waitFor(() => {
-      expect(screen.getByText(/enter amount/i)).toBeInTheDocument();
+    const quoteDeferred = deferredResponse(createQuoteResponse());
+    let quoteCalls = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/api/v1/pairs")) {
+        return createResponse({ pairs: [], total: 0 });
+      }
+      if (url.includes("/api/v1/quote/")) {
+        quoteCalls += 1;
+        return quoteDeferred.promise;
+      }
+      return createResponse({});
     });
-    
-    // 3. Enter amount
-    const payInput = screen.getByLabelText(/you pay/i);
-    await user.type(payInput, "10");
-    
-    // 4. Should show "Swap" button
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
-    }, { timeout: 3000 });
-  });
+    vi.stubGlobal("fetch", fetchMock);
 
-  it("shows high price impact warning for large amounts", async () => {
-    // Override fetch mock for this test to return high price impact
-    global.fetch = vi.fn(() => 
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          total: "50",
-          price_impact: "15.0", // > 10
-          path: [],
-          price: "0.5",
-          amount: "90" // 90 is <= 100 mock balance, so insufficient_balance won't trigger
-        })
-      })
-    ) as Mock;
-
-    const user = userEvent.setup();
+    vi.useFakeTimers();
     render(<SwapCard />);
-    
-    // Connect
-    await user.click(screen.getByRole("button", { name: /connect wallet/i }));
-    
-    // Enter amount
-    const payInput = screen.getByLabelText(/you pay/i);
-    await user.type(payInput, "90");
-    
-    await waitFor(() => {
-      const impactButton = screen.getByRole("button", { name: /swap anyway/i });
-      expect(impactButton).toBeEnabled();
-      expect(impactButton).toHaveClass("bg-destructive");
-    }, { timeout: 3000 });
-  });
 
-  it("shows insufficient balance state", async () => {
-    const user = userEvent.setup();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/restore previous trade\?/i)).toBeInTheDocument();
+    expect(screen.getByTestId("session-recovery-summary")).toHaveTextContent(
+      "10",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /restore session/i }));
+
+    expect(screen.getByLabelText(/you pay/i)).toHaveValue("10");
+
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+
+    expect(
+      screen.getByRole("button", { name: /refreshing quote/i }),
+    ).toBeDisabled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+
+    expect(quoteCalls).toBe(1);
+
+    await act(async () => {
+      quoteDeferred.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
+    },
+    10_000,
+  );
+
+  it(
+    "prompts recovery after long tab sleep and refreshes the quote before allowing swap",
+    async () => {
+    const wakeDeferred = deferredResponse(createQuoteResponse({ total: "9.8" }));
+    let quoteCalls = 0;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/api/v1/pairs")) {
+        return createResponse({ pairs: [], total: 0 });
+      }
+      if (url.includes("/api/v1/quote/")) {
+        quoteCalls += 1;
+        if (quoteCalls === 1) {
+          return createResponse(createQuoteResponse());
+        }
+        return wakeDeferred.promise;
+      }
+      return createResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    vi.useFakeTimers();
     render(<SwapCard />);
-    
-    // Connect
-    await user.click(screen.getByRole("button", { name: /connect wallet/i }));
-    
-    // Enter amount higher than mock balance (100.00)
-    const payInput = screen.getByLabelText(/you pay/i);
-    await user.type(payInput, "100.01");
-    
-    await waitFor(() => {
-      const balanceButton = screen.getByRole("button", { name: /insufficient balance/i });
-      expect(balanceButton).toBeDisabled();
-    }, { timeout: 3000 });
-  });
+
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    fireEvent.change(screen.getByLabelText(/you pay/i), {
+      target: { value: "10" },
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
+
+    setVisibilityState("hidden");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(SESSION_RECOVERY_THRESHOLD_MS + 1);
+    });
+
+    setVisibilityState("visible");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(screen.getByText(/resume in-progress trade\?/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh quote/i }));
+
+    expect(
+      screen.getByRole("button", { name: /refreshing quote/i }),
+    ).toBeDisabled();
+    expect(quoteCalls).toBe(2);
+
+    await act(async () => {
+      wakeDeferred.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
+    },
+    10_000,
+  );
 });

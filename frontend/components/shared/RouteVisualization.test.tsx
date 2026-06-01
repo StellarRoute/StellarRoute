@@ -16,6 +16,8 @@ const path: PathStep[] = [
     },
     price: "0.98",
     source: "sdex",
+    liquidity_depth: "1000.0000000",
+    fee_bps: 0,
   },
 ];
 

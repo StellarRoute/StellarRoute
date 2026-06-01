@@ -602,16 +602,14 @@ fn format_table(headers: &[&str], rows: Vec<Vec<String>>) -> String {
 }
 
 fn exit_code_for_sdk_error(error: &SdkError) -> i32 {
-   match error {
-    SdkError::InvalidConfig(_) => EXIT_CONFIG_ERROR,
+    match error {
+        SdkError::InvalidConfig(_) => EXIT_CONFIG_ERROR,
 
-    SdkError::Http(_)
-    | SdkError::Api { .. }
-    | SdkError::Deserialization(_)
-    | SdkError::RateLimited { .. } => EXIT_RUNTIME_ERROR,
-
-    _ => EXIT_RUNTIME_ERROR, 
-}
+        SdkError::Http(_)
+        | SdkError::Api { .. }
+        | SdkError::Deserialization(_)
+        | SdkError::RateLimited { .. } => EXIT_RUNTIME_ERROR,
+    }
 }
 
 fn parse_asset(value: &str) -> Result<String, String> {

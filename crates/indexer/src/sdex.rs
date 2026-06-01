@@ -7,6 +7,7 @@ use crate::db::Database;
 use crate::error::{IndexerError, Result};
 use crate::horizon::HorizonClient;
 use crate::models::{asset::Asset, horizon::HorizonOffer, offer::Offer};
+use crate::telemetry::TraceContext;
 
 /// Indexing mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +56,19 @@ impl SdexIndexer {
             match self.index_offers().await {
                 Ok(count) => {
                     info!("Indexed {} offers", count);
+                    crate::metrics::record_offers_indexed("sdex", count as u64);
+                    crate::metrics::record_throttle_success("sdex");
+                }
+                Err(IndexerError::RateLimitExceeded { retry_after }) => {
+                    // Cursor is NOT advanced on rate-limit — we retry the same page.
+                    let wait_secs = retry_after.unwrap_or(5);
+                    warn!(
+                        retry_after_secs = wait_secs,
+                        "SDEX polling rate-limited; preserving cursor and waiting"
+                    );
+                    let consecutive = self.horizon.throttle.consecutive_429s();
+                    crate::metrics::record_throttle_event(wait_secs * 1_000, consecutive, "sdex");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
                 }
                 Err(e) => {
                     error!("Error indexing offers: {}", e);
@@ -112,6 +126,7 @@ impl SdexIndexer {
     }
 
     /// Index offers from Horizon API
+    #[tracing::instrument(skip(self), fields(source = "horizon"))]
     async fn index_offers(&self) -> Result<usize> {
         debug!("Fetching offers from Horizon");
 
@@ -152,6 +167,7 @@ impl SdexIndexer {
     }
 
     /// Upsert an asset into the database
+    #[tracing::instrument(skip(self, pool, asset), fields(asset_type = %asset.key().0))]
     async fn upsert_asset(&self, pool: &PgPool, asset: &Asset) -> Result<()> {
         let (asset_type, asset_code, asset_issuer) = asset.key();
 
@@ -174,9 +190,11 @@ impl SdexIndexer {
     }
 
     /// Upsert an offer into the database
+    #[tracing::instrument(skip(self, pool, offer), fields(offer_id = offer.id))]
     async fn upsert_offer(&self, pool: &PgPool, offer: &Offer) -> Result<()> {
         let (selling_type, selling_code, selling_issuer) = offer.selling.key();
         let (buying_type, buying_code, buying_issuer) = offer.buying.key();
+        let trace_context = TraceContext::current();
 
         sqlx::query(
             r#"
@@ -184,9 +202,10 @@ impl SdexIndexer {
                 offer_id, seller_id, selling_asset_type, selling_asset_code, selling_asset_issuer,
                 buying_asset_type, buying_asset_code, buying_asset_issuer,
                 amount, price_n, price_d, price, last_modified_ledger, last_modified_time,
+                source_trace_id, source_span_id,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
             ON CONFLICT (offer_id)
             DO UPDATE SET
                 seller_id = EXCLUDED.seller_id,
@@ -196,6 +215,8 @@ impl SdexIndexer {
                 price = EXCLUDED.price,
                 last_modified_ledger = EXCLUDED.last_modified_ledger,
                 last_modified_time = EXCLUDED.last_modified_time,
+                source_trace_id = EXCLUDED.source_trace_id,
+                source_span_id = EXCLUDED.source_span_id,
                 updated_at = NOW()
             "#,
         )
@@ -213,6 +234,8 @@ impl SdexIndexer {
         .bind(offer.price.as_str())
         .bind(offer.last_modified_ledger as i64)
         .bind(offer.last_modified_time)
+        .bind(trace_context.trace_id)
+        .bind(trace_context.span_id)
         .execute(pool)
         .await
         .map_err(IndexerError::DatabaseQuery)?;

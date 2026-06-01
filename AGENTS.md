@@ -1,101 +1,123 @@
-# StellarRoute: Project Overview & Instructional Context
+# AGENTS.md
 
-StellarRoute is an open-source DEX aggregation engine and UI for the Stellar ecosystem. It provides unified price discovery and optimal routing across both traditional Stellar DEX (SDEX) orderbooks and modern Soroban-based AMM pools.
+This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
-## 🚀 Project Overview
+## What this repo is
+StellarRoute is a Rust-first Stellar DEX aggregator with:
+- an indexer (`crates/indexer`) that ingests SDEX + Soroban AMM state into Postgres,
+- an API (`crates/api`) that serves quotes/orderbooks/routes and optional Redis-backed caching,
+- a routing engine (`crates/routing`) used by API logic,
+- Soroban contracts (`crates/contracts`),
+- a Next.js frontend (`frontend`) and TypeScript SDK (`sdk-js`).
 
-- **Purpose:** Solve the gap in price discovery and routing left by the deprecation of the SDEX Explorer.
-- **Main Technologies:**
-    - **Backend (Rust):** Tokio, Axum, SQLx (PostgreSQL), Redis.
-    - **Smart Contracts (Rust):** Soroban SDK.
-    - **Frontend (TypeScript):** Next.js 16, React 19, Tailwind CSS 4, shadcn/ui.
-    - **SDKs:** Rust and TypeScript/JavaScript.
-- **Architecture:** Modular Rust workspace with separate crates for indexing, API, routing, and contracts.
+## Common commands
+Use these commands from repo root unless noted.
 
-## 🏗️ Core Components
+### Local dependencies
+- Start Postgres + Redis:
+  - `docker-compose up -d`
+- Check service health:
+  - `docker-compose ps`
 
-1.  **`crates/indexer`:** Syncs SDEX orderbooks and Soroban AMM states to PostgreSQL. Supports polling and streaming (SSE) from Horizon.
-2.  **`crates/api`:** Axum-based REST and WebSocket API providing quotes, orderbook snapshots, and trading pairs.
-    - Entry point: `crates/api/src/bin/stellarroute-api.rs`.
-3.  **`crates/routing`:** Multi-hop pathfinding algorithm for discovering optimal trade routes.
-4.  **`crates/contracts`:** Soroban smart contracts for on-chain swap execution and router interfaces.
-5.  **`frontend/`:** Modern Next.js web interface for traders with real-time price updates and wallet integration.
-6.  **`sdk-js/`:** TypeScript SDK for easy integration into web applications.
-7.  **`crates/sdk-rust/`:** Rust SDK for backend integrations.
+### Rust workspace
+- Build all crates:
+  - `cargo build`
+- Run all tests:
+  - `cargo test`
+- Run formatting check (same as CI):
+  - `cargo fmt --all -- --check`
+- Run clippy (same as CI):
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo clippy -p stellarroute-contracts --all-targets -- -D warnings`
+- Run a single test (example pattern):
+  - `cargo test -p stellarroute-api quote::tests::selects_best_executable_direct_venue`
+  - `cargo test -p stellarroute-routing pathfinder::tests::...`
+- Run ignored/integration-style tests when needed:
+  - `cargo test -- --include-ignored`
 
-## 🛠️ Building and Running
+### Run services
+- API server:
+  - `cargo run -p stellarroute-api`
+- Indexer:
+  - `cargo run -p stellarroute-indexer`
 
-### Prerequisites
-- Rust 1.75+
-- Docker & Docker Compose
-- Node.js 18+ (for frontend/SDK development)
-- [Soroban CLI](https://developers.stellar.org/docs/smart-contracts/getting-started/setup#install-the-soroban-cli)
+### Frontend (`frontend/`)
+- Install deps:
+  - `npm --prefix frontend install`
+- Dev server:
+  - `npm --prefix frontend run dev`
+- Build:
+  - `npm --prefix frontend run build`
+- Lint:
+  - `npm --prefix frontend run lint`
+- Unit tests:
+  - `npm --prefix frontend run test`
+- Single test file / test name:
+  - `npm --prefix frontend run test -- src/path/to/file.test.tsx -t "test name"`
+- E2E:
+  - `npm --prefix frontend run test:e2e`
+- Story snapshot build:
+  - `npm --prefix frontend run storybook:ci`
 
-### Environment Setup
-Create a `.env` file in the root directory:
-```env
-DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
-REDIS_URL=redis://localhost:6379
-STELLAR_HORIZON_URL=https://horizon.stellar.org
-SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
-```
+### JS SDK (`sdk-js/`)
+- Install deps:
+  - `npm --prefix sdk-js install`
+- Build:
+  - `npm --prefix sdk-js run build`
+- Test:
+  - `npm --prefix sdk-js run test`
+- Single test file / test name:
+  - `npm --prefix sdk-js run test -- src/path/to/file.test.ts -t "test name"`
+- Typecheck/lint:
+  - `npm --prefix sdk-js run typecheck`
 
-### Local Services
-Start PostgreSQL and Redis:
-```bash
-docker-compose up -d
-```
+## Required runtime configuration
+- API requires `DATABASE_URL`; optional `REDIS_URL`.
+- Indexer requires `DATABASE_URL`, `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, and `ROUTER_CONTRACT_ADDRESS`.
+- Typical local values are documented in `docs/development/SETUP.md`.
 
-### Backend (Rust)
-- **Build all:** `cargo build`
-- **Run API:** `cargo run -p stellarroute-api`
-- **Run Indexer:** `cargo run -p stellarroute-indexer`
-- **Run Tests:** `cargo test` (unit tests)
-- **Integration Tests:** `DATABASE_URL=... cargo test -- --include-ignored`
+## Big-picture architecture and execution flow
+Focus here first when debugging behavior across crates.
 
-### Frontend (Next.js)
-Located in `frontend/`:
-- **Install:** `npm install`
-- **Dev:** `npm run dev`
-- **Build:** `npm run build`
-- **Test:** `npm run test` (Vitest)
-- **E2E Test:** `npm run test:e2e` (Playwright)
+1. Data ingestion and normalization
+- `crates/indexer/src/bin/stellarroute-indexer.rs` boots DB, runs migrations, then starts:
+  - SDEX loop (`sdex.rs`) reading Horizon offers,
+  - AMM loop (`amm.rs`) reading Soroban events/pool state,
+  - maintenance loop (snapshot compaction, retention cleanup, materialized view refresh).
+- Ingestion writes into `assets`, `sdex_offers`, `amm_pool_reserves`, and supporting tables/functions.
+- Quote/routing read path is unified via `normalized_liquidity` (see `docs/architecture/database-schema.md`).
 
-### JS SDK
-Located in `sdk-js/`:
-- **Install:** `npm install`
-- **Build:** `npm run build`
-- **Test:** `npm run test`
+2. API request path
+- `crates/api/src/bin/stellarroute-api.rs` configures DB pool guardrails, optional startup dependency checks, and launches `Server`.
+- `crates/api/src/server.rs` wires middleware (request ID, versioning headers, rate limiting, tracing), routes, Swagger UI, and optional Redis cache.
+- `crates/api/src/routes/mod.rs` exposes primary endpoints:
+  - `/api/v1/pairs`, `/api/v1/orderbook/:base/:quote`, `/api/v1/quote/:base/:quote`, `/api/v1/routes/:base/:quote`, plus replay/admin/metrics.
+- `crates/api/src/routes/quote.rs` is the key quote pipeline:
+  - loads candidates from `normalized_liquidity`,
+  - applies freshness/health/policy filters from `stellarroute-routing::health::*`,
+  - chooses best executable venue,
+  - records metrics/tracing and caches short-TTL quote results.
 
-## 📝 Development Conventions
+3. Routing engine role
+- `crates/routing` is shared routing/health logic (pathfinder, optimizer, risk/policy, consensus, anomaly/freshness/health modules).
+- API currently uses routing health + policy components directly for venue filtering/scoring in quote computation.
 
-- **Code Style:**
-    - **Rust:** Follow idiomatic patterns; use `cargo fmt` and `cargo clippy`. Unsafe code is strictly forbidden (enforced by workspace lint).
-    - **TypeScript:** Use ESLint and Prettier. Follow existing patterns for hooks and components.
-- **Testing:**
-    - **Backend:** Use Rust's built-in testing framework (`cargo test`). Integration tests that require a database should be marked with `#[ignore]`.
-    - **Frontend/SDK:** Use `vitest`.
-- **Workflow:**
-    - **Conventional Commits:** Use `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
-    - **Branching:** `main` (stable), `feature/*`, `fix/*`, `docs/*`.
-    - **CI/CD:** GitHub Actions for builds, tests, and linting. Always ensure CI is green before merging.
-- **Technical Integrity:**
-    - Use `thiserror` for library errors and `anyhow` for application-level errors in Rust.
-    - Prefer `tracing` over `println!`.
-    - Handle `window.matchMedia` missing in JSDOM by providing a mock in `frontend/vitest.setup.ts`.
-    - Use `frontend/__mocks__/lucide-react.tsx` for icon mocking in tests.
+4. Contracts and SDKs
+- `crates/contracts` contains Soroban router-related contracts and tests.
+- `sdk-js` wraps API endpoints for external clients; examples in `sdk-js/examples/`.
+- `crates/sdk-rust` is the Rust SDK workspace member.
 
-## 📂 Key Directories
-- `crates/`: Rust workspace members.
-- `frontend/`: Next.js application.
-- `sdk-js/`: TypeScript SDK.
-- `docs/`: Comprehensive architecture, API, and development guides.
-- `scripts/`: Deployment and utility scripts.
-- `migrations/`: SQL migrations for PostgreSQL (managed by `sqlx`).
+## High-value files to open first
+- `crates/indexer/src/bin/stellarroute-indexer.rs`
+- `crates/indexer/src/sdex.rs`
+- `crates/indexer/src/amm.rs`
+- `crates/api/src/bin/stellarroute-api.rs`
+- `crates/api/src/server.rs`
+- `crates/api/src/routes/quote.rs`
+- `crates/api/src/state.rs`
+- `crates/routing/src/lib.rs`
+- `docs/architecture/database-schema.md`
 
-## 🧠 Project Specific Knowledge
-- **Asset Format:** Stellar assets are typically represented as `native` or `CODE:ISSUER`.
-- **API Performance:** Target <500ms for quote requests.
-- **Caching:** Redis is used for pairs (10s), orderbooks (5s), and quotes (2s).
-- **Icon Mocking:** If tests fail due to missing icons, check `frontend/__mocks__/lucide-react.tsx`.
-- **URL State:** The frontend uses URL query parameters (`base`, `quote`) for persisting trading pair selection.
+## Known project-specific testing details
+- Frontend Vitest setup includes `matchMedia` and `localStorage` mocks in `frontend/vitest.setup.ts`.
+- If icon imports break frontend tests, check `frontend/__mocks__/lucide-react.tsx`.

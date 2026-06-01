@@ -94,18 +94,18 @@ impl Default for EndpointConfig {
                 max_requests: std::env::var("RATE_LIMIT_ORDERBOOK")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(30),
+                    .unwrap_or(60), // Increased from 30
                 window,
             },
             quote: RateLimitConfig {
                 max_requests: std::env::var("RATE_LIMIT_QUOTE")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(100),
+                    .unwrap_or(20), // Protected: lowered from 100
                 window,
             },
             default: RateLimitConfig {
-                max_requests: 200,
+                max_requests: 120, // Lowered from 200
                 window,
             },
             tenant_overrides: HashMap::new(),
@@ -310,7 +310,7 @@ impl RateLimitLayer {
         if let Some(cfg) = Arc::get_mut(&mut self.endpoint_config) {
             cfg.tenant_overrides.insert(tenant_id.into(), config);
         } else {
-            // Fallback: we can't mutate if there are multiple Arcs, 
+            // Fallback: we can't mutate if there are multiple Arcs,
             // but in initialization there should only be one.
             warn!("Could not set rate limit override: EndpointConfig is shared");
         }
@@ -414,11 +414,7 @@ where
 /// Extract consumer identity from auth headers or fallback to IP.
 fn extract_identity(req: &Request<Body>) -> String {
     // 1. Check X-API-Key
-    if let Some(key) = req
-        .headers()
-        .get("x-api-key")
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(key) = req.headers().get("x-api-key").and_then(|v| v.to_str().ok()) {
         return format!("apikey:{}", key);
     }
 
@@ -428,8 +424,8 @@ fn extract_identity(req: &Request<Body>) -> String {
         .get("authorization")
         .and_then(|v| v.to_str().ok())
     {
-        if auth.starts_with("Bearer ") {
-            return format!("token:{}", &auth[7..]);
+        if let Some(token) = auth.strip_prefix("Bearer ") {
+            return format!("token:{}", token);
         }
     }
 
@@ -535,19 +531,26 @@ mod tests {
 
         let cfg = EndpointConfig::default();
         assert_eq!(cfg.pairs.max_requests, 60);
-        assert_eq!(cfg.orderbook.max_requests, 30);
-        assert_eq!(cfg.quote.max_requests, 100);
-        assert_eq!(cfg.default.max_requests, 200);
+        assert_eq!(cfg.orderbook.max_requests, 60);
+        assert_eq!(cfg.quote.max_requests, 20);
+        assert_eq!(cfg.default.max_requests, 120);
     }
 
     #[test]
     fn endpoint_config_selects_correct_limit() {
         let cfg = EndpointConfig::default();
         assert_eq!(cfg.for_path("/api/v1/pairs", None).max_requests, 60);
-        assert_eq!(cfg.for_path("/api/v1/orderbook/XLM/USDC", None).max_requests, 30);
-        assert_eq!(cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests, 100);
-        assert_eq!(cfg.for_path("/health", None).max_requests, 200);
-        assert_eq!(cfg.for_path("/swagger-ui", None).max_requests, 200);
+        assert_eq!(
+            cfg.for_path("/api/v1/orderbook/XLM/USDC", None)
+                .max_requests,
+            60
+        );
+        assert_eq!(
+            cfg.for_path("/api/v1/quote/XLM/USDC", None).max_requests,
+            20
+        );
+        assert_eq!(cfg.for_path("/health", None).max_requests, 120);
+        assert_eq!(cfg.for_path("/swagger-ui", None).max_requests, 120);
     }
 
     #[test]
@@ -675,7 +678,7 @@ mod tests {
     fn tenant_override_applied_correctly() {
         let mut cfg = EndpointConfig::default();
         let tenant_id = "apikey:vip-tenant";
-        
+
         cfg.tenant_overrides.insert(
             tenant_id.to_string(),
             RateLimitConfig {
@@ -685,9 +688,12 @@ mod tests {
         );
 
         // Path-based remains the same for others
-        assert_eq!(cfg.for_path("/api/v1/quote", None).max_requests, 100);
-        
+        assert_eq!(cfg.for_path("/api/v1/quote", None).max_requests, 20);
+
         // Override applied for the specific tenant
-        assert_eq!(cfg.for_path("/api/v1/quote", Some(tenant_id)).max_requests, 1000);
+        assert_eq!(
+            cfg.for_path("/api/v1/quote", Some(tenant_id)).max_requests,
+            1000
+        );
     }
 }

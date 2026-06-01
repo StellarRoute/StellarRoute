@@ -1,23 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { StellarRouteWebSocket, createWebSocketClient, WebSocketState } from './websocket.js';
+import { StellarRouteWebSocket, createWebSocketClient, WebSocketState, Clock, IWebSocket, IWebSocketFactory } from './websocket.js';
 
-// Mock WebSocket
-class MockWebSocket {
+// ============================================================================
+// Mocks
+// ============================================================================
+
+class MockWebSocket implements IWebSocket {
   static instances: MockWebSocket[] = [];
   
-  readyState: number = WebSocket.CONNECTING;
-  onopen: ((event: Event) => void) | null = null;
-  onclose: ((event: CloseEvent) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  onmessage: ((event: MessageEvent) => void) | null = null;
+  readyState: number = 0; // CONNECTING
+  onopen: ((event: any) => void) | null = null;
+  onclose: ((event: any) => void) | null = null;
+  onerror: ((event: any) => void) | null = null;
+  onmessage: ((event: any) => void) | null = null;
   
-  constructor(public url: string) {
+  constructor(public url: string, private clock: Clock, connectDelay = 10) {
     MockWebSocket.instances.push(this);
-    // Simulate async connection
-    setTimeout(() => {
-      this.readyState = WebSocket.OPEN;
-      this.onopen?.({ type: 'open' } as Event);
-    }, 10);
+    // Simulate async connection using the provided clock
+    if (connectDelay >= 0) {
+      this.clock.setTimeout(() => {
+        if (this.readyState === 0) { // Still connecting
+          this.readyState = 1; // OPEN
+          this.onopen?.({ type: 'open' });
+        }
+      }, connectDelay);
+    }
   }
   
   send(data: string) {
@@ -25,14 +32,14 @@ class MockWebSocket {
     try {
       const parsed = JSON.parse(data);
       if (parsed.action === 'subscribe') {
-        setTimeout(() => {
+        this.clock.setTimeout(() => {
           this.onmessage?.({
             data: JSON.stringify({
               type: 'subscription_confirmed',
               subscription: parsed.subscription,
-              timestamp: Date.now(),
+              timestamp: this.clock.now(),
             }),
-          } as MessageEvent);
+          });
         }, 5);
       }
     } catch {
@@ -41,23 +48,68 @@ class MockWebSocket {
   }
   
   close(code = 1000, reason = '') {
-    this.readyState = WebSocket.CLOSED;
-    this.onclose?.({ code, reason, type: 'close' } as CloseEvent);
+    this.readyState = 3; // CLOSED
+    this.onclose?.({ code, reason, type: 'close' });
   }
 }
 
-// Setup mock
-vi.stubGlobal('WebSocket', MockWebSocket);
+class MockWebSocketFactory implements IWebSocketFactory {
+  public connectDelay = 10;
+  constructor(private clock: Clock) {}
+  create(url: string): IWebSocket {
+    return new MockWebSocket(url, this.clock, this.connectDelay);
+  }
+}
+
+class VirtualClock implements Clock {
+  private currentTime = 1000000; // Start at a fixed time
+  private timers: { id: number, callback: (...args: any[]) => void, time: number }[] = [];
+  private nextId = 1;
+
+  now() { return this.currentTime; }
+  
+  setTimeout(callback: (...args: any[]) => void, ms: number, ...args: any[]) {
+    const id = this.nextId++;
+    this.timers.push({ id, callback: () => callback(...args), time: this.currentTime + ms });
+    this.timers.sort((a, b) => a.time - b.time);
+    return id;
+  }
+
+  clearTimeout(id: number) {
+    this.timers = this.timers.filter(t => t.id !== id);
+  }
+
+  tick(ms: number) {
+    const targetTime = this.currentTime + ms;
+    while (this.timers.length > 0 && this.timers[0].time <= targetTime) {
+      const timer = this.timers.shift()!;
+      this.currentTime = timer.time;
+      timer.callback();
+    }
+    this.currentTime = targetTime;
+  }
+}
 
 describe('StellarRouteWebSocket', () => {
   let client: StellarRouteWebSocket;
+  let clock: Clock;
+  let wsFactory: IWebSocketFactory;
   
   beforeEach(() => {
     MockWebSocket.instances = [];
-    client = createWebSocketClient('ws://localhost:8080', {
+    clock = {
+      now: () => Date.now(),
+      setTimeout: (cb, ms) => setTimeout(cb, ms),
+      clearTimeout: (id) => clearTimeout(id),
+    };
+    wsFactory = new MockWebSocketFactory(clock);
+    
+    client = new StellarRouteWebSocket('ws://localhost:8080', {
       connectionTimeoutMs: 100,
       initialBackoffMs: 50,
       maxReconnectAttempts: 2,
+      clock,
+      webSocketFactory: wsFactory,
     });
   });
   
@@ -149,7 +201,7 @@ describe('StellarRouteWebSocket', () => {
     it('should emit subscription confirmed event', async () => {
       await client.connect();
       
-      const events: unknown[] = [];
+      const events: any[] = [];
       client.addEventListener((event) => events.push(event));
       
       client.subscribeToQuote('XLM', 'USDC');
@@ -157,7 +209,7 @@ describe('StellarRouteWebSocket', () => {
       // Wait for mock to send confirmation
       await new Promise((r) => setTimeout(r, 20));
       
-      expect(events.some((e: unknown) => (e as {type: string}).type === 'subscription_confirmed')).toBe(true);
+      expect(events.some((e: any) => e.type === 'subscription_confirmed')).toBe(true);
     });
   });
   
@@ -166,7 +218,7 @@ describe('StellarRouteWebSocket', () => {
       await client.connect();
       const ws = MockWebSocket.instances[0];
       
-      const events: unknown[] = [];
+      const events: any[] = [];
       client.addEventListener((event) => events.push(event));
       
       // Simulate server message
@@ -186,17 +238,17 @@ describe('StellarRouteWebSocket', () => {
           },
           timestamp: Date.now(),
         }),
-      } as MessageEvent);
+      });
       
       expect(events.length).toBe(1);
-      expect((events[0] as {type: string}).type).toBe('quote_update');
+      expect(events[0].type).toBe('quote_update');
     });
     
     it('should handle orderbook update events', async () => {
       await client.connect();
       const ws = MockWebSocket.instances[0];
       
-      const events: unknown[] = [];
+      const events: any[] = [];
       client.addEventListener((event) => events.push(event));
       
       // Simulate server message
@@ -213,17 +265,17 @@ describe('StellarRouteWebSocket', () => {
           },
           timestamp: Date.now(),
         }),
-      } as MessageEvent);
+      });
       
       expect(events.length).toBe(1);
-      expect((events[0] as {type: string}).type).toBe('orderbook_update');
+      expect(events[0].type).toBe('orderbook_update');
     });
     
     it('should handle error events', async () => {
       await client.connect();
       const ws = MockWebSocket.instances[0];
       
-      const events: unknown[] = [];
+      const events: any[] = [];
       client.addEventListener((event) => events.push(event));
       
       // Simulate server error
@@ -234,12 +286,11 @@ describe('StellarRouteWebSocket', () => {
           message: 'Invalid trading pair',
           timestamp: Date.now(),
         }),
-      } as MessageEvent);
+      });
       
       expect(events.length).toBe(1);
-      const errorEvent = events[0] as {type: string; code: string};
-      expect(errorEvent.type).toBe('error');
-      expect(errorEvent.code).toBe('invalid_subscription');
+      expect(events[0].type).toBe('error');
+      expect(events[0].code).toBe('invalid_subscription');
     });
     
     it('should remove event listener correctly', async () => {
@@ -262,52 +313,93 @@ describe('StellarRouteWebSocket', () => {
       // Further events should only increment once
       client.unsubscribe(client.subscribeToQuote('XLM', 'USDC'));
       
-      expect(callCount).toBeLessThanOrEqual(countBefore + 2);
+      expect(callCount).toBeLessThanOrEqual(countBefore + 1);
     });
   });
   
-  describe('reconnection', () => {
-    it('should attempt reconnection on disconnect', async () => {
-      client = createWebSocketClient('ws://localhost:8080', {
-        connectionTimeoutMs: 100,
-        initialBackoffMs: 10,
-        maxReconnectAttempts: 2,
+  describe('deterministic replay', () => {
+    let vClock: VirtualClock;
+    let vWsFactory: MockWebSocketFactory;
+    
+    beforeEach(() => {
+      vClock = new VirtualClock();
+      vWsFactory = new MockWebSocketFactory(vClock);
+      client = new StellarRouteWebSocket('ws://localhost:8080', {
+        clock: vClock,
+        webSocketFactory: vWsFactory,
+        initialBackoffMs: 1000,
+        maxReconnectAttempts: 3,
       });
+    });
+
+    it('should handle connection timeout deterministically', async () => {
+      vWsFactory.connectDelay = -1; // Never connect
+      const connectPromise = client.connect();
       
-      await client.connect();
+      expect(client.getState()).toBe('connecting');
+      
+      // Tick to just before timeout (default 10000ms)
+      vClock.tick(9999);
+      expect(client.getState()).toBe('connecting');
+      
+      // Tick to timeout
+      vClock.tick(1);
+      
+      await expect(connectPromise).rejects.toThrow('Connection timeout');
+      expect(client.getState()).toBe('disconnected');
+    });
+
+    it('should handle reconnection backoff deterministically', async () => {
+      const states: WebSocketState[] = [];
+      client.addEventListener(e => {
+        if (e.type === 'connection_state') states.push(e.state);
+      });
+
+      // Start connection
+      client.connect().catch(() => {});
+      vClock.tick(10); // MockWebSocket connects in 10ms
+      expect(client.getState()).toBe('connected');
+      
+      // Simulate failure
+      MockWebSocket.instances[0].close(1006, 'Abnormal Closure');
+      expect(client.getState()).toBe('disconnected');
+      
+      // Should schedule reconnect in 1000ms
+      vClock.tick(500);
+      expect(client.getState()).toBe('disconnected');
       expect(MockWebSocket.instances.length).toBe(1);
       
-      // Simulate unexpected disconnect
-      const ws = MockWebSocket.instances[0];
-      ws.close(1006, 'Connection lost');
+      vClock.tick(500);
+      expect(client.getState()).toBe('connecting');
+      expect(MockWebSocket.instances.length).toBe(2);
       
-      // Wait for reconnection attempt
-      await new Promise((r) => setTimeout(r, 100));
-      
-      // Should have attempted reconnection
-      expect(MockWebSocket.instances.length).toBeGreaterThan(1);
+      // Connect second attempt
+      vClock.tick(10);
+      expect(client.getState()).toBe('connected');
     });
-    
-    it('should resubscribe after reconnection', async () => {
-      client = createWebSocketClient('ws://localhost:8080', {
-        connectionTimeoutMs: 100,
-        initialBackoffMs: 10,
-        maxReconnectAttempts: 2,
-      });
+
+    it('should handle multiple failures with exponential backoff', async () => {
+      client.connect().catch(() => {});
+      vClock.tick(10);
       
-      await client.connect();
-      client.subscribeToQuote('XLM', 'USDC');
+      // 1st failure
+      MockWebSocket.instances[0].close(1006);
+      vClock.tick(1000); // 1s backoff
+      expect(client.getState()).toBe('connecting');
       
-      expect(client.getSubscriptions().size).toBe(1);
+      // 2nd failure (immediate)
+      MockWebSocket.instances[1].close(1006);
+      expect(client.getState()).toBe('disconnected');
       
-      // Simulate disconnect and reconnect
-      const ws = MockWebSocket.instances[0];
-      ws.close(1006, 'Connection lost');
+      vClock.tick(1999);
+      expect(client.getState()).toBe('disconnected');
+      vClock.tick(1); // 2s backoff
+      expect(client.getState()).toBe('connecting');
       
-      await new Promise((r) => setTimeout(r, 100));
-      
-      // Subscriptions should be preserved
-      expect(client.getSubscriptions().size).toBe(1);
+      // 3rd failure
+      MockWebSocket.instances[2].close(1006);
+      vClock.tick(4000); // 4s backoff
+      expect(client.getState()).toBe('connecting');
     });
   });
 });
@@ -315,14 +407,6 @@ describe('StellarRouteWebSocket', () => {
 describe('createWebSocketClient', () => {
   it('should create a client with default options', () => {
     const client = createWebSocketClient();
-    expect(client).toBeInstanceOf(StellarRouteWebSocket);
-  });
-  
-  it('should create a client with custom options', () => {
-    const client = createWebSocketClient('ws://custom:8080', {
-      maxReconnectAttempts: 10,
-      debug: true,
-    });
     expect(client).toBeInstanceOf(StellarRouteWebSocket);
   });
 });

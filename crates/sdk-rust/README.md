@@ -1,4 +1,11 @@
-# StellarRoute Rust SDK CLI
+# StellarRoute Rust SDK
+
+The Rust SDK crate is `stellarroute-sdk`.
+
+- Full Rust integration guide: [docs/sdk-rust/README.md](../docs/sdk-rust/README.md)
+- CLI reference is preserved below.
+
+## StellarRoute Rust SDK CLI
 
 The CLI binary is available as:
 

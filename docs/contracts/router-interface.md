@@ -12,6 +12,15 @@ The router exposes three core methods:
 
 Existing methods `get_quote` and `execute_swap` remain available for backward compatibility; `quote` and `execute` are stable aliases for integrators.
 
+`execute_swap` enforces the runtime swap contract:
+
+- `amount_in` must be positive.
+- `recipient` cannot be the router contract itself.
+- `min_amount_out` and route-level `min_output` are both enforced as slippage guards.
+- route validation still rejects empty routes, overlong routes, stale routes, and unsupported pools before funds are transferred.
+
+Execution emits `exe_req`, `swap`, and `exe_fail` lifecycle events so indexers can reconstruct success and failure paths.
+
 ## Authorization Assumptions
 
 - `validate`: no auth required; this is a read-only/preflight check.
@@ -27,6 +36,13 @@ Existing methods `get_quote` and `execute_swap` remain available for backward co
 - route has not expired when `route.expires_at > 0`
 - all assets pass token allowlist checks when allowlist is active
 - all pools in the route are registered
+
+`execute_swap` adds:
+
+- `amount_in > 0`
+- `recipient != router_contract_address`
+- `max_price_impact_bps <= 10000`
+- `max_execution_spread_bps <= 10000`
 
 ## Supported AMM Assumptions
 

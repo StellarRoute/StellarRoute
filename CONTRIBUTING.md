@@ -77,6 +77,9 @@ DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarro
 The API will be available at `http://localhost:3000`. Visit `http://localhost:3000/swagger-ui` for interactive API docs.
 
 For a more detailed environment setup, see [docs/development/SETUP.md](docs/development/SETUP.md).
+For indexer-specific runbook and troubleshooting steps, see [docs/development/indexer-guide.md](docs/development/indexer-guide.md).
+
+For frontend-specific setup and workflows, see [docs/development/frontend-guide.md](docs/development/frontend-guide.md).
 
 ---
 
@@ -162,6 +165,8 @@ Every code contribution **must** include appropriate tests.
 | Refactor             | Existing tests must continue to pass                                         |
 
 ### Running Tests
+
+For the full matrix of Rust, contract, integration, benchmark, and frontend Vitest guidance, see [docs/development/testing-guide.md](docs/development/testing-guide.md).
 
 ```bash
 # All unit tests (no external deps needed)
@@ -315,6 +320,33 @@ Not sure where to start? Here are some ideas:
 | PR comments                             | Code-specific feedback                       |
 
 When in doubt, **open a Discussion** — there are no silly questions. 🙂
+
+---
+
+## Secrets Rotation Checklist
+
+When rotating credentials (DATABASE_URL, REDIS_URL, SOROBAN_RPC_URL), follow this checklist to ensure zero downtime and security:
+
+1. **Database Credentials**:
+   - [ ] Create a new database user with the same permissions.
+   - [ ] Update the environment variable in the staging environment.
+   - [ ] Verify that the service starts correctly (startup checks will pass).
+   - [ ] Deploy the change to production.
+   - [ ] Monitor logs for connection errors.
+   - [ ] Once all instances are updated, revoke the old user's credentials.
+
+2. **Redis Credentials**:
+   - [ ] Update the password in Redis (if applicable, using `CONFIG SET requirepass`).
+   - [ ] Update the environment variable in the application.
+   - [ ] Restart the application.
+
+3. **Soroban RPC URL/API Keys**:
+   - [ ] If using a provider with API keys, generate a new key.
+   - [ ] Update the environment variable.
+   - [ ] Verify connectivity via startup checks.
+   - [ ] Deactivate the old API key.
+
+**Security Reminder**: Never log full connection strings. Our configuration system masks these automatically in `Debug` output. If you add new sensitive environment variables, ensure they are also masked.
 
 ---
 

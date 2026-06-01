@@ -163,7 +163,10 @@ impl StellarRouteClient {
     /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] if any
     /// request item is malformed or the batch is too large.
     pub async fn batch_quote(&self, request: BatchQuoteRequest) -> Result<BatchQuoteResponse> {
-        let req = self.http.post(self.url("api/v1/batch/quote")?).json(&request);
+        let req = self
+            .http
+            .post(self.url("api/v1/batch/quote")?)
+            .json(&request);
         self.execute(req).await
     }
 

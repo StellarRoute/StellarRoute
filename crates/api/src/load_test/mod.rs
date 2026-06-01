@@ -5,8 +5,8 @@
 pub mod harness;
 
 pub use harness::{
-    LoadTestHarness, HarnessConfig, HarnessResults, TrafficMix, TrafficType,
-    AmountDistribution, DegradationScenario
+    AmountDistribution, DegradationScenario, HarnessConfig, HarnessResults, LoadTestHarness,
+    TrafficMix, TrafficType,
 };
 
 use std::sync::atomic::{AtomicU64, Ordering};

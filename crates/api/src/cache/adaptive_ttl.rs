@@ -88,9 +88,9 @@ pub struct AdaptiveTtlEngine {
 
 #[derive(Debug, Clone)]
 struct TtlDecisionRecord {
-    pair: String,
+    _pair: String,
     decision: TtlDecision,
-    timestamp: std::time::Instant,
+    _timestamp: std::time::Instant,
 }
 
 impl AdaptiveTtlEngine {
@@ -133,9 +133,9 @@ impl AdaptiveTtlEngine {
         drop(metrics);
 
         let record = TtlDecisionRecord {
-            pair: pair.to_string(),
+            _pair: pair.to_string(),
             decision: decision.clone(),
-            timestamp: std::time::Instant::now(),
+            _timestamp: std::time::Instant::now(),
         };
 
         let mut decisions = self.decisions.write().await;
@@ -282,7 +282,7 @@ impl VolatilityCalculator {
     }
 
     pub fn add_price(&mut self, pair: &str, price: f64) {
-        let prices = self.prices.entry(pair.to_string()).or_insert_with(Vec::new);
+        let prices = self.prices.entry(pair.to_string()).or_default();
         prices.push(price);
 
         if prices.len() > self.window_size {
@@ -297,21 +297,15 @@ impl VolatilityCalculator {
             return None;
         }
 
-        let returns: Vec<f64> = prices
-            .windows(2)
-            .map(|w| (w[1] - w[0]) / w[0])
-            .collect();
+        let returns: Vec<f64> = prices.windows(2).map(|w| (w[1] - w[0]) / w[0]).collect();
 
         if returns.is_empty() {
             return None;
         }
 
         let mean = returns.iter().sum::<f64>() / returns.len() as f64;
-        let variance = returns
-            .iter()
-            .map(|r| (r - mean).powi(2))
-            .sum::<f64>()
-            / returns.len() as f64;
+        let variance =
+            returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / returns.len() as f64;
 
         Some(variance.sqrt())
     }
@@ -441,7 +435,9 @@ mod tests {
             depth: 100.0,
             ..Default::default()
         };
-        engine.update_metrics("VOLATILE/USD", extreme_volatile).await;
+        engine
+            .update_metrics("VOLATILE/USD", extreme_volatile)
+            .await;
 
         let decision = engine.compute_ttl("VOLATILE/USD").await;
         assert!(decision.ttl_ms >= 1_000);
@@ -497,8 +493,12 @@ mod tests {
 
         assert_eq!(stats.total_decisions, 2);
         assert_eq!(stats.tracked_pairs, 2);
-        assert!(stats.reason_breakdown.contains_key(&TtlReason::HighVolatility));
-        assert!(stats.reason_breakdown.contains_key(&TtlReason::LowVolatility));
+        assert!(stats
+            .reason_breakdown
+            .contains_key(&TtlReason::HighVolatility));
+        assert!(stats
+            .reason_breakdown
+            .contains_key(&TtlReason::LowVolatility));
     }
 
     #[test]

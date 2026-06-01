@@ -35,10 +35,13 @@ export const XIcon = Icon;
 
 // Additional icons referenced by components/tests
 export const ArrowLeftRight = Icon;
+export const ArrowRightLeft = Icon;
 export const Check = Icon;
+export const Clock = Icon;
 export const Copy = Icon;
 export const History = Icon;
 export const Search = Icon;
+export const Download = Icon;
 
 export const AlertTriangle = Icon;
 export const DollarSign = Icon;
@@ -61,3 +64,18 @@ export const InfoIcon = Icon;
 export const Loader2Icon = Icon;
 export const OctagonXIcon = Icon;
 export const TriangleAlertIcon = Icon;
+
+// BatchSwapPreview + ViewState icons
+export const Lock = Icon;
+export const Inbox = Icon;
+export const Plus = Icon;
+export const Shield = Icon;
+export const Zap = Icon;
+
+// Browser notification settings icons
+export const Bell = Icon;
+export const BellOff = Icon;
+
+// Expert settings icons
+export const Compass = Icon;
+export const ShieldAlert = Icon;

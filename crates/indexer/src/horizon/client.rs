@@ -1,5 +1,7 @@
 use crate::error::{IndexerError, Result};
+use crate::horizon::backpressure::{parse_retry_after, BackoffConfig, ThrottleState};
 use crate::models::horizon::{HorizonOffer, HorizonOrderbook, HorizonPage};
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -28,6 +30,10 @@ pub struct HorizonClient {
     base_url: String,
     http: reqwest::Client,
     retry_config: RetryConfig,
+    /// Shared throttle state — tracks consecutive 429s and emits metrics.
+    pub throttle: Arc<ThrottleState>,
+    /// Backoff configuration for 429 responses.
+    backoff_config: BackoffConfig,
 }
 
 /// Parameters for fetching an orderbook snapshot.
@@ -55,10 +61,35 @@ impl HorizonClient {
                 .build()
                 .unwrap_or_default(),
             retry_config,
+            throttle: Arc::new(ThrottleState::new()),
+            backoff_config: BackoffConfig::default(),
         }
     }
 
-    /// Execute a request with exponential backoff retry logic
+    /// Create a client with custom retry config and custom backoff config (useful in tests).
+    pub fn with_retry_config_and_backoff(
+        base_url: impl Into<String>,
+        retry_config: RetryConfig,
+        backoff_config: BackoffConfig,
+    ) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+            retry_config,
+            throttle: Arc::new(ThrottleState::new()),
+            backoff_config,
+        }
+    }
+
+    /// Execute a request with exponential backoff retry logic.
+    ///
+    /// 429 responses are handled specially:
+    /// - The `Retry-After` header is respected when present.
+    /// - Full-jitter exponential backoff is applied otherwise.
+    /// - Cursor progress is preserved (the caller never advances the cursor on 429).
     async fn retry_request<F, Fut, T>(&self, operation: F) -> Result<T>
     where
         F: Fn() -> Fut,
@@ -69,7 +100,10 @@ impl HorizonClient {
 
         loop {
             match operation().await {
-                Ok(result) => return Ok(result),
+                Ok(result) => {
+                    self.throttle.record_success();
+                    return Ok(result);
+                }
                 Err(e) => {
                     attempt += 1;
 
@@ -100,6 +134,47 @@ impl HorizonClient {
         }
     }
 
+    /// Execute a request, handling 429 with adaptive backoff before delegating
+    /// to the standard retry loop.
+    ///
+    /// This wrapper intercepts the raw HTTP response so it can read the
+    /// `Retry-After` header before the body is consumed.
+    async fn execute_with_backpressure(&self, url: &str) -> Result<reqwest::Response> {
+        let max_rate_limit_retries: u32 = 8;
+        let mut rl_attempt = 0u32;
+
+        loop {
+            let resp = self.http.get(url).send().await?;
+
+            if resp.status().as_u16() == 429 {
+                rl_attempt += 1;
+                let retry_after = parse_retry_after(
+                    resp.headers()
+                        .get("retry-after")
+                        .and_then(|v| v.to_str().ok()),
+                );
+                let delay = self
+                    .throttle
+                    .record_rate_limit(retry_after, &self.backoff_config);
+
+                if rl_attempt >= max_rate_limit_retries {
+                    warn!(
+                        url = url,
+                        rl_attempt, "Giving up after {} rate-limit retries", max_rate_limit_retries
+                    );
+                    return Err(IndexerError::RateLimitExceeded {
+                        retry_after: retry_after.or(Some(delay.as_secs())),
+                    });
+                }
+
+                crate::horizon::backpressure::throttle_sleep(delay).await;
+                continue;
+            }
+
+            return Ok(resp);
+        }
+    }
+
     /// Fetch offers page with retry logic.
     ///
     /// Confirmed endpoint: `GET /offers`
@@ -127,18 +202,17 @@ impl HorizonClient {
             url.push_str(s);
         }
 
-        let client = self.http.clone();
-        let url_clone = url.clone();
+        debug!("Fetching offers from: {}", url);
 
+        let url_c = url.clone();
         self.retry_request(|| async {
-            debug!("Fetching offers from: {}", url_clone);
-            let resp = client.get(&url_clone).send().await?;
+            let resp = self.execute_with_backpressure(&url_c).await?;
 
             let status = resp.status();
             if !status.is_success() {
                 let error_body = resp.text().await.unwrap_or_default();
                 return Err(IndexerError::StellarApi {
-                    endpoint: url_clone.clone(),
+                    endpoint: url_c.clone(),
                     status: status.as_u16(),
                     message: error_body,
                 });
@@ -180,18 +254,17 @@ impl HorizonClient {
             url.push_str(issuer);
         }
 
-        let client = self.http.clone();
-        let url_clone = url.clone();
+        debug!("Fetching orderbook from: {}", url);
 
+        let url_c = url.clone();
         self.retry_request(|| async {
-            debug!("Fetching orderbook from: {}", url_clone);
-            let resp = client.get(&url_clone).send().await?;
+            let resp = self.execute_with_backpressure(&url_c).await?;
 
             let status = resp.status();
             if !status.is_success() {
                 let error_body = resp.text().await.unwrap_or_default();
                 return Err(IndexerError::StellarApi {
-                    endpoint: url_clone.clone(),
+                    endpoint: url_c.clone(),
                     status: status.as_u16(),
                     message: error_body,
                 });
@@ -553,12 +626,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_offers_429_returns_stellar_api_error() {
+    async fn test_get_offers_429_returns_rate_limit_error() {
         let mock_server = MockServer::start().await;
 
+        // Always 429 — the client should exhaust retries and return RateLimitExceeded
         Mock::given(method("GET"))
             .and(path("/offers"))
-            .respond_with(ResponseTemplate::new(429).set_body_string("Too Many Requests"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "0")
+                    .set_body_string("Too Many Requests"),
+            )
             .mount(&mock_server)
             .await;
 
@@ -571,10 +649,12 @@ mod tests {
         let client = HorizonClient::with_retry_config(mock_server.uri(), cfg);
         let err = client.get_offers(Some(10), None, None).await.unwrap_err();
 
-        match err {
-            IndexerError::StellarApi { status, .. } => assert_eq!(status, 429),
-            other => panic!("Expected StellarApi error, got {:?}", other),
-        }
+        // After our backpressure change, persistent 429s surface as RateLimitExceeded
+        assert!(
+            matches!(err, IndexerError::RateLimitExceeded { .. }),
+            "Expected RateLimitExceeded, got {:?}",
+            err
+        );
     }
 
     #[tokio::test]

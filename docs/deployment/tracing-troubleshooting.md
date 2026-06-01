@@ -55,6 +55,22 @@ http.request (API)
        └── cache.store
 ```
 
+   Example ingest-to-quote correlation:
+
+   ```mermaid
+   graph TD
+      A[indexer: sdex_offers upsert] -->|trace link| B[quote_pipeline]
+      C[indexer: amm_pool_reserves upsert] -->|trace link| B
+      B --> D[find_best_price]
+      D --> E[cache.lookup]
+      D --> F[route.search]
+   ```
+
+   The indexer writes its active trace context into liquidity rows, and the quote
+   pipeline turns those provenance fields into OpenTelemetry span links. In a
+   collector, this lets you navigate from a slow quote back to the ingest span
+   that produced the market data.
+
 ### Key Span Attributes
 
 | Span | Attributes |

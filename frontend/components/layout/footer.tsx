@@ -14,6 +14,7 @@ interface FooterLink {
 }
 
 const footerLinks: FooterLink[] = [
+  { label: "Status", href: "/status", external: false },
   { label: "GitHub", href: "https://github.com/stellarroute/stellarroute", external: true },
   { label: "Docs", href: "/docs", external: false },
   { label: "Stellar.org", href: "https://www.stellar.org", external: true },

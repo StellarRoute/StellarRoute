@@ -19,3 +19,9 @@ export type WalletError = {
   message: string;
   code?: string;
 };
+
+export type AccountSwitchState = {
+  isDetecting: boolean;
+  hasChanged: boolean;
+  previousAddress: string | null;
+};

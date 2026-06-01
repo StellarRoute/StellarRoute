@@ -11,10 +11,74 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  checks:
-    name: Minimal Checks
+  backend-checks:
+    name: Backend Checks (Rust)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: CI sanity check
-        run: echo "CI checks intentionally minimal for now"
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run unit tests
+        run: cargo test
+      - name: Contract Clippy
+        run: cargo clippy -p stellarroute-contracts --all-targets -- -D warnings
+
+  frontend-checks:
+    name: Frontend Checks (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: cd frontend && npm ci --legacy-peer-deps
+      - name: Run tests
+        run: cd frontend && NODE_OPTIONS=--max-old-space-size=8192 npm test -- --maxWorkers=1 --exclude hooks/useQuoteRefresh.test.ts
+
+  frontend-visual-regression:
+    name: Frontend Visual Regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: cd frontend && npm ci --legacy-peer-deps
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: Run visual regression
+        run: cd frontend && npm run test:visual
+
+  sdk-checks:
+    name: JS SDK Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: sdk-js/package-lock.json
+      - name: Install dependencies
+        run: cd sdk-js && npm ci --legacy-peer-deps
+      - name: Build
+        run: cd sdk-js && npm run build
+      - name: Run tests
+        run: cd sdk-js && npm test

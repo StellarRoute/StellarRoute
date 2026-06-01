@@ -415,6 +415,38 @@ psql $DATABASE_URL -c "BEGIN; SELECT * FROM sdex_offers LIMIT 1; PERFORM pg_slee
 # - Secondary status → Healthy
 ```
 
+### Test 4: Horizon/Soroban Dependency Outage Simulation
+
+Use the API harness to simulate partial and full upstream dependency outages:
+
+```rust
+use stellarroute_api::load_test::{DegradationScenario, HarnessConfig};
+
+// Partial Horizon outage
+let partial = HarnessConfig {
+    degradation: DegradationScenario {
+        horizon_error_rate: 0.5,
+        ..Default::default()
+    },
+    ..Default::default()
+};
+
+// Full Horizon + Soroban outage
+let full = HarnessConfig {
+    degradation: DegradationScenario {
+        horizon_error_rate: 1.0,
+        soroban_error_rate: 1.0,
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+**Observed failure modes**:
+- Partial outage: mixed success/failure responses as expected for degraded dependencies.
+- Full outage: all requests fail with explicit simulated dependency failure markers.
+- Recovery path: clearing outage rates (`0.0`) restores successful request handling.
+
 ---
 
 ## Runbook Response Time SLAs

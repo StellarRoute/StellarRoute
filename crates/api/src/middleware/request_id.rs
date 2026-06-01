@@ -62,10 +62,7 @@ where
     }
 }
 
-pub async fn request_id_layer(
-    mut request: axum::http::Request<Body>,
-    next: Next,
-) -> Response {
+pub async fn request_id_layer(mut request: axum::http::Request<Body>, next: Next) -> Response {
     let request_id = RequestId::from_headers(request.headers());
     request.extensions_mut().insert(request_id.clone());
 

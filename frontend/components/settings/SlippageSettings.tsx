@@ -54,6 +54,7 @@ export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
             step="0.01"
             min="0.01"
             max="50"
+            aria-label="Custom slippage tolerance percentage"
             className={cn(
               "h-10 pr-6 font-bold text-right",
               !presets.includes(value) && "border-primary ring-1 ring-primary/20"

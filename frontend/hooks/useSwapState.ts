@@ -1,18 +1,32 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTradeFormStorage } from './useTradeFormStorage';
 import { useQuote } from './useQuote';
 
-const DEFAULT_FROM_TOKEN = 'native';
-const DEFAULT_TO_TOKEN = 'USDC:GA5ZSEJYB37JRC5AVCIAZDL2Y343IFRMA2EO3HJWV2XG7H5V5CQRUP7W';
-
 export function useSwapState() {
-  const { amount: fromAmount, setAmount: setFromAmount, slippage, setSlippage, reset } = useTradeFormStorage();
-  
-  const [fromToken, setFromToken] = useState(DEFAULT_FROM_TOKEN);
-  const [toToken, setToToken] = useState(DEFAULT_TO_TOKEN);
-  
+  const {
+    amount: fromAmount,
+    setAmount: setFromAmount,
+    slippage,
+    setSlippage,
+    deadline,
+    setDeadline,
+    fromToken,
+    setFromToken,
+    toToken,
+    setToToken,
+    side,
+    setSide,
+    setTokenPair,
+    pendingRecovery,
+    restorePending,
+    discardPending,
+    hasRecoverableState,
+    snapshotCurrent,
+    reset,
+  } = useTradeFormStorage();
+
   const parsedAmount = useMemo(() => {
     const val = parseFloat(fromAmount);
     return isFinite(val) && val > 0 ? val : undefined;
@@ -22,20 +36,17 @@ export function useSwapState() {
     fromToken,
     toToken,
     amount: parsedAmount,
-    type: 'sell',
+    type: side,
   });
 
   const switchTokens = useCallback(() => {
-    setFromToken(toToken);
-    setToToken(fromToken);
+    setTokenPair(toToken, fromToken);
     // If we have an output amount, we might want to set it as the new input amount
     if (quote.outputAmount > 0) {
       setFromAmount(quote.outputAmount.toString());
     }
-  }, [fromToken, toToken, quote.outputAmount, setFromAmount]);
+  }, [fromToken, quote.outputAmount, setFromAmount, setTokenPair, toToken]);
 
-  const isReverseRate = false; // Could be state to toggle rate display (e.g. 1 XLM = 0.1 USDC vs 1 USDC = 10 XLM)
-  
   const formattedRate = useMemo(() => {
     if (!quote.rate) return '';
     const fromSymbol = fromToken === 'native' ? 'XLM' : fromToken.split(':')[0];
@@ -51,11 +62,20 @@ export function useSwapState() {
     fromAmount,
     setFromAmount,
     toAmount: quote.outputAmount > 0 ? quote.outputAmount.toString() : '',
+    side,
+    setSide,
     slippage,
     setSlippage,
+    deadline,
+    setDeadline,
     quote,
     switchTokens,
     formattedRate,
+    pendingRecovery,
+    restorePending,
+    discardPending,
+    hasRecoverableState,
+    snapshotCurrent,
     reset,
   };
 }

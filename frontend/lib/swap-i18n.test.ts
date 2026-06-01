@@ -15,6 +15,16 @@ describe("swap i18n", () => {
     expect(t("swap.pair.balance", { amount: "1,000" })).toBe("余额：1,000");
   });
 
+  it("uses es-ES translations when they are available", () => {
+    const { locale, t } = createSwapTranslator("es-ES");
+
+    expect(locale).toBe("es-ES");
+    expect(t("swap.card.title")).toBe("Intercambiar");
+    expect(t("common.nav.history")).toBe("Historial");
+    expect(t("common.nav.swap")).toBe("Intercambiar");
+    expect(t("swap.pair.balance", { amount: "1,000" })).toBe("Saldo: 1,000");
+  });
+
   it("falls back to en-US for unsupported swap locales", () => {
     const translator = createSwapTranslator("fr-FR");
 

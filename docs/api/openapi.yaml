@@ -439,7 +439,10 @@ paths:
         The router evaluates both SDEX offers and Soroban AMM pools to find
         the optimal execution path.
 
-        Results are cached for **5 seconds**.
+        Results are cached for **5 seconds**. Large responses honor
+        `Accept-Encoding: br` or `Accept-Encoding: gzip`; smaller responses
+        remain uncompressed. Prometheus metrics track original versus wire
+        response bytes.
       tags:
         - trading
       parameters:
@@ -472,12 +475,27 @@ paths:
             type: string
             enum: [sell, buy]
             default: sell
+        - name: Accept-Encoding
+          in: header
+          description: Optional response compression negotiation. Large quote responses support `br` and `gzip`; smaller responses remain uncompressed.
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Best available price quote
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestIdHeader"
+            Vary:
+              schema:
+                type: string
+              description: Includes `Accept-Encoding` when quote response compression is negotiated.
+            Content-Encoding:
+              schema:
+                type: string
+                enum: [br, gzip]
+              description: Present when the quote response is compressed.
           content:
             application/json:
               schema:

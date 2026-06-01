@@ -72,7 +72,10 @@ use crate::models::{
         version = "0.1.0",
         description = "REST API for DEX aggregation on Stellar Network. \
             Clients may send an optional X-Request-ID header for support correlation; \
-            the API echoes the same header in every response.\n\n\
+            the API echoes the same header in every response. Large quote responses \
+            honor `Accept-Encoding: br` or `Accept-Encoding: gzip`; smaller quote \
+            responses are left uncompressed, and Prometheus metrics track original \
+            versus wire response bytes.\n\n\
             ## Batch Quotes\n\
             `POST /api/v1/batch/quote` evaluates up to 25 trading pairs concurrently \
             against a shared market snapshot. Per-item failures do not abort the batch.",

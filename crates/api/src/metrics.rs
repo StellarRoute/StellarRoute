@@ -56,6 +56,15 @@ lazy_static! {
     )
     .expect("Can't create QUOTE_REQUESTS counter");
 
+    /// Quote response byte counters.
+    /// Labels: encoding (identity/gzip/br), stage (original/wire)
+    pub static ref QUOTE_RESPONSE_BYTES: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_quote_response_bytes_total",
+        "Total quote response bytes before compression and on the wire",
+        &["encoding", "stage"]
+    )
+    .expect("Can't create QUOTE_RESPONSE_BYTES counter");
+
     pub static ref KILL_SWITCH_STATUS: IntGaugeVec = register_int_gauge_vec!(
         "stellarroute_kill_switch_status",
         "Kill switch status (1 for disabled, 0 for enabled)",
@@ -200,6 +209,16 @@ pub fn record_quote_latency(duration: Duration, outcome: &str, cache_hit: bool) 
     QUOTE_REQUESTS
         .with_label_values(&[outcome_label, cache_hit_label])
         .inc();
+}
+
+/// Record quote response bytes before compression and after content negotiation.
+pub fn record_quote_response_bytes(encoding: &str, original_bytes: usize, wire_bytes: usize) {
+    QUOTE_RESPONSE_BYTES
+        .with_label_values(&[encoding, "original"])
+        .inc_by(original_bytes as u64);
+    QUOTE_RESPONSE_BYTES
+        .with_label_values(&[encoding, "wire"])
+        .inc_by(wire_bytes as u64);
 }
 
 /// Record route compute time metric

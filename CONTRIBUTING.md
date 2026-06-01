@@ -214,6 +214,11 @@ Integration tests that require a live database should be marked with `#[ignore =
 - [ ] Follows project conventions (naming, module structure)
 - [ ] CI is green
 
+For new or significantly changed swap UI components, also complete the
+[Swap UI component review checklist](frontend/STORYBOOK.md#swap-ui-component-review-checklist).
+It covers accessibility, loading and error states, mobile behavior,
+internationalization readiness, and manual pair selection regressions.
+
 ### After Feedback
 
 Push additional commits to your branch; the PR will update automatically. Avoid force-pushing after a review has started unless asked to squash/rebase.

@@ -216,6 +216,11 @@ impl IndexerLagMonitor {
         Self::new(db, horizon_url, LagThresholds::default())
     }
 
+    /// Return the thresholds used by this monitor.
+    pub fn thresholds(&self) -> &LagThresholds {
+        &self.thresholds
+    }
+
     // ── Public API ────────────────────────────────────────────────────────
 
     /// Return the most recently cached lag snapshots.
@@ -233,6 +238,26 @@ impl IndexerLagMonitor {
             .iter()
             .find(|s| s.source == source)
             .cloned()
+    }
+
+    /// Check if any monitored source currently has critical lag.
+    pub async fn is_any_source_critical(&self) -> bool {
+        self.snapshots
+            .read()
+            .await
+            .iter()
+            .any(|s| s.status == SyncStatus::Critical)
+    }
+
+    /// Return the maximum lag (in ledgers) observed across all sources.
+    pub async fn max_lag_ledgers(&self) -> u64 {
+        self.snapshots
+            .read()
+            .await
+            .iter()
+            .map(|s| s.lag_ledgers)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Perform a single measurement cycle and update the cached snapshots.
@@ -470,6 +495,15 @@ pub mod tests {
         assert_eq!(snap.lag_ledgers, 10);
         assert!((snap.lag_seconds - 50.0).abs() < 1e-9);
         assert_eq!(snap.status, SyncStatus::Warning);
+    }
+
+    #[test]
+    fn compute_handles_underflow_with_saturating_sub() {
+        let t = LagThresholds::default();
+        // If local is somehow ahead of Horizon (e.g. clock drift or caching), lag is 0
+        let snap = LagSnapshot::compute("sdex", 1001, 1000, &t);
+        assert_eq!(snap.lag_ledgers, 0);
+        assert_eq!(snap.status, SyncStatus::Ok);
     }
 
     #[test]

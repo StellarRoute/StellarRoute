@@ -46,6 +46,24 @@ StellarRoute exposes Prometheus metrics for monitoring system performance and he
   - `cache_hit`: "true" or "false"
 - **Description**: Total number of quote requests
 
+### Indexer Synchronization Lag
+
+- **Metrics**:
+  - `stellarroute_indexer_lag_ledgers` (gauge): Number of ledgers the local index is behind the live Horizon sequence.
+  - `stellarroute_indexer_lag_seconds` (gauge): Estimated wall-clock lag of the local index behind Horizon (seconds).
+  - `stellarroute_indexer_last_indexed_ledger` (gauge): Most recently indexed ledger sequence number.
+  - `stellarroute_indexer_horizon_ledger` (gauge): Current Horizon latest ledger sequence number (cached).
+  - `stellarroute_indexer_sync_status` (gauge): Indexer sync health: 1=ok, 0=warning, -1=critical, -2=unknown.
+- **Labels**:
+  - `source`: "sdex" or "amm"
+- **Thresholds**:
+  - `ok`: < 10 ledgers (< 50s)
+  - `warning`: 10-60 ledgers (50s-300s)
+  - `critical`: > 60 ledgers (> 300s)
+- **Behavior**:
+  - When lag is `critical`, `/health/deps` returns `degraded`.
+  - When lag is `critical`, API quote requests are rejected with `stale_market_data` error.
+
 ## Prometheus Configuration
 
 Add the following to your `prometheus.yml`:

@@ -10,14 +10,16 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, Json};
+use axum::{extract::State, response::IntoResponse, Json};
 use opentelemetry::trace::TraceContextExt;
+use serde_json::{Map, Value};
 use sqlx::Row;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, info_span, warn, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+use uuid::Uuid;
 
 use stellarroute_routing::health::filter::GraphFilter;
 use stellarroute_routing::health::freshness::{FreshnessGuard, FreshnessOutcome};
@@ -717,6 +719,21 @@ async fn compute_quote_response(
     let base_id = find_asset_id(&state, &base_asset).await?;
     let quote_id = find_asset_id(&state, &quote_asset).await?;
 
+    // --- Indexer lag check ---
+    if state.indexer_lag.is_any_source_critical().await {
+        let max_lag = state.indexer_lag.max_lag_ledgers().await;
+        warn!(
+            max_lag_ledgers = max_lag,
+            "Rejecting quote request due to critical indexer lag"
+        );
+        return Err(ApiError::StaleMarketData {
+            stale_count: 0,
+            fresh_count: 0,
+            threshold_secs_sdex: state.indexer_lag.thresholds().critical_ledgers * 5,
+            threshold_secs_amm: state.indexer_lag.thresholds().critical_ledgers * 5,
+        });
+    }
+
     let (
         price,
         path,
@@ -851,7 +868,7 @@ pub async fn get_route(
     let quote_id = find_asset_id(&state, &quote_asset).await?;
 
     // For route endpoint, we reuse the same logic but return a simplified response
-    let (_, path, _, _, _, _, _) =
+    let (_, path, _, _, _, _, _, _, _) =
         find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await?;
 
     let response = crate::models::RouteResponse {
@@ -1262,6 +1279,8 @@ struct DirectVenueCandidate {
     available_amount_e7: i64,
     source_trace_id: String,
     source_span_id: String,
+    is_inverse: bool,
+    fee_bps: u32,
 }
 
 impl DirectVenueCandidate {
@@ -1431,6 +1450,8 @@ async fn fetch_source_candidates(
                 available_amount_e7,
                 source_trace_id,
                 source_span_id,
+                is_inverse: false,
+                fee_bps: 0,
             }
         })
         .collect())
@@ -1621,6 +1642,8 @@ mod tests {
             available_amount_e7: (available_amount * 1e7) as i64,
             fee_bps,
             is_inverse: false,
+            source_trace_id: "".to_string(),
+            source_span_id: "".to_string(),
         }
     }
 
@@ -1644,9 +1667,9 @@ mod tests {
     #[test]
     fn tie_break_is_deterministic_by_venue_then_ref() {
         let candidates = vec![
-            candidate("sdex", "offer2", 1.0, 100.0),
-            candidate("amm", "pool1", 1.0, 100.0),
-            candidate("sdex", "offer1", 1.0, 100.0),
+            candidate("sdex", "offer2", 1.0, 100.0, 0),
+            candidate("amm", "pool1", 1.0, 100.0, 30),
+            candidate("sdex", "offer1", 1.0, 100.0, 0),
         ];
 
         let (selected, rationale) =

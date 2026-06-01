@@ -1,14 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { toast } from "sonner";
-
-vi.mock("sonner", () => ({
-  toast: {
-    success: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-  },
-}));
 
 import { RouteDisplay } from "./RouteDisplay";
 
@@ -87,57 +79,63 @@ describe("RouteDisplay", () => {
     expect(screen.queryByTestId("alternative-route-route-0")).not.toBeInTheDocument();
   });
 
-  it("should allow a user to pin and unpin a route", () => {
+  it("renders route detail drawer with per-hop venue and fee breakdown", async () => {
     const routes = [
-      { id: "route-1", venue: "A", expectedAmount: "10" },
-      { id: "route-2", venue: "B", expectedAmount: "9" },
+      {
+        id: "route-0",
+        venue: "AQUA Pool",
+        expectedAmount: "≈ 49.7500",
+        hops: [
+          {
+            id: "hop-0",
+            fromAsset: "XLM",
+            toAsset: "AQUA",
+            venue: "SDEX",
+            fee: "0.00001 XLM",
+          },
+          {
+            id: "hop-1",
+            fromAsset: "AQUA",
+            toAsset: "USDC",
+            venue: "AQUA Pool",
+            fee: "0.00002 XLM",
+          },
+        ],
+      },
     ];
-    render(<RouteDisplay amountOut="10" alternativeRoutes={routes} />);
 
-    const pinButton = screen.getByTestId("pin-route-route-1");
-    fireEvent.click(pinButton);
+    render(<RouteDisplay amountOut="50.0" alternativeRoutes={routes} />);
 
-    expect(toast.success).toHaveBeenCalledWith("Route pinned");
+    fireEvent.click(screen.getByRole("button", { name: "Show route details" }));
 
-    fireEvent.click(pinButton);
-    expect(toast.info).toHaveBeenCalledWith("Route unpinned");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Route detail drawer")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Per-hop route details")).toBeInTheDocument();
+    expect(screen.getByText("Hop 1: XLM -> AQUA")).toBeInTheDocument();
+    expect(screen.getByText("Hop 2: AQUA -> USDC")).toBeInTheDocument();
+    expect(screen.getByText("Estimated total fees")).toBeInTheDocument();
+    expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
   });
 
-  it("should persist pinned route during quote refreshes if still valid", () => {
-    const routes1 = [
-      { id: "route-1", venue: "A", expectedAmount: "10" },
-      { id: "route-2", venue: "B", expectedAmount: "9" },
-    ];
-    const { rerender } = render(<RouteDisplay amountOut="10" alternativeRoutes={routes1} />);
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
 
-    const pinButton = screen.getByTestId("pin-route-route-1");
-    fireEvent.click(pinButton);
+    const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
 
-    const routes2 = [
-      { id: "route-1", venue: "A", expectedAmount: "11" },
-      { id: "route-3", venue: "C", expectedAmount: "8" },
-    ];
-    rerender(<RouteDisplay amountOut="11" alternativeRoutes={routes2} isLoading={false} />);
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
 
-    expect(toast.error).not.toHaveBeenCalled();
-  });
+    rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
 
-  it("should invalidate pinned route and show fallback prompt if no longer available", () => {
-    const routes1 = [
-      { id: "route-1", venue: "A", expectedAmount: "10" },
-      { id: "route-2", venue: "B", expectedAmount: "9" },
-    ];
-    const { rerender } = render(<RouteDisplay amountOut="10" alternativeRoutes={routes1} />);
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Best Route")).not.toBeInTheDocument();
 
-    const pinButton = screen.getByTestId("pin-route-route-1");
-    fireEvent.click(pinButton);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
 
-    const routes2 = [
-      { id: "route-2", venue: "B", expectedAmount: "9" },
-      { id: "route-3", venue: "C", expectedAmount: "8" },
-    ];
-    rerender(<RouteDisplay amountOut="9" alternativeRoutes={routes2} isLoading={false} />);
-
-    expect(toast.error).toHaveBeenCalledWith("Pinned route is no longer available. Reverted to best route.");
+    expect(screen.getByText("Best Route")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

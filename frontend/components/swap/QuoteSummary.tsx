@@ -1,6 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useSwapI18n } from "@/lib/swap-i18n";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
 import { QuoteSummarySkeleton } from "./QuoteSummarySkeleton";
 
 interface QuoteSummaryProps {
@@ -19,8 +20,9 @@ export function QuoteSummary({
   error,
 }: QuoteSummaryProps) {
   const { t } = useSwapI18n();
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
 
-  if (isLoading) {
+  if (showSkeleton) {
     return <QuoteSummarySkeleton />;
   }
 
@@ -37,7 +39,7 @@ export function QuoteSummary({
   const displayPriceImpact = priceImpact?.trim() || null;
 
   return (
-    <div className="rounded-xl border border-border/50 p-4 space-y-3 bg-muted/30">
+    <div className={`rounded-xl border border-border/50 p-4 space-y-3 bg-muted/30 ${contentClassName}`.trim()}>
       {rate && (
         <div className="flex justify-between items-center text-sm">
           <span className="text-muted-foreground">{t("swap.quote.rate")}</span>

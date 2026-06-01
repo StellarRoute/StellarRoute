@@ -1,9 +1,9 @@
-import { ArrowDown, ArrowRight, ChevronDown, Info, Pin, PinOff } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { ArrowDown, ArrowRight, ChevronDown, Info } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { useVirtualWindow } from "@/hooks/useVirtualWindow";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
 
 import { ConfidenceIndicator } from "./ConfidenceIndicator";
 import { RouteDisplaySkeleton } from "./RouteDisplaySkeleton";
@@ -12,6 +12,13 @@ export interface AlternativeRoute {
   id: string;
   venue: string;
   expectedAmount: string;
+  hops?: Array<{
+    id: string;
+    fromAsset: string;
+    toAsset: string;
+    venue: string;
+    fee: string;
+  }>;
 }
 
 interface RouteDisplayProps {
@@ -22,12 +29,10 @@ interface RouteDisplayProps {
   volatility?: "high" | "medium" | "low";
   /** Show loading skeleton */
   isLoading?: boolean;
-  /** Optional error message */
-  error?: string;
   /** Optional alternative route fixture data */
   alternativeRoutes?: AlternativeRoute[];
   /** Callback when an alternative route is selected */
-  onSelect?: (route: AlternativeRoute | null) => void;
+  onSelect?: (route: AlternativeRoute) => void;
 }
 
 const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
@@ -42,36 +47,63 @@ function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
     id: `route-${index}`,
     venue,
     expectedAmount: `≈ ${(baseAmount * (0.995 - index * 0.0015)).toFixed(4)}`,
+    hops:
+      index % 2 === 0
+        ? [
+            {
+              id: `${index}-0`,
+              fromAsset: "XLM",
+              toAsset: "USDC",
+              venue,
+              fee: "0.00001 XLM",
+            },
+          ]
+        : [
+            {
+              id: `${index}-0`,
+              fromAsset: "XLM",
+              toAsset: "AQUA",
+              venue: "SDEX",
+              fee: "0.00001 XLM",
+            },
+            {
+              id: `${index}-1`,
+              fromAsset: "AQUA",
+              toAsset: "USDC",
+              venue,
+              fee: "0.00002 XLM",
+            },
+          ],
   }));
+}
+
+function parseFeeToNumber(fee: string): number {
+  const numeric = Number.parseFloat(fee);
+  return Number.isFinite(numeric) ? numeric : 0;
 }
 
 function AlternativeRouteButton({
   route,
   isSelected = false,
-  isPinned = false,
   onSelect,
-  onTogglePin,
 }: {
   route: AlternativeRoute;
   isSelected?: boolean;
-  isPinned?: boolean;
   onSelect?: (route: AlternativeRoute) => void;
-  onTogglePin?: (route: AlternativeRoute, e: React.MouseEvent) => void;
 }) {
   return (
-    <div className="relative group w-full">
-      <button
-        type="button"
-        data-testid={`alternative-route-${route.id}`}
-        aria-pressed={isSelected}
-        data-selected={isSelected ? "true" : undefined}
-        className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
-          isSelected
-            ? "opacity-100 ring-2 ring-primary/40 bg-muted/50"
-            : "opacity-60 hover:opacity-100 focus:opacity-100"
-        } pr-8`}
-        onClick={() => onSelect?.(route)}
-      >
+    <button
+      type="button"
+      data-testid={`alternative-route-${route.id}`}
+      aria-pressed={isSelected}
+      data-selected={isSelected ? "true" : undefined}
+      className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
+        isSelected
+          ? "opacity-100 ring-2 ring-primary/40 bg-muted/50"
+          : "opacity-60 hover:opacity-100 focus:opacity-100"
+      }`}
+      onClick={() => onSelect?.(route)}
+    >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span className="font-medium">XLM</span>
         <ArrowRight className="h-3 w-3" />
@@ -84,19 +116,7 @@ function AlternativeRouteButton({
       <span className="text-xs font-medium text-muted-foreground">
         {route.expectedAmount}
       </span>
-      </button>
-      <button
-        type="button"
-        data-testid={`pin-route-${route.id}`}
-        onClick={(e) => onTogglePin?.(route, e)}
-        className={`absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-muted/80 transition-opacity focus:opacity-100 ${
-          isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-muted-foreground'
-        }`}
-        title={isPinned ? "Unpin route" : "Pin this route"}
-      >
-        {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-      </button>
-    </div>
+    </button>
   );
 }
 
@@ -110,41 +130,13 @@ export function RouteDisplay({
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const [pinnedRouteId, setPinnedRouteId] = useState<string | null>(null);
-  
-  const routes = useMemo(() => alternativeRoutes ?? buildAlternativeRoutes(amountOut), [alternativeRoutes, amountOut]);
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
+  const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (pinnedRouteId && !isLoading) {
-      const isValid = routes.some((r) => r.id === pinnedRouteId);
-      if (!isValid) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPinnedRouteId(null);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setSelectedRouteId(null);
-        onSelect?.(null);
-        toast.error("Pinned route is no longer available. Reverted to best route.");
-      }
-    }
-  }, [routes, pinnedRouteId, isLoading, onSelect]);
 
   const handleSelect = (route: AlternativeRoute) => {
     setSelectedRouteId(route.id);
     onSelect?.(route);
-  };
-
-  const handleTogglePin = (route: AlternativeRoute, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (pinnedRouteId === route.id) {
-      setPinnedRouteId(null);
-      toast.info("Route unpinned");
-    } else {
-      setPinnedRouteId(route.id);
-      setSelectedRouteId(route.id);
-      onSelect?.(route);
-      toast.success("Route pinned");
-    }
   };
   const shouldVirtualize = routes.length > ROUTE_VIRTUALIZATION_THRESHOLD;
   const virtualWindow = useVirtualWindow({
@@ -159,21 +151,23 @@ export function RouteDisplay({
   const visibleRoutes = shouldVirtualize
     ? routes.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     : routes;
+  const selectedRoute =
+    routes.find((route) => route.id === selectedRouteId) ?? routes[0] ?? null;
+  const selectedRouteHops = selectedRoute?.hops ?? [];
+  const totalRouteFee = selectedRouteHops.reduce(
+    (sum, hop) => sum + parseFeeToNumber(hop.fee),
+    0,
+  );
 
-  if (isLoading) {
+  if (showSkeleton) {
     return <RouteDisplaySkeleton />;
   }
 
-  if (error) {
-    return (
-      <div className="rounded-xl border border-destructive/50 p-4 bg-destructive/10 text-destructive text-sm font-medium">
-        Route calculation failed: {error}
-      </div>
-    );
-  }
-
   return (
-    <div data-testid="route-display" className="rounded-xl border border-border/50 p-4 space-y-4 transition-all duration-200 hover:border-border hover:shadow-sm focus-within:ring-2 focus-within:ring-primary/20">
+    <div
+      data-testid="route-display"
+      className={`rounded-xl border border-border/50 p-4 space-y-4 transition-all duration-200 hover:border-border hover:shadow-sm focus-within:ring-2 focus-within:ring-primary/20 ${contentClassName}`.trim()}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium">Best Route</h4>
@@ -262,9 +256,7 @@ export function RouteDisplay({
                     <AlternativeRouteButton
                       route={route}
                       isSelected={selectedRouteId === route.id}
-                      isPinned={pinnedRouteId === route.id}
                       onSelect={handleSelect}
-                      onTogglePin={handleTogglePin}
                     />
                   </div>
                 );
@@ -277,15 +269,66 @@ export function RouteDisplay({
                   key={route.id}
                   route={route}
                   isSelected={selectedRouteId === route.id}
-                  isPinned={pinnedRouteId === route.id}
                   onSelect={handleSelect}
-                  onTogglePin={handleTogglePin}
                 />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {showDetails && selectedRoute && (
+        <div
+          aria-label="Route detail drawer"
+          className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Per-hop route details
+            </h5>
+            <span className="text-xs text-muted-foreground">
+              {selectedRouteHops.length} hop{selectedRouteHops.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          {selectedRouteHops.length > 0 ? (
+            <div aria-label="Per-hop route details" className="space-y-2">
+              {selectedRouteHops.map((hop, index) => (
+                <div
+                  key={hop.id}
+                  className="rounded-md border border-border/40 bg-background/70 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between text-xs font-medium">
+                    <span>
+                      Hop {index + 1}: {hop.fromAsset} {'->'} {hop.toAsset}
+                    </span>
+                    <span className="text-muted-foreground">{hop.venue}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Fee</span>
+                    <span>{hop.fee}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No hop breakdown available for this route.
+            </p>
+          )}
+
+          <div className="rounded-md border border-border/40 bg-background/70 px-3 py-2">
+            <div className="flex items-center justify-between text-xs font-medium">
+              <span>Estimated total fees</span>
+              <span>{totalRouteFee.toFixed(5)} XLM</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Route venue</span>
+              <span>{selectedRoute.venue}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

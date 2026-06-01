@@ -38,6 +38,7 @@ use crate::models::{
         AssetInfo,
         OrderbookResponse,
         OrderbookLevel,
+        crate::models::OrderbookSummary,
         QuoteResponse,
         PriceHistoryPoint,
         PriceHistoryResponse,

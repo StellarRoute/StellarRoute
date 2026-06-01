@@ -11,7 +11,7 @@ use tracing::{debug, warn};
 use crate::{
     cache,
     error::{ApiError, Result},
-    models::{request::AssetPath, AssetInfo, OrderbookLevel, OrderbookResponse},
+    models::{request::AssetPath, AssetInfo, OrderbookLevel, OrderbookResponse, OrderbookSummary},
     state::AppState,
 };
 
@@ -121,11 +121,14 @@ pub async fn get_orderbook(
         bids.len()
     );
 
+    let summary = compute_orderbook_summary(&bids, &asks);
+
     let response = OrderbookResponse {
         base_asset: base_info,
         quote_asset: quote_info,
         asks,
         bids,
+        summary,
         timestamp,
     };
 
@@ -145,6 +148,102 @@ pub async fn get_orderbook(
     state.liquidity_thinness_alerts.maybe_alert(&response);
 
     Ok(Json(response))
+}
+
+/// Compute summary fields for an orderbook snapshot.
+fn compute_orderbook_summary(bids: &Vec<OrderbookLevel>, asks: &Vec<OrderbookLevel>) -> OrderbookSummary {
+    let best_bid = bids.first().map(|l| l.price.clone());
+    let best_ask = asks.first().map(|l| l.price.clone());
+
+    if let (Some(bid_s), Some(ask_s)) = (&best_bid, &best_ask) {
+        match (bid_s.parse::<f64>(), ask_s.parse::<f64>()) {
+            (Ok(b), Ok(a)) if a > 0.0 && b > 0.0 => {
+                let mid = (a + b) / 2.0;
+                let spread = ((a - b) / mid) * 10000.0;
+                OrderbookSummary {
+                    bid: best_bid,
+                    ask: best_ask,
+                    spread_bps: Some(spread.round() as i64),
+                    midpoint: Some(format!("{:.7}", mid)),
+                }
+            }
+            _ => OrderbookSummary {
+                bid: best_bid,
+                ask: best_ask,
+                spread_bps: None,
+                midpoint: None,
+            },
+        }
+    } else {
+        OrderbookSummary {
+            bid: best_bid,
+            ask: best_ask,
+            spread_bps: None,
+            midpoint: None,
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lvl(price: &str, amount: &str, total: &str) -> OrderbookLevel {
+        OrderbookLevel {
+            price: price.to_string(),
+            amount: amount.to_string(),
+            total: total.to_string(),
+        }
+    }
+
+    #[test]
+    fn summary_empty_book() {
+        let bids: Vec<OrderbookLevel> = vec![];
+        let asks: Vec<OrderbookLevel> = vec![];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert!(s.bid.is_none());
+        assert!(s.ask.is_none());
+        assert!(s.midpoint.is_none());
+        assert!(s.spread_bps.is_none());
+    }
+
+    #[test]
+    fn summary_only_bids() {
+        let bids = vec![lvl("0.1050000", "100.0", "10.5")];
+        let asks: Vec<OrderbookLevel> = vec![];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert_eq!(s.bid.as_deref(), Some("0.1050000"));
+        assert!(s.ask.is_none());
+        assert!(s.midpoint.is_none());
+        assert!(s.spread_bps.is_none());
+    }
+
+    #[test]
+    fn summary_only_asks() {
+        let bids: Vec<OrderbookLevel> = vec![];
+        let asks = vec![lvl("0.1060000", "50.0", "5.3")];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert!(s.bid.is_none());
+        assert_eq!(s.ask.as_deref(), Some("0.1060000"));
+        assert!(s.midpoint.is_none());
+        assert!(s.spread_bps.is_none());
+    }
+
+    #[test]
+    fn summary_both_sides() {
+        let bids = vec![lvl("0.1050000", "100.0", "10.5")];
+        let asks = vec![lvl("0.1060000", "50.0", "5.3")];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert_eq!(s.bid.as_deref(), Some("0.1050000"));
+        assert_eq!(s.ask.as_deref(), Some("0.1060000"));
+        assert_eq!(s.midpoint.as_deref(), Some("0.1055000"));
+        assert_eq!(s.spread_bps, Some(95));
+    }
 }
 
 /// Find asset ID in database

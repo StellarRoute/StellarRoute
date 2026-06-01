@@ -164,6 +164,7 @@ pub struct OrderbookResponse {
     pub quote_asset: AssetInfo,
     pub bids: Vec<OrderbookLevel>,
     pub asks: Vec<OrderbookLevel>,
+    pub summary: OrderbookSummary,
     pub timestamp: i64,
 }
 
@@ -173,6 +174,19 @@ pub struct OrderbookLevel {
     pub price: String,
     pub amount: String,
     pub total: String,
+}
+
+/// Summary information for an orderbook snapshot
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct OrderbookSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midpoint: Option<String>,
 }
 
 /// Freshness metadata about the data sources used to compute a quote

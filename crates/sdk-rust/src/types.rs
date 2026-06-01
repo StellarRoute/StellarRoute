@@ -98,6 +98,15 @@ pub struct OrderbookLevel {
     pub total: String,
 }
 
+/// Summary information for an orderbook snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderbookSummary {
+    pub bid: Option<String>,
+    pub ask: Option<String>,
+    pub spread_bps: Option<i64>,
+    pub midpoint: Option<String>,
+}
+
 /// Response from `GET /api/v1/orderbook/{base}/{quote}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderbookResponse {
@@ -107,6 +116,8 @@ pub struct OrderbookResponse {
     pub bids: Vec<OrderbookLevel>,
     /// Sell orders sorted lowest price first.
     pub asks: Vec<OrderbookLevel>,
+    /// Snapshot summary (best bid/ask, midpoint, spread in bps).
+    pub summary: OrderbookSummary,
     /// Unix timestamp of the snapshot.
     pub timestamp: i64,
 }

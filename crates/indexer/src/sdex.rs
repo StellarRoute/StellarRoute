@@ -87,42 +87,96 @@ impl SdexIndexer {
 
         info!("Starting SDEX offer indexing (streaming mode)");
 
-        let stream = self.horizon.stream_offers().await?;
-        futures::pin_mut!(stream);
+        let mut cursor = self.fetch_latest_paging_token().await.ok();
+        let mut error_count = 0;
 
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(horizon_offer) => {
-                    // Convert to our Offer model
-                    match Offer::try_from(horizon_offer) {
-                        Ok(offer) => {
-                            // Index the offer
-                            let pool = self.db.pool();
-                            if let Err(e) = self.upsert_asset(pool, &offer.selling).await {
-                                warn!("Failed to upsert selling asset: {}", e);
+        loop {
+            info!(
+                cursor = ?cursor,
+                "Connecting to Horizon offer stream"
+            );
+
+            let stream_result = self.horizon.stream_offers(cursor.as_deref()).await;
+
+            match stream_result {
+                Ok(stream) => {
+                    error_count = 0;
+                    futures::pin_mut!(stream);
+
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(horizon_offer) => {
+                                crate::metrics::record_sse_event("sdex");
+                                // Update local cursor if provided in the offer
+                                if let Some(ref token) = horizon_offer.paging_token {
+                                    cursor = Some(token.clone());
+                                }
+
+                                // Convert to our Offer model
+                                match Offer::try_from(horizon_offer) {
+                                    Ok(offer) => {
+                                        // Index the offer
+                                        let pool = self.db.pool();
+                                        if let Err(e) =
+                                            self.upsert_asset(pool, &offer.selling).await
+                                        {
+                                            warn!("Failed to upsert selling asset: {}", e);
+                                        }
+                                        if let Err(e) = self.upsert_asset(pool, &offer.buying).await
+                                        {
+                                            warn!("Failed to upsert buying asset: {}", e);
+                                        }
+                                        if let Err(e) = self.upsert_offer(pool, &offer).await {
+                                            warn!("Failed to upsert offer {}: {}", offer.id, e);
+                                        } else {
+                                            debug!("Indexed offer {} via streaming", offer.id);
+                                            crate::metrics::record_offers_indexed("sdex", 1);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to parse streamed offer: {}", e);
+                                    }
+                                }
                             }
-                            if let Err(e) = self.upsert_asset(pool, &offer.buying).await {
-                                warn!("Failed to upsert buying asset: {}", e);
+                            Err(e) => {
+                                warn!("Stream event error: {}", e);
                             }
-                            if let Err(e) = self.upsert_offer(pool, &offer).await {
-                                warn!("Failed to upsert offer {}: {}", offer.id, e);
-                            } else {
-                                debug!("Indexed offer {} via streaming", offer.id);
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to parse streamed offer: {}", e);
                         }
                     }
+                    warn!("Offer stream ended unexpectedly; reconnecting");
+                    crate::metrics::record_sse_disconnect("sdex");
                 }
                 Err(e) => {
-                    warn!("Stream error: {}", e);
+                    error_count += 1;
+                    error!(
+                        "Failed to connect to SSE stream (attempt {}): {}",
+                        error_count, e
+                    );
+
+                    if error_count >= 3 {
+                        warn!("SSE connection failed consistently; falling back to polling");
+                        return self.start_polling().await;
+                    }
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }
         }
+    }
 
-        warn!("Offer stream ended unexpectedly");
-        Ok(())
+    /// Fetch the latest paging token from the database
+    async fn fetch_latest_paging_token(&self) -> Result<String> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT paging_token FROM sdex_offers WHERE paging_token IS NOT NULL ORDER BY last_modified_ledger DESC LIMIT 1"
+        )
+        .fetch_optional(self.db.pool())
+        .await
+        .map_err(IndexerError::DatabaseQuery)?;
+
+        row.map(|r| r.0).ok_or(IndexerError::NotFound {
+            entity: "paging_token".to_string(),
+            id: "latest".to_string(),
+        })
     }
 
     /// Index offers from Horizon API
@@ -202,10 +256,11 @@ impl SdexIndexer {
                 offer_id, seller_id, selling_asset_type, selling_asset_code, selling_asset_issuer,
                 buying_asset_type, buying_asset_code, buying_asset_issuer,
                 amount, price_n, price_d, price, last_modified_ledger, last_modified_time,
+                paging_token,
                 source_trace_id, source_span_id,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
             ON CONFLICT (offer_id)
             DO UPDATE SET
                 seller_id = EXCLUDED.seller_id,
@@ -215,6 +270,7 @@ impl SdexIndexer {
                 price = EXCLUDED.price,
                 last_modified_ledger = EXCLUDED.last_modified_ledger,
                 last_modified_time = EXCLUDED.last_modified_time,
+                paging_token = EXCLUDED.paging_token,
                 source_trace_id = EXCLUDED.source_trace_id,
                 source_span_id = EXCLUDED.source_span_id,
                 updated_at = NOW()
@@ -234,6 +290,7 @@ impl SdexIndexer {
         .bind(offer.price.as_str())
         .bind(offer.last_modified_ledger as i64)
         .bind(offer.last_modified_time)
+        .bind(offer.paging_token.as_deref())
         .bind(trace_context.trace_id)
         .bind(trace_context.span_id)
         .execute(pool)

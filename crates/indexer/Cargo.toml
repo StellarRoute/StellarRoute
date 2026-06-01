@@ -12,7 +12,8 @@ path = "src/bin/stellarroute-indexer.rs"
 
 [dependencies]
 # Workspace dependencies
-tokio.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -24,7 +25,7 @@ tracing-opentelemetry.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["json", "stream"] }
 sqlx.workspace = true
 chrono.workspace = true
 uuid.workspace = true

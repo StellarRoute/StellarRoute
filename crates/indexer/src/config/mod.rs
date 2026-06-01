@@ -1,9 +1,26 @@
 use serde::Deserialize;
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HorizonMode {
+    Poll,
+    Sse,
+}
+
+impl Default for HorizonMode {
+    fn default() -> Self {
+        Self::Poll
+    }
+}
+
 #[derive(Clone, Deserialize)]
 pub struct IndexerConfig {
     /// Horizon base URL, e.g. `https://horizon.stellar.org` or `https://horizon-testnet.stellar.org`
     pub stellar_horizon_url: String,
+
+    /// Ingestion mode for SDEX offers
+    #[serde(default)]
+    pub horizon_mode: HorizonMode,
 
     /// Soroban RPC base URL
     pub soroban_rpc_url: String,
@@ -67,6 +84,7 @@ impl std::fmt::Debug for IndexerConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IndexerConfig")
             .field("stellar_horizon_url", &self.stellar_horizon_url)
+            .field("horizon_mode", &self.horizon_mode)
             .field("soroban_rpc_url", &self.soroban_rpc_url)
             .field("router_contract_address", &self.router_contract_address)
             .field("database_url", &"[REDACTED]")

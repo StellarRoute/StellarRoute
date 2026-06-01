@@ -18,6 +18,7 @@ pub struct Offer {
     pub price: String,
     pub last_modified_ledger: u64,
     pub last_modified_time: Option<DateTime<Utc>>,
+    pub paging_token: Option<String>,
 }
 
 impl Offer {
@@ -113,6 +114,7 @@ impl TryFrom<HorizonOffer> for Offer {
             price: horizon_offer.price,
             last_modified_ledger: horizon_offer.last_modified_ledger as u64,
             last_modified_time: None, // Horizon doesn't provide this directly
+            paging_token: horizon_offer.paging_token,
         };
 
         // Validate the offer before returning
@@ -355,6 +357,7 @@ mod tests {
             price: "1.5".to_string(),
             last_modified_ledger: 1000,
             last_modified_time: None,
+            paging_token: None,
         }
     }
 

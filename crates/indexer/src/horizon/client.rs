@@ -278,45 +278,77 @@ impl HorizonClient {
 
     /// Stream offers in real-time using Server-Sent Events (SSE).
     ///
-    /// Endpoint: `GET /offers?cursor=now`
+    /// Endpoint: `GET /offers?cursor={cursor}`
     /// This returns a stream that sends new offers as they are created.
-    ///
-    /// Note: This function returns an async stream that yields offers as they arrive.
-    /// For now, we return a simple implementation that can be enhanced later.
-    pub async fn stream_offers(&self) -> Result<impl futures::Stream<Item = Result<HorizonOffer>>> {
+    pub async fn stream_offers(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<impl futures::Stream<Item = Result<HorizonOffer>>> {
         use futures::stream::{self, StreamExt};
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        use tokio_util::io::StreamReader;
 
-        let url = format!("{}/offers?cursor=now", self.base_url);
-        debug!("Starting offer stream from: {}", url);
+        let cursor = cursor.unwrap_or("now");
+        let url = format!("{}/offers?cursor={}", self.base_url, cursor);
+        debug!("Starting SSE offer stream from: {}", url);
 
-        // For now, return a polling-based stream
-        // In production, this should use SSE (eventsource) for true streaming
-        let client = self.clone();
-        let stream = stream::unfold(None, move |cursor: Option<String>| {
-            let client = client.clone();
-            async move {
-                // Poll for new offers
-                match client.get_offers(Some(10), cursor.as_deref(), None).await {
-                    Ok(offers) => {
-                        if offers.is_empty() {
-                            // No new offers, wait before next poll
-                            tokio::time::sleep(Duration::from_secs(2)).await;
-                            Some((vec![], cursor))
-                        } else {
-                            // Return offers and update cursor
-                            // In real Horizon API, cursor comes from paging info
-                            Some((offers, Some("next_cursor".to_string())))
+        let resp = self
+            .http
+            .get(&url)
+            .header("Accept", "text/event-stream")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let error_body = resp.text().await.unwrap_or_default();
+            return Err(IndexerError::StellarApi {
+                endpoint: url,
+                status: status.as_u16(),
+                message: error_body,
+            });
+        }
+
+        let bytes_stream = resp
+            .bytes_stream()
+            .map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+        let reader = BufReader::new(StreamReader::new(bytes_stream));
+        let lines = reader.lines();
+
+        let stream = stream::unfold(lines, |mut lines| async move {
+            let mut current_event = String::new();
+            let mut current_data = String::new();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                if line.is_empty() {
+                    // End of event
+                    if current_event == "message" && !current_data.is_empty() {
+                        match serde_json::from_str::<HorizonOffer>(&current_data) {
+                            Ok(offer) => return Some((Ok(offer), lines)),
+                            Err(e) => {
+                                return Some((
+                                    Err(IndexerError::JsonParse {
+                                        context: "SSE offer".to_string(),
+                                        error: e.to_string(),
+                                    }),
+                                    lines,
+                                ))
+                            }
                         }
                     }
-                    Err(e) => {
-                        warn!("Error streaming offers: {}", e);
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        Some((vec![], cursor))
-                    }
+                    current_event.clear();
+                    current_data.clear();
+                    continue;
+                }
+
+                if let Some(data) = line.strip_prefix("data: ") {
+                    current_data.push_str(data);
+                } else if let Some(event) = line.strip_prefix("event: ") {
+                    current_event = event.to_string();
                 }
             }
-        })
-        .flat_map(|offers| stream::iter(offers.into_iter().map(Ok)));
+            None
+        });
 
         Ok(stream)
     }
@@ -1028,5 +1060,59 @@ mod tests {
         let client = HorizonClient::with_retry_config(mock_server.uri(), cfg);
         let err = client.get_offers(Some(10), None, None).await.unwrap_err();
         assert!(matches!(err, IndexerError::StellarApi { .. }));
+    }
+
+    // -----------------------------------------------------------------------
+    // stream_offers
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_stream_offers_parses_sse_events() {
+        use futures::StreamExt;
+        let mock_server = MockServer::start().await;
+
+        let offer_json = sample_offer_json().to_string();
+        let sse_body = format!("event: message\ndata: {}\n\n", offer_json);
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("cursor", "now"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .append_header("Content-Type", "text/event-stream")
+                    .set_body_string(sse_body),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = HorizonClient::new(mock_server.uri());
+        let stream = client.stream_offers(None).await.unwrap();
+        futures::pin_mut!(stream);
+
+        let offer = stream.next().await.unwrap().unwrap();
+        assert_eq!(offer.id, "42");
+    }
+
+    #[tokio::test]
+    async fn test_stream_offers_with_custom_cursor() {
+        use futures::StreamExt;
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("cursor", "12345"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .append_header("Content-Type", "text/event-stream")
+                    .set_body_string("event: message\ndata: {}\n\n"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = HorizonClient::new(mock_server.uri());
+        let stream = client.stream_offers(Some("12345")).await.unwrap();
+        futures::pin_mut!(stream);
+
+        let _ = stream.next().await;
     }
 }

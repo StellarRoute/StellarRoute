@@ -58,6 +58,8 @@ servers:
 tags:
   - name: health
     description: Service health and readiness probes
+  - name: assets
+    description: Asset metadata — decimals, issuer labels, and trustline hints
   - name: trading
     description: Market data — trading pairs, orderbooks, and price quotes
 
@@ -147,6 +149,79 @@ paths:
                   redis: healthy
                   horizon: degraded
                   soroban_rpc: degraded
+
+  /api/v1/assets:
+    get:
+      operationId: list_assets_metadata
+      summary: Bulk asset metadata
+      description: |
+        Returns metadata for multiple assets identified by their codes.
+      tags:
+        - assets
+      parameters:
+        - name: codes
+          in: query
+          description: Comma-separated list of asset codes (e.g. `XLM,USDC`)
+          required: true
+          schema:
+            type: string
+            example: XLM,USDC
+      responses:
+        "200":
+          description: List of asset metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetMetadataBulkResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/assets/{code}:
+    get:
+      operationId: get_asset_metadata
+      summary: Get asset metadata
+      description: |
+        Returns decimals, issuer labels, and domain information for a single asset.
+      tags:
+        - assets
+      parameters:
+        - name: code
+          in: path
+          description: Asset code (e.g. `XLM`, `USDC`)
+          required: true
+          schema:
+            type: string
+            example: USDC
+        - name: issuer
+          in: query
+          description: Optional issuer address for disambiguating common codes.
+          required: false
+          schema:
+            type: string
+            example: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+      responses:
+        "200":
+          description: Asset metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetMetadataResponse"
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/pairs:
     get:
@@ -824,6 +899,54 @@ components:
           nullable: true
           description: Cursor token for the previous page, if any
           example: "0"
+
+    AssetMetadataResponse:
+      type: object
+      required: [code, decimals, asset_type]
+      description: Enriched asset metadata
+      properties:
+        code:
+          type: string
+          description: Asset code
+          example: USDC
+        issuer:
+          type: string
+          nullable: true
+          description: G-address of the issuer
+          example: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+        decimals:
+          type: integer
+          description: Number of decimal places for the asset
+          example: 7
+        asset_type:
+          type: string
+          description: Stellar asset type
+          example: credit_alphanum4
+        display_name:
+          type: string
+          nullable: true
+          description: Human-readable display name or issuer label
+          example: USDC
+        icon_url:
+          type: string
+          nullable: true
+          format: uri
+          description: URL to the asset's icon/logo
+          example: https://stellar.org/images/lumens-logo.svg
+        domain:
+          type: string
+          nullable: true
+          description: Home domain of the issuer
+          example: centre.io
+
+    AssetMetadataBulkResponse:
+      type: object
+      required: [assets]
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetMetadataResponse"
 
     OrderbookLevel:
       type: object

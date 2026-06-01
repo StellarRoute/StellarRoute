@@ -3,12 +3,12 @@
 use utoipa::OpenApi;
 
 use crate::models::{
-    AssetInfo, BatchItemError, BatchQuoteItemResult, BatchQuoteResponse, CacheMetricsResponse,
-    DataFreshness, DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo,
-    ExclusionDiagnostics, ExclusionReason, HealthResponse, OrderbookLevel, OrderbookResponse,
-    PairsResponse, PathStep, QuoteExpirationWebhookPayload,
-    QuoteExpirationWebhookRegistrationResponse, QuoteRationaleMetadata, QuoteResponse,
-    RouteResponse, TradingPair, VenueEvaluation,
+    AssetInfo, AssetMetadataBulkResponse, AssetMetadataResponse, BatchItemError,
+    BatchQuoteItemResult, BatchQuoteResponse, CacheMetricsResponse, DataFreshness,
+    DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo, ExclusionDiagnostics,
+    ExclusionReason, HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, PathStep,
+    QuoteExpirationWebhookPayload, QuoteExpirationWebhookRegistrationResponse,
+    QuoteRationaleMetadata, QuoteResponse, RouteResponse, TradingPair, VenueEvaluation,
 };
 
 /// OpenAPI documentation
@@ -18,6 +18,8 @@ use crate::models::{
         crate::routes::health::health_check,
         crate::routes::health::dependency_health,
         crate::routes::metrics::cache_metrics,
+        crate::routes::assets::get_asset_metadata,
+        crate::routes::assets::list_assets_metadata,
         crate::routes::pairs::list_pairs,
         crate::routes::pairs::list_markets,
         crate::routes::orderbook::get_orderbook,
@@ -32,6 +34,8 @@ use crate::models::{
         HealthResponse,
         DependenciesHealthResponse,
         CacheMetricsResponse,
+        AssetMetadataResponse,
+        AssetMetadataBulkResponse,
         PairsResponse,
         TradingPair,
         AssetInfo,
@@ -60,6 +64,7 @@ use crate::models::{
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
+        (name = "assets", description = "Asset metadata endpoints"),
         (name = "trading", description = "Trading and market data endpoints"),
         (name = "admin", description = "Administrative endpoints"),
         (name = "integrator", description = "Integrator configuration and webhook endpoints"),

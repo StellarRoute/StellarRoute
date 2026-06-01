@@ -20,6 +20,7 @@
 //! RUST_LOG=info LOG_FORMAT=json OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 ./stellarroute-indexer
 //! ```
 
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
@@ -39,7 +40,9 @@ pub struct TraceContext {
 impl TraceContext {
     pub fn current() -> Self {
         let span = Span::current();
-        let span_ctx = span.context().span().span_context();
+        let context = span.context();
+        let span_ref = context.span();
+        let span_ctx = span_ref.span_context();
 
         Self {
             trace_id: span_ctx.trace_id().to_string(),

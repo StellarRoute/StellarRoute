@@ -230,6 +230,28 @@ pub struct QuoteResponse {
     pub spread_bps: Option<u32>,
 }
 
+/// Asset metadata response — matches GET /api/v1/assets/:code spec
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AssetMetadataResponse {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    pub decimals: i16,
+    pub asset_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// Bulk asset metadata response — matches GET /api/v1/assets spec
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AssetMetadataBulkResponse {
+    pub assets: Vec<AssetMetadataResponse>,
+}
+
 /// Prepared quote payload that can be returned without re-serializing on hot paths.
 #[derive(Debug, Clone)]
 pub struct PreparedQuoteResponse {

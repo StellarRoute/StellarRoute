@@ -7,10 +7,9 @@ import { ArrowRight, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton"
+import { LoadingState, EmptyState } from "@/components/shared/ViewState"
 import { CopyButton } from "@/components/shared/CopyButton"
 import { ExplorerLink } from "@/components/shared/ExplorerLink"
-import { SwapViewState } from "@/components/shared/ViewState"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
 import { TransactionRecord } from "@/types/transaction"
@@ -124,15 +123,12 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
 
       <div ref={scrollRef} data-testid="tx-history-scroll" className="flex-1 overflow-auto">
         {isLoading ? (
-          <ActivityTableSkeleton />
+          <LoadingState message="Loading transaction history..." />
         ) : sortedTxs.length === 0 ? (
-          <div className="flex h-full items-center justify-center p-6">
-            <SwapViewState
-              kind="history"
-              variant="empty"
-              className="w-full max-w-md"
-            />
-          </div>
+          <EmptyState
+            message="No transactions"
+            description="Your transaction history will appear here after you make a swap."
+          />
         ) : (
           <div className="min-w-[720px]">
             <Table>

@@ -1,16 +1,8 @@
-import {
-  AlertTriangle,
-  History,
-  Inbox,
-  Loader2,
-  Route,
-  Wallet,
-  WandSparkles,
-} from "lucide-react";
-import { ReactNode } from "react";
+import { AlertTriangle, Inbox, Loader2, RefreshCw } from "lucide-react";
+import { type ReactNode, useMemo } from "react";
+import { Button } from "@/components/ui/button";
 
-export type ViewStateVariant = "loading" | "empty" | "error";
-export type SwapViewStateKind = "quote" | "routes" | "history" | "wallet";
+type ViewStateVariant = "loading" | "empty" | "error";
 
 interface ViewStateProps {
   variant: ViewStateVariant;
@@ -18,7 +10,6 @@ interface ViewStateProps {
   description: string;
   action?: ReactNode;
   className?: string;
-  icon?: ReactNode;
 }
 
 const iconByVariant: Record<ViewStateVariant, ReactNode> = {
@@ -27,92 +18,21 @@ const iconByVariant: Record<ViewStateVariant, ReactNode> = {
   error: <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden="true" />,
 };
 
-const iconByKind: Record<SwapViewStateKind, ReactNode> = {
-  quote: <WandSparkles className="h-6 w-6 text-muted-foreground" aria-hidden="true" />,
-  routes: <Route className="h-6 w-6 text-muted-foreground" aria-hidden="true" />,
-  history: <History className="h-6 w-6 text-muted-foreground" aria-hidden="true" />,
-  wallet: <Wallet className="h-6 w-6 text-muted-foreground" aria-hidden="true" />,
-};
-
-const copyByKind: Record<
-  SwapViewStateKind,
-  Record<ViewStateVariant, { title: string; description: string }>
-> = {
-  quote: {
-    loading: {
-      title: "Loading quote",
-      description: "Fetching the latest executable price for this pair.",
-    },
-    empty: {
-      title: "No quote yet",
-      description: "Choose a pair and amount to preview an executable swap quote.",
-    },
-    error: {
-      title: "Quote unavailable",
-      description: "The quote request failed. Check the pair or retry in a moment.",
-    },
-  },
-  routes: {
-    loading: {
-      title: "Loading routes",
-      description: "Comparing available venues and route candidates.",
-    },
-    empty: {
-      title: "No route data",
-      description: "Route details appear once a quote returns at least one path.",
-    },
-    error: {
-      title: "Route unavailable",
-      description: "Route data could not be loaded for the selected pair.",
-    },
-  },
-  history: {
-    loading: {
-      title: "Loading activity",
-      description: "Preparing your recent swap activity.",
-    },
-    empty: {
-      title: "No Transactions Found",
-      description: "You have not made any swaps yet, or your filters are too restrictive.",
-    },
-    error: {
-      title: "History unavailable",
-      description: "Transaction activity could not be loaded.",
-    },
-  },
-  wallet: {
-    loading: {
-      title: "Checking wallet",
-      description: "Reading wallet status and permissions.",
-    },
-    empty: {
-      title: "Wallet not connected",
-      description: "Connect a wallet to unlock balances and swap execution.",
-    },
-    error: {
-      title: "Wallet unavailable",
-      description: "Wallet status could not be verified.",
-    },
-  },
-};
-
 export function ViewState({
   variant,
   title,
   description,
   action,
   className,
-  icon,
 }: ViewStateProps) {
   const role = variant === "error" ? "alert" : "status";
 
   return (
     <div
       role={role}
-      aria-busy={variant === "loading" || undefined}
       className={`flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center ${className ?? ""}`}
     >
-      {icon ?? iconByVariant[variant]}
+      {iconByVariant[variant]}
       <div className="space-y-1">
         <h3 className="text-sm font-semibold">{title}</h3>
         <p className="text-sm text-muted-foreground">{description}</p>
@@ -122,31 +42,139 @@ export function ViewState({
   );
 }
 
-export function SwapViewState({
-  kind,
-  variant,
-  action,
-  className,
-  title,
-  description,
-}: {
-  kind: SwapViewStateKind;
-  variant: ViewStateVariant;
-  action?: ReactNode;
-  className?: string;
-  title?: string;
-  description?: string;
-}) {
-  const copy = copyByKind[kind][variant];
+// ─── Composable loading state ──────────────────────────────────────
 
+interface LoadingStateProps {
+  message?: string;
+  className?: string;
+}
+
+export function LoadingState({ message = "Loading...", className }: LoadingStateProps) {
   return (
     <ViewState
-      variant={variant}
-      title={title ?? copy.title}
-      description={description ?? copy.description}
-      action={action}
+      variant="loading"
+      title={message}
+      description=""
       className={className}
-      icon={variant === "loading" || variant === "error" ? undefined : iconByKind[kind]}
     />
   );
+}
+
+// ─── Error state with optional retry ────────────────────────────────
+
+interface ErrorStateProps {
+  message: string;
+  onRetry?: () => void;
+  className?: string;
+}
+
+export function ErrorState({ message, onRetry, className }: ErrorStateProps) {
+  return (
+    <ViewState
+      variant="error"
+      title="Something went wrong"
+      description={message}
+      action={
+        onRetry ? (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            Retry
+          </Button>
+        ) : undefined
+      }
+      className={className}
+    />
+  );
+}
+
+// ─── Empty state ────────────────────────────────────────────────────
+
+interface EmptyStateProps {
+  message?: string;
+  description?: string;
+  action?: ReactNode;
+  className?: string;
+}
+
+export function EmptyState({
+  message = "No data",
+  description = "There is nothing to display yet.",
+  action,
+  className,
+}: EmptyStateProps) {
+  return (
+    <ViewState
+      variant="empty"
+      title={message}
+      description={description}
+      action={action}
+      className={className}
+    />
+  );
+}
+
+// ─── useViewState hook ──────────────────────────────────────────────
+
+type ViewStateResult<T> =
+  | { state: "loading"; component: ReactNode }
+  | { state: "error"; component: ReactNode }
+  | { state: "empty"; component: ReactNode }
+  | { state: "ready"; data: T };
+
+/**
+ * Standard hook to determine which view state to render.
+ *
+ * Returns a discriminated union — check `.state` to branch.
+ * For `"ready"`, use `.data` to render the actual content.
+ *
+ * @example
+ * const view = useViewState(data, isLoading, error);
+ * if (view.state !== "ready") return view.component;
+ * return <ActualContent data={view.data} />;
+ */
+export function useViewState<T>(
+  data: T | null | undefined,
+  isLoading: boolean,
+  error: string | null | undefined,
+  options?: {
+    loadingMessage?: string;
+    emptyMessage?: string;
+    emptyDescription?: string;
+    emptyAction?: ReactNode;
+    onRetry?: () => void;
+  },
+): ViewStateResult<NonNullable<T>> {
+  return useMemo(() => {
+    if (isLoading) {
+      return {
+        state: "loading" as const,
+        component: <LoadingState message={options?.loadingMessage} />,
+      };
+    }
+
+    if (error) {
+      return {
+        state: "error" as const,
+        component: <ErrorState message={error} onRetry={options?.onRetry} />,
+      };
+    }
+
+    if (data === null || data === undefined) {
+      return {
+        state: "empty" as const,
+        component: (
+          <EmptyState
+            message={options?.emptyMessage}
+            description={options?.emptyDescription}
+            action={options?.emptyAction}
+          />
+        ),
+      };
+    }
+
+    return {
+      state: "ready" as const,
+      data: data as NonNullable<T>,
+    };
+  }, [data, isLoading, error, options?.loadingMessage, options?.emptyMessage, options?.emptyDescription, options?.emptyAction, options?.onRetry]);
 }

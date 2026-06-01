@@ -54,3 +54,7 @@ WebSocket endpoints use the same error codes as REST endpoints, plus additional 
 | `too_many_subscriptions` | Connection has reached the maximum subscriptions per connection limit. |
 
 See [WebSocket Quote Stream API](websocket.md) for complete WebSocket protocol documentation and error handling guidance.
+
+## Integration guidance
+
+For practical retry semantics, backoff guidance, SDK helper examples, and frontend messaging recommendations, see [API Integrator Error Guide](integrator-error-guide.md).

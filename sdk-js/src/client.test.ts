@@ -241,6 +241,32 @@ describe('error handling', () => {
     expect((err as StellarRouteApiError).status).toBe(429);
   });
 
+  it('maps 503 to isOverloaded()', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      apiError('overloaded', 'Service overloaded', 503),
+    );
+    const err = await new StellarRouteClient({ retries: 0 })
+      .getPairs()
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).isOverloaded()).toBe(true);
+    expect((err as StellarRouteApiError).status).toBe(503);
+  });
+
+  it('maps 422 to isStaleMarketData()', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      apiError('stale_market_data', 'Quote data stale', 422),
+    );
+    const err = await new StellarRouteClient({ retries: 0 })
+      .getPairs()
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).isStaleMarketData()).toBe(true);
+    expect((err as StellarRouteApiError).status).toBe(422);
+  });
+
   it('maps network failure to isNetworkError()', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
     const err = await new StellarRouteClient({ retries: 0 })

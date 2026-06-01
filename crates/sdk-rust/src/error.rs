@@ -21,10 +21,26 @@ pub enum ApiErrorCode {
     NotFound,
     /// Too many requests from this IP (HTTP 429).
     RateLimitExceeded,
+    /// The request was rejected because market data was stale (HTTP 422).
+    StaleMarketData,
+    /// The server is temporarily overloaded (HTTP 503).
+    Overloaded,
     /// Unexpected server-side failure (HTTP 500).
     InternalError,
     /// Any other error code not listed above.
     Other(String),
+}
+
+impl ApiErrorCode {
+    /// Returns `true` for a stale market data error.
+    pub fn is_stale_market_data(&self) -> bool {
+        matches!(self, Self::StaleMarketData)
+    }
+
+    /// Returns `true` for an overloaded service error.
+    pub fn is_overloaded(&self) -> bool {
+        matches!(self, Self::Overloaded)
+    }
 }
 
 impl std::str::FromStr for ApiErrorCode {
@@ -37,6 +53,8 @@ impl std::str::FromStr for ApiErrorCode {
             "validation_error" => Self::ValidationError,
             "not_found" => Self::NotFound,
             "rate_limit_exceeded" => Self::RateLimitExceeded,
+            "stale_market_data" => Self::StaleMarketData,
+            "overloaded" => Self::Overloaded,
             "internal_error" => Self::InternalError,
             other => Self::Other(other.to_string()),
         })
@@ -51,6 +69,8 @@ impl ApiErrorCode {
             Self::ValidationError => "validation_error",
             Self::NotFound => "not_found",
             Self::RateLimitExceeded => "rate_limit_exceeded",
+            Self::StaleMarketData => "stale_market_data",
+            Self::Overloaded => "overloaded",
             Self::InternalError => "internal_error",
             Self::Other(s) => s.as_str(),
         }
@@ -132,6 +152,28 @@ impl SdkError {
     /// Returns `true` if the request was rate-limited.
     pub fn is_rate_limited(&self) -> bool {
         matches!(self, Self::RateLimited { .. })
+    }
+
+    /// Returns `true` if the service is overloaded.
+    pub fn is_overloaded(&self) -> bool {
+        matches!(
+            self,
+            Self::Api {
+                code: ApiErrorCode::Overloaded,
+                ..
+            }
+        )
+    }
+
+    /// Returns `true` if the market data was stale.
+    pub fn is_stale_market_data(&self) -> bool {
+        matches!(
+            self,
+            Self::Api {
+                code: ApiErrorCode::StaleMarketData,
+                ..
+            }
+        )
     }
 
     /// Returns `true` if the request contained invalid parameters.

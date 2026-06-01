@@ -397,6 +397,14 @@ fn api_error_code_roundtrip() {
         "internal_error".parse::<ApiErrorCode>().unwrap(),
         ApiErrorCode::InternalError
     );
+    assert_eq!(
+        "stale_market_data".parse::<ApiErrorCode>().unwrap(),
+        ApiErrorCode::StaleMarketData
+    );
+    assert_eq!(
+        "overloaded".parse::<ApiErrorCode>().unwrap(),
+        ApiErrorCode::Overloaded
+    );
 
     let other = "custom_code".parse::<ApiErrorCode>().unwrap();
     assert_eq!(other.as_str(), "custom_code");

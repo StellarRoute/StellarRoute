@@ -54,3 +54,7 @@ npm run docs:api
 ```
 
 Generated docs are published in `docs/sdk-js/api/`.
+
+## Error handling
+
+For integration guidance on retry semantics, SDK error helper usage, and user-facing error patterns, see `docs/api/integrator-error-guide.md`.

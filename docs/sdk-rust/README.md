@@ -205,4 +205,5 @@ cargo run -p stellarroute-sdk --bin stellarroute -- pairs --limit 30
 
 - [Rust SDK CLI reference](../../crates/sdk-rust/README.md)
 - [API error taxonomy](../api/error_taxonomy.md)
+- [API integrator error guide](../api/integrator-error-guide.md)
 - [TypeScript SDK quickstart](../../sdk-js/README.md)

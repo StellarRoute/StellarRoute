@@ -67,6 +67,16 @@ export class StellarRouteApiError extends Error {
     return this.status === 429 || this.code === 'rate_limit_exceeded';
   }
 
+  /** Returns `true` when the service is overloaded (HTTP 503). */
+  isOverloaded(): boolean {
+    return this.status === 503 || this.code === 'overloaded';
+  }
+
+  /** Returns `true` when the market data is stale (HTTP 422). */
+  isStaleMarketData(): boolean {
+    return this.status === 422 || this.code === 'stale_market_data';
+  }
+
   /** Returns `true` for bad-request validation errors (HTTP 400). */
   isValidationError(): boolean {
     return (

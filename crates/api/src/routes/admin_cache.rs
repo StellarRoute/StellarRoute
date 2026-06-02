@@ -1,12 +1,12 @@
-use axum::{extract::State, Json};
-use axum::http::HeaderMap;
-use crate::error::Result;
-use crate::state::AppState;
-use crate::middleware::RequestId;
-use std::sync::Arc;
-use serde::Deserialize;
-use tracing::info;
 use crate::admin_audit::{build_admin_audit_entry, emit_admin_audit};
+use crate::error::Result;
+use crate::middleware::RequestId;
+use crate::state::AppState;
+use axum::http::HeaderMap;
+use axum::{extract::State, Json};
+use serde::Deserialize;
+use std::sync::Arc;
+use tracing::info;
 
 #[derive(Debug, Deserialize)]
 pub struct CacheFlushRequest {
@@ -60,5 +60,7 @@ pub async fn flush_cache(
     );
     let _ = emit_admin_audit(&entry);
 
-    Ok(Json(serde_json::json!({ "status": "ok", "deleted": deleted })))
+    Ok(Json(
+        serde_json::json!({ "status": "ok", "deleted": deleted }),
+    ))
 }

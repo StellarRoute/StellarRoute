@@ -299,8 +299,7 @@ impl MultiRegionRouter {
                         // (primary has no lag); replicas return seconds since the
                         // last WAL replay. Fall back to 0 when the query fails or
                         // the function is unavailable (e.g. primary node).
-                        let lag_secs: u32 =
-                            query_replica_lag_secs(pool).await.unwrap_or(0);
+                        let lag_secs: u32 = query_replica_lag_secs(pool).await.unwrap_or(0);
 
                         if let Some(checker) = self.health.get_checker(region_id) {
                             checker.record_success(response_time, lag_secs);

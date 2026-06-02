@@ -497,18 +497,16 @@ pub async fn get_batch_quotes(
                 };
 
                 match get_quote_inner(state, base_asset, quote_asset, params, false).await {
-                    Ok((quote, _cache_hit)) => {
-                        match quote.into_quote() {
-                            Ok(inner) => BatchQuoteItemResult::ok(i, inner),
-                            Err(e) => BatchQuoteItemResult::err(
-                                i,
-                                BatchItemError {
-                                    code: "internal".to_string(),
-                                    message: e.to_string(),
-                                },
-                            ),
-                        }
-                    }
+                    Ok((quote, _cache_hit)) => match quote.into_quote() {
+                        Ok(inner) => BatchQuoteItemResult::ok(i, inner),
+                        Err(e) => BatchQuoteItemResult::err(
+                            i,
+                            BatchItemError {
+                                code: "internal".to_string(),
+                                message: e.to_string(),
+                            },
+                        ),
+                    },
                     Err(e) => {
                         let (code, message) = batch_error_from_api_error(&e);
                         BatchQuoteItemResult::err(i, BatchItemError { code, message })

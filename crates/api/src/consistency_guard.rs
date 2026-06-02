@@ -89,9 +89,12 @@ impl ConsistencyGuard {
 
         // Set isolation level based on strategy
         let isolation_level = self.strategy.isolation_level();
-        sqlx::query(&format!("SET TRANSACTION ISOLATION LEVEL {}", isolation_level))
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(&format!(
+            "SET TRANSACTION ISOLATION LEVEL {}",
+            isolation_level
+        ))
+        .execute(&mut *tx)
+        .await?;
 
         debug!(
             isolation_level = isolation_level,

@@ -4,8 +4,8 @@ pub mod adaptive_ttl;
 pub mod invalidation;
 pub mod invalidation_graph;
 pub mod jitter;
-pub mod prewarmer;
 pub mod prewarm_job;
+pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
 use serde::{de::DeserializeOwned, Serialize};
@@ -22,10 +22,10 @@ pub use adaptive_ttl::{
 
 pub use jitter::JitteredTtl;
 
+pub use prewarm_job::{PrewarmConfig, PrewarmJob};
 pub use prewarmer::{
     CachePrewarmer, DemandForecaster, KeyDemandEntry, PrewarmError, PrewarmMetrics,
 };
-pub use prewarm_job::{PrewarmConfig, PrewarmJob};
 
 /// Cache manager for Redis operations
 #[derive(Clone)]
@@ -254,7 +254,9 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             };
 
             // Perform the computation as leader by taking and calling the closure.
-            let f_taken = maybe_f.take().expect("closure must be available when becoming leader");
+            let f_taken = maybe_f
+                .take()
+                .expect("closure must be available when becoming leader");
             let result = f_taken().await;
 
             // Save result and notify others
@@ -338,7 +340,9 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                 inflight: Arc::clone(&inflight),
             };
 
-            let f_taken = maybe_f.take().expect("closure must be available when becoming leader");
+            let f_taken = maybe_f
+                .take()
+                .expect("closure must be available when becoming leader");
             // leader -> unique
             crate::metrics::record_single_flight_unique(label);
             let result = f_taken().await;
@@ -465,18 +469,9 @@ mod tests {
         assert_eq!(keys::pairs_list(), "pairs:list");
         assert_eq!(keys::pairs_list_page(25, 50), "pairs:list:25:50");
         // orderbook uses canonical pair ordering: "native" < "USDC" lexicographically
-        assert_eq!(
-            keys::orderbook("USDC", "XLM"),
-            "orderbook:native:USDC"
-        );
-        assert_eq!(
-            keys::orderbook("XLM", "USDC"),
-            "orderbook:native:USDC"
-        );
-        assert_eq!(
-            keys::price_history("XLM", "USDC"),
-            "price-history:XLM:USDC"
-        );
+        assert_eq!(keys::orderbook("USDC", "XLM"), "orderbook:native:USDC");
+        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:native:USDC");
+        assert_eq!(keys::price_history("XLM", "USDC"), "price-history:XLM:USDC");
         assert_eq!(
             keys::quote("xlm", "usdc", "100.0", 50, "sell", true),
             "v2:quote:native:USDC:100.0000000:50:sell:true"

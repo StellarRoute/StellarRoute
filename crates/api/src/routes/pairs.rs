@@ -147,7 +147,11 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
     }
 
     // Sort by canonical pair ordering for deterministic, consistent output.
-    pairs.sort_by(|a, b| a.base_asset.cmp(&b.base_asset).then(a.counter_asset.cmp(&b.counter_asset)));
+    pairs.sort_by(|a, b| {
+        a.base_asset
+            .cmp(&b.base_asset)
+            .then(a.counter_asset.cmp(&b.counter_asset))
+    });
 
     debug!("Found {} trading pairs", pairs.len());
 

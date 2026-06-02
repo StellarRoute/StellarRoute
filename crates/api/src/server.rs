@@ -17,8 +17,8 @@ use crate::{
     error::Result,
     health_scheduler::{HealthScheduler, HealthSchedulerConfig},
     middleware::{
-        api_versioning_layer, request_id_layer, EndpointConfig, RateLimitLayer, RequestId,
-        REQUEST_ID_HEADER, AuthLayer,
+        api_versioning_layer, request_id_layer, AuthLayer, EndpointConfig, RateLimitLayer,
+        RequestId, REQUEST_ID_HEADER,
     },
     routes,
     state::{AppState, CachePolicy, DatabasePools},

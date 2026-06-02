@@ -112,12 +112,7 @@ impl HealthScheduler {
             tokio::time::sleep(wait).await;
 
             // 2. Run one computation cycle with retries.
-            if let Err(dead_letter) = Self::run_cycle_with_retry(
-                pool.clone(),
-                &config,
-            )
-            .await
-            {
+            if let Err(dead_letter) = Self::run_cycle_with_retry(pool.clone(), &config).await {
                 error!(
                     error = %dead_letter,
                     max_retries = %config.max_retries,
@@ -286,10 +281,8 @@ impl HealthScheduler {
             // Build per-pair best-bid map: (selling, buying) -> min price_e7
             // This captures the cheapest offer for the REVERSE direction,
             // which we later invert to get the bid for the forward direction.
-            let mut best_bid_reverse: std::collections::HashMap<
-                (uuid::Uuid, uuid::Uuid),
-                i64,
-            > = std::collections::HashMap::new();
+            let mut best_bid_reverse: std::collections::HashMap<(uuid::Uuid, uuid::Uuid), i64> =
+                std::collections::HashMap::new();
             for row in &sdex_rows {
                 let selling: uuid::Uuid = row.get("selling_asset_id");
                 let buying: uuid::Uuid = row.get("buying_asset_id");

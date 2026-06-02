@@ -1,11 +1,11 @@
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
-use rand::Rng;
 
-use crate::load_test::{LoadTestMetrics, LoadTestResults, percentile};
+use crate::load_test::{percentile, LoadTestMetrics, LoadTestResults};
 
 /// Traffic mix configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -115,8 +115,10 @@ pub struct RegressionReport {
 
 impl HarnessResults {
     pub fn compare_with_baseline(&self, baseline: &HarnessResults) -> RegressionReport {
-        let latency_delta = (self.p95_latency_ms - baseline.p95_latency_ms) / baseline.p95_latency_ms * 100.0;
-        let throughput_delta = (self.throughput_rps - baseline.throughput_rps) / baseline.throughput_rps * 100.0;
+        let latency_delta =
+            (self.p95_latency_ms - baseline.p95_latency_ms) / baseline.p95_latency_ms * 100.0;
+        let throughput_delta =
+            (self.throughput_rps - baseline.throughput_rps) / baseline.throughput_rps * 100.0;
         let error_delta = self.error_rate - baseline.error_rate;
 
         // Consider it a regression if p95 latency increased by > 15% or error rate increased by > 1%
@@ -136,15 +138,39 @@ impl HarnessResults {
         println!("║             Harness Load Test Results                    ║");
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║ Name: {:<42} ║", self.config.name);
-        println!("║ Total Requests:        {:>10}                    ║", self.total_requests);
-        println!("║ Successful:            {:>10}                    ║", self.successful_requests);
-        println!("║ Failed:                {:>10}                    ║", self.failed_requests);
-        println!("║ Error Rate:            {:>10.2}%                   ║", self.error_rate * 100.0);
+        println!(
+            "║ Total Requests:        {:>10}                    ║",
+            self.total_requests
+        );
+        println!(
+            "║ Successful:            {:>10}                    ║",
+            self.successful_requests
+        );
+        println!(
+            "║ Failed:                {:>10}                    ║",
+            self.failed_requests
+        );
+        println!(
+            "║ Error Rate:            {:>10.2}%                   ║",
+            self.error_rate * 100.0
+        );
         println!("╠══════════════════════════════════════════════════════════╣");
-        println!("║ P50 Latency:           {:>10.2} ms                ║", self.p50_latency_ms);
-        println!("║ P95 Latency:           {:>10.2} ms                ║", self.p95_latency_ms);
-        println!("║ P99 Latency:           {:>10.2} ms                ║", self.p99_latency_ms);
-        println!("║ Throughput:            {:>10.2} req/sec             ║", self.throughput_rps);
+        println!(
+            "║ P50 Latency:           {:>10.2} ms                ║",
+            self.p50_latency_ms
+        );
+        println!(
+            "║ P95 Latency:           {:>10.2} ms                ║",
+            self.p95_latency_ms
+        );
+        println!(
+            "║ P99 Latency:           {:>10.2} ms                ║",
+            self.p99_latency_ms
+        );
+        println!(
+            "║ Throughput:            {:>10.2} req/sec             ║",
+            self.throughput_rps
+        );
         println!("╚══════════════════════════════════════════════════════════╝\n");
     }
 }
@@ -162,26 +188,28 @@ impl LoadTestHarness {
         }
     }
 
-    pub async fn run<F, Fut>(&self, request_gen: F) -> HarnessResults 
-    where 
+    pub async fn run<F, Fut>(&self, request_gen: F) -> HarnessResults
+    where
         F: Fn(TrafficType, f64) -> Fut + Clone + Send + Sync + 'static,
         Fut: std::future::Future<Output = Result<(), String>> + Send,
     {
         info!("Starting load test harness: {}", self.config.name);
         let start_time = Instant::now();
-       let (tx, rx) = mpsc::channel::<LoadTestMetrics>(self.config.concurrent_users * 2);
-        
+        let (tx, rx) = mpsc::channel::<LoadTestMetrics>(self.config.concurrent_users * 2);
+
         // Spawn workers
         let mut workers = vec![];
         for i in 0..self.config.concurrent_users {
             let config = self.config.clone();
             let metrics = self.metrics.clone();
             let request_gen = request_gen.clone();
-            
+
             let worker = tokio::spawn(async move {
-                let interval = Duration::from_secs_f64(1.0 / (config.requests_per_second as f64 / config.concurrent_users as f64));
+                let interval = Duration::from_secs_f64(
+                    1.0 / (config.requests_per_second as f64 / config.concurrent_users as f64),
+                );
                 let mut ticker = tokio::time::interval(interval);
-                
+
                 for _ in 0..(config.total_requests / config.concurrent_users) {
                     ticker.tick().await;
 
@@ -190,24 +218,29 @@ impl LoadTestHarness {
                         let t_type = select_traffic_type(&config.traffic_mix, &mut rng);
                         let amt = generate_amount(&config.amount_distribution, &mut rng);
 
-                        (t_type,amt) // Return these values
+                        (t_type, amt) // Return these values
                     };
-                    
+
                     let req_start = Instant::now();
-                    
+
                     // Simulate degradation
                     if config.degradation.db_latency_ms > 0 {
-                        tokio::time::sleep(Duration::from_millis(config.degradation.db_latency_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(config.degradation.db_latency_ms))
+                            .await;
                     }
 
                     let should_fail = {
                         let mut rng = rand::thread_rng();
                         let mut fail = false;
-                        if config.degradation.db_error_rate > 0.0 && rng.gen::<f64>() < config.degradation.db_error_rate {
-                        fail = true;
+                        if config.degradation.db_error_rate > 0.0
+                            && rng.gen::<f64>() < config.degradation.db_error_rate
+                        {
+                            fail = true;
                         }
-                        if config.degradation.rpc_error_rate > 0.0 && rng.gen::<f64>() < config.degradation.rpc_error_rate {
-                        fail = true;
+                        if config.degradation.rpc_error_rate > 0.0
+                            && rng.gen::<f64>() < config.degradation.rpc_error_rate
+                        {
+                            fail = true;
                         }
                         fail // Return the result to 'should_fail'
                     };
@@ -219,7 +252,7 @@ impl LoadTestHarness {
                     };
 
                     let latency = req_start.elapsed().as_millis();
-                    
+
                     match result {
                         Ok(_) => {
                             metrics.inc_success();
@@ -241,17 +274,18 @@ impl LoadTestHarness {
             for w in workers {
                 let _ = w.await;
             }
-        }).await;
+        })
+        .await;
 
         let duration = start_time.elapsed();
         let (successful, failed, rejected, mut latencies) = self.metrics.snapshot().await;
-        
+
         latencies.sort();
-        
+
         let p50 = percentile(&latencies, 50.0) as f64;
         let p95 = percentile(&latencies, 95.0) as f64;
         let p99 = percentile(&latencies, 99.0) as f64;
-        
+
         let total_reqs = successful + failed;
         let error_rate = if total_reqs > 0 {
             failed as f64 / total_reqs as f64
@@ -298,10 +332,12 @@ mod tests {
         };
 
         let harness = LoadTestHarness::new(config);
-        let results = harness.run(|_, _| async {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            Ok(())
-        }).await;
+        let results = harness
+            .run(|_, _| async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                Ok(())
+            })
+            .await;
 
         assert_eq!(results.total_requests, 10);
         assert_eq!(results.successful_requests, 10);

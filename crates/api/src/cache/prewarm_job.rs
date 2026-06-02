@@ -14,23 +14,24 @@ lazy_static! {
     pub static ref PREWARM_RUNS: IntCounter = prometheus::register_int_counter!(
         "stellarroute_prewarm_runs_total",
         "Total number of prewarm runs"
-    ).expect("Can't create PREWARM_RUNS");
-
+    )
+    .expect("Can't create PREWARM_RUNS");
     pub static ref PREWARM_SKIPPED: IntCounterVec = prometheus::register_int_counter_vec!(
         "stellarroute_prewarm_skipped_total",
         "Number of prewarm runs skipped",
         &["reason"]
-    ).expect("Can't create PREWARM_SKIPPED");
-
+    )
+    .expect("Can't create PREWARM_SKIPPED");
     pub static ref PREWARM_SUCCESS: IntCounter = prometheus::register_int_counter!(
         "stellarroute_prewarm_success_total",
         "Number of successfully prewarmed entries"
-    ).expect("Can't create PREWARM_SUCCESS");
-
+    )
+    .expect("Can't create PREWARM_SUCCESS");
     pub static ref PREWARM_ERRORS: IntCounter = prometheus::register_int_counter!(
         "stellarroute_prewarm_errors_total",
         "Number of errors during prewarm runs"
-    ).expect("Can't create PREWARM_ERRORS");
+    )
+    .expect("Can't create PREWARM_ERRORS");
 }
 
 /// Configuration for prewarm job
@@ -64,10 +65,14 @@ impl PrewarmJob {
     }
 
     pub fn start(self: Arc<Self>) {
-        info!(interval_secs = self.config.interval_secs, "Starting cache prewarm job");
+        info!(
+            interval_secs = self.config.interval_secs,
+            "Starting cache prewarm job"
+        );
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(self.config.interval_secs));
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(self.config.interval_secs));
 
             loop {
                 interval.tick().await;
@@ -79,7 +84,11 @@ impl PrewarmJob {
                 let mut skip = false;
                 for s in snaps.iter() {
                     if s.status != crate::indexer_lag::SyncStatus::Ok {
-                        warn!(source = s.source, status = s.status.as_str(), "Skipping prewarm due to indexer lag");
+                        warn!(
+                            source = s.source,
+                            status = s.status.as_str(),
+                            "Skipping prewarm due to indexer lag"
+                        );
                         PREWARM_SKIPPED.with_label_values(&["indexer_lag"]).inc();
                         skip = true;
                         break;
@@ -116,27 +125,41 @@ impl PrewarmJob {
                                         quote_ap.clone(),
                                         params.clone(),
                                         false,
-                                    ).await {
+                                    )
+                                    .await
+                                    {
                                         Ok(qr) => {
                                             // Serialize prepared response and set cache
-                                            if let Ok(prepared) = PreparedQuoteResponse::from_quote(qr) {
+                                            if let Ok(prepared) =
+                                                PreparedQuoteResponse::from_quote(qr)
+                                            {
                                                 if let Some(cache) = &state.cache {
                                                     if let Ok(mut guard) = cache.try_lock() {
                                                         let jitter = JitteredTtl::default();
-                                                        let ttl = jitter.apply(state.cache_policy.quote_ttl);
+                                                        let ttl = jitter
+                                                            .apply(state.cache_policy.quote_ttl);
                                                         let key = keys::quote(
                                                             &base_s,
                                                             &quote_s,
-                                                            &params.amount.clone().unwrap_or_else(|| "1".to_string()),
+                                                            &params
+                                                                .amount
+                                                                .clone()
+                                                                .unwrap_or_else(|| "1".to_string()),
                                                             params.slippage_bps(),
-                                                            match params.quote_type { QuoteType::Sell => "sell", _ => "buy" },
+                                                            match params.quote_type {
+                                                                QuoteType::Sell => "sell",
+                                                                _ => "buy",
+                                                            },
                                                             params.explain.unwrap_or(false),
                                                         );
 
                                                         let _ = guard
                                                             .set_json(
                                                                 &key,
-                                                                std::str::from_utf8(prepared.json_bytes()).expect("valid utf8"),
+                                                                std::str::from_utf8(
+                                                                    prepared.json_bytes(),
+                                                                )
+                                                                .expect("valid utf8"),
                                                                 ttl,
                                                             )
                                                             .await;

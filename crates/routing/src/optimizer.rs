@@ -297,9 +297,9 @@ impl HybridOptimizer {
 
         // Convert compacted graph back to edges for pathfinding
         let edges = graph.to_edges();
-        let paths =
-            self.pathfinder
-                .find_paths(from, to, &edges, amount_in, routing_policy)?;
+        let paths = self
+            .pathfinder
+            .find_paths(from, to, &edges, amount_in, routing_policy)?;
 
         if paths.is_empty() {
             return Err(RoutingError::NoRoute(from.to_string(), to.to_string()));

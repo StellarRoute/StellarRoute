@@ -1,6 +1,6 @@
+use axum::http::HeaderMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use axum::http::HeaderMap;
 
 /// Simple structured admin audit entry used for admin operations (cache flush,
 /// kill-switch changes, etc.). Written as JSON to stdout by default.

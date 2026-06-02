@@ -27,7 +27,8 @@ impl Default for AuthConfig {
 
         Self {
             valid_keys: Arc::new(valid_keys),
-            require_auth: std::env::var("REQUIRE_AUTH").unwrap_or_else(|_| "false".to_string()) == "true",
+            require_auth: std::env::var("REQUIRE_AUTH").unwrap_or_else(|_| "false".to_string())
+                == "true",
         }
     }
 }
@@ -73,9 +74,14 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
@@ -98,9 +104,7 @@ where
             let provided_key = api_key.or(bearer_token);
 
             match provided_key {
-                Some(key) if config.valid_keys.contains(key) => {
-                    inner.call(req).await
-                }
+                Some(key) if config.valid_keys.contains(key) => inner.call(req).await,
                 Some(_) => {
                     warn!("Invalid API key provided");
                     let response = (

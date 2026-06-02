@@ -151,7 +151,10 @@ pub async fn get_orderbook(
 }
 
 /// Compute summary fields for an orderbook snapshot.
-fn compute_orderbook_summary(bids: &Vec<OrderbookLevel>, asks: &Vec<OrderbookLevel>) -> OrderbookSummary {
+fn compute_orderbook_summary(
+    bids: &Vec<OrderbookLevel>,
+    asks: &Vec<OrderbookLevel>,
+) -> OrderbookSummary {
     let best_bid = bids.first().map(|l| l.price.clone());
     let best_ask = asks.first().map(|l| l.price.clone());
 
@@ -183,7 +186,6 @@ fn compute_orderbook_summary(bids: &Vec<OrderbookLevel>, asks: &Vec<OrderbookLev
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

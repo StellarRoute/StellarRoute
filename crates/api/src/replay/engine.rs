@@ -308,7 +308,13 @@ mod tests {
     #[test]
     fn schema_version_mismatch_returns_bad_request() {
         let mut artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000", Some(0))],
+            vec![candidate(
+                "sdex",
+                "offer1",
+                "1.0000000",
+                "100.0000000",
+                Some(0),
+            )],
             "1.0000000",
         );
         artifact.schema_version = 99;
@@ -327,7 +333,13 @@ mod tests {
     #[test]
     fn insufficient_liquidity_returns_no_route() {
         let artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "5.0000000", Some(0))],
+            vec![candidate(
+                "sdex",
+                "offer1",
+                "1.0000000",
+                "5.0000000",
+                Some(0),
+            )],
             "100.0000000",
         );
         let err = ReplayEngine::run(&artifact).unwrap_err();
@@ -337,7 +349,13 @@ mod tests {
     #[test]
     fn is_deterministic_true_when_source_matches() {
         let artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000", Some(0))],
+            vec![candidate(
+                "sdex",
+                "offer1",
+                "1.0000000",
+                "100.0000000",
+                Some(0),
+            )],
             "50.0000000",
         );
         let output = ReplayEngine::run(&artifact).expect("should succeed");

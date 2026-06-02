@@ -28,6 +28,12 @@ export interface QuoteResult {
   refresh: (opts?: { force?: boolean }) => void;
   data: import('@/types').PriceQuote | undefined;
   lastQuotedAtMs: number | null;
+  /** Unique identifier for this quote */
+  quoteId?: string;
+  /** Snapshot version/revision of the price data */
+  snapshotVersion?: string;
+  /** Performance timings in milliseconds (e.g. quoteLatency, renderTime) */
+  timings?: Record<string, number>;
 }
 
 /**
@@ -47,6 +53,7 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     pendingRetryRemainingMs,
     cancelRetry,
     refresh,
+    timings,
   } = useQuoteRefresh(
     fromToken,
     toToken,
@@ -100,6 +107,19 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     };
   }, [data]);
 
+  const quoteId = useMemo(
+    () =>
+      data
+        ? `q-${data.timestamp}-${Math.random().toString(36).slice(2, 10)}`
+        : undefined,
+    [data?.timestamp, data?.source_timestamp, data?.total],
+  );
+
+  const snapshotVersion = useMemo(
+    () => (data ? `v${data.source_timestamp ?? data.timestamp}` : undefined),
+    [data?.source_timestamp, data?.timestamp],
+  );
+
   return {
     ...result,
     loading,
@@ -113,5 +133,9 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     refresh,
     data,
     lastQuotedAtMs: data ? data.timestamp ?? null : null,
+    // Extract quote metadata for debug overlay
+    quoteId,
+    snapshotVersion,
+    timings,
   };
 }

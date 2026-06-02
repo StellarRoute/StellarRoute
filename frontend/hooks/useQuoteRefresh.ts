@@ -86,6 +86,8 @@ export type UseQuoteRefreshState = UseApiState<PriceQuote> & {
   cancelRetry: () => void;
   /** Remaining wait time from Retry-After, if the API is currently rate-limiting requests. */
   rateLimitRemainingMs: number;
+  /** Diagnostic timing values for the current quote request. */
+  timings?: Record<string, number>;
 };
 
 interface PendingQuoteRetry {
@@ -147,6 +149,7 @@ export function useQuoteRefresh(
   const [pendingRetry, setPendingRetry] = useState<PendingQuoteRetry | null>(
     null,
   );
+  const [quoteLatencyMs, setQuoteLatencyMs] = useState<number | null>(null);
 
   const hasValidInputs =
     Boolean(base) &&
@@ -227,6 +230,8 @@ export function useQuoteRefresh(
     if (!canRequest) return;
 
     const controller = new AbortController();
+    const requestStartedAtMs = Date.now();
+
     // Same pattern as `useFetch` in useApi.ts: set loading before starting the request.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional loading transition before async getQuote
     setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -239,6 +244,7 @@ export function useQuoteRefresh(
         if (!controller.signal.aborted) {
           const t = Date.now();
           setLastQuotedAtMs(t);
+          setQuoteLatencyMs(t - requestStartedAtMs);
           if (retryAttempt > 0 && requestContext) {
             emitRetryEvent({
               stage: 'succeeded',
@@ -256,6 +262,7 @@ export function useQuoteRefresh(
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted) {
+          setQuoteLatencyMs(Date.now() - requestStartedAtMs);
           const normalizedError =
             err instanceof StellarRouteApiError || err instanceof Error
               ? err
@@ -427,5 +434,7 @@ export function useQuoteRefresh(
     pendingRetryRemainingMs,
     cancelRetry,
     rateLimitRemainingMs,
+    timings:
+      quoteLatencyMs !== null ? { quoteLatency: quoteLatencyMs } : undefined,
   };
 }

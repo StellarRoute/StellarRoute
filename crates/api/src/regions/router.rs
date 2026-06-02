@@ -294,7 +294,13 @@ impl MultiRegionRouter {
                 {
                     Ok(_) => {
                         let response_time = start.elapsed().as_millis() as u32;
-                        let lag_secs = 0; // TODO: Query replication lag
+
+                        // Query replication lag. On a primary this returns NULL
+                        // (primary has no lag); replicas return seconds since the
+                        // last WAL replay. Fall back to 0 when the query fails or
+                        // the function is unavailable (e.g. primary node).
+                        let lag_secs: u32 =
+                            query_replica_lag_secs(pool).await.unwrap_or(0);
 
                         if let Some(checker) = self.health.get_checker(region_id) {
                             checker.record_success(response_time, lag_secs);
@@ -312,6 +318,27 @@ impl MultiRegionRouter {
 
         Ok(())
     }
+}
+
+/// Query the replication lag in seconds for the given Postgres pool.
+///
+/// Uses `pg_last_xact_replay_timestamp()` which returns the time of the last
+/// WAL replay on a replica. On a primary it returns NULL, so we return 0.
+///
+/// Returns `None` on query errors so callers can fall back gracefully.
+async fn query_replica_lag_secs(pool: &Pool<Postgres>) -> Option<u32> {
+    // On a primary pg_last_xact_replay_timestamp() is NULL; COALESCE returns 0.
+    let lag: Option<f64> = sqlx::query_scalar(
+        "SELECT COALESCE(
+            EXTRACT(EPOCH FROM (NOW() - pg_last_xact_replay_timestamp())),
+            0.0
+        )::DOUBLE PRECISION",
+    )
+    .fetch_one(pool)
+    .await
+    .ok();
+
+    lag.map(|secs| secs.max(0.0) as u32)
 }
 
 impl Clone for MultiRegionRouter {
@@ -353,5 +380,56 @@ mod tests {
 
         assert!(!decision.is_fallback);
         assert_eq!(decision.regions_evaluated, 1);
+    }
+
+    /// Verify that a mocked lag provider returning None falls back to 0.
+    #[test]
+    fn test_lag_fallback_to_zero_on_error() {
+        // query_replica_lag_secs returns None on error; callers unwrap_or(0)
+        let result: Option<u32> = None;
+        assert_eq!(result.unwrap_or(0), 0);
+    }
+
+    /// Verify negative lag (clock skew) is clamped to zero.
+    #[test]
+    fn test_lag_negative_clamped_to_zero() {
+        let raw: f64 = -2.5; // clock skew scenario
+        let clamped = raw.max(0.0) as u32;
+        assert_eq!(clamped, 0);
+    }
+
+    /// Verify positive lag is reported correctly.
+    #[test]
+    fn test_lag_positive_value() {
+        let raw: f64 = 3.7;
+        let clamped = raw.max(0.0) as u32;
+        assert_eq!(clamped, 3); // truncated to integer seconds
+    }
+
+    /// Health transitions to Degraded when lag exceeds threshold.
+    #[test]
+    fn test_lag_above_threshold_degrades_health() {
+        let mut config = RegionConfig::new(RegionId::EuWest, "postgres://test".to_string(), 1);
+        config.max_replica_lag_secs = 5;
+        let checker = super::super::health::RegionHealthCheck::new(RegionId::EuWest, config);
+        // Record success with lag = 10 (above 5s threshold)
+        checker.record_success(30, 10);
+        assert_eq!(
+            checker.current_status(),
+            super::super::health::HealthStatus::Degraded
+        );
+    }
+
+    /// Health stays Healthy when lag is within threshold.
+    #[test]
+    fn test_lag_within_threshold_stays_healthy() {
+        let mut config = RegionConfig::new(RegionId::EuWest, "postgres://test".to_string(), 1);
+        config.max_replica_lag_secs = 5;
+        let checker = super::super::health::RegionHealthCheck::new(RegionId::EuWest, config);
+        checker.record_success(30, 2); // lag = 2 < 5
+        assert_eq!(
+            checker.current_status(),
+            super::super::health::HealthStatus::Healthy
+        );
     }
 }

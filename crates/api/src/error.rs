@@ -48,6 +48,9 @@ pub enum ApiError {
     #[error("No route found for trading pair")]
     NoRouteFound,
 
+    #[error("Route not executable: {0}")]
+    NotExecutable(String),
+
     #[error("All market data inputs are stale ({stale_count} stale, {fresh_count} fresh)")]
     StaleMarketData {
         stale_count: usize,
@@ -112,6 +115,11 @@ impl IntoResponse for ApiError {
                 StatusCode::NOT_FOUND,
                 ApiErrorCode::NoRoute,
                 "No trading route found for this pair".to_string(),
+            ),
+            ApiError::NotExecutable(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ApiErrorCode::NotExecutable,
+                msg,
             ),
             ApiError::StaleMarketData {
                 stale_count,

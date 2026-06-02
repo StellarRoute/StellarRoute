@@ -168,6 +168,10 @@ pub struct AppState {
     pub idempotency_ledger: Arc<DedupeLedger>,
     /// External dependency probes and dedicated circuit breakers.
     pub external_dependency_health: Arc<ExternalDependencyHealth>,
+    /// Optional Soroban simulation client for dry-run validation
+    pub soroban_simulator: Option<Arc<crate::simulation::SorobanSimulator>>,
+    /// Whether to run simulations in realtime/latency-sensitive mode
+    pub soroban_simulation_enabled: bool,
 }
 
 impl AppState {
@@ -194,6 +198,17 @@ impl AppState {
             ledger
         };
         let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+
+        // Build optional Soroban simulator (if configured)
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
+            .ok()
+            .and_then(|url| {
+                let cfg = crate::simulation::SimulationConfig {
+                    rpc_url: url,
+                    ..Default::default()
+                };
+                crate::simulation::SorobanSimulator::new(cfg)
+            });
 
         Self {
             db,
@@ -222,6 +237,11 @@ impl AppState {
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
+            soroban_simulator: None,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         }
     }
 
@@ -291,6 +311,11 @@ impl AppState {
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         };
 
         // Start cache prewarm job if configured via env `PREWARM_PAIRS`.

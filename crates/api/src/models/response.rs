@@ -625,6 +625,8 @@ pub enum ApiErrorCode {
     InvalidAssetFormat,
     /// No executable trading route found
     NoRoute,
+    /// Route would fail execution on-chain (simulation detected failure)
+    NotExecutable,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
 }
@@ -644,6 +646,7 @@ impl ApiErrorCode {
             Self::InvalidSlippage => "invalid_slippage",
             Self::InvalidAssetFormat => "invalid_asset_format",
             Self::NoRoute => "no_route",
+            Self::NotExecutable => "not_executable",
             Self::StaleMarketData => "stale_market_data",
         }
     }

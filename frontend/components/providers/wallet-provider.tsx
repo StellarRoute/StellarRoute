@@ -36,7 +36,6 @@ interface WalletContextValue {
   refreshWallets: () => Promise<void>;
   refreshAccount: () => Promise<void>;
   networkMismatch: boolean;
-  stubSpendableBalance: string | null;
   accountSwitchState: AccountSwitchState;
   isTransactionPending: boolean;
   setTransactionPending: (pending: boolean) => void;
@@ -153,7 +152,7 @@ export function WalletProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [setLastWalletId]);
+  }, [isTransactionPending, setLastWalletId]);
 
   const reconnect = React.useCallback(async () => {
     if (typeof window === 'undefined') {
@@ -276,7 +275,6 @@ export function WalletProvider({
   }, [autoReconnectPreferred, isConnected, isLoading, reconnect]);
 
   const networkMismatch = isConnected && walletNetwork !== null && walletNetwork !== network;
-  const stubSpendableBalance = isConnected ? '10000.0000000' : null;
 
   const refreshCapabilities = React.useCallback(async () => {
     // mock implementation
@@ -310,7 +308,6 @@ export function WalletProvider({
     refreshWallets,
     refreshAccount,
     networkMismatch,
-    stubSpendableBalance,
     accountSwitchState,
     isTransactionPending,
     setTransactionPending: React.useCallback((pending: boolean) => {

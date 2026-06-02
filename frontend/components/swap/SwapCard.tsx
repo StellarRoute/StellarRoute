@@ -20,6 +20,7 @@ import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
+import { useWalletBalance } from '@/hooks/useWalletBalance';
 import {
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
@@ -63,7 +64,7 @@ export function SwapCard() {
     parseParams = shareableQuote.parseParams;
     isSharedQuoteStale = shareableQuote.isStale;
     refreshSharedQuote = shareableQuote.refreshQuote;
-  } catch (e) {
+  } catch {
     // SSR or missing searchParams context
   }
 
@@ -128,7 +129,7 @@ export function SwapCard() {
     updateExtendedRouteDetails,
   } = useExpertSettings();
 
-  const { address: walletAddress, isConnected, walletId, network: walletAppNetwork, networkMismatch } = useWallet();
+  const { address: walletAddress, isConnected, walletId, walletNetwork, networkMismatch } = useWallet();
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
@@ -161,11 +162,20 @@ export function SwapCard() {
     isOnline,
   });
 
+  const balanceState = useWalletBalance({
+    address: walletAddress,
+    asset: fromToken,
+    isConnected,
+    network: walletNetwork,
+  });
+  const fromBalance = balanceState.spendableBalance ?? '0';
+  const hasKnownBalance = balanceState.spendableBalance !== null && Number.isFinite(Number.parseFloat(fromBalance));
+
   const optimistic = useOptimisticSwap({
     signTransaction: walletId
-      ? (xdr) => signTransactionWithWallet(xdr, walletId, getNetworkPassphrase(walletAppNetwork))
+      ? (xdr) => signTransactionWithWallet(xdr, walletId, getNetworkPassphrase(walletNetwork))
       : undefined,
-    submitTransaction: (signedXdr) => submitToHorizon(signedXdr, walletAppNetwork),
+    submitTransaction: (signedXdr) => submitToHorizon(signedXdr, walletNetwork),
     rollbackTarget: {
       setFromToken,
       setToToken,
@@ -200,7 +210,6 @@ export function SwapCard() {
   }, [optimistic.status, optimistic.errorMessage, bypassConfirmation, isModalOpen, reset, setSelectedRoute]);
 
   // Mock balance
-  const fromBalance = '100.00';
   const fromSymbol = fromToken === 'native' ? 'XLM' : fromToken.split(':')[0];
   const toSymbol = toToken === 'native' ? 'XLM' : toToken.split(':')[0];
 
@@ -209,9 +218,11 @@ export function SwapCard() {
     if (!isConnected) return 'no_wallet';
     if (networkMismatch) return 'no_wallet'; // Swap disabled while network mismatch
     if (!fromAmount || parseFloat(fromAmount) === 0) return 'no_amount';
+    if (balanceState.loading) return 'refreshing_quote';
+    if (balanceState.error) return 'error';
     if (quote.error) return 'error';
     if (requiresFreshQuote) return 'refreshing_quote';
-    if (parseFloat(fromAmount) > parseFloat(fromBalance))
+    if (hasKnownBalance && parseFloat(fromAmount) > Number.parseFloat(fromBalance))
       return 'insufficient_balance';
     if (quote.priceImpact > 10) return 'high_impact_warning';
     if (quote.loading) return 'refreshing_quote';
@@ -228,6 +239,9 @@ export function SwapCard() {
     quote.loading,
     quote.priceImpact,
     requiresFreshQuote,
+    balanceState.error,
+    balanceState.loading,
+    hasKnownBalance,
   ]);
 
   useEffect(() => {
@@ -331,6 +345,7 @@ export function SwapCard() {
     quote,
     toSymbol,
     optimistic,
+    walletAddress,
   ]);
 
   const handleSwap = useCallback(() => {
@@ -342,11 +357,13 @@ export function SwapCard() {
   }, [quote.priceImpact, handleConfirm]);
 
   const handleMax = useCallback(() => {
+    if (!hasKnownBalance) return;
     setFromAmount(fromBalance);
-  }, [fromBalance, setFromAmount]);
+  }, [fromBalance, hasKnownBalance, setFromAmount]);
 
   const handlePresetSelect = useCallback(
     (percentage: number) => {
+      if (!hasKnownBalance) return;
       const balanceNum = parseFloat(fromBalance);
       if (isNaN(balanceNum) || balanceNum === 0) return;
 
@@ -355,7 +372,7 @@ export function SwapCard() {
       const rounded = Math.floor(amount * 10000000) / 10000000;
       setFromAmount(rounded.toString());
     },
-    [fromBalance, setFromAmount]
+    [fromBalance, hasKnownBalance, setFromAmount]
   );
 
   const handleSwitchTokens = useCallback(() => {
@@ -570,7 +587,9 @@ export function SwapCard() {
                   onChange={setFromAmount}
                   onMax={handleMax}
                   onPresetSelect={handlePresetSelect}
-                  balance={`${fromBalance} ${fromSymbol}`}
+                  balance={balanceState.spendableBalance ? `${balanceState.spendableBalance} ${fromSymbol}` : undefined}
+                  balanceLoading={balanceState.loading}
+                  balanceError={Boolean(balanceState.error)}
                   showPresets={isConnected}
                   className="flex-1"
                 />

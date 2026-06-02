@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import * as freighter from '@stellar/freighter-api';
 import { WalletProvider, useWallet } from './wallet-provider';
 import * as walletLib from '@/lib/wallet';
 
@@ -34,7 +33,6 @@ function TestComponent() {
     error,
     isLoading,
     networkMismatch,
-    stubSpendableBalance,
     autoReconnectPreferred,
     connect,
     reconnect,
@@ -54,7 +52,6 @@ function TestComponent() {
       <span data-testid="error">{error?.message ?? "none"}</span>
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="mismatch">{String(networkMismatch)}</span>
-      <span data-testid="balance">{stubSpendableBalance ?? "none"}</span>
       <span data-testid="autoReconnect">{String(autoReconnectPreferred)}</span>
       <span data-testid="transaction-pending">{isTransactionPending ? 'Pending' : 'Not pending'}</span>
       
@@ -88,6 +85,12 @@ describe('WalletProvider Account Switching', () => {
     mockWalletLib.getAvailableWallets.mockResolvedValue([
       { id: 'freighter', label: 'Freighter', installed: true }
     ]);
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
     mockWalletLib.disconnectWallet.mockReturnValue({
       walletId: null,
       address: null,
@@ -112,7 +115,9 @@ describe('WalletProvider Account Switching', () => {
 
     // Start a transaction
     fireEvent.click(screen.getByText('Start Transaction'));
-    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+    await waitFor(() => {
+      expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+    });
 
     // Try to connect during transaction
     fireEvent.click(screen.getByText('Connect'));
@@ -368,18 +373,6 @@ describe('WalletProvider Account Switching', () => {
     window.localStorage.setItem("stellarroute.wallet.autoReconnect", "true");
     window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
 
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({
-      address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({
-      address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
-    });
-
     renderWithProvider();
 
     await waitFor(() => {
@@ -397,23 +390,11 @@ describe('WalletProvider Account Switching', () => {
     await waitFor(() => {
       expect(screen.getByTestId("connected").textContent).toBe("Disconnected");
     });
-    expect(freighter.requestAccess).not.toHaveBeenCalled();
+    expect(mockWalletLib.connectWallet).not.toHaveBeenCalled();
   });
 
   it("recovers disconnected session when reconnect is triggered", async () => {
     window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
-
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({
-      address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({
-      address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
-    });
 
     const user = userEvent.setup();
     renderWithProvider();

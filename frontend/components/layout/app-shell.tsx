@@ -11,6 +11,7 @@ import { SessionRecoveryModal } from '@/components/modals/SessionRecoveryModal';
 import { useSessionRecoveryContext } from '@/components/providers/session-recovery-provider';
 import { WalletSyncBanner } from '@/components/shared';
 import { DebugOverlay } from '@/components/debug/DebugOverlay';
+import { useDebugOverlay } from '@/contexts/DebugOverlayContext';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -38,6 +39,8 @@ export function AppShell({ children }: AppShellProps) {
     completeRecovery,
     dismissRecovery,
   } = useSessionRecoveryContext();
+
+  const { debugInfo } = useDebugOverlay();
 
   // Determine if page should be full-width (orderbook, analytics) or centered (swap)
   const isFullWidth =
@@ -83,7 +86,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Developer debug overlay — hidden in production, toggle with Ctrl/Cmd+Shift+D or ?debug=1 */}
       <Suspense fallback={null}>
-        <DebugOverlay />
+        <DebugOverlay info={debugInfo} />
       </Suspense>
     </div>
   );

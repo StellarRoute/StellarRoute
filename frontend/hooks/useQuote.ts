@@ -28,6 +28,12 @@ export interface QuoteResult {
   refresh: (opts?: { force?: boolean }) => void;
   data: import('@/types').PriceQuote | undefined;
   lastQuotedAtMs: number | null;
+  /** Unique identifier for this quote */
+  quoteId?: string;
+  /** Snapshot version/revision of the price data */
+  snapshotVersion?: string;
+  /** Performance timings in milliseconds (e.g. quoteLatency, renderTime) */
+  timings?: Record<string, number>;
 }
 
 /**
@@ -113,5 +119,9 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     refresh,
     data,
     lastQuotedAtMs: data ? data.timestamp ?? null : null,
+    // Extract quote metadata for debug overlay
+    quoteId: data ? `q-${data.timestamp}-${Math.random().toString(36).substr(2, 9)}` : undefined,
+    snapshotVersion: data ? `v${data.source_timestamp ?? data.timestamp}` : undefined,
+    timings: {},
   };
 }

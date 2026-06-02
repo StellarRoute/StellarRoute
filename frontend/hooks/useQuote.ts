@@ -53,6 +53,7 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     pendingRetryRemainingMs,
     cancelRetry,
     refresh,
+    timings,
   } = useQuoteRefresh(
     fromToken,
     toToken,
@@ -106,6 +107,19 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     };
   }, [data]);
 
+  const quoteId = useMemo(
+    () =>
+      data
+        ? `q-${data.timestamp}-${Math.random().toString(36).slice(2, 10)}`
+        : undefined,
+    [data?.timestamp, data?.source_timestamp, data?.total],
+  );
+
+  const snapshotVersion = useMemo(
+    () => (data ? `v${data.source_timestamp ?? data.timestamp}` : undefined),
+    [data?.source_timestamp, data?.timestamp],
+  );
+
   return {
     ...result,
     loading,
@@ -120,8 +134,8 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     data,
     lastQuotedAtMs: data ? data.timestamp ?? null : null,
     // Extract quote metadata for debug overlay
-    quoteId: data ? `q-${data.timestamp}-${Math.random().toString(36).substr(2, 9)}` : undefined,
-    snapshotVersion: data ? `v${data.source_timestamp ?? data.timestamp}` : undefined,
-    timings: {},
+    quoteId,
+    snapshotVersion,
+    timings,
   };
 }

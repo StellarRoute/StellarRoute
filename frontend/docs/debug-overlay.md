@@ -43,7 +43,7 @@ When using the swap feature, quote metadata (ID, snapshot version, timings) is *
 The `useQuote` hook extracts:
 - **`quoteId`**: Unique identifier for each quote (generated from timestamp + random suffix)
 - **`snapshotVersion`**: Data source version (extracted from the quote's `source_timestamp` or `timestamp`)
-- **`timings`**: Performance metrics (currently empty, but ready for future instrumentation)
+- **`timings`**: Performance metrics for the current quote request, such as quote latency
 
 ```tsx
 // In SwapCard — automatically populated

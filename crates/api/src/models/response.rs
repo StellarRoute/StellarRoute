@@ -73,6 +73,18 @@ pub struct CacheMetricsResponse {
     pub stale_inputs_excluded: u64,
 }
 
+/// Cache flush response for admin cache invalidation operations
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CacheFlushResponse {
+    pub base: String,
+    pub quote: String,
+    pub quote_pattern: String,
+    pub orderbook_pattern: String,
+    pub deleted_quote_keys: u64,
+    pub deleted_orderbook_keys: u64,
+    pub total_deleted: u64,
+}
+
 /// Trading pair information — matches GET /api/v1/pairs spec
 ///
 /// `base` / `counter` are human-readable codes (e.g. "XLM", "USDC").

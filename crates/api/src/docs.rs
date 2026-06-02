@@ -3,6 +3,9 @@
 use utoipa::OpenApi;
 
 use crate::models::{
+    AssetInfo, CacheFlushResponse, CacheMetricsResponse, ErrorResponse, HealthResponse,
+    OrderbookLevel, OrderbookResponse, PairsResponse, PathStep, QuoteRationaleMetadata,
+    QuoteResponse, RouteResponse, TradingPair, VenueEvaluation,
     AssetInfo, AssetMetadataBulkResponse, AssetMetadataResponse, BatchItemError,
     BatchQuoteItemResult, BatchQuoteResponse, CacheMetricsResponse, DataFreshness,
     DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo, ExclusionDiagnostics,
@@ -27,6 +30,7 @@ use crate::models::{
         crate::routes::price_history::get_price_history,
         crate::routes::quote::get_quote,
         crate::routes::quote::get_route,
+        crate::routes::admin::flush_cache,
         crate::routes::quote::get_batch_quotes,
         // crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
         crate::routes::kill_switch::get_kill_switch,
@@ -36,6 +40,7 @@ use crate::models::{
         HealthResponse,
         DependenciesHealthResponse,
         CacheMetricsResponse,
+        CacheFlushResponse,
         AssetMetadataResponse,
         AssetMetadataBulkResponse,
         PairsResponse,

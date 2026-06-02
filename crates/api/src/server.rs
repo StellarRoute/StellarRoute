@@ -37,6 +37,8 @@ pub struct ServerConfig {
     pub enable_compression: bool,
     /// Redis URL (optional)
     pub redis_url: Option<String>,
+    /// Admin bearer token for operator-only endpoints
+    pub admin_auth_token: Option<String>,
     /// Quote cache TTL in seconds
     pub quote_cache_ttl_seconds: u64,
 }
@@ -62,6 +64,7 @@ impl Default for ServerConfig {
             enable_cors: true,
             enable_compression: true,
             redis_url: None,
+            admin_auth_token: std::env::var("ADMIN_AUTH_TOKEN").ok(),
             quote_cache_ttl_seconds: 2,
         }
     }
@@ -107,29 +110,28 @@ impl Server {
                         }
                     };
 
-                    (
-                        Arc::new(AppState::with_cache_and_policy(
-                            db,
-                            cache,
-                            cache_policy.clone(),
-                        )),
-                        rate_limit,
-                    )
+                    {
+                        let mut state = AppState::with_cache_and_policy(db, cache, cache_policy.clone());
+                        state.admin_auth_token = config.admin_auth_token.clone();
+                        (Arc::new(state), rate_limit)
+                    }
                 }
                 Err(e) => {
                     warn!("⚠️  Redis connection failed, running without cache: {}", e);
-                    (
-                        Arc::new(AppState::new_with_policy(db, cache_policy.clone())),
-                        RateLimitLayer::in_memory(EndpointConfig::default()),
-                    )
+                    {
+                        let mut state = AppState::new_with_policy(db, cache_policy.clone());
+                        state.admin_auth_token = config.admin_auth_token.clone();
+                        (Arc::new(state), RateLimitLayer::in_memory(EndpointConfig::default()))
+                    }
                 }
             }
         } else {
             info!("ℹ️  Running without Redis cache");
-            (
-                Arc::new(AppState::new_with_policy(db, cache_policy)),
-                RateLimitLayer::in_memory(EndpointConfig::default()),
-            )
+            {
+                let mut state = AppState::new_with_policy(db, cache_policy);
+                state.admin_auth_token = config.admin_auth_token.clone();
+                (Arc::new(state), RateLimitLayer::in_memory(EndpointConfig::default()))
+            }
         };
 
         // Start the background health score recomputation scheduler.

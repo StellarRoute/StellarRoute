@@ -1,7 +1,6 @@
 //! API routes
 
-pub mod admin_cache;
-pub mod assets;
+pub mod admin;
 pub mod canary;
 pub mod contract_registry;
 pub mod health;
@@ -48,6 +47,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(orderbook::get_orderbook),
         )
         .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
+        .route("/api/v1/route/:base/:quote", get(quote::get_route))
+        .route("/api/v1/batch/quote", axum::routing::post(quote::get_batch_quotes))
+        .route(
+            "/api/v1/admin/cache/flush/:base/:quote",
+            axum::routing::post(admin::flush_cache),
+        )
+
         .route("/api/v1/quote", post(idempotent_quote::post_quote))
         .route(
             "/api/v1/route/:base/:quote",

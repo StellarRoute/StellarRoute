@@ -136,8 +136,9 @@ async fn test_registry_seed_and_indexer_bootstrap() {
         .await
         .expect("Failed to seed amm_pools registry");
 
-    let soroban = SorobanRpcClient::for_network(stellarroute_indexer::soroban::StellarNetwork::Testnet)
-        .expect("Failed to create Soroban client");
+    let soroban =
+        SorobanRpcClient::for_network(stellarroute_indexer::soroban::StellarNetwork::Testnet)
+            .expect("Failed to create Soroban client");
 
     let amm_config = AmmConfig {
         router_contract: config.router_contract_address,
@@ -158,7 +159,10 @@ async fn test_registry_seed_and_indexer_bootstrap() {
         .await
         .expect("Query failed");
 
-    assert!(row.is_some(), "Seeded registry pool was not processed into amm_pool_reserves");
+    assert!(
+        row.is_some(),
+        "Seeded registry pool was not processed into amm_pool_reserves"
+    );
 }
 
 #[test]

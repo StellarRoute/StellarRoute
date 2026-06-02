@@ -109,7 +109,10 @@ impl AmmAggregator {
             }
 
             if !new_pools.is_empty() {
-                info!("Processing {} newly discovered/configured pools", new_pools.len());
+                info!(
+                    "Processing {} newly discovered/configured pools",
+                    new_pools.len()
+                );
                 self.process_pool_batch(&new_pools).await?;
             }
         }
@@ -125,7 +128,10 @@ impl AmmAggregator {
             }
         }
 
-        debug!("Processing {} existing/configured pools", existing_pools.len());
+        debug!(
+            "Processing {} existing/configured pools",
+            existing_pools.len()
+        );
         for batch in existing_pools.chunks(self.config.batch_size) {
             if let Err(e) = self.process_pool_batch(batch).await {
                 warn!("Failed to process pool batch: {}", e);

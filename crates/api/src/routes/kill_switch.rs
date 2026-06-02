@@ -50,7 +50,7 @@ pub async fn update_kill_switch(
     state
         .kill_switch
         .update_state(payload)
-        .await
+        .await;
 
     // Emit admin audit entry
     let entry = build_admin_audit_entry(

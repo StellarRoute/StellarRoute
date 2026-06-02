@@ -249,6 +249,18 @@ export class StellarRouteClient {
   }
 
   /**
+   * GET /api/v1/history/{base}/{quote}
+   */
+  getPriceHistory(
+    base: string,
+    quote: string,
+    opts?: FetchOptions,
+  ): Promise<PriceHistoryResponse> {
+    const path = `/api/v1/history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
+    return this.request<PriceHistoryResponse>(path, opts);
+  }
+
+  /**
    * POST /api/v1/batch/quote — fetch multiple price quotes in a single request.
    *
    * @param requests Array of quote requests to fetch.

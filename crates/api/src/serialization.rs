@@ -29,9 +29,7 @@ pub trait DeterministicSerialize: Serialize + for<'de> Deserialize<'de> + Sized 
                 }
                 Value::Object(sorted.into_iter().collect())
             }
-            Value::Array(arr) => {
-                Value::Array(arr.into_iter().map(Self::normalize_value).collect())
-            }
+            Value::Array(arr) => Value::Array(arr.into_iter().map(Self::normalize_value).collect()),
             Value::Number(n) => {
                 if let Some(f) = n.as_f64() {
                     if f.is_nan() || f.is_infinite() {

@@ -70,8 +70,7 @@ impl RoutingPolicy {
     }
 
     pub fn is_venue_allowed(&self, venue_type: &str) -> bool {
-        if !self.venue_allowlist.is_empty()
-            && !self.venue_allowlist.iter().any(|v| v == venue_type)
+        if !self.venue_allowlist.is_empty() && !self.venue_allowlist.iter().any(|v| v == venue_type)
         {
             return false;
         }
@@ -145,8 +144,7 @@ impl RoutingPolicy {
         if !self.venue_allowlist.is_empty() && !self.venue_denylist.is_empty() {
             let allow_set: HashSet<&str> =
                 self.venue_allowlist.iter().map(|s| s.as_str()).collect();
-            let deny_set: HashSet<&str> =
-                self.venue_denylist.iter().map(|s| s.as_str()).collect();
+            let deny_set: HashSet<&str> = self.venue_denylist.iter().map(|s| s.as_str()).collect();
 
             let overlap: Vec<&&str> = allow_set.intersection(&deny_set).collect();
 

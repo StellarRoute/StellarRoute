@@ -24,7 +24,7 @@ export function RouteRow({ step, isLoading, error }: RouteRowProps) {
         <SwapViewState
           kind="routes"
           variant="error"
-          description={error}
+          message={error}
         />
       </Card>
     );

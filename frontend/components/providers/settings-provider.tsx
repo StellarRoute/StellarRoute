@@ -17,6 +17,9 @@ interface SettingsContextType {
   updateProfile: (id: string, updates: Partial<SlippageProfile>) => void;
   deleteProfile: (id: string) => void;
   selectProfile: (id: string) => void;
+  updateAccentColor: (color: Settings['accentColor']) => void;
+  updateFontScale: (scale: Settings['fontScale']) => void;
+  updateHighContrast: (enabled: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -67,6 +70,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const updateLocale = (locale: Settings['locale']) => {
     setSettings((prev) => ({ ...prev, locale }));
+  };
+
+  const updateAccentColor = (color: Settings['accentColor']) => {
+    setSettings((prev) => ({ ...prev, accentColor: color }));
+  };
+
+  const updateFontScale = (scale: Settings['fontScale']) => {
+    setSettings((prev) => ({ ...prev, fontScale: scale }));
+  };
+
+  const updateHighContrast = (enabled: boolean) => {
+    setSettings((prev) => ({ ...prev, highContrast: enabled }));
   };
 
   const resetSettings = () => {
@@ -149,6 +164,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         updateProfile,
         deleteProfile,
         selectProfile,
+        updateAccentColor,
+        updateFontScale,
+        updateHighContrast,
       }}
     >
       {children}

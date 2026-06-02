@@ -114,7 +114,6 @@ export const RouteDisplayStory: Story = () => (
       <h3 className="text-sm font-medium text-muted-foreground mb-4">Route Display - Error</h3>
       <RouteDisplay 
         amountOut="" 
-        error="No valid route found for this pair." 
       />
     </div>
     <div>

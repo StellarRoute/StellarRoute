@@ -179,8 +179,7 @@ export function usePriceHistory(
   return useFetch(
     (signal) => stellarRouteClient.getPriceHistory(base, quote, { signal }),
     [base, quote],
-    refreshIntervalMs,
-    skip || !base || !quote,
+    { refreshIntervalMs, skip: skip || !base || !quote },
   );
 }
 
@@ -202,8 +201,7 @@ export function useRoutes(
         signal,
       }),
     [base, quote, amount, limit, maxHops],
-    undefined,
-    skip,
+    { skip },
   );
 }
 

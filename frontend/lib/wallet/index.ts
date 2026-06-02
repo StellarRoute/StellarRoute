@@ -164,7 +164,7 @@ export async function checkWalletCapabilities(
     const netCap = statuses.find((s) => s.capability === "view_network");
     statuses.push({
       capability: "sign_transaction",
-      allowed: signCap?.allowed && netCap?.allowed,
+      allowed: Boolean(signCap?.allowed && netCap?.allowed),
       reason: !signCap?.allowed
         ? "No address available"
         : !netCap?.allowed

@@ -9,6 +9,15 @@ import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, afterEach } from "vitest";
 import { SettingsPanel } from "./SettingsPanel";
+import { SettingsProvider } from '@/components/providers/settings-provider';
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <SettingsProvider>
+      {ui}
+    </SettingsProvider>
+  );
+}
 
 describe("SettingsPanel Drawer", () => {
   afterEach(() => {
@@ -36,14 +45,14 @@ describe("SettingsPanel Drawer", () => {
   };
 
   it("renders trigger button successfully", () => {
-    render(<SettingsPanel {...defaultProps} />);
+    renderWithProviders(<SettingsPanel {...defaultProps} />);
     const trigger = screen.getByRole("button", { name: /settings/i });
     expect(trigger).toBeInTheDocument();
   });
 
   it("opens drawer when settings trigger is clicked", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel {...defaultProps} />);
+    renderWithProviders(<SettingsPanel {...defaultProps} />);
     
     const trigger = screen.getByRole("button", { name: /settings/i });
     await user.click(trigger);
@@ -57,7 +66,7 @@ describe("SettingsPanel Drawer", () => {
   it("calls onReset when reset button is clicked inside drawer", async () => {
     const onReset = vi.fn();
     const user = userEvent.setup();
-    render(<SettingsPanel {...defaultProps} onReset={onReset} />);
+    renderWithProviders(<SettingsPanel {...defaultProps} onReset={onReset} />);
     
     const trigger = screen.getByRole("button", { name: /settings/i });
     await user.click(trigger);

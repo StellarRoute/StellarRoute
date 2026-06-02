@@ -536,22 +536,7 @@ export function SwapCard() {
                   <Minimize2 className="h-4.5 w-4.5 text-muted-foreground" />
                 )}
               </Button>
-              <SettingsPanel
-                slippage={slippage}
-                onSlippageChange={setSlippage}
-                deadline={deadline}
-                onDeadlineChange={setDeadline}
-                expertMode={expertMode}
-                bypassConfirmation={bypassConfirmation}
-                extendedRouteDetails={extendedRouteDetails}
-                onExpertModeChange={updateExpertMode}
-                onBypassConfirmationChange={updateBypassConfirmation}
-                onExtendedRouteDetailsChange={updateExtendedRouteDetails}
-                onReset={() => {
-                  reset();
-                  setSelectedRoute(null);
-                }}
-              />
+              <SettingsPanel />
               <Button
                 variant="ghost"
                 size="icon"
@@ -659,7 +644,6 @@ export function SwapCard() {
                 amountOut={selectedRoute?.expectedAmount ?? toAmount}
                 isLoading={quote.loading}
                 onSelect={setSelectedRoute}
-                extendedRouteDetails={extendedRouteDetails}
               />
               {/* Share Quote Button */}
               <div className="flex justify-end">

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,8 @@ import type { TradingPair } from "@/types";
 import { AssetIcon } from "@/components/shared/AssetIcon";
 import { TokenSearchModal } from "@/components/shared/TokenSearchModal";
 import { useRecentTokens } from "@/hooks/useRecentTokens";
+import { useFavoritePairs } from "@/hooks/useFavoritePairs";
+import { FavoritesRail } from "./FavoritesRail";
 import { SwapPresetTemplates } from "./SwapPresetTemplates";
 
 export interface TokenPairSelectorProps {
@@ -112,6 +114,7 @@ export function TokenPairSelector({
   const [baseDialogOpen, setBaseDialogOpen] = useState(false);
   const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
   const { addRecentToken } = useRecentTokens();
+  const { favorites, isFavorite, toggleFavorite, removeFavorite } = useFavoritePairs();
 
   const { baseAssets, quoteAssets, validPairs } = useMemo(() => {
     const baseSet = new Map<string, AssetOption>();
@@ -205,9 +208,34 @@ export function TokenPairSelector({
     addRecentToken(asset);
   };
 
+  const currentPairFavorited =
+    selectedBase && selectedQuote
+      ? isFavorite(selectedBase, selectedQuote)
+      : false;
+
+  const handleToggleFavorite = () => {
+    if (!selectedBase || !selectedQuote) return;
+    const baseInfo = baseAssets.find((a) => a.asset === selectedBase);
+    const quoteInfo = quoteAssets.find((a) => a.asset === selectedQuote);
+    toggleFavorite({
+      base: baseInfo?.code ?? selectedBase,
+      quote: quoteInfo?.code ?? selectedQuote,
+      baseAsset: selectedBase,
+      quoteAsset: selectedQuote,
+    });
+  };
+
   return (
     <Card className={cn("p-4", className)}>
       <div className="space-y-4">
+        <FavoritesRail
+          favorites={favorites}
+          selectedBase={selectedBase}
+          selectedQuote={selectedQuote}
+          onSelect={(pair) => onPairChange(pair.baseAsset, pair.quoteAsset)}
+          onRemove={removeFavorite}
+        />
+
         <SwapPresetTemplates 
           onSelect={onPairChange}
           selectedBase={selectedBase}
@@ -229,20 +257,45 @@ export function TokenPairSelector({
             )}
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={handleSwapSides}
-            disabled={
-              loading || !selectedBase || !selectedQuote || !canSwapSides
-            }
-            title="Swap base and quote assets"
-            className="shrink-0"
-          >
-            <ArrowLeftRight className="h-4 w-4" />
-            <span className="sr-only">Swap base and quote assets</span>
-          </Button>
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={handleSwapSides}
+              disabled={
+                loading || !selectedBase || !selectedQuote || !canSwapSides
+              }
+              title="Swap base and quote assets"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              <span className="sr-only">Swap base and quote assets</span>
+            </Button>
+            {selectedBase && selectedQuote && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleToggleFavorite}
+                aria-label={
+                  currentPairFavorited
+                    ? `Remove ${selectedBaseInfo?.code ?? selectedBase}/${selectedQuoteInfo?.code ?? selectedQuote} from favorites`
+                    : `Add ${selectedBaseInfo?.code ?? selectedBase}/${selectedQuoteInfo?.code ?? selectedQuote} to favorites`
+                }
+                aria-pressed={currentPairFavorited}
+                className="h-8 w-8"
+              >
+                <Star
+                  className={cn(
+                    "h-4 w-4 transition-colors",
+                    currentPairFavorited
+                      ? "fill-amber-500 text-amber-500"
+                      : "text-muted-foreground"
+                  )}
+                />
+              </Button>
+            )}
+          </div>
 
           <div className="flex-1">
             {loading ? (

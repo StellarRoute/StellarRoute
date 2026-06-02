@@ -15,6 +15,7 @@ import { ExplorerLink } from './ExplorerLink';
 import { describeTradeRoute } from '@/lib/route-helpers';
 import { TransactionStatus } from '@/types/transaction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import {
   ArrowDown,
   CheckCircle2,
@@ -130,6 +131,7 @@ export function TransactionConfirmationModal({
 }: TransactionConfirmationModalProps) {
   const [countdown, setCountdown] = useState(15);
   const [liveMessage, setLiveMessage] = useState('');
+  const prefersReduced = useReducedMotion();
 
   // Focus refs per state
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -558,9 +560,9 @@ export function TransactionConfirmationModal({
           {status === 'pending' && (
             <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
               <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
+                <div className={cn("absolute inset-0 bg-primary/20 rounded-full", !prefersReduced && "animate-ping")} />
                 <div className="bg-primary/10 p-4 rounded-full relative">
-                  <Wallet className="w-12 h-12 text-primary" />
+                  <Wallet data-testid="tcm-spinner" className={cn("w-12 h-12 text-primary", !prefersReduced && "animate-spin")} />
                 </div>
               </div>
               <div>
@@ -586,7 +588,7 @@ export function TransactionConfirmationModal({
           {/* SUBMITTED STATE */}
           {status === 'submitted' && (
             <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
-              <Loader2 className="w-16 h-16 text-primary animate-spin" />
+              <Loader2 data-testid="tcm-spinner" className={cn("w-16 h-16 text-primary", !prefersReduced && "animate-spin")} />
               <div>
                 <DialogTitle className="text-xl mb-2">
                   Submitting to network…

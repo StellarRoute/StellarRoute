@@ -1,12 +1,12 @@
+use crate::admin_audit::{build_admin_audit_entry, emit_admin_audit};
 use crate::error::Result;
 use crate::kill_switch::KillSwitchState;
-use crate::state::AppState;
-use axum::{extract::State, Json};
-use axum::http::HeaderMap;
 use crate::middleware::RequestId;
+use crate::state::AppState;
+use axum::http::HeaderMap;
+use axum::{extract::State, Json};
 use std::sync::Arc;
 use tracing::info;
-use crate::admin_audit::{build_admin_audit_entry, emit_admin_audit};
 
 /// Get current kill switch state
 #[utoipa::path(
@@ -47,10 +47,7 @@ pub async fn update_kill_switch(
 ) -> Result<Json<serde_json::Value>> {
     info!("Admin updating kill switch state: {:?}", payload);
 
-    state
-        .kill_switch
-        .update_state(payload)
-        .await?;
+    state.kill_switch.update_state(payload).await;
 
     // Emit admin audit entry
     let entry = build_admin_audit_entry(

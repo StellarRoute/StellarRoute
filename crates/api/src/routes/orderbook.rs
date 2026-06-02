@@ -76,6 +76,24 @@ pub async fn get_orderbook(
     State(state): State<Arc<AppState>>,
     Path((base, quote)): Path<(String, String)>,
 ) -> Result<Json<OrderbookResponse>> {
+    // Parse asset identifiers
+    let base_asset = AssetPath::parse(&base)
+        .map_err(|e| ApiError::InvalidAsset(format!("Invalid base asset: {}", e)))?;
+    let quote_asset = AssetPath::parse(&quote)
+        .map_err(|e| ApiError::InvalidAsset(format!("Invalid quote asset: {}", e)))?;
+
+    let response = get_orderbook_inner(state, base_asset, quote_asset).await?;
+    Ok(Json(response))
+}
+
+pub(crate) async fn get_orderbook_inner(
+    state: Arc<AppState>,
+    base_asset: AssetPath,
+    quote_asset: AssetPath,
+) -> Result<OrderbookResponse> {
+    let base = base_asset.to_canonical();
+    let quote = quote_asset.to_canonical();
+
     debug!("Fetching orderbook for {}/{}", base, quote);
 
     // Try to get from cache first
@@ -87,16 +105,10 @@ pub async fn get_orderbook(
             {
                 debug!("Returning cached orderbook for {}/{}", base, quote);
                 state.liquidity_thinness_alerts.maybe_alert(&cached);
-                return Ok(Json(cached));
+                return Ok(cached);
             }
         }
     }
-
-    // Parse asset identifiers
-    let base_asset = AssetPath::parse(&base)
-        .map_err(|e| ApiError::InvalidAsset(format!("Invalid base asset: {}", e)))?;
-    let quote_asset = AssetPath::parse(&quote)
-        .map_err(|e| ApiError::InvalidAsset(format!("Invalid quote asset: {}", e)))?;
 
     // Get asset IDs from database
     let base_id = find_asset_id(&state, &base_asset).await?;
@@ -147,11 +159,223 @@ pub async fn get_orderbook(
 
     state.liquidity_thinness_alerts.maybe_alert(&response);
 
-    Ok(Json(response))
+    Ok(response)
+}
+
+/// Maximum number of items allowed in a single batch request.
+pub const BATCH_MAX_ITEMS: usize = 25;
+
+/// Map an [`ApiError`] to a `(code, message)` pair for per-item batch errors.
+fn batch_error_from_api_error(e: &ApiError) -> (String, String) {
+    match e {
+        ApiError::NotFound(msg) => ("not_found".to_string(), msg.clone()),
+        ApiError::InvalidAsset(msg) => ("invalid_asset".to_string(), msg.clone()),
+        ApiError::Validation(msg) => ("validation_error".to_string(), msg.clone()),
+        _ => (
+            "internal_error".to_string(),
+            "An internal error occurred".to_string(),
+        ),
+    }
+}
+
+/// POST /api/v1/batch/orderbook
+///
+/// Evaluate up to 25 orderbooks in a single request.
+///
+/// All items are executed concurrently. Per-item failures (e.g. invalid asset)
+/// do not abort the batch — each item carries its own `status` field.
+///
+/// # Request size limits
+///
+/// | Limit                  | Value |
+/// |------------------------|-------|
+/// | Maximum items per call | 25    |
+/// | Minimum items per call | 1     |
+///
+/// # Rate Limit Policy
+///
+/// Batch endpoints consume rate limits per-request, not per-item. For example,
+/// a batch of 25 pairs counts as 1 request against the IP rate limit bucket.
+#[utoipa::path(
+    post,
+    path = "/api/v1/batch/orderbook",
+    tag = "trading",
+    request_body(
+        content = crate::models::request::BatchOrderbookRequest,
+        description = "Up to 25 orderbook items to evaluate concurrently",
+        example = json!({
+            "requests": [
+                {
+                    "base": "native",
+                    "quote": "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+                },
+                {
+                    "base": "native",
+                    "quote": "yXLM:GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55"
+                }
+            ]
+        })
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Batch orderbook results (individual items may have status=error)",
+            body = crate::models::response::BatchOrderbookResponse,
+            example = json!({
+                "v": 1,
+                "timestamp": 1714000000000_i64,
+                "request_id": "req-abc123",
+                "data": {
+                    "results": [
+                        {
+                            "index": 0,
+                            "status": "ok",
+                            "orderbook": {
+                                "base_asset": {"asset_type": "native"},
+                                "quote_asset": {
+                                    "asset_type": "credit_alphanum4",
+                                    "asset_code": "USDC",
+                                    "asset_issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+                                },
+                                "asks": [],
+                                "bids": [],
+                                "summary": {},
+                                "timestamp": 1714000000000_i64
+                            }
+                        },
+                        {
+                            "index": 1,
+                            "status": "error",
+                            "error": {
+                                "code": "not_found",
+                                "message": "Asset not found in orderbook"
+                            }
+                        }
+                    ],
+                    "items_succeeded": 1,
+                    "items_failed": 1,
+                    "total": 2
+                }
+            })
+        ),
+        (
+            status = 400,
+            description = "Invalid batch request (empty, too large, or malformed items)",
+            body = crate::models::ErrorResponse
+        ),
+        (
+            status = 429,
+            description = "Rate limit exceeded",
+            body = crate::models::ErrorResponse
+        ),
+    )
+)]
+pub async fn get_batch_orderbooks(
+    State(state): State<Arc<AppState>>,
+    request_id: crate::middleware::RequestId,
+    Json(payload): Json<crate::models::request::BatchOrderbookRequest>,
+) -> Result<Json<crate::models::ApiResponse<crate::models::response::BatchOrderbookResponse>>> {
+    use crate::models::response::{BatchItemError, BatchOrderbookItemResult, BatchOrderbookResponse};
+    use futures_util::future::join_all;
+
+    // ── 1. Batch-level validation ─────────────────────────────────────────
+    if payload.requests.is_empty() {
+        return Err(ApiError::Validation(
+            "Batch request must contain at least 1 item".to_string(),
+        ));
+    }
+    if payload.requests.len() > BATCH_MAX_ITEMS {
+        return Err(ApiError::Validation(format!(
+            "Batch size {} exceeds maximum of {} items",
+            payload.requests.len(),
+            BATCH_MAX_ITEMS
+        )));
+    }
+
+    // ── 2. Per-item pre-validation (fail fast on obviously bad inputs) ────
+    let mut pre_errors: Vec<Option<BatchItemError>> = vec![None; payload.requests.len()];
+    for (i, item) in payload.requests.iter().enumerate() {
+        if let Err(msg) = item.validate() {
+            pre_errors[i] = Some(BatchItemError {
+                code: "validation_error".to_string(),
+                message: msg,
+            });
+        }
+    }
+
+    // ── 3. Concurrent execution ───────────────────────────────────────────
+    let futures: Vec<_> = payload
+        .requests
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, item)| {
+            let state = state.clone();
+            let pre_err = pre_errors[i].take();
+            async move {
+                if let Some(err) = pre_err {
+                    return BatchOrderbookItemResult::err(i, err);
+                }
+
+                let base_asset = match AssetPath::parse(&item.base) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        return BatchOrderbookItemResult::err(
+                            i,
+                            BatchItemError {
+                                code: "invalid_asset".to_string(),
+                                message: format!("Invalid base asset: {}", e),
+                            },
+                        )
+                    }
+                };
+                let quote_asset = match AssetPath::parse(&item.quote) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        return BatchOrderbookItemResult::err(
+                            i,
+                            BatchItemError {
+                                code: "invalid_asset".to_string(),
+                                message: format!("Invalid quote asset: {}", e),
+                            },
+                        )
+                    }
+                };
+
+                match get_orderbook_inner(state, base_asset, quote_asset).await {
+                    Ok(orderbook) => BatchOrderbookItemResult::ok(i, orderbook),
+                    Err(e) => {
+                        let (code, message) = batch_error_from_api_error(&e);
+                        BatchOrderbookItemResult::err(i, BatchItemError { code, message })
+                    }
+                }
+            }
+        })
+        .collect();
+
+    let results: Vec<BatchOrderbookItemResult> = join_all(futures).await;
+
+    // ── 4. Aggregate counters ─────────────────────────────────────────────
+    let items_succeeded = results.iter().filter(|r| r.status == "ok").count();
+    let items_failed = results.len() - items_succeeded;
+    let total = results.len();
+
+    let response = BatchOrderbookResponse {
+        results,
+        items_succeeded,
+        items_failed,
+        total,
+    };
+
+    let envelope = crate::models::ApiResponse::new(response, request_id.to_string());
+    Ok(Json(envelope))
 }
 
 /// Compute summary fields for an orderbook snapshot.
-fn compute_orderbook_summary(bids: &Vec<OrderbookLevel>, asks: &Vec<OrderbookLevel>) -> OrderbookSummary {
+fn compute_orderbook_summary(
+    bids: &Vec<OrderbookLevel>,
+    asks: &Vec<OrderbookLevel>,
+) -> OrderbookSummary {
     let best_bid = bids.first().map(|l| l.price.clone());
     let best_ask = asks.first().map(|l| l.price.clone());
 
@@ -183,7 +407,6 @@ fn compute_orderbook_summary(bids: &Vec<OrderbookLevel>, asks: &Vec<OrderbookLev
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

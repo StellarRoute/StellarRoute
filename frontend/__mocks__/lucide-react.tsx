@@ -76,3 +76,6 @@ export const Compass = Icon;
 export const Zap = Icon;
 export const Maximize2 = Icon;
 export const Minimize2 = Icon;
+export const Star = Icon;
+export const Columns2 = Icon;
+export const LayoutList = Icon;

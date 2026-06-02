@@ -1,6 +1,6 @@
 'use client';
 
-import { ShieldX, ShieldCheck, RefreshCw, ExternalLink } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, RefreshCw, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useWallet } from '@/components/providers/wallet-provider';
@@ -34,13 +34,13 @@ function getCapabilityLabel(capability: string): string {
 function getCapabilityIcon(capability: string): typeof ShieldCheck {
   switch (capability) {
     case 'sign_transaction':
-      return ShieldX;
+      return ShieldAlert;
     case 'view_address':
-      return ShieldX;
+      return ShieldAlert;
     case 'view_network':
-      return ShieldX;
+      return ShieldAlert;
     case 'request_access':
-      return ShieldX;
+      return ShieldAlert;
     default:
       return ShieldCheck;
   }
@@ -70,7 +70,7 @@ export function WalletCapabilitiesBanner({ className }: WalletCapabilitiesBanner
       role="alert"
       aria-live="polite"
     >
-      <ShieldX className="h-4 w-4 text-red-600 dark:text-red-400" />
+      <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
       <AlertDescription className="flex flex-col gap-3 pr-8">
         <div className="text-sm font-medium">
           Wallet permissions required

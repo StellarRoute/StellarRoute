@@ -311,7 +311,7 @@ impl HorizonClient {
 
         let bytes_stream = resp
             .bytes_stream()
-            .map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+            .map(|res| res.map_err(std::io::Error::other));
         let reader = BufReader::new(StreamReader::new(bytes_stream));
         let lines = reader.lines();
 

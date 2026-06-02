@@ -86,8 +86,8 @@ impl DiffEngine {
             .and_then(|r| r.get("compared_venues"))
             .cloned()
             .unwrap_or(serde_json::Value::Null);
-        let replay_compared = serde_json::to_value(&replay.compared_venues)
-            .unwrap_or(serde_json::Value::Null);
+        let replay_compared =
+            serde_json::to_value(&replay.compared_venues).unwrap_or(serde_json::Value::Null);
         if orig_compared != serde_json::Value::Null && orig_compared != replay_compared {
             divergences.push(FieldDivergence {
                 field: "rationale.compared_venues".to_string(),

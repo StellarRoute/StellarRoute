@@ -91,7 +91,7 @@ mod tests {
         let swap_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                e.topics
+                e.1
                     .first()
                     .and_then(|t| t.as_symbol())
                     .map(|s| s.to_string() == "swap_complete")
@@ -148,7 +148,7 @@ mod tests {
         let rollback_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                e.topics
+                e.1
                     .first()
                     .and_then(|t| t.as_symbol())
                     .map(|s| s.to_string() == "swap_rollback")
@@ -208,7 +208,7 @@ mod tests {
         let swap_complete_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                e.topics
+                e.1
                     .first()
                     .and_then(|t| t.as_symbol())
                     .map(|s| s.to_string() == "swap_complete")
@@ -276,7 +276,7 @@ mod tests {
         let rollback_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                e.topics
+                e.1
                     .first()
                     .and_then(|t| t.as_symbol())
                     .map(|s| s.to_string() == "swap_rollback")
@@ -371,7 +371,7 @@ mod tests {
         let rollback_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                e.topics
+                e.1
                     .first()
                     .and_then(|t| t.as_symbol())
                     .map(|s| s.to_string() == "swap_rollback")

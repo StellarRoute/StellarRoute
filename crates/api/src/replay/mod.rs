@@ -21,8 +21,8 @@ pub mod engine;
 pub mod redactor;
 
 pub use artifact::{
-	ArtifactSummary, DecisionGraphNode, DecisionGraphSnapshot, HealthConfigSnapshot,
-	LiquidityCandidate, ReplayArtifact,
+    ArtifactSummary, DecisionGraphNode, DecisionGraphSnapshot, HealthConfigSnapshot,
+    LiquidityCandidate, ReplayArtifact,
 };
 pub use capture::CaptureHook;
 pub use diff::{DiffEngine, DiffReport, FieldDivergence};

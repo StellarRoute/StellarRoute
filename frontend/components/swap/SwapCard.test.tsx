@@ -4,6 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi, Mock } from "vitest";
 import { SwapCard } from "./SwapCard";
 import { fireEvent } from "@testing-library/react";
 
+import { WalletProvider } from '@/components/providers/wallet-provider';
+import { SettingsProvider } from '@/components/providers/settings-provider';
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <SettingsProvider>
+      <WalletProvider>
+        {ui}
+      </WalletProvider>
+    </SettingsProvider>
+  );
+}
+
 function setNavigatorOnline(value: boolean) {
   Object.defineProperty(window.navigator, "onLine", {
     configurable: true,
@@ -35,19 +48,19 @@ describe("SwapCard network resilience and states", () => {
   });
 
   it("should render successfully", () => {
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     expect(screen.getByRole("heading", { name: /swap/i })).toBeInTheDocument();
   });
 
   it("shows initial state requiring wallet connection", async () => {
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     const connectButton = screen.getByRole("button", { name: /connect wallet/i });
     expect(connectButton).toBeInTheDocument();
   });
 
   it("transitions states after wallet connection", async () => {
     const user = userEvent.setup();
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     
     const connectButton = screen.getByRole("button", { name: /connect wallet/i });
     await user.click(connectButton);
@@ -80,7 +93,7 @@ describe("SwapCard network resilience and states", () => {
     ) as Mock;
 
     const user = userEvent.setup();
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     
     // Connect wallet step
     const connectButton = screen.getByRole("button", { name: /connect wallet/i });
@@ -103,7 +116,7 @@ describe("SwapCard network resilience and states", () => {
 
   it("shows insufficient balance state", async () => {
     const user = userEvent.setup();
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     
     await user.click(screen.getByRole("button", { name: /connect wallet/i }));
     
@@ -125,7 +138,7 @@ describe("SwapCard Stellar Memo Validation Inline Rules (#506)", () => {
 
   it("shows validation error when a text memo is over 28 bytes", async () => {
     const user = userEvent.setup();
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
 
     await user.click(screen.getByRole("button", { name: /connect wallet/i }));
     
@@ -145,7 +158,7 @@ describe("SwapCard Stellar Memo Validation Inline Rules (#506)", () => {
 
   it("shows validation error when a hash memo is not valid hexadecimal characters", async () => {
     const user = userEvent.setup();
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
 
     await user.click(screen.getByRole("button", { name: /connect wallet/i }));
     

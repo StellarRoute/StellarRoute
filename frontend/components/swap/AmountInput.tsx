@@ -3,7 +3,12 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { normalizeDecimalString } from '@/lib/amount-input';
+import {
+  maxDecimalsForSellAsset,
+  parseSellAmount,
+  clampToMaxDecimals,
+  normalizeDecimalString,
+} from '@/lib/amount-input';
 import { useState, useCallback, useEffect, useId } from 'react';
 import { AmountPresets } from './AmountPresets';
 
@@ -22,7 +27,25 @@ interface AmountInputProps {
   balanceError?: boolean;
   showMax?: boolean;
   showPresets?: boolean;
-  decimals?: number; 
+  /**
+   * Explicit decimal precision for this asset.
+   * When provided, overrides the heuristic from `assetId`.
+   * Accepts 0–255 (Stellar/Soroban range).
+   */
+  decimals?: number;
+  /**
+   * Canonical asset identifier ("native" or "CODE:ISSUER").
+   * Used to derive adaptive precision when `decimals` is not supplied.
+   */
+  assetId?: string;
+}
+
+/**
+ * Resolve effective max decimals from props.
+ * Priority: explicit `decimals` > `assetId` heuristic > default (7).
+ */
+function resolveMaxDecimals(decimals?: number, assetId?: string): number {
+  return maxDecimalsForSellAsset(assetId ?? 'native', decimals);
 }
 
 export function AmountInput({
@@ -40,47 +63,88 @@ export function AmountInput({
   balanceError = false,
   showMax = true,
   showPresets = false,
-  decimals = 7,
+  decimals,
+  assetId,
 }: AmountInputProps) {
+  const maxDecimals = resolveMaxDecimals(decimals, assetId);
   const [internalValue, setInternalValue] = useState(value);
+  const [precisionError, setPrecisionError] = useState<string | null>(null);
   const inputId = useId();
 
   useEffect(() => {
     setInternalValue(value);
-  }, [value]);
+    // Re-validate when value changes externally
+    if (value !== '') {
+      const result = parseSellAmount(value, maxDecimals);
+      setPrecisionError(
+        result.status === 'precision_exceeded' ? result.message : null
+      );
+    } else {
+      setPrecisionError(null);
+    }
+  }, [value, maxDecimals]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value.replace(/,/g, '.'); 
-      
+      const raw = e.target.value.replace(/,/g, '.');
+
       if (raw === '') {
         setInternalValue('');
+        setPrecisionError(null);
         onChange?.('');
         return;
       }
 
-      if ((raw.match(/\./g) || []).length > 1) return;
+      // Allow in-progress typing: trailing dot or leading dot
+      if (raw === '.' || /^\d+\.$/.test(raw)) {
+        setInternalValue(raw);
+        setPrecisionError(null);
+        onChange?.(raw);
+        return;
+      }
 
       if (!/^\d*\.?\d*$/.test(raw)) return;
 
-      if (raw.includes('.')) {
-        const [, decimalPart] = raw.split('.');
-        if (decimalPart && decimalPart.length > (decimals || 7)) {
-          return; 
+      // Enforce precision: silently clamp rather than block typing
+      const normalized = normalizeDecimalString(raw);
+      if (normalized !== null) {
+        const dotIdx = normalized.indexOf('.');
+        if (dotIdx !== -1) {
+          const fracLen = normalized.length - dotIdx - 1;
+          if (fracLen > maxDecimals) {
+            const clamped = clampToMaxDecimals(normalized, maxDecimals);
+            setInternalValue(clamped);
+            setPrecisionError(
+              `Maximum ${maxDecimals} decimal place${maxDecimals === 1 ? '' : 's'} for this asset.`
+            );
+            onChange?.(clamped);
+            return;
+          }
         }
       }
 
+      setPrecisionError(null);
       setInternalValue(raw);
       onChange?.(raw);
     },
-    [onChange, decimals]
+    [onChange, maxDecimals]
   );
 
+  const exceedsBalance =
+    balance &&
+    internalValue &&
+    !Number.isNaN(parseFloat(internalValue)) &&
+    !Number.isNaN(parseFloat(balance)) &&
+    parseFloat(internalValue) > parseFloat(balance);
+
   return (
-    <div className={cn("flex flex-col gap-1.5 w-full", className)}>
+    <div className={cn('flex flex-col gap-1.5 w-full', className)}>
       <div className="flex justify-between items-center px-1">
         {label && (
-          <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <label
+            htmlFor={inputId}
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+          >
             {label}
           </label>
         )}
@@ -97,7 +161,7 @@ export function AmountInput({
           </span>
         )}
       </div>
-      
+
       <div className="relative group">
         <Input
           id={inputId}
@@ -108,13 +172,19 @@ export function AmountInput({
           onChange={handleChange}
           disabled={disabled}
           readOnly={readOnly}
+          aria-invalid={!!(precisionError || exceedsBalance)}
+          aria-describedby={
+            precisionError || exceedsBalance ? `${inputId}-error` : undefined
+          }
           className={cn(
-            "h-14 text-2xl font-semibold bg-background/40 border-border/40 focus-visible:ring-primary/30 rounded-xl px-4",
-            readOnly && "cursor-default border-transparent bg-transparent px-0 text-3xl",
-            !readOnly && "group-hover:border-primary/20 transition-all shadow-sm"
+            'h-14 text-2xl font-semibold bg-background/40 border-border/40 focus-visible:ring-primary/30 rounded-xl px-4',
+            readOnly &&
+              'cursor-default border-transparent bg-transparent px-0 text-3xl',
+            !readOnly && 'group-hover:border-primary/20 transition-all shadow-sm',
+            (precisionError || exceedsBalance) && 'border-destructive/50'
           )}
         />
-        
+
         {showMax && onMax && !readOnly && !disabled && (
           <Button
             type="button"
@@ -127,17 +197,21 @@ export function AmountInput({
           </Button>
         )}
       </div>
-      
-        {balance && internalValue && parseFloat(internalValue) > parseFloat(balance) && (
-        <p className="text-[10px] font-medium text-red-500 px-1 mt-1">
-          Amount exceeds available balance
+
+      {(precisionError || exceedsBalance) && (
+        <p
+          id={`${inputId}-error`}
+          role="alert"
+          className="text-[10px] font-medium text-destructive px-1 mt-1"
+        >
+          {precisionError ?? 'Amount exceeds available balance'}
         </p>
       )}
 
       {showPresets && onPresetSelect && (
         <AmountPresets
           balance={balance || null}
-          decimals={decimals}
+          decimals={maxDecimals}
           onSelect={onPresetSelect}
           disabled={disabled || readOnly}
           className="mt-2"

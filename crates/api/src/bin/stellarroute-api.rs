@@ -2,7 +2,7 @@
 
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
-use stellarroute_api::{state::DatabasePools, telemetry, Server, ServerConfig, PurgerConfig};
+use stellarroute_api::{state::DatabasePools, telemetry, PurgerConfig, Server, ServerConfig};
 use tracing::{error, info};
 
 fn parse_bool_env(name: &str) -> bool {

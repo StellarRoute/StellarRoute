@@ -1,4 +1,4 @@
-import { SwapCard } from "@/components/swap/SwapCard";
+import { SwapPageClient } from "./SwapPageClient";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -25,8 +25,8 @@ export default function SwapPage() {
           </p>
         </div>
 
-        {/* The Swap Card */}
-        <SwapCard />
+        {/* Swap + optional split-view route panel */}
+        <SwapPageClient />
 
         {/* Extra Info / Social Proof */}
         <div className="mt-12 flex flex-wrap justify-center gap-8 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">

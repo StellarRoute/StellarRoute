@@ -56,7 +56,7 @@ export function TransactionStatusDrawer({
 
   const getStatusIcon = (status: TransactionRecord["status"]) => {
     switch (status) {
-      case "success":
+      case "confirmed":
         return <CheckCircle2 className="h-8 w-8 text-success" />;
       case "failed":
         return <XCircle className="h-8 w-8 text-destructive" />;
@@ -67,13 +67,12 @@ export function TransactionStatusDrawer({
 
   const getStatusLabel = (status: TransactionRecord["status"]) => {
     switch (status) {
-      case "success":
+      case "confirmed":
         return "Transaction Successful";
       case "failed":
         return "Transaction Failed";
       case "pending":
-      case "submitting":
-      case "processing":
+      case "submitted":
         return "Transaction Processing";
       default:
         return "Transaction Status";

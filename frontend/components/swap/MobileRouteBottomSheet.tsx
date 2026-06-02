@@ -28,7 +28,6 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
   if (isDesktop) {
     return (
       <RouteDisplay 
-        route={route} 
         amountOut={amountOut} 
         isLoading={isLoading} 
       />
@@ -99,7 +98,6 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
         <div className="overflow-y-auto h-full pb-20 pt-4 space-y-4 pr-1">
           <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 shadow-inner">
             <RouteDisplay 
-              route={route} 
               amountOut={amountOut} 
               isLoading={isLoading} 
             />

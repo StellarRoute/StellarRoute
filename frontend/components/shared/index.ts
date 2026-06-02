@@ -12,3 +12,4 @@ export { SlippageControl } from './SlippageControl';
 export { ExplorerLink } from './ExplorerLink';
 export { WalletSyncBanner } from './WalletSyncBanner';
 export { DiagnosticsPanel } from './DiagnosticsPanel';
+export * from './ViewState';

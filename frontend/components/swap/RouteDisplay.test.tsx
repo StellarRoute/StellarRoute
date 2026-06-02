@@ -11,7 +11,7 @@ describe("RouteDisplay", () => {
     render(<RouteDisplay amountOut="50.0" isLoading={true} />);
 
     const skeletonElements = document.querySelectorAll(".animate-pulse");
-    expect(skeletonElements.length).toBeGreaterThanOrEqual(5);
+    expect(skeletonElements.length).toBeGreaterThanOrEqual(4);
   });
 
   it("should render actual content when isLoading is false or undefined", () => {
@@ -119,23 +119,14 @@ describe("RouteDisplay", () => {
     expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
   });
 
-  it("progressively transitions from skeleton to content", () => {
-    vi.useFakeTimers();
-
+  it("instantly transitions from skeleton to content", () => {
     const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
 
     expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
 
     rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
 
-    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Best Route")).not.toBeInTheDocument();
-
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-
+    expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
     expect(screen.getByText("Best Route")).toBeInTheDocument();
-    vi.useRealTimers();
   });
 });

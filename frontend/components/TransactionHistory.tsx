@@ -37,7 +37,7 @@ import {
   triggerCSVDownload,
 } from "@/lib/transaction-csv-export"
 
-// Hardcode mock wallet to match DemoSwap
+// Hardcode mock wallet used by the local swap demo data
 const MOCK_WALLET = "GBSU...XYZ9"
 const ACTIVITY_VIRTUALIZATION_THRESHOLD = 24
 const ACTIVITY_ROW_HEIGHT = 80

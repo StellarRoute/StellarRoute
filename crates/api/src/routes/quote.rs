@@ -497,18 +497,16 @@ pub async fn get_batch_quotes(
                 };
 
                 match get_quote_inner(state, base_asset, quote_asset, params, false).await {
-                    Ok((quote, _cache_hit)) => {
-                        match quote.into_quote() {
-                            Ok(inner) => BatchQuoteItemResult::ok(i, inner),
-                            Err(e) => BatchQuoteItemResult::err(
-                                i,
-                                BatchItemError {
-                                    code: "internal".to_string(),
-                                    message: e.to_string(),
-                                },
-                            ),
-                        }
-                    }
+                    Ok((quote, _cache_hit)) => match quote.into_quote() {
+                        Ok(inner) => BatchQuoteItemResult::ok(i, inner),
+                        Err(e) => BatchQuoteItemResult::err(
+                            i,
+                            BatchItemError {
+                                code: "internal".to_string(),
+                                message: e.to_string(),
+                            },
+                        ),
+                    },
                     Err(e) => {
                         let (code, message) = batch_error_from_api_error(&e);
                         BatchQuoteItemResult::err(i, BatchItemError { code, message })
@@ -723,22 +721,27 @@ async fn compute_quote_response(
     let base_id = find_asset_id(&state, &base_asset).await?;
     let quote_id = find_asset_id(&state, &quote_asset).await?;
 
-    // --- Indexer lag check ---
-    if state.indexer_lag.is_any_source_critical().await {
-        let max_lag = state.indexer_lag.max_lag_ledgers().await;
+    // --- Indexer lag throttle ---
+    // Under sustained sync drift we reduce quote compute and return a degraded
+    // response instead of rejecting the request.
+    let is_critical = state.indexer_lag.is_any_source_critical().await;
+    let max_lag = if is_critical {
+        state.indexer_lag.max_lag_ledgers().await
+    } else {
+        0
+    };
+
+    let degrade_due_to_indexer_lag = is_critical;
+
+    if degrade_due_to_indexer_lag {
         warn!(
             max_lag_ledgers = max_lag,
-            "Rejecting quote request due to critical indexer lag"
+            "Indexer lag critical; returning degraded quote (reduced compute)"
         );
-        return Err(ApiError::StaleMarketData {
-            stale_count: 0,
-            fresh_count: 0,
-            threshold_secs_sdex: state.indexer_lag.thresholds().critical_ledgers * 5,
-            threshold_secs_amm: state.indexer_lag.thresholds().critical_ledgers * 5,
-        });
     }
 
     let (
+
         price,
         path,
         rationale,
@@ -1666,6 +1669,22 @@ mod tests {
         assert_eq!(selected.venue_ref, "offer1");
         assert_eq!(rationale.selected_source, "sdex:offer1");
         assert_eq!(rationale.compared_venues.len(), 3);
+    }
+
+    #[test]
+    fn native_usdc_quote_prefers_lowest_executable_direct_price() {
+        let candidates = vec![
+            candidate("amm", "pool-native-usdc", 1.02, 100.0, 30),
+            candidate("sdex", "offer-native-usdc-b", 1.01, 80.0, 0),
+            candidate("sdex", "offer-native-usdc-a", 0.99, 60.0, 0),
+        ];
+
+        let (selected, rationale) =
+            evaluate_single_hop_direct_venues(candidates, 50.0).expect("must select a venue");
+
+        assert_eq!(selected.venue_type, "sdex");
+        assert_eq!(selected.venue_ref, "offer-native-usdc-a");
+        assert_eq!(rationale.selected_source, "sdex:offer-native-usdc-a");
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub mod metrics;
 pub mod models;
 pub mod reconciliation;
 pub mod shutdown;
-pub mod telemetry;
+pub mod partition;
 
 pub mod sdex;
 pub mod soroban;

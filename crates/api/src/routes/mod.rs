@@ -1,17 +1,20 @@
 //! API routes
 
+pub mod admin_cache;
+pub mod assets;
 pub mod canary;
+pub mod contract_registry;
 pub mod health;
 pub mod idempotent_quote;
 pub mod kill_switch;
-pub mod admin_cache;
 pub mod metrics;
 pub mod orderbook;
 pub mod pairs;
-pub mod assets;
 pub mod prometheus;
 pub mod quote;
-pub mod contract_registry;
+pub mod simulation_route;
+
+
 
 pub mod replay;
 pub mod routes_endpoint;
@@ -54,6 +57,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/batch/quote",
             axum::routing::post(quote::get_batch_quotes),
         )
+        .route(
+            "/api/v1/batch/orderbook",
+            axum::routing::post(orderbook::get_batch_orderbooks),
+        )
         // Replay routes
         .route("/api/v1/replay", get(replay::list_artifacts))
         .route("/api/v1/replay/:id", get(replay::get_artifact))
@@ -72,13 +79,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/admin/kill-switch",
             post(kill_switch::update_kill_switch),
         )
-        .route(
-            "/api/v1/admin/cache/flush",
-            post(admin_cache::flush_cache),
-        )
+        .route("/api/v1/admin/cache/flush", post(admin_cache::flush_cache))
         // Canary routes
         .route("/api/v1/system/canary/report", get(canary::get_report))
         .route("/api/v1/system/canary/config", post(canary::update_config))
+        .route(
+            "/api/v1/simulate/route",
+            post(simulation_route::simulate_route_dry_run),
         // Contract registry routes
         .route(
             "/api/v1/contracts/registry",

@@ -1,7 +1,7 @@
 "use client";
 
 import { MarketDepthChart } from "./MarketDepthChart";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ViewState } from "@/components/shared/ViewState";
@@ -180,8 +180,8 @@ export default function OrderbookPage() {
 
       {/* --- Issue #328: Real-Time Adaptive Graph Panel Mounted Globally --- */}
       <MarketDepthChart 
-        bids={orderbook?.bids ?? []} 
-        asks={orderbook?.asks ?? []} 
+        bids={orderbook?.bids?.map(b => ({ price: Number(b.price), amount: Number(b.amount), total: Number(b.total) })) ?? []} 
+        asks={orderbook?.asks?.map(a => ({ price: Number(a.price), amount: Number(a.amount), total: Number(a.total) })) ?? []} 
       />
 
       {pairsLoading ? (

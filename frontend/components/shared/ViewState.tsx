@@ -178,3 +178,48 @@ export function useViewState<T>(
     };
   }, [data, isLoading, error, options?.loadingMessage, options?.emptyMessage, options?.emptyDescription, options?.emptyAction, options?.onRetry]);
 }
+
+// ─── Swap-specific View State wrapper ──────────────────────────────
+
+export type SwapViewStateKind = 'quote' | 'routes' | 'history' | 'wallet';
+export type SwapViewStateVariant = 'loading' | 'error' | 'empty';
+
+export interface SwapViewStateProps {
+  kind: SwapViewStateKind;
+  variant: SwapViewStateVariant;
+  message?: string;
+  onRetry?: () => void;
+  className?: string;
+}
+
+export function SwapViewState({ kind, variant, message, onRetry, className }: SwapViewStateProps) {
+  const getEmptyMessage = () => {
+    switch (kind) {
+      case 'quote': return 'No quotes available';
+      case 'routes': return 'No routes available';
+      case 'history': return 'No transaction history';
+      case 'wallet': return 'Wallet not connected';
+      default: return 'No data';
+    }
+  };
+
+  const getLoadingMessage = () => {
+    switch (kind) {
+      case 'quote': return 'Fetching quotes...';
+      case 'routes': return 'Finding best routes...';
+      case 'history': return 'Loading history...';
+      case 'wallet': return 'Connecting wallet...';
+      default: return 'Loading...';
+    }
+  };
+
+  if (variant === 'loading') {
+    return <LoadingState message={message ?? getLoadingMessage()} className={className} />;
+  }
+
+  if (variant === 'error') {
+    return <ErrorState message={message ?? 'An error occurred'} onRetry={onRetry} className={className} />;
+  }
+
+  return <EmptyState message={message ?? getEmptyMessage()} description="" className={className} />;
+}

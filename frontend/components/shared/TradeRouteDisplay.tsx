@@ -120,7 +120,7 @@ export function TradeRouteDisplay({
 
 /**
  * Placeholder example — for live quotes use `useQuoteRefresh` from
- * `@/hooks/useQuoteRefresh` with `stellarRouteClient.getQuote` (see `DemoSwap`).
+ * `@/hooks/useQuoteRefresh` with `stellarRouteClient.getQuote`.
  * A future WebSocket quote stream can push updates into the same hook.
  */
 export function TradeRouteExample() {

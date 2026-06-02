@@ -1,29 +1,43 @@
 use stellarroute_routing::health::anomaly::{AnomalyConfig, LiquidityAnomalyDetector};
-use stellarroute_routing::optimizer::{HybridOptimizer, OptimizerPolicy};
-use stellarroute_routing::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig};
+use stellarroute_routing::health::anomaly::{AnomalyConfig, LiquidityAnomalyDetector};
+use stellarroute_routing::optimizer::HybridOptimizer;
+use chrono::Utc;
+use stellarroute_routing::pathfinder::PathfinderConfig;
+use stellarroute_routing::pathfinder::LiquidityEdge;
 use stellarroute_routing::policy::RoutingPolicy;
+
 
 #[test]
 fn test_anomaly_detection_integration() {
     let config = AnomalyConfig {
-        reserve_shift_threshold: 0.5,
+        reserve_delta_threshold: 0.5,
         depth_collapse_threshold: 0.8,
         alert_threshold: 0.7,
+        stale_read_is_anomaly: false,
+        ..Default::default()
     };
+
+
     let mut detector = LiquidityAnomalyDetector::new(config);
 
     // 1. Normal scenario
     let venue_ref = "amm:XLM_USDC";
-    let res1 = detector.update_and_detect(venue_ref, Some((1000, 1000)), None);
+    let res1 = detector.update_and_detect(venue_ref, Some((1000, 1000)), None, Some(Utc::now()));
+
+
     assert!(res1.score == 0.0);
 
     // 2. Small shift (20%) - should not be anomalous
-    let res2 = detector.update_and_detect(venue_ref, Some((1200, 1200)), None);
+    let res2 = detector.update_and_detect(venue_ref, Some((1200, 1200)), None, Some(Utc::now()));
+
+
     assert!(res2.score < 0.7);
     assert!(!detector.is_anomalous(&res2));
 
     // 3. Large shift (70%) - should be anomalous
-    let res3 = detector.update_and_detect(venue_ref, Some((300, 300)), None);
+    let res3 = detector.update_and_detect(venue_ref, Some((300, 300)), None, Some(Utc::now()));
+
+
     assert!(res3.score >= 0.7);
     assert!(detector.is_anomalous(&res3));
     assert!(!res3.reasons.is_empty());

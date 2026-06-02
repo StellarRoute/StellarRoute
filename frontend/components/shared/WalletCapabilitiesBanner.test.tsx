@@ -78,8 +78,8 @@ describe('WalletCapabilitiesBanner', () => {
 
     render(<WalletCapabilitiesBanner />);
     expect(screen.getByText(/sign transactions/i)).toBeInTheDocument();
-    expect(screen.getByText(/network mismatch/i)).toBeInTheDocument();
-    expect(screen.getByText(/switch wallet network/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/network mismatch/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/switch wallet network/i).length).toBeGreaterThan(0);
   });
 
   it('calls refreshCapabilities when check again button clicked', async () => {

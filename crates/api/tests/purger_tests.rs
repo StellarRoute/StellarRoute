@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use stellarroute_api::purger::{PurgerConfig, QuoteArtifactPurger, PurgeResult};
+    use stellarroute_api::purger::{PurgeResult, PurgerConfig, QuoteArtifactPurger};
 
     #[test]
     fn test_purger_config_default() {
@@ -79,7 +79,7 @@ mod tests {
             deleted_count: 100,
             scanned_count: 1000,
             rows_retained: 0,
-            duration_ms: 60_000,  // 60 seconds
+            duration_ms: 60_000, // 60 seconds
             age_min_days: Some(1.0),
             age_max_days: Some(30.0),
             age_p50_days: Some(15.0),
@@ -102,7 +102,7 @@ mod tests {
         };
         let result = PurgeResult {
             purge_type: "test".to_string(),
-            deleted_count: 1000,  // exceeds threshold
+            deleted_count: 1000, // exceeds threshold
             scanned_count: 1000,
             rows_retained: 0,
             duration_ms: 1000,
@@ -188,16 +188,37 @@ mod tests {
 
         assert_eq!(original.enabled, deserialized.enabled);
         assert_eq!(original.interval_secs, deserialized.interval_secs);
-        assert_eq!(original.replay_artifacts_retention_days, deserialized.replay_artifacts_retention_days);
-        assert_eq!(original.audit_log_retention_days, deserialized.audit_log_retention_days);
-        assert_eq!(original.replay_artifacts_batch_size, deserialized.replay_artifacts_batch_size);
-        assert_eq!(original.audit_log_batch_size, deserialized.audit_log_batch_size);
+        assert_eq!(
+            original.replay_artifacts_retention_days,
+            deserialized.replay_artifacts_retention_days
+        );
+        assert_eq!(
+            original.audit_log_retention_days,
+            deserialized.audit_log_retention_days
+        );
+        assert_eq!(
+            original.replay_artifacts_batch_size,
+            deserialized.replay_artifacts_batch_size
+        );
+        assert_eq!(
+            original.audit_log_batch_size,
+            deserialized.audit_log_batch_size
+        );
         assert_eq!(original.max_iterations, deserialized.max_iterations);
-        assert_eq!(original.purge_replay_artifacts, deserialized.purge_replay_artifacts);
+        assert_eq!(
+            original.purge_replay_artifacts,
+            deserialized.purge_replay_artifacts
+        );
         assert_eq!(original.purge_audit_log, deserialized.purge_audit_log);
         assert_eq!(original.log_metrics, deserialized.log_metrics);
-        assert_eq!(original.slow_purge_threshold_secs, deserialized.slow_purge_threshold_secs);
-        assert_eq!(original.alert_deletion_threshold, deserialized.alert_deletion_threshold);
+        assert_eq!(
+            original.slow_purge_threshold_secs,
+            deserialized.slow_purge_threshold_secs
+        );
+        assert_eq!(
+            original.alert_deletion_threshold,
+            deserialized.alert_deletion_threshold
+        );
     }
 
     #[test]
@@ -225,7 +246,7 @@ mod tests {
         let config = PurgerConfig::default();
         let result = PurgeResult {
             purge_type: "test".to_string(),
-            deleted_count: 0,  // No rows deleted, so no age data
+            deleted_count: 0, // No rows deleted, so no age data
             scanned_count: 0,
             rows_retained: 1000,
             duration_ms: 100,

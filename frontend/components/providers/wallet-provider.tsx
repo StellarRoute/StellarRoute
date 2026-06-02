@@ -15,6 +15,7 @@ import type {
   WalletError,
   WalletNetwork,
   AccountSwitchState,
+  Capabilities,
 } from '@/lib/wallet/types';
 
 interface WalletContextValue {
@@ -39,6 +40,11 @@ interface WalletContextValue {
   accountSwitchState: AccountSwitchState;
   isTransactionPending: boolean;
   setTransactionPending: (pending: boolean) => void;
+  capabilities: Capabilities | null;
+  refreshCapabilities: () => Promise<void>;
+  syncMismatch: boolean;
+  resyncWallet: () => Promise<void>;
+  dismissSyncMismatch: () => void;
 }
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -71,6 +77,8 @@ export function WalletProvider({
     previousAddress: null,
   });
   const [isTransactionPending, setIsTransactionPending] = React.useState(false);
+  const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
+  const [syncMismatch, setSyncMismatch] = React.useState(false);
   const didAttemptInitialReconnect = React.useRef(false);
   const reconnectThrottleUntilMs = React.useRef(0);
 
@@ -270,6 +278,20 @@ export function WalletProvider({
   const networkMismatch = isConnected && walletNetwork !== null && walletNetwork !== network;
   const stubSpendableBalance = isConnected ? '10000.0000000' : null;
 
+  const refreshCapabilities = React.useCallback(async () => {
+    // mock implementation
+    setCapabilities({ checkedAt: Date.now(), statuses: [] });
+  }, []);
+
+  const resyncWallet = React.useCallback(async () => {
+    setSyncMismatch(false);
+    await refreshAccount();
+  }, [refreshAccount]);
+
+  const dismissSyncMismatch = React.useCallback(() => {
+    setSyncMismatch(false);
+  }, []);
+
   const value: WalletContextValue = {
     address,
     isConnected,
@@ -294,6 +316,11 @@ export function WalletProvider({
     setTransactionPending: React.useCallback((pending: boolean) => {
       setIsTransactionPending(pending);
     }, []),
+    capabilities,
+    refreshCapabilities,
+    syncMismatch,
+    resyncWallet,
+    dismissSyncMismatch,
   };
 
   return (

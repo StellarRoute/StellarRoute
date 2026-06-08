@@ -40,6 +40,14 @@ describe('Footer', () => {
     expect(statusLink).not.toHaveAttribute('target', '_blank');
   });
 
+  it('renders docs link as an internal route', () => {
+    render(<Footer />);
+
+    const docsLink = screen.getByRole('link', { name: /Docs/i });
+    expect(docsLink).toHaveAttribute('href', '/docs');
+    expect(docsLink).not.toHaveAttribute('target', '_blank');
+  });
+
   it('renders external links with correct attributes', () => {
     render(<Footer />);
     

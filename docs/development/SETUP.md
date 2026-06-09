@@ -59,11 +59,18 @@ cd stellarroute
 
 ```bash
 docker-compose up -d
+./scripts/wait-for-services.sh
 ```
 
 This will start:
 - PostgreSQL on port 5432
 - Redis on port 6379
+
+The wait script checks Postgres and Redis readiness before you run the API or indexer. If your machine needs more time to pull images or initialize volumes, extend the timeout:
+
+```bash
+TIMEOUT_SECONDS=120 ./scripts/wait-for-services.sh
+```
 
 ### 6. Build the Project
 
@@ -250,8 +257,7 @@ The container may still be starting. Wait for the health check to pass:
 
 ```bash
 docker-compose ps   # STATUS should show "(healthy)"
-# or wait explicitly
-until docker-compose exec postgres pg_isready -U stellarroute; do sleep 1; done
+./scripts/wait-for-services.sh
 ```
 
 #### Database connection failures from the application

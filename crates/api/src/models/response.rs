@@ -256,6 +256,29 @@ pub struct QuoteResponse {
     pub spread_bps: Option<u32>,
 }
 
+/// Single historical price sample for a trading pair.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceHistoryPoint {
+    /// Unix timestamp in milliseconds for the aggregated price bucket.
+    pub timestamp: i64,
+    /// Average mid-market price for the bucket, encoded as a decimal string.
+    pub price: String,
+}
+
+/// Historical price series for charting a selected trading pair.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceHistoryResponse {
+    pub base_asset: AssetInfo,
+    pub quote_asset: AssetInfo,
+    /// Time window covered by the series, such as "24h".
+    pub window: String,
+    /// Source table/column used to build the series.
+    pub source: String,
+    /// Unix timestamp in milliseconds when the response was generated.
+    pub generated_at: i64,
+    pub points: Vec<PriceHistoryPoint>,
+}
+
 /// Asset metadata response — matches GET /api/v1/assets/:code spec
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssetMetadataResponse {

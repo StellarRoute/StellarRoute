@@ -19,6 +19,7 @@ import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
+import { useDebugOverlay } from '@/contexts/DebugOverlayContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
 import { useWalletBalance } from '@/hooks/useWalletBalance';
 import {
@@ -120,6 +121,17 @@ export function SwapCard() {
       tradingPairContext.setTradingPair(fromToken, toToken);
     }
   }, [fromToken, toToken, tradingPairContext]);
+
+  // Update debug overlay with quote metadata
+  const { setDebugInfo } = useDebugOverlay();
+  useEffect(() => {
+    setDebugInfo({
+      quoteId: quote.quoteId,
+      snapshotVersion: quote.snapshotVersion,
+      timings: quote.timings,
+    });
+  }, [quote.quoteId, quote.snapshotVersion, quote.timings, setDebugInfo]);
+
   const {
     expertMode,
     bypassConfirmation,

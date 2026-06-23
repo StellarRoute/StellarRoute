@@ -8,7 +8,7 @@ import { Header } from './header';
 import { Footer } from './footer';
 import { cn } from '@/lib/utils';
 import { SessionRecoveryModal } from '@/components/modals/SessionRecoveryModal';
-import { useSessionRecoveryContext } from '@/components/providers/session-recovery-provider';
+import { useSessionRecovery } from '@/components/providers/session-recovery-provider';
 import { WalletSyncBanner } from '@/components/shared';
 import { DebugOverlay } from '@/components/debug/DebugOverlay';
 
@@ -37,7 +37,7 @@ export function AppShell({ children }: AppShellProps) {
     beginRecovery,
     completeRecovery,
     dismissRecovery,
-  } = useSessionRecoveryContext();
+  } = useSessionRecovery();
 
   // Determine if page should be full-width (orderbook, analytics) or centered (swap)
   const isFullWidth =

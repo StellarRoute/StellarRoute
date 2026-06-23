@@ -62,6 +62,7 @@ export function WalletButton() {
     return (
       <>
         <Button
+          id="wallet-button"
           onClick={() => setShowOnboardingModal(true)}
           className="min-h-[44px]"
         >

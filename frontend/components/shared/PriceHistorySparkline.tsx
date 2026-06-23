@@ -230,7 +230,7 @@ export function PriceHistorySparkline({
                 {formatTime(activePoint.timestamp)}
               </p>
               <p className="mt-0.5 font-mono tabular-nums text-muted-foreground">
-                approx {formatPrice(activePoint.numericPrice)}
+                {`approx ${formatPrice(activePoint.numericPrice)}`}
               </p>
             </div>
           ) : null}

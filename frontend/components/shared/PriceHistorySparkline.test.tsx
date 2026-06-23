@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PriceHistorySparkline } from "./PriceHistorySparkline";
@@ -20,14 +20,13 @@ describe("PriceHistorySparkline", () => {
   });
 
   it("shows a tooltip with time and approximate price on hover", async () => {
-    const user = userEvent.setup();
     render(<PriceHistorySparkline points={POINTS} />);
 
     const pointButton = screen.getByRole("button", {
       name: /approx 0\.1054/i,
     });
 
-    await user.hover(pointButton);
+    fireEvent.mouseEnter(pointButton);
 
     expect(screen.getByText(/approx 0\.1054/i)).toBeInTheDocument();
   });

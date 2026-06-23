@@ -166,7 +166,9 @@ export function PriceHistorySparkline({
       <div
         className="relative h-24 overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-b from-background to-muted/15 text-primary"
         onPointerMove={handlePointerMove}
+        onMouseMove={handlePointerMove}
         onPointerLeave={() => setHoveredIndex(null)}
+        onMouseLeave={() => setHoveredIndex(null)}
       >
         <div ref={chartRef} className="absolute inset-2">
           <svg
@@ -214,6 +216,7 @@ export function PriceHistorySparkline({
                 onFocus={() => setHoveredIndex(index)}
                 onBlur={() => setHoveredIndex(null)}
                 onPointerEnter={() => setHoveredIndex(index)}
+                onMouseEnter={() => setHoveredIndex(index)}
               />
             );
           })}

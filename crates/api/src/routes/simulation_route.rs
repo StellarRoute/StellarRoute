@@ -214,7 +214,7 @@ pub async fn simulate_route_dry_run(
 
         // Mirror quote path diagnostics using first (and only) path step from quote.
         // The existing quote pipeline may return a single-hop path step.
-        if let Some(step) = quote_resp.path.get(0) {
+        if let Some(step) = quote_resp.path.first() {
             // Keep fee_bps and venue info mirrored when present.
             path_steps.push(step.clone());
         }

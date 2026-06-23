@@ -52,6 +52,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('high-contrast', settings.highContrast);
+    return () => {
+      document.documentElement.classList.remove('high-contrast');
+    };
+  }, [settings.highContrast]);
+
   const isValidSlippage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 50;
 
   const updateSlippage = (value: number) => {

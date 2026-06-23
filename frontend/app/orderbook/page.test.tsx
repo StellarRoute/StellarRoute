@@ -126,7 +126,9 @@ describe('OrderbookPage with highlighting', () => {
       </TradingPairProvider>
     );
 
-    expect(screen.getByText('Could not load markets')).toBeInTheDocument();
+    expect(
+      screen.getByText('Market list indexer offline. Displaying local adaptive chart profiling tools.'),
+    ).toBeInTheDocument();
   });
 
   it.skip('handles empty orderbook gracefully', async () => {

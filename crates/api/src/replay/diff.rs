@@ -99,7 +99,7 @@ impl DiffEngine {
         // ── path[0].source ───────────────────────────────────────────────────
         let orig_path_source = orig
             .get("path")
-            .and_then(|p| p.get(0))
+            .and_then(|p| p.as_array()?.first())
             .and_then(|s| s.get("source"))
             .cloned()
             .unwrap_or(serde_json::Value::Null);

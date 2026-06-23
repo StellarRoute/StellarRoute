@@ -146,7 +146,7 @@ describe("DebugOverlay", () => {
   });
 
   it("masks Stellar wallet addresses (G…)", async () => {
-    const stellarAddress = "GABC1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMN";
+    const stellarAddress = `GABC${'A'.repeat(48)}KLMN`;
     render(
       <DebugOverlay
         info={{ quoteId: stellarAddress }}

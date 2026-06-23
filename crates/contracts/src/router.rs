@@ -851,7 +851,7 @@ impl StellarRoute {
 
         // 6. Transfer input to first pool
         let mut current_input_amount = params.amount_in;
-        let first_hop = params.route.hops.get(0).unwrap();
+        let first_hop = params.route.hops.first().unwrap();
         transfer_asset(
             e,
             &first_hop.source,

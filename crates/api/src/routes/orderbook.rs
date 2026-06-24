@@ -377,10 +377,7 @@ pub async fn get_batch_orderbooks(
 }
 
 /// Compute summary fields for an orderbook snapshot.
-fn compute_orderbook_summary(
-    bids: &Vec<OrderbookLevel>,
-    asks: &Vec<OrderbookLevel>,
-) -> OrderbookSummary {
+fn compute_orderbook_summary(bids: &[OrderbookLevel], asks: &[OrderbookLevel]) -> OrderbookSummary {
     let best_bid = bids.first().map(|l| l.price.clone());
     let best_ask = asks.first().map(|l| l.price.clone());
 
@@ -410,67 +407,6 @@ fn compute_orderbook_summary(
             spread_bps: None,
             midpoint: None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn lvl(price: &str, amount: &str, total: &str) -> OrderbookLevel {
-        OrderbookLevel {
-            price: price.to_string(),
-            amount: amount.to_string(),
-            total: total.to_string(),
-        }
-    }
-
-    #[test]
-    fn summary_empty_book() {
-        let bids: Vec<OrderbookLevel> = vec![];
-        let asks: Vec<OrderbookLevel> = vec![];
-
-        let s = compute_orderbook_summary(&bids, &asks);
-        assert!(s.bid.is_none());
-        assert!(s.ask.is_none());
-        assert!(s.midpoint.is_none());
-        assert!(s.spread_bps.is_none());
-    }
-
-    #[test]
-    fn summary_only_bids() {
-        let bids = vec![lvl("0.1050000", "100.0", "10.5")];
-        let asks: Vec<OrderbookLevel> = vec![];
-
-        let s = compute_orderbook_summary(&bids, &asks);
-        assert_eq!(s.bid.as_deref(), Some("0.1050000"));
-        assert!(s.ask.is_none());
-        assert!(s.midpoint.is_none());
-        assert!(s.spread_bps.is_none());
-    }
-
-    #[test]
-    fn summary_only_asks() {
-        let bids: Vec<OrderbookLevel> = vec![];
-        let asks = vec![lvl("0.1060000", "50.0", "5.3")];
-
-        let s = compute_orderbook_summary(&bids, &asks);
-        assert!(s.bid.is_none());
-        assert_eq!(s.ask.as_deref(), Some("0.1060000"));
-        assert!(s.midpoint.is_none());
-        assert!(s.spread_bps.is_none());
-    }
-
-    #[test]
-    fn summary_both_sides() {
-        let bids = vec![lvl("0.1050000", "100.0", "10.5")];
-        let asks = vec![lvl("0.1060000", "50.0", "5.3")];
-
-        let s = compute_orderbook_summary(&bids, &asks);
-        assert_eq!(s.bid.as_deref(), Some("0.1050000"));
-        assert_eq!(s.ask.as_deref(), Some("0.1060000"));
-        assert_eq!(s.midpoint.as_deref(), Some("0.1055000"));
-        assert_eq!(s.spread_bps, Some(95));
     }
 }
 
@@ -584,5 +520,66 @@ fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
         AssetInfo::native()
     } else {
         AssetInfo::credit(asset.asset_code.clone(), asset.asset_issuer.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lvl(price: &str, amount: &str, total: &str) -> OrderbookLevel {
+        OrderbookLevel {
+            price: price.to_string(),
+            amount: amount.to_string(),
+            total: total.to_string(),
+        }
+    }
+
+    #[test]
+    fn summary_empty_book() {
+        let bids: Vec<OrderbookLevel> = vec![];
+        let asks: Vec<OrderbookLevel> = vec![];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert!(s.bid.is_none());
+        assert!(s.ask.is_none());
+        assert!(s.midpoint.is_none());
+        assert!(s.spread_bps.is_none());
+    }
+
+    #[test]
+    fn summary_only_bids() {
+        let bids = vec![lvl("0.1050000", "100.0", "10.5")];
+        let asks: Vec<OrderbookLevel> = vec![];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert_eq!(s.bid.as_deref(), Some("0.1050000"));
+        assert!(s.ask.is_none());
+        assert!(s.midpoint.is_none());
+        assert!(s.spread_bps.is_none());
+    }
+
+    #[test]
+    fn summary_only_asks() {
+        let bids: Vec<OrderbookLevel> = vec![];
+        let asks = vec![lvl("0.1060000", "50.0", "5.3")];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert!(s.bid.is_none());
+        assert_eq!(s.ask.as_deref(), Some("0.1060000"));
+        assert!(s.midpoint.is_none());
+        assert!(s.spread_bps.is_none());
+    }
+
+    #[test]
+    fn summary_both_sides() {
+        let bids = vec![lvl("0.1050000", "100.0", "10.5")];
+        let asks = vec![lvl("0.1060000", "50.0", "5.3")];
+
+        let s = compute_orderbook_summary(&bids, &asks);
+        assert_eq!(s.bid.as_deref(), Some("0.1050000"));
+        assert_eq!(s.ask.as_deref(), Some("0.1060000"));
+        assert_eq!(s.midpoint.as_deref(), Some("0.1055000"));
+        assert_eq!(s.spread_bps, Some(95));
     }
 }

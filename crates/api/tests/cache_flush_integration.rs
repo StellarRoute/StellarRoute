@@ -11,7 +11,7 @@ use stellarroute_api::{
     cache::{self, CacheManager},
     models::{AssetInfo, OrderbookResponse, OrderbookSummary, QuoteResponse},
     routes,
-    state::{AppState, CachePolicy},
+    state::{AppState, CachePolicy, DatabasePools},
 };
 use tower::ServiceExt;
 
@@ -33,9 +33,10 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     let pool = PgPoolOptions::new()
         .connect_lazy("postgres://localhost/postgres")
         .expect("failed to create lazy DB pool");
+    let db = DatabasePools::new(pool, None);
 
     let state = Arc::new(
-        AppState::with_cache_and_policy(pool, cache.clone(), CachePolicy::default())
+        AppState::with_cache_and_policy(db, cache.clone(), CachePolicy::default())
             .with_admin_auth_token("test-secret"),
     );
     let router = routes::create_router(state.clone());
@@ -50,6 +51,7 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price: "0.5".to_string(),
         total: "0.5".to_string(),
         quote_type: "sell".to_string(),
+        degraded: false,
         path: Vec::new(),
         timestamp: 0,
         expires_at: None,

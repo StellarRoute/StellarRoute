@@ -10,12 +10,11 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, info_span, warn, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -43,43 +42,6 @@ use crate::{
     },
     state::AppState,
 };
-
-fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
-    headers
-        .get("x-api-key")
-        .and_then(|h| h.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| format!("api_key:{value}"))
-}
-
-fn build_quote_webhook_payload(
-    consumer_id: String,
-    base: &str,
-    quote: &str,
-    quote_resp: &QuoteResponse,
-) -> QuoteExpirationWebhookPayload {
-    let quote_id = format!(
-        "{}:{}:{}:{}",
-        base, quote, quote_resp.timestamp, quote_resp.amount
-    );
-
-    QuoteExpirationWebhookPayload {
-        event_id: Uuid::new_v4().to_string(),
-        consumer_id,
-        quote_id,
-        pair: format!("{base}/{quote}"),
-        reason: "ttl_expired".to_string(),
-        expired_at: quote_resp
-            .expires_at
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
-        event: "quote.expired".to_string(),
-        timestamp: chrono::Utc::now().timestamp_millis(),
-        base_asset: base.to_string(),
-        quote_asset: quote.to_string(),
-        amount_in: quote_resp.amount.clone(),
-    }
-}
 
 /// Get price quote for a trading pair
 ///

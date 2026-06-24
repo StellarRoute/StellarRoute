@@ -8,19 +8,10 @@ use tracing::{info, warn};
 
 const REDIS_KILL_SWITCH_KEY: &str = "stellarroute:kill_switches";
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct KillSwitchState {
     pub sources: HashMap<VenueType, OverrideDirective>,
     pub venues: HashMap<String, OverrideDirective>,
-}
-
-impl Default for KillSwitchState {
-    fn default() -> Self {
-        Self {
-            sources: HashMap::new(),
-            venues: HashMap::new(),
-        }
-    }
 }
 
 pub struct KillSwitchManager {

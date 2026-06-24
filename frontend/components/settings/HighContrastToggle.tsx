@@ -1,11 +1,16 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useSettings } from '@/components/providers/settings-provider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
 export function HighContrastToggle() {
   const { settings, updateHighContrast } = useSettings();
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('high-contrast', settings.highContrast);
+  }, [settings.highContrast]);
 
   return (
     <div className="flex items-center justify-between gap-4">

@@ -11,10 +11,20 @@ import { toast } from 'sonner';
 import { LocaleSelector } from '@/components/settings/LocaleSelector';
 import { AccentColorPicker } from '@/components/settings/AccentColorPicker';
 import { FontScaleControl } from '@/components/settings/FontScaleControl';
+import { HighContrastToggle } from '@/components/settings/HighContrastToggle';
+import { BrowserNotificationSettings } from '@/components/settings/BrowserNotificationSettings';
+import { useBrowserNotifications } from '@/hooks/useBrowserNotifications';
 
 export default function SettingsPage() {
   const { settings, updateSlippage, updateTheme, resetSettings } = useSettings();
   const [localSlippage, setLocalSlippage] = useState(settings.slippageTolerance.toString());
+  const {
+    browserNotifications,
+    permissionState,
+    isDisabled,
+    enableNotifications,
+    disableNotifications,
+  } = useBrowserNotifications();
 
   const handleSlippageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalSlippage(e.target.value);
@@ -102,7 +112,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Font scale control — issue #522 */}
+        {/* Font scale control and high contrast — issues #522, #788 */}
         <Card>
           <CardHeader>
             <CardTitle>Accessibility</CardTitle>
@@ -110,8 +120,28 @@ export default function SettingsPage() {
               Adjust text size and other accessibility options.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <FontScaleControl />
+            <HighContrastToggle />
+          </CardContent>
+        </Card>
+
+        {/* Browser notifications — issue #789 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Notifications</CardTitle>
+            <CardDescription>
+              Receive browser notifications for quote refreshes and swap status updates.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BrowserNotificationSettings
+              browserNotifications={browserNotifications}
+              permissionState={permissionState}
+              isDisabled={isDisabled}
+              onEnable={enableNotifications}
+              onDisable={disableNotifications}
+            />
           </CardContent>
         </Card>
 

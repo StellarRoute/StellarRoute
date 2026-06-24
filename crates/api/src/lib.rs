@@ -38,6 +38,7 @@ pub mod tracing_config;
 pub mod webhooks;
 pub mod worker;
 
+pub use audit::AuditExportConfig;
 pub use cache::CacheManager;
 pub use docs::ApiDoc;
 pub use error::{ApiError, Result};

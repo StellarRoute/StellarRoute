@@ -9,9 +9,9 @@ use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
 use stellarroute_api::{
     cache::{self, CacheManager},
-    models::{AssetInfo, OrderbookResponse, QuoteResponse},
+    models::{AssetInfo, OrderbookResponse, OrderbookSummary, QuoteResponse},
     routes,
-    state::{AppState, CachePolicy},
+    state::{AppState, CachePolicy, DatabasePools},
 };
 use tower::ServiceExt;
 
@@ -35,8 +35,12 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         .expect("failed to create lazy DB pool");
 
     let state = Arc::new(
-        AppState::with_cache_and_policy(pool, cache.clone(), CachePolicy::default())
-            .with_admin_auth_token("test-secret"),
+        AppState::with_cache_and_policy(
+            DatabasePools::new(pool, None),
+            cache.clone(),
+            CachePolicy::default(),
+        )
+        .with_admin_auth_token("test-secret"),
     );
     let router = routes::create_router(state.clone());
 
@@ -50,6 +54,7 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price: "0.5".to_string(),
         total: "0.5".to_string(),
         quote_type: "sell".to_string(),
+        degraded: false,
         path: Vec::new(),
         timestamp: 0,
         expires_at: None,
@@ -59,6 +64,8 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let orderbook_value = OrderbookResponse {
@@ -66,6 +73,12 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         quote_asset: AssetInfo::credit("USDC".to_string(), None),
         bids: Vec::new(),
         asks: Vec::new(),
+        summary: OrderbookSummary {
+            bid: None,
+            ask: None,
+            spread_bps: None,
+            midpoint: None,
+        },
         timestamp: 0,
     };
 

@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse};
+use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse, OrderbookSummary};
 
 const DEFAULT_COOLDOWN_SECONDS: u64 = 300;
 const WEBHOOK_ENV: &str = "LIQUIDITY_THINNESS_ALERT_WEBHOOK_URL";
@@ -299,6 +299,12 @@ mod tests {
                     total: "0".to_string(),
                 })
                 .collect(),
+            summary: OrderbookSummary {
+                bid: None,
+                ask: None,
+                spread_bps: None,
+                midpoint: None,
+            },
             timestamp: 1_717_171_717,
         }
     }
@@ -322,7 +328,7 @@ mod tests {
             .expect("thin bids should alert");
 
         assert_eq!(payload.event, "liquidity_thinness");
-        assert_eq!(payload.pair, "native/USDC");
+        assert_eq!(payload.pair, "USDC/native");
         assert_eq!(payload.depth_snapshot.bid_depth, 25.0);
         assert_eq!(payload.depth_snapshot.ask_depth, 70.0);
         assert_eq!(payload.threshold.min_bid_depth, Some(100.0));

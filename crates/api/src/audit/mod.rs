@@ -26,11 +26,13 @@
 //! [`store::AuditStore::prune_older_than`] and `docs/audit-log-retention.md`
 //! for tuning guidance.
 
+pub mod export;
 pub mod redactor;
 pub mod schema;
 pub mod store;
 pub mod writer;
 
+pub use export::{run_export_task, AuditExportConfig, AuditExportPipeline};
 pub use redactor::AuditRedactor;
 pub use schema::{
     AuditExclusion, AuditInputs, AuditOutcome, AuditPathStep, AuditSelected, RouteAuditEntry,

@@ -252,6 +252,25 @@ async fn main() {
         None
     };
 
+    // Load audit export configuration
+    let export_config = stellarroute_api::audit::AuditExportConfig::from_env();
+    info!(
+        enabled = export_config.enabled,
+        interval_secs = export_config.interval_secs,
+        batch_size = export_config.batch_size,
+        storage_path = %export_config.storage_path,
+        "Audit log export configuration loaded"
+    );
+
+    let export_pool = pool.clone();
+    let _export_handle = if export_config.enabled {
+        Some(tokio::spawn(async move {
+            stellarroute_api::audit::run_export_task(export_pool, export_config).await;
+        }))
+    } else {
+        None
+    };
+
     // Create and start server
     let server = Server::new(config, DatabasePools::new(pool, None)).await;
 

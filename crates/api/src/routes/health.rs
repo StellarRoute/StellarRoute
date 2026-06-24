@@ -5,10 +5,26 @@ use std::{collections::HashMap, sync::Arc};
 use tracing::warn;
 
 use crate::{
+    cache::CacheHealthStatus,
     middleware::RequestId,
     models::{ApiResponse, DependenciesHealthResponse, HealthResponse},
     state::AppState,
 };
+
+/// Evaluate optional Redis cache health for component maps.
+///
+/// Redis is a performance cache, not a required dependency. A degraded cache
+/// must be reported but must not flip overall service health to unhealthy.
+async fn probe_redis_status(state: &AppState) -> CacheHealthStatus {
+    let Some(cache) = &state.cache else {
+        return CacheHealthStatus::NotConfigured;
+    };
+
+    match cache.try_lock() {
+        Ok(mut guard) => guard.health_status().await,
+        Err(_) => CacheHealthStatus::Healthy,
+    }
+}
 
 /// Health check endpoint
 ///
@@ -43,28 +59,15 @@ pub async fn health_check(
     };
     components.insert("database".to_string(), db_status);
 
-    // --- Redis (optional) ---
-    let redis_status = if let Some(cache) = &state.cache {
-        match cache.try_lock() {
-            Ok(mut guard) => {
-                if guard.is_healthy().await {
-                    "healthy".to_string()
-                } else {
-                    warn!("Redis health check failed");
-                    all_healthy = false;
-                    "unhealthy".to_string()
-                }
-            }
-            Err(_) => {
-                // Lock contention — treat as healthy rather than a false alert
-                "healthy".to_string()
-            }
-        }
-    } else {
-        // Redis not configured — report as not_configured so callers know
-        "not_configured".to_string()
-    };
-    components.insert("redis".to_string(), redis_status);
+    // --- Redis (optional performance cache) ---
+    let redis_status = probe_redis_status(&state).await;
+    components.insert(
+        "redis".to_string(),
+        redis_status.as_component_status().to_string(),
+    );
+    if redis_status == CacheHealthStatus::Degraded {
+        warn!("Redis cache subsystem degraded during health check");
+    }
 
     // --- Indexer lag ---
     let lag_snapshots = state.indexer_lag.snapshots().await;
@@ -147,26 +150,12 @@ pub async fn dependency_health(
     };
     components.insert("database".to_string(), db_status);
 
-    // --- Redis (optional) ---
-    let redis_status = if let Some(cache) = &state.cache {
-        match cache.try_lock() {
-            Ok(mut guard) => {
-                if guard.is_healthy().await {
-                    "healthy".to_string()
-                } else {
-                    all_ok = false;
-                    "degraded".to_string()
-                }
-            }
-            Err(_) => {
-                // Lock contention — treat as healthy rather than a false alert
-                "healthy".to_string()
-            }
-        }
-    } else {
-        "not_configured".to_string()
-    };
-    components.insert("redis".to_string(), redis_status);
+    // --- Redis (optional performance cache) ---
+    let redis_status = probe_redis_status(&state).await;
+    components.insert(
+        "redis".to_string(),
+        redis_status.as_component_status().to_string(),
+    );
 
     // --- Horizon / Soroban RPC ---
     let horizon_status = state.external_dependency_health.probe_horizon().await;

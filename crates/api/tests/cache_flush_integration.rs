@@ -9,7 +9,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
 use stellarroute_api::{
     cache::{self, CacheManager},
-    models::{AssetInfo, OrderbookResponse, QuoteResponse},
+    models::{AssetInfo, OrderbookResponse, OrderbookSummary, QuoteResponse},
     routes,
     state::{AppState, CachePolicy},
 };
@@ -59,6 +59,8 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let orderbook_value = OrderbookResponse {
@@ -66,6 +68,12 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         quote_asset: AssetInfo::credit("USDC".to_string(), None),
         bids: Vec::new(),
         asks: Vec::new(),
+        summary: OrderbookSummary {
+            bid: None,
+            ask: None,
+            spread_bps: None,
+            midpoint: None,
+        },
         timestamp: 0,
     };
 
@@ -108,6 +116,11 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     assert!(cache_lock
         .get::<OrderbookResponse>(&orderbook_key)
         .await
+        .into_option()
         .is_none());
-    assert!(cache_lock.get::<QuoteResponse>(&quote_key).await.is_none());
+    assert!(cache_lock
+        .get::<QuoteResponse>(&quote_key)
+        .await
+        .into_option()
+        .is_none());
 }

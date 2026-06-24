@@ -60,9 +60,12 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
     // Try to get from cache first
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
-            if let Some(cached) = cache.get::<PairsResponse>(&cache::keys::pairs_list()).await {
-                debug!("Returning cached pairs");
-                return Ok(Json(cached));
+            match cache.get::<PairsResponse>(&cache::keys::pairs_list()).await {
+                crate::cache::CacheResult::Hit(cached) => {
+                    debug!("Returning cached pairs");
+                    return Ok(Json(cached));
+                }
+                crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => {}
             }
         }
     }

@@ -41,25 +41,27 @@ impl KillSwitchManager {
     pub async fn load(&self) {
         if let Some(cache) = &self.cache {
             let mut cache = cache.lock().await;
-            if let Some(state) = cache.get::<KillSwitchState>(REDIS_KILL_SWITCH_KEY).await {
-                {
-                    let mut current_state = self.state.lock().await;
-                    *current_state = state.clone();
-                }
+            match cache.get::<KillSwitchState>(REDIS_KILL_SWITCH_KEY).await {
+                crate::cache::CacheResult::Hit(state) => {
+                    {
+                        let mut current_state = self.state.lock().await;
+                        *current_state = state.clone();
+                    }
 
-                // Record metrics
-                for (source, directive) in &state.sources {
-                    let disabled = matches!(directive, OverrideDirective::ForceExclude);
-                    crate::metrics::record_kill_switch_status(
-                        "source",
-                        &format!("{:?}", source).to_lowercase(),
-                        disabled,
-                    );
+                    for (source, directive) in &state.sources {
+                        let disabled = matches!(directive, OverrideDirective::ForceExclude);
+                        crate::metrics::record_kill_switch_status(
+                            "source",
+                            &format!("{:?}", source).to_lowercase(),
+                            disabled,
+                        );
+                    }
+                    for (venue, directive) in &state.venues {
+                        let disabled = matches!(directive, OverrideDirective::ForceExclude);
+                        crate::metrics::record_kill_switch_status("venue", venue, disabled);
+                    }
                 }
-                for (venue, directive) in &state.venues {
-                    let disabled = matches!(directive, OverrideDirective::ForceExclude);
-                    crate::metrics::record_kill_switch_status("venue", venue, disabled);
-                }
+                crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => {}
             }
         }
     }

@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     error::{ApiError, Result},
@@ -45,11 +45,25 @@ pub async fn flush_cache(
     let deleted_quote_keys = cache
         .delete_by_pattern(&quote_pattern)
         .await
-        .map_err(|e| ApiError::Internal(Arc::new(anyhow::anyhow!("Cache delete failed: {}", e))))?;
+        .unwrap_or_else(|e| {
+            warn!(
+                quote_pattern = %quote_pattern,
+                error = %e,
+                "Redis unavailable during admin quote cache flush; continuing with zero deletions"
+            );
+            0
+        });
     let deleted_orderbook_keys = cache
         .delete_by_pattern(&orderbook_pattern)
         .await
-        .map_err(|e| ApiError::Internal(Arc::new(anyhow::anyhow!("Cache delete failed: {}", e))))?;
+        .unwrap_or_else(|e| {
+            warn!(
+                orderbook_pattern = %orderbook_pattern,
+                error = %e,
+                "Redis unavailable during admin orderbook cache flush; continuing with zero deletions"
+            );
+            0
+        });
 
     let total_deleted = deleted_quote_keys + deleted_orderbook_keys;
 

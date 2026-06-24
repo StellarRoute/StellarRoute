@@ -48,6 +48,14 @@ lazy_static! {
     )
     .expect("Can't create CACHE_MISSES counter");
 
+    /// Redis infrastructure errors (connection, timeout, etc.) — distinct from cache misses.
+    pub static ref REDIS_ERRORS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_redis_errors_total",
+        "Total Redis infrastructure errors by operation",
+        &["operation"]
+    )
+    .expect("Can't create REDIS_ERRORS counter");
+
     /// Quote request counter
     pub static ref QUOTE_REQUESTS: IntCounterVec = register_int_counter_vec!(
         "stellarroute_quote_requests_total",
@@ -236,6 +244,22 @@ pub fn record_cache_hit(cache_type: &str) {
 /// Record cache miss
 pub fn record_cache_miss(cache_type: &str) {
     CACHE_MISSES.with_label_values(&[cache_type]).inc();
+}
+
+/// Record a Redis infrastructure error (connection loss, timeout, etc.).
+pub fn record_redis_error(operation: &str) {
+    REDIS_ERRORS.with_label_values(&[operation]).inc();
+}
+
+/// Snapshot total Redis errors across all operations (for JSON metrics endpoints).
+pub fn redis_error_total() -> u64 {
+    REDIS_ERRORS.with_label_values(&["get"]).get()
+        + REDIS_ERRORS.with_label_values(&["get_json"]).get()
+        + REDIS_ERRORS.with_label_values(&["set"]).get()
+        + REDIS_ERRORS.with_label_values(&["set_json"]).get()
+        + REDIS_ERRORS.with_label_values(&["delete"]).get()
+        + REDIS_ERRORS.with_label_values(&["delete_by_pattern"]).get()
+        + REDIS_ERRORS.with_label_values(&["health"]).get()
 }
 
 /// Record adaptive timeout metrics

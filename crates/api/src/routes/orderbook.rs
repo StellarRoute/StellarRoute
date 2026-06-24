@@ -99,13 +99,16 @@ pub(crate) async fn get_orderbook_inner(
     // Try to get from cache first
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
-            if let Some(cached) = cache
+            match cache
                 .get::<OrderbookResponse>(&cache::keys::orderbook(&base, &quote))
                 .await
             {
-                debug!("Returning cached orderbook for {}/{}", base, quote);
-                state.liquidity_thinness_alerts.maybe_alert(&cached);
-                return Ok(cached);
+                crate::cache::CacheResult::Hit(cached) => {
+                    debug!("Returning cached orderbook for {}/{}", base, quote);
+                    state.liquidity_thinness_alerts.maybe_alert(&cached);
+                    return Ok(cached);
+                }
+                crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => {}
             }
         }
     }

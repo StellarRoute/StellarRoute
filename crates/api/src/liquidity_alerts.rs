@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn synthetic_thin_orderbook_builds_alert_payload() {
         let alerts = LiquidityThinnessAlerts::with_thresholds(HashMap::from([(
-            "native/USDC".to_string(),
+            "USDC/native".to_string(),
             PairThinnessThreshold {
                 min_bid_depth: Some(100.0),
                 min_ask_depth: Some(50.0),
@@ -330,7 +330,7 @@ mod tests {
             .expect("thin bids should alert");
 
         assert_eq!(payload.event, "liquidity_thinness");
-        assert_eq!(payload.pair, "native/USDC");
+        assert_eq!(payload.pair, "USDC/native");
         assert_eq!(payload.depth_snapshot.bid_depth, 25.0);
         assert_eq!(payload.depth_snapshot.ask_depth, 70.0);
         assert_eq!(payload.threshold.min_bid_depth, Some(100.0));
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn cooldown_suppresses_repeated_thin_orderbook_alerts() {
         let alerts = LiquidityThinnessAlerts::with_thresholds(HashMap::from([(
-            "native/USDC".to_string(),
+            "USDC/native".to_string(),
             PairThinnessThreshold {
                 min_bid_depth: Some(100.0),
                 min_ask_depth: None,

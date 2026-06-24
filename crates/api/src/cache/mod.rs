@@ -461,12 +461,8 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                     // Notify waiters so they can re-check state instead of hanging.
                     self.inflight.notify.notify_waiters();
 
-                    let inflight_map = self.inflight_map.clone();
-                    let key = self.key.clone();
-                    tokio::spawn(async move {
-                        let mut mg = inflight_map.lock().await;
-                        mg.remove(&key);
-                    });
+                    let mut mg = self.inflight_map.blocking_lock();
+                    mg.remove(&self.key);
                 }
             }
 
@@ -548,12 +544,8 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                 fn drop(&mut self) {
                     self.inflight.notify.notify_waiters();
 
-                    let inflight_map = self.inflight_map.clone();
-                    let key = self.key.clone();
-                    tokio::spawn(async move {
-                        let mut mg = inflight_map.lock().await;
-                        mg.remove(&key);
-                    });
+                    let mut mg = self.inflight_map.blocking_lock();
+                    mg.remove(&self.key);
                 }
             }
 
@@ -691,9 +683,9 @@ mod tests {
     async fn test_cache_keys() {
         assert_eq!(keys::pairs_list(), "pairs:list");
         assert_eq!(keys::pairs_list_page(25, 50), "pairs:list:25:50");
-        // orderbook uses canonical pair ordering: "native" < "USDC" lexicographically
-        assert_eq!(keys::orderbook("USDC", "XLM"), "orderbook:native:USDC");
-        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:native:USDC");
+        // orderbook uses canonical pair ordering: "USDC" < "native" lexicographically
+        assert_eq!(keys::orderbook("USDC", "XLM"), "orderbook:USDC:native");
+        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:USDC:native");
         assert_eq!(keys::price_history("XLM", "USDC"), "price-history:XLM:USDC");
         assert_eq!(
             keys::quote("xlm", "usdc", "100.0", 50, "sell", true),

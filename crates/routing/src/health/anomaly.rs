@@ -258,6 +258,7 @@ mod tests {
             stale_read_is_anomaly: false,
             ..Default::default()
         };
+        let alert_threshold = config.alert_threshold;
         let mut detector = LiquidityAnomalyDetector::new(config);
 
         // Initial update
@@ -265,7 +266,7 @@ mod tests {
 
         // Large negative delta (drain 60%) - should trigger
         let res = detector.update_and_detect("amm:drain", Some((400, 400)), None, Some(Utc::now()));
-        assert!(res.score >= config.alert_threshold);
+        assert!(res.score >= alert_threshold);
         assert!(!res.reasons.is_empty());
         assert!(res.reasons[0].to_lowercase().contains("drain"));
     }
@@ -278,6 +279,7 @@ mod tests {
             alert_threshold: 0.7,
             ..Default::default()
         };
+        let alert_threshold = config.alert_threshold;
         let mut detector = LiquidityAnomalyDetector::new(config);
 
         // Initial update
@@ -290,7 +292,7 @@ mod tests {
 
         // Missing reserve_updated_at should yield anomaly
         let res = detector.update_and_detect("amm:stale_missing", Some((900, 900)), None, None);
-        assert!(res.score >= config.alert_threshold);
+        assert!(res.score >= alert_threshold);
         assert!(res.reasons.iter().any(|r| r.contains("Stale read")));
     }
 

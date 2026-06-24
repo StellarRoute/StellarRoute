@@ -363,7 +363,7 @@ mod tests {
         let scorer = DefaultScorer;
         let output = scorer.score(&input);
 
-        assert!(output.score >= 0.0 && output.score <= 1.0);
+        assert!((0.0..=1.0).contains(&output.score));
         assert!(output.diagnostics.is_some());
     }
 
@@ -550,6 +550,6 @@ mod tests {
             policy,
         };
         let output = registry.score(&input);
-        assert!(output.score >= 0.0 && output.score <= 1.0);
+        assert!((0.0..=1.0).contains(&output.score));
     }
 }

@@ -457,8 +457,6 @@ impl HybridOptimizer {
             compute_time_us,
             hop_count: path.hops.len(),
             score,
-            anomaly_score: 0.0,
-            anomaly_reasons: Vec::new(),
         })
     }
 
@@ -613,8 +611,6 @@ mod tests {
             liquidity: 10_000_000,
             price: 0.1,
             fee_bps: 30,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }];
         let policy = RoutingPolicy::default();
         let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 1_000_000, &policy);
@@ -636,8 +632,6 @@ mod tests {
                 venue_ref: "pool1".to_string(),
                 price: 0.1,
                 fee_bps: 30,
-                anomaly_score: 0.0,
-                anomaly_reasons: vec![],
             }],
             estimated_output: 900_000,
         }];

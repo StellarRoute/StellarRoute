@@ -38,12 +38,12 @@ pub mod tracing_config;
 pub mod webhooks;
 pub mod worker;
 
+pub use audit::AuditExportConfig;
 pub use cache::CacheManager;
 pub use docs::ApiDoc;
 pub use error::{ApiError, Result};
 pub use exactlyonce::{DedupeLedger, ExactlyOnceError, RequestIdentity};
 pub use purger::PurgerConfig;
-pub use audit::AuditExportConfig;
 pub use server::{Server, ServerConfig};
 pub use state::AppState;
 pub use tracing_config::{TraceContext, TracingConfig};

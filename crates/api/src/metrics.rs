@@ -280,9 +280,7 @@ pub fn record_cache_miss(cache_type: &str) {
 
 /// Record a cache operation failure due to Redis unavailability.
 pub fn record_cache_unavailable(operation: &str) {
-    CACHE_UNAVAILABLE_OPS
-        .with_label_values(&[operation])
-        .inc();
+    CACHE_UNAVAILABLE_OPS.with_label_values(&[operation]).inc();
 }
 
 /// Set cache degraded mode gauge for a cache type.

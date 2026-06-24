@@ -66,7 +66,10 @@ pub fn build_object_key(prefix: &str, first_id: i64, last_id: i64, unix_ts: i64)
 
 /// Build a manifest key alongside the data object for replay tooling.
 pub fn build_manifest_key(data_object_key: &str) -> String {
-    format!("{}.manifest.json", data_object_key.trim_end_matches(".jsonl.gz"))
+    format!(
+        "{}.manifest.json",
+        data_object_key.trim_end_matches(".jsonl.gz")
+    )
 }
 
 #[cfg(test)]

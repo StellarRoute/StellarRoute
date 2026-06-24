@@ -110,7 +110,11 @@ impl CacheManager {
         json: &str,
         ttl: Duration,
     ) -> Result<bool, RedisError> {
-        match self.client.set_ex::<_, _, ()>(key, json, ttl.as_secs()).await {
+        match self
+            .client
+            .set_ex::<_, _, ()>(key, json, ttl.as_secs())
+            .await
+        {
             Ok(()) => {
                 debug!("Cached raw JSON key: {} with TTL: {:?}", key, ttl);
                 Ok(true)

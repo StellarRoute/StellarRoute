@@ -1,8 +1,8 @@
 //! Scheduled audit log export pipeline with checkpointing and redaction.
 
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
-use std::io::Write;
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -10,9 +10,7 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 
 use super::config::AuditExportConfig;
-use super::storage::{
-    build_manifest_key, build_object_key, LocalObjectStorage,
-};
+use super::storage::{build_manifest_key, build_object_key, LocalObjectStorage};
 use crate::audit::redactor::AuditRedactor;
 use crate::audit::schema::AUDIT_SCHEMA_VERSION;
 use crate::audit::store::AuditStore;
@@ -61,17 +59,21 @@ impl AuditExportPipeline {
     pub async fn run_once(&self) -> Result<Option<ExportRunResult>> {
         let start = Instant::now();
         let checkpoint_before = self.store.get_export_checkpoint().await?;
-        let run_id = self
-            .store
-            .begin_export_run(checkpoint_before)
-            .await?;
+        let run_id = self.store.begin_export_run(checkpoint_before).await?;
 
         let export_outcome = self.export_batch(checkpoint_before).await;
 
         match export_outcome {
             Ok(result) => {
                 self.store
-                    .finish_export_run(run_id, "success", result.checkpoint_after, result.rows_exported, result.object_key.as_deref(), None)
+                    .finish_export_run(
+                        run_id,
+                        "success",
+                        result.checkpoint_after,
+                        result.rows_exported,
+                        result.object_key.as_deref(),
+                        None,
+                    )
                     .await?;
                 if result.rows_exported > 0 {
                     self.store
@@ -135,12 +137,7 @@ impl AuditExportPipeline {
         let first_id = entries.first().map(|e| e.id).unwrap_or(checkpoint_before);
         let last_id = entries.last().map(|e| e.id).unwrap_or(checkpoint_before);
         let unix_ts = chrono::Utc::now().timestamp();
-        let object_key = build_object_key(
-            &self.config.object_prefix,
-            first_id,
-            last_id,
-            unix_ts,
-        );
+        let object_key = build_object_key(&self.config.object_prefix, first_id, last_id, unix_ts);
 
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         let mut min_logged_at = entries[0].entry.logged_at;

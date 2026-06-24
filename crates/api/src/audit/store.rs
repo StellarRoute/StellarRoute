@@ -273,6 +273,163 @@ impl AuditStore {
         Ok(result.rows_affected())
     }
 
+    /// Fetch a batch of entries with `id > after_id` for incremental export.
+    pub async fn fetch_batch_after_id(
+        &self,
+        after_id: i64,
+        limit: i32,
+    ) -> Result<Vec<ExportedAuditEntry>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, request_id, trace_id, logged_at, latency_ms,
+                   outcome, cache_hit, inputs, selected, exclusions
+            FROM route_audit_log
+            WHERE id > $1
+            ORDER BY id ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(after_id)
+        .bind(limit)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to fetch audit export batch: {}",
+                e
+            )))
+        })?;
+
+        rows.into_iter().map(row_to_export_entry).collect()
+    }
+
+    /// Read the current export checkpoint cursor.
+    pub async fn get_export_checkpoint(&self) -> Result<i64> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO audit_log_export_checkpoints (job_name)
+            VALUES ('default')
+            ON CONFLICT (job_name) DO NOTHING
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to ensure export checkpoint row: {}",
+                e
+            )))
+        })?;
+
+        let _ = row;
+
+        let row = sqlx::query(
+            r#"SELECT last_exported_id FROM audit_log_export_checkpoints WHERE job_name = 'default'"#,
+        )
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to read export checkpoint: {}",
+                e
+            )))
+        })?;
+
+        Ok(row.get("last_exported_id"))
+    }
+
+    /// Update checkpoint after a successful export batch.
+    pub async fn update_export_checkpoint(
+        &self,
+        last_exported_id: i64,
+        object_key: Option<&str>,
+        rows_exported: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE audit_log_export_checkpoints
+            SET last_exported_id = $1,
+                last_export_at = NOW(),
+                last_object_key = $2,
+                rows_exported_total = rows_exported_total + $3,
+                updated_at = NOW()
+            WHERE job_name = 'default'
+            "#,
+        )
+        .bind(last_exported_id)
+        .bind(object_key)
+        .bind(rows_exported)
+        .execute(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to update export checkpoint: {}",
+                e
+            )))
+        })?;
+        Ok(())
+    }
+
+    /// Record the start of an export run and return its id.
+    pub async fn begin_export_run(&self, checkpoint_before: i64) -> Result<i64> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO audit_log_export_runs (status, checkpoint_before)
+            VALUES ('running', $1)
+            RETURNING id
+            "#,
+        )
+        .bind(checkpoint_before)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to begin export run: {}",
+                e
+            )))
+        })?;
+        Ok(row.get("id"))
+    }
+
+    /// Finalize an export run record.
+    pub async fn finish_export_run(
+        &self,
+        run_id: i64,
+        status: &str,
+        checkpoint_after: i64,
+        rows_exported: i64,
+        object_key: Option<&str>,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE audit_log_export_runs
+            SET finished_at = NOW(),
+                status = $2,
+                checkpoint_after = $3,
+                rows_exported = $4,
+                object_key = $5,
+                error_message = $6
+            WHERE id = $1
+            "#,
+        )
+        .bind(run_id)
+        .bind(status)
+        .bind(checkpoint_after)
+        .bind(rows_exported)
+        .bind(object_key)
+        .bind(error_message)
+        .execute(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to finish export run: {}",
+                e
+            )))
+        })?;
+        Ok(())
+    }
+
     /// Return the total number of entries in the audit log.
     pub async fn count(&self) -> Result<i64> {
         let row = sqlx::query(r#"SELECT COUNT(*) AS n FROM route_audit_log"#)
@@ -286,6 +443,67 @@ impl AuditStore {
             })?;
         Ok(row.get("n"))
     }
+}
+
+/// Audit entry including database id for export batches.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExportedAuditEntry {
+    pub id: i64,
+    #[serde(flatten)]
+    pub entry: RouteAuditEntry,
+}
+
+fn row_to_export_entry(row: sqlx::postgres::PgRow) -> Result<ExportedAuditEntry> {
+    let inputs: AuditInputs = serde_json::from_value(row.get::<serde_json::Value, _>("inputs"))
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to deserialize audit inputs: {}",
+                e
+            )))
+        })?;
+
+    let selected: Option<AuditSelected> = row
+        .get::<Option<serde_json::Value>, _>("selected")
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to deserialize audit selected: {}",
+                e
+            )))
+        })?;
+
+    let exclusions: Vec<AuditExclusion> =
+        serde_json::from_value(row.get::<serde_json::Value, _>("exclusions")).map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to deserialize audit exclusions: {}",
+                e
+            )))
+        })?;
+
+    let outcome_str: &str = row.get("outcome");
+    let outcome = match outcome_str {
+        "success" => AuditOutcome::Success,
+        "no_route" => AuditOutcome::NoRoute,
+        "stale_data" => AuditOutcome::StaleData,
+        _ => AuditOutcome::Error,
+    };
+
+    Ok(ExportedAuditEntry {
+        id: row.get("id"),
+        entry: RouteAuditEntry {
+            schema_version: super::schema::AUDIT_SCHEMA_VERSION,
+            request_id: row.get("request_id"),
+            trace_id: row.get("trace_id"),
+            logged_at: row.get("logged_at"),
+            latency_ms: row.get::<i32, _>("latency_ms") as u64,
+            outcome,
+            cache_hit: row.get("cache_hit"),
+            inputs,
+            selected,
+            exclusions,
+        },
+    })
 }
 
 /// Lightweight summary returned by list queries.

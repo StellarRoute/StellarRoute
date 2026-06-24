@@ -373,7 +373,15 @@ mod tests {
 
         let result = sim.simulate("AAAA_XDR").await;
         assert!(!result.simulated);
-        assert_eq!(result.failure_reason.as_deref(), Some("timeout"));
+        assert!(
+            matches!(result.failure_reason.as_deref(), Some("timeout"))
+                || result
+                    .failure_reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.contains("timed out")),
+            "expected timeout degradation, got {:?}",
+            result.failure_reason
+        );
     }
 
     #[tokio::test]

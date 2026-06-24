@@ -194,6 +194,46 @@ lazy_static! {
         &[]
     )
     .expect("Can't create HEALTH_SCORE_JOB_FAILURES counter");
+
+    /// Cache degraded mode gauge (1 = active, 0 = inactive).
+    pub static ref CACHE_DEGRADED_MODE: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_cache_degraded_mode",
+        "Whether the API is operating with cache degraded (Redis unavailable): 1=active, 0=inactive",
+        &["type"]
+    )
+    .expect("Can't create CACHE_DEGRADED_MODE gauge");
+
+    /// Cache unavailable operations counter (Redis errors during get/set).
+    pub static ref CACHE_UNAVAILABLE_OPS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_cache_unavailable_ops_total",
+        "Total cache operations that failed due to Redis unavailability",
+        &["operation"]
+    )
+    .expect("Can't create CACHE_UNAVAILABLE_OPS counter");
+
+    /// Audit log export success counter (rows exported).
+    pub static ref AUDIT_EXPORT_ROWS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_audit_export_rows_total",
+        "Total audit log rows exported to object storage",
+        &[]
+    )
+    .expect("Can't create AUDIT_EXPORT_ROWS counter");
+
+    /// Audit log export failure counter.
+    pub static ref AUDIT_EXPORT_FAILURES: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_audit_export_failures_total",
+        "Total failed audit log export runs",
+        &[]
+    )
+    .expect("Can't create AUDIT_EXPORT_FAILURES counter");
+
+    /// Audit log export alert counter.
+    pub static ref AUDIT_EXPORT_ALERTS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_audit_export_alerts_total",
+        "Total audit log export alert conditions",
+        &["reason"]
+    )
+    .expect("Can't create AUDIT_EXPORT_ALERTS counter");
 }
 
 /// Record kill switch status
@@ -236,6 +276,37 @@ pub fn record_cache_hit(cache_type: &str) {
 /// Record cache miss
 pub fn record_cache_miss(cache_type: &str) {
     CACHE_MISSES.with_label_values(&[cache_type]).inc();
+}
+
+/// Record a cache operation failure due to Redis unavailability.
+pub fn record_cache_unavailable(operation: &str) {
+    CACHE_UNAVAILABLE_OPS
+        .with_label_values(&[operation])
+        .inc();
+}
+
+/// Set cache degraded mode gauge for a cache type.
+pub fn record_cache_degraded_mode(cache_type: &str, active: bool) {
+    CACHE_DEGRADED_MODE
+        .with_label_values(&[cache_type])
+        .set(if active { 1 } else { 0 });
+}
+
+/// Record successful audit export rows.
+pub fn record_audit_export_success(rows: i64) {
+    if rows > 0 {
+        AUDIT_EXPORT_ROWS.with_label_values(&[]).inc_by(rows as u64);
+    }
+}
+
+/// Record a failed audit export run.
+pub fn record_audit_export_failure() {
+    AUDIT_EXPORT_FAILURES.with_label_values(&[]).inc();
+}
+
+/// Record an audit export alert condition.
+pub fn record_audit_export_alert(reason: &str) {
+    AUDIT_EXPORT_ALERTS.with_label_values(&[reason]).inc();
 }
 
 /// Record adaptive timeout metrics

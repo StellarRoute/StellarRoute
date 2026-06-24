@@ -39,7 +39,7 @@ fn test_anomaly_detection_integration() {
 
 #[test]
 fn test_optimizer_flags_anomalies() {
-    let mut optimizer = HybridOptimizer::new(PathfinderConfig::default());
+    let optimizer = HybridOptimizer::new(PathfinderConfig::default());
 
     // Create edges with anomalies
     let edges = vec![

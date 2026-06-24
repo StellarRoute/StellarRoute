@@ -9,6 +9,7 @@ pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
 use serde::{de::DeserializeOwned, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, instrument, warn};
@@ -386,6 +387,7 @@ pub struct SingleFlight<T> {
 struct InFlight<T> {
     result: tokio::sync::RwLock<Option<Arc<T>>>,
     notify: tokio::sync::Notify,
+    abandoned: AtomicBool,
 }
 
 impl<T: Send + Sync + 'static> SingleFlight<T> {
@@ -411,6 +413,12 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             // 1. Fast-path: check if already in flight
             let mut mg = self.inflight.lock().await;
             if let Some(inflight) = mg.get(key) {
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    mg.remove(key.to_string());
+                    drop(mg);
+                    continue;
+                }
+
                 let inflight = Arc::clone(inflight);
                 drop(mg);
 
@@ -428,6 +436,10 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                 // Wait for notification if not finished yet
                 notified.await;
 
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    continue;
+                }
+
                 // After being notified, loop and re-check state: either the result
                 // is present (return it) or the inflight entry was removed and we
                 // should attempt to become the leader (next loop iteration will do so).
@@ -444,6 +456,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             let inflight = Arc::new(InFlight {
                 result: tokio::sync::RwLock::new(None),
                 notify: tokio::sync::Notify::new(),
+                abandoned: AtomicBool::new(false),
             });
             mg.insert(key.to_string(), Arc::clone(&inflight));
             drop(mg);
@@ -458,11 +471,29 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
 
             impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
                 fn drop(&mut self) {
-                    // Notify waiters so they can re-check state instead of hanging.
+                    let abandoned = self
+                        .inflight
+                        .result
+                        .try_read()
+                        .map(|guard| guard.is_none())
+                        .unwrap_or(true);
+                    if abandoned {
+                        self.inflight
+                            .abandoned
+                            .store(true, AtomicOrdering::Release);
+                    }
+
                     self.inflight.notify.notify_waiters();
 
-                    let mut mg = self.inflight_map.blocking_lock();
-                    mg.remove(&self.key);
+                    let inflight_map = self.inflight_map.clone();
+                    let key = self.key.clone();
+                    let inflight = Arc::clone(&self.inflight);
+                    tokio::spawn(async move {
+                        if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                            let mut mg = inflight_map.lock().await;
+                            mg.remove(&key);
+                        }
+                    });
                 }
             }
 
@@ -501,6 +532,12 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
         loop {
             let mut mg = self.inflight.lock().await;
             if let Some(inflight) = mg.get(key) {
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    mg.remove(key.to_string());
+                    drop(mg);
+                    continue;
+                }
+
                 let inflight = Arc::clone(inflight);
                 drop(mg);
 
@@ -517,6 +554,10 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
 
                 notified.await;
 
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    continue;
+                }
+
                 let res = inflight.result.read().await;
                 if let Some(result) = res.as_ref() {
                     crate::metrics::record_single_flight_coalesced(label);
@@ -529,6 +570,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             let inflight = Arc::new(InFlight {
                 result: tokio::sync::RwLock::new(None),
                 notify: tokio::sync::Notify::new(),
+                abandoned: AtomicBool::new(false),
             });
             mg.insert(key.to_string(), Arc::clone(&inflight));
             drop(mg);
@@ -542,10 +584,29 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
 
             impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
                 fn drop(&mut self) {
+                    let abandoned = self
+                        .inflight
+                        .result
+                        .try_read()
+                        .map(|guard| guard.is_none())
+                        .unwrap_or(true);
+                    if abandoned {
+                        self.inflight
+                            .abandoned
+                            .store(true, AtomicOrdering::Release);
+                    }
+
                     self.inflight.notify.notify_waiters();
 
-                    let mut mg = self.inflight_map.blocking_lock();
-                    mg.remove(&self.key);
+                    let inflight_map = self.inflight_map.clone();
+                    let key = self.key.clone();
+                    let inflight = Arc::clone(&self.inflight);
+                    tokio::spawn(async move {
+                        if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                            let mut mg = inflight_map.lock().await;
+                            mg.remove(&key);
+                        }
+                    });
                 }
             }
 
@@ -693,19 +754,19 @@ mod tests {
         );
         assert_eq!(
             keys::liquidity_revision("USDC", "xlm"),
-            "liquidity:revision:native:USDC"
+            "liquidity:revision:USDC:native"
         );
         assert_eq!(
             keys::liquidity_revision("xlm", "USDC"),
-            "liquidity:revision:native:USDC"
+            "liquidity:revision:USDC:native"
         );
         assert_eq!(
             keys::quote_pair_pattern("USDC", "XLM"),
-            "*quote:native:USDC:*"
+            "*quote:USDC:native:*"
         );
         assert_eq!(
             keys::quote_pair_pattern("XLM", "usdc"),
-            "*quote:native:USDC:*"
+            "*quote:USDC:native:*"
         );
     }
 
@@ -805,9 +866,10 @@ mod tests {
         // Actually, my current implementation panics for followers if leader didn't set result.
         // Let's refine the implementation to handle this or just verify it doesn't hang.
 
-        // Wait for follower with timeout
+        // Wait for follower with timeout; it should become the new leader after cancellation.
         let result = tokio::time::timeout(std::time::Duration::from_secs(1), follower).await;
         assert!(result.is_ok(), "Follower hung after leader cancellation");
+        assert_eq!(*result.unwrap().expect("follower task failed"), 42);
     }
 
     #[test]

@@ -65,11 +65,9 @@ impl Database {
         let migration_0007 =
             include_str!("../../migrations/0007_backfill_and_normalized_storage.sql");
         let migration_0008 = include_str!("../../migrations/0008_soroban_discovery_cursors.sql");
-        let migration_0009 =
-            include_str!("../../migrations/0009_finalize_unified_liquidity.sql");
+        let migration_0009 = include_str!("../../migrations/0009_finalize_unified_liquidity.sql");
         let migration_0010 = include_str!("../../migrations/0010_asset_metadata.sql");
-        let migration_0011 =
-            include_str!("../../migrations/0011_trace_context_provenance.sql");
+        let migration_0011 = include_str!("../../migrations/0011_trace_context_provenance.sql");
         let migration_0012 = include_str!("../../migrations/0012_contract_swap_activity.sql");
         let migration_0013 = include_str!("../../migrations/0013_amm_pools.sql");
 
@@ -221,10 +219,7 @@ impl Database {
             .await
             .map_err(|e| {
                 error!("Migration 0013 failed: {}", e);
-                IndexerError::DatabaseMigration(format!(
-                    "Failed to run 0013_amm_pools.sql: {}",
-                    e
-                ))
+                IndexerError::DatabaseMigration(format!("Failed to run 0013_amm_pools.sql: {}", e))
             })?;
 
         info!("Database migrations completed");

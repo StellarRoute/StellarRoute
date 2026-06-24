@@ -574,7 +574,10 @@ mod tests {
         let count = (1..=20)
             .filter(|n| UPSERT_AMM_POOL_RESERVE_SQL.contains(&format!("${}", n)))
             .count();
-        assert_eq!(count, 9, "SQL must bind 9 args: 7 core + trace_id + span_id");
+        assert_eq!(
+            count, 9,
+            "SQL must bind 9 args: 7 core + trace_id + span_id"
+        );
     }
 
     /// Verifies TraceContext fields are present and bindable (non-panicking default).

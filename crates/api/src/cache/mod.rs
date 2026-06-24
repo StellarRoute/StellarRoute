@@ -106,9 +106,7 @@ impl CacheManager {
         let conn = ConnectionManager::new(client).await?;
 
         debug!("Redis cache manager initialized");
-        Ok(Self {
-            client: Some(conn),
-        })
+        Ok(Self { client: Some(conn) })
     }
 
     /// Create a cache manager from an existing connection (used in tests).
@@ -143,7 +141,10 @@ impl CacheManager {
     #[instrument(skip(self), fields(cache.hit = tracing::field::Empty))]
     pub async fn get<T: DeserializeOwned>(&mut self, key: &str) -> CacheResult<T> {
         let Some(client) = self.client.as_mut() else {
-            warn!("Redis unavailable during cache get for {}: simulated outage", key);
+            warn!(
+                "Redis unavailable during cache get for {}: simulated outage",
+                key
+            );
             self.record_unavailable("get");
             return CacheResult::Unavailable;
         };
@@ -224,7 +225,10 @@ impl CacheManager {
         })?;
 
         let Some(client) = self.client.as_mut() else {
-            warn!("Redis unavailable during cache set for {}: simulated outage", key);
+            warn!(
+                "Redis unavailable during cache set for {}: simulated outage",
+                key
+            );
             self.record_unavailable("set");
             return Err(RedisError::from((
                 redis::ErrorKind::IoError,

@@ -142,6 +142,8 @@ mod tests {
             total: "100.0000000".to_string(),
             quote_type: "sell".to_string(),
             degraded: false,
+            midpoint: None,
+            spread_bps: None,
             path: vec![PathStep {
                 from_asset: AssetInfo::native(),
                 to_asset: AssetInfo::native(),
@@ -162,8 +164,6 @@ mod tests {
                 stale_count: 0,
                 max_staleness_secs: 0,
             }),
-            midpoint: None,
-            spread_bps: None,
         }
     }
 

@@ -71,6 +71,8 @@ pub struct CacheMetricsResponse {
     pub stale_quote_rejections: u64,
     /// Total stale inputs excluded across all successful quotes
     pub stale_inputs_excluded: u64,
+    /// Total Redis infrastructure errors observed by the cache layer
+    pub redis_errors: u64,
 }
 
 /// Cache flush response for admin cache invalidation operations

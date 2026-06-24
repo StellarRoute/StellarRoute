@@ -280,6 +280,8 @@ mod tests {
     use super::*;
 
     fn orderbook(bids: Vec<(&str, &str)>, asks: Vec<(&str, &str)>) -> OrderbookResponse {
+        use crate::models::OrderbookSummary;
+
         OrderbookResponse {
             base_asset: AssetInfo::native(),
             quote_asset: AssetInfo::credit("USDC".to_string(), None),

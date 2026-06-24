@@ -422,7 +422,7 @@ impl AppState {
         // Check Redis
         if let Some(cache) = &self.cache {
             if let Ok(mut guard) = cache.try_lock() {
-                if !guard.is_healthy().await {
+                if guard.health_status().await != crate::cache::CacheHealthStatus::Healthy {
                     score *= 0.8;
                 }
             }

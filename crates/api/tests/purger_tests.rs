@@ -270,7 +270,9 @@ mod tests {
             std::env::remove_var("QUOTE_PURGER_ENABLED");
         }
 
-        for val in &["false", "False", "FALSE", "no", "0", "off", "", "yes", "on", "1"] {
+        for val in &[
+            "false", "False", "FALSE", "no", "0", "off", "", "yes", "on", "1",
+        ] {
             std::env::set_var("QUOTE_PURGER_ENABLED", val);
             let cfg = PurgerConfig::from_env();
             assert!(!cfg.enabled, "Failed for value: {}", val);

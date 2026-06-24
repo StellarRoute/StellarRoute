@@ -112,6 +112,12 @@ async fn orderbook_returns_bids_and_asks() {
             },
             "bids": [{ "price": "0.1050000", "amount": "500.0000000", "total": "52.5000000" }],
             "asks": [{ "price": "0.1060000", "amount": "300.0000000", "total": "31.8000000" }],
+            "summary": {
+                "bid": "0.1050000",
+                "ask": "0.1060000",
+                "spread_bps": 95,
+                "midpoint": "0.1055000"
+            },
             "timestamp": 1740312000
         })))
         .mount(&server)

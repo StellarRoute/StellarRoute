@@ -2,6 +2,72 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SwapCard } from '../SwapCard';
+import { SettingsProvider } from '@/components/providers/settings-provider';
+
+function renderSwapCard() {
+  return render(
+    <SettingsProvider>
+      <SwapCard />
+    </SettingsProvider>,
+  );
+}
+
+vi.mock('@/components/providers/wallet-provider', () => ({
+  useWallet: () => ({
+    address: null,
+    isConnected: false,
+    walletId: null,
+    network: 'testnet',
+    networkMismatch: false,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    reconnect: vi.fn(),
+    setNetwork: vi.fn(),
+    autoReconnectPreferred: true,
+    setAutoReconnectPreferred: vi.fn(),
+    refreshWallets: vi.fn(),
+    refreshAccount: vi.fn(),
+    accountSwitchState: { isDetecting: false, hasChanged: false, previousAddress: null },
+    isTransactionPending: false,
+    setTransactionPending: vi.fn(),
+    capabilities: null,
+    refreshCapabilities: vi.fn(),
+    syncMismatch: false,
+    resyncWallet: vi.fn(),
+    dismissSyncMismatch: vi.fn(),
+  }),
+}));
+
+vi.mock('@/hooks/useWalletBalance', () => ({
+  useWalletBalance: () => ({
+    balance: null,
+    loading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('@/hooks/useOptimisticSwap', () => ({
+  useOptimisticSwap: () => ({
+    status: 'review',
+    txHash: undefined,
+    errorMessage: undefined,
+    tradeParams: undefined,
+    submitLock: false,
+    snapshot: null,
+    initiateSwap: vi.fn(),
+    cancel: vi.fn(),
+    resubmit: vi.fn(),
+    tryAgain: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
+
+vi.mock('@/hooks/useShareableQuote', () => ({
+  useShareableQuote: () => ({
+    parseParams: vi.fn(),
+    refreshQuote: vi.fn(),
+  }),
+}));
 
 vi.mock('@/hooks/useApi', () => ({
   usePairs: vi.fn(() => ({ data: [], loading: false, error: null })),
@@ -114,8 +180,10 @@ vi.mock('@/lib/swap-i18n', () => ({
         'swap.shortcuts.focusPayAmount': 'Focus pay amount',
         'swap.shortcuts.focusReceiveAmount': 'Focus receive amount',
         'swap.shortcuts.refreshQuote': 'Refresh quote',
-        'swap.shortcuts.flipPair': 'Flip pay/receive pair',
-        'swap.shortcuts.maxAmount': 'Set max pay amount',
+        'swap.iconography.disclosure': 'Route and transaction icon legend',
+        'swap.iconography.title': 'Route and Transaction Icons',
+        'swap.iconography.venueTypes': 'Venue Types',
+        'swap.iconography.transactionStates': 'Transaction States',
         'swap.cta.connectWallet': 'Connect Wallet',
         'swap.card.refreshQuote': 'Refresh quote',
         'swap.pair.youPay': 'You Pay',
@@ -144,6 +212,7 @@ vi.mock('sonner', () => ({
 describe('SwapCard keyboard shortcuts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -151,14 +220,14 @@ describe('SwapCard keyboard shortcuts', () => {
   });
 
   it('opens shortcut help dialog when ? is pressed', async () => {
-    render(<SwapCard />);
+    renderSwapCard();
     const user = userEvent.setup();
     await user.keyboard('?');
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
   });
 
   it('closes shortcut help dialog when Escape is pressed', async () => {
-    render(<SwapCard />);
+    renderSwapCard();
     const user = userEvent.setup();
     await user.keyboard('?');
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
@@ -167,7 +236,7 @@ describe('SwapCard keyboard shortcuts', () => {
   });
 
   it('does not open shortcut help when focus is in an input', async () => {
-    render(<SwapCard />);
+    renderSwapCard();
     const user = userEvent.setup();
     const inputs = screen.getAllByRole('textbox');
     if (inputs.length > 0) {
@@ -178,7 +247,15 @@ describe('SwapCard keyboard shortcuts', () => {
   });
 
   it('renders the swap card without crashing', () => {
-    render(<SwapCard />);
+    renderSwapCard();
     expect(screen.getByTestId('swap-card')).toBeInTheDocument();
+  });
+
+  it('shows the iconography legend inside shortcut help', async () => {
+    renderSwapCard();
+    const user = userEvent.setup();
+    await user.keyboard('?');
+    expect(screen.getByTestId('iconography-legend')).toBeInTheDocument();
+    expect(screen.getByText('Route and transaction icon legend')).toBeInTheDocument();
   });
 });

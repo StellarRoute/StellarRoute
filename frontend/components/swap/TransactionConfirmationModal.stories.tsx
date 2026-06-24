@@ -10,22 +10,33 @@ const baseTradeParams = {
   toAsset: 'USDC',
   fromAmount: '500.00',
   toAmount: '52.47',
+  exchangeRate: '1 XLM = 0.1049 USDC',
+  priceImpact: '0.12%',
   minReceived: '52.21 USDC',
+  networkFee: '0.00001 XLM',
+  routePath: [],
+  walletAddress: 'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
 };
 
 const splitRouteTradeParams = {
+  ...baseTradeParams,
   fromAsset: 'XLM',
   toAsset: 'BTC',
   fromAmount: '10000.00',
   toAmount: '0.01662',
+  exchangeRate: '1 XLM = 0.000001662 BTC',
+  priceImpact: '0.45%',
   minReceived: '0.01645 BTC',
 };
 
 const highSlippageTradeParams = {
+  ...baseTradeParams,
   fromAsset: 'XLM',
   toAsset: 'AQUA',
   fromAmount: '50000.00',
   toAmount: '1750000.00',
+  exchangeRate: '1 XLM = 35 AQUA',
+  priceImpact: '8.5%',
   minReceived: '1662500.00 AQUA',
 };
 

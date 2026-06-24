@@ -44,6 +44,7 @@ export const Stethoscope = Icon;
 export const History = Icon;
 export const Search = Icon;
 export const Download = Icon;
+export const Droplet = Icon;
 
 export const AlertTriangle = Icon;
 export const DollarSign = Icon;

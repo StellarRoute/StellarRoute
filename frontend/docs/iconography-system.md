@@ -43,3 +43,11 @@ The transaction lifecycle states are represented by icons and badges:
 - Align icon usage with `lucide-react` patterns and existing `AssetIcon` fallbacks.
 - Prefer explicit `16px`, `20px`, and `24px` sizing in badge and route display components.
 - Document any additional iconography changes in this file.
+
+## In-App Legend
+
+The swap UI exposes this legend from the keyboard shortcut help drawer (`?` on the swap card). The `IconographyLegend` component renders:
+
+- Venue badges that match `VenueTypeBadge` and `RouteDisplay`
+- Transaction state badges that match `TransactionStatusBadge`
+- A keyboard-accessible `<details>` disclosure with localized labels from `swap-i18n`

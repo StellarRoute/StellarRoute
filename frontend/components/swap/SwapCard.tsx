@@ -46,6 +46,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IconographyLegend } from '@/components/shared/IconographyLegend';
 
 export function SwapCard() {
   const { t } = useSwapI18n();
@@ -939,7 +940,7 @@ export function SwapCard() {
       </p>
 
       <Dialog open={shortcutHelpOpen} onOpenChange={handleShortcutOpenChange}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('swap.shortcuts.title')}</DialogTitle>
           </DialogHeader>
@@ -965,6 +966,7 @@ export function SwapCard() {
               <kbd className="font-mono">Alt+2</kbd>
             </li>
           </ul>
+          <IconographyLegend embedded className="mt-4" />
         </DialogContent>
       </Dialog>
     </div>

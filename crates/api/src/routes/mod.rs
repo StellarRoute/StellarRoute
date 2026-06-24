@@ -49,7 +49,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(orderbook::get_orderbook),
         )
         .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
-        .route("/api/v1/route/:base/:quote", get(quote::get_route))
         .route("/api/v1/quote", post(idempotent_quote::post_quote))
         .route(
             "/api/v1/route/:base/:quote",

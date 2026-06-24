@@ -414,7 +414,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             let mut mg = self.inflight.lock().await;
             if let Some(inflight) = mg.get(key) {
                 if inflight.abandoned.load(AtomicOrdering::Acquire) {
-                    mg.remove(key.to_string());
+                    mg.remove(key);
                     drop(mg);
                     continue;
                 }
@@ -533,7 +533,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             let mut mg = self.inflight.lock().await;
             if let Some(inflight) = mg.get(key) {
                 if inflight.abandoned.load(AtomicOrdering::Acquire) {
-                    mg.remove(key.to_string());
+                    mg.remove(key);
                     drop(mg);
                     continue;
                 }

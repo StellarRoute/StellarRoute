@@ -1,0 +1,1293 @@
+﻿Backend Checks (Rust)	Set up job	∩╗┐2026-06-24T02:51:47.5688502Z Current runner version: '2.335.1'
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5717089Z ##[group]Runner Image Provisioner
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5718054Z Hosted Compute Agent
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5718671Z Version: 20260611.554
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5719691Z Commit: 5e0782fdc9014723d3be820dd114dd31555c2bd1
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5720554Z Build Date: 2026-06-11T21:40:46Z
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5721302Z Worker ID: {2323456e-ba8f-44e9-8d25-19101c3b3734}
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5722015Z Azure Region: northcentralus
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5722747Z ##[endgroup]
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5724275Z ##[group]Operating System
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5725028Z Ubuntu
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5725604Z 24.04.4
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5726113Z LTS
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5726673Z ##[endgroup]
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5727215Z ##[group]Runner Image
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5727881Z Image: ubuntu-24.04
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5728486Z Version: 20260615.205.1
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5729856Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260615.205/images/ubuntu/Ubuntu2404-Readme.md
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5731630Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260615.205
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5732563Z ##[endgroup]
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5733917Z ##[group]GITHUB_TOKEN Permissions
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5735919Z Contents: read
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5736690Z Metadata: read
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5737248Z Packages: read
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5737883Z ##[endgroup]
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5740791Z Secret source: None
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.5741550Z Prepare workflow directory
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.6303727Z Prepare all required actions
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.6360552Z Getting action download info
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:47.9735788Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:48.1022282Z Download action repository 'dtolnay/rust-toolchain@stable' (SHA:29eef336d9b2848a0b548edc03f92a220660cdb8)
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:48.2434653Z Download action repository 'Swatinem/rust-cache@v2' (SHA:e18b497796c12c097a38f9edb9d0641fb99eee32)
+Backend Checks (Rust)	Set up job	2026-06-24T02:51:48.8306990Z Complete job name: Backend Checks (Rust)
+Backend Checks (Rust)	Run actions/checkout@v4	∩╗┐2026-06-24T02:51:48.9088460Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9098032Z ##[group]Run actions/checkout@v4
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9098807Z with:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9099484Z   repository: StellarRoute/StellarRoute
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9103739Z   token: ***
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9104182Z   ssh-strict: true
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9104626Z   ssh-user: git
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9105066Z   persist-credentials: true
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9105551Z   clean: true
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9105991Z   sparse-checkout-cone-mode: true
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9106506Z   fetch-depth: 1
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9106929Z   fetch-tags: false
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9107368Z   show-progress: true
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9107837Z   lfs: false
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9108240Z   submodules: false
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9108721Z   set-safe-directory: true
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9109876Z env:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9110341Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9110835Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:48.9111272Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0082599Z Syncing repository: StellarRoute/StellarRoute
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0084730Z ##[group]Getting Git version info
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0085544Z Working directory is '/home/runner/work/StellarRoute/StellarRoute'
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0086588Z [command]/usr/bin/git version
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0150749Z git version 2.54.0
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0174013Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0190760Z Temporarily overriding HOME='/home/runner/work/_temp/b22c2705-07bc-4a73-b62e-8b38206cf90e' before making global git config changes
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0192813Z Adding repository directory to the temporary git global config as a safe directory
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0197101Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/StellarRoute/StellarRoute
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0245007Z Deleting the contents of '/home/runner/work/StellarRoute/StellarRoute'
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0249694Z ##[group]Initializing the repository
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0255196Z [command]/usr/bin/git init /home/runner/work/StellarRoute/StellarRoute
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0345447Z hint: Using 'master' as the name for the initial branch. This default branch name
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0351522Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0352533Z hint: to use in all of your new repositories, which will suppress this warning,
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0353279Z hint: call:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0353688Z hint:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0354225Z hint: 	git config --global init.defaultBranch <name>
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0354840Z hint:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0355415Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0356946Z hint: 'development'. The just-created branch can be renamed via this command:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0357848Z hint:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0358287Z hint: 	git branch -m <name>
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0358759Z hint:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0359726Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0360814Z Initialized empty Git repository in /home/runner/work/StellarRoute/StellarRoute/.git/
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0363798Z [command]/usr/bin/git remote add origin https://github.com/StellarRoute/StellarRoute
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0407958Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0408762Z ##[group]Disabling automatic garbage collection
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0412351Z [command]/usr/bin/git config --local gc.auto 0
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0441941Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0442710Z ##[group]Setting up auth
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0449273Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0483613Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0814223Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.0846671Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.1075191Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.1108776Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.1341085Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.1376118Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.1376988Z ##[group]Fetching the repository
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.1385549Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +42100a11eab0984c53c916777560030fa4f41956:refs/remotes/pull/730/merge
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9225614Z From https://github.com/StellarRoute/StellarRoute
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9227582Z  * [new ref]         42100a11eab0984c53c916777560030fa4f41956 -> pull/730/merge
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9278118Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9280550Z ##[group]Determining the checkout info
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9282871Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9284213Z [command]/usr/bin/git sparse-checkout disable
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9352619Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9397136Z ##[group]Checking out the ref
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:49.9399751Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/730/merge
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0222752Z Note: switching to 'refs/remotes/pull/730/merge'.
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0224242Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0225407Z You are in 'detached HEAD' state. You can look around, make experimental
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0227006Z changes and commit them, and you can discard any commits you make in this
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0228172Z state without impacting any branches by switching back to a branch.
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0228858Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0229581Z If you want to create a new branch to retain commits you create, you may
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0230642Z do so (now or later) by using -c with the switch command. Example:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0231238Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0231583Z   git switch -c <new-branch-name>
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0232069Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0232394Z Or undo this operation with:
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0232836Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0233100Z   git switch -
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0233472Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0233865Z Turn off this advice by setting config variable advice.detachedHead to false
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0234290Z 
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0234737Z HEAD is now at 42100a1 Merge 32ecfe5f9577c4bc67ef0a9e77d40ae4d3b61b2a into fb9a563df5d1ee7932aef8cb5a181c572089e0fd
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0241750Z ##[endgroup]
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0284300Z [command]/usr/bin/git log -1 --format=%H
+Backend Checks (Rust)	Run actions/checkout@v4	2026-06-24T02:51:50.0307981Z 42100a11eab0984c53c916777560030fa4f41956
+Backend Checks (Rust)	Install Rust toolchain	∩╗┐2026-06-24T02:51:50.0671947Z ##[group]Run dtolnay/rust-toolchain@stable
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0672600Z with:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0673092Z   components: rustfmt, clippy
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0673572Z   toolchain: stable
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0673986Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0674391Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0674848Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0675299Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0813987Z ##[group]Run : parse toolchain version
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0814671Z [36;1m: parse toolchain version[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0815174Z [36;1mif [[ -z $toolchain ]]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0815963Z [36;1m  # GitHub does not enforce `required: true` inputs itself. https://github.com/actions/runner/issues/1070[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0816775Z [36;1m  echo "'toolchain' is a required input" >&2[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0817308Z [36;1m  exit 1[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0817848Z [36;1melif [[ $toolchain =~ ^stable' '[0-9]+' '(year|month|week|day)s?' 'ago$ ]]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0818477Z [36;1m  if [[ Linux == macOS ]]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0819539Z [36;1m    echo "toolchain=1.$((($(date -v-$(sed 's/stable \([0-9]*\) \(.\).*/\1\2/' <<< $toolchain) +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0820294Z [36;1m  else[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0820910Z [36;1m    echo "toolchain=1.$((($(date --date "${toolchain#stable }" +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0821592Z [36;1m  fi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0822095Z [36;1melif [[ $toolchain =~ ^stable' 'minus' '[0-9]+' 'releases?$ ]]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0822862Z [36;1m  echo "toolchain=1.$((($(date +%s)/60/60/24-16569)/7/6-${toolchain//[^0-9]/}))" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0823552Z [36;1melif [[ $toolchain =~ ^1\.[0-9]+$ ]]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0824323Z [36;1m  echo "toolchain=1.$((i=${toolchain#1.}, c=($(date +%s)/60/60/24-16569)/7/6, i+9*i*(10*i<=c)+90*i*(100*i<=c)))" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0825058Z [36;1melse[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0825509Z [36;1m  echo "toolchain=$toolchain" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0826019Z [36;1mfi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0983734Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0984401Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0984791Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0985212Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0985606Z   toolchain: stable
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.0985992Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1161682Z ##[group]Run : construct rustup command line
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1162314Z [36;1m: construct rustup command line[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1163019Z [36;1mecho "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1163963Z [36;1mecho "components=$(for c in ${components//,/ }; do echo -n ' --component' $c; done)" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1164906Z [36;1mecho "downgrade=" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1197454Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1198064Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1198469Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1198912Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1199470Z   targets: 
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1199877Z   components: rustfmt, clippy
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1200324Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1308385Z ##[group]Run : set $CARGO_HOME
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1308918Z [36;1m: set $CARGO_HOME[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1309806Z [36;1mecho CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1342611Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1343199Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1343593Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1344031Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1344430Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1448765Z ##[group]Run : install rustup if needed
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1449690Z [36;1m: install rustup if needed[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1450231Z [36;1mif ! command -v rustup &>/dev/null; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1451295Z [36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs | sh -s -- --default-toolchain none -y[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1452572Z [36;1m  echo "$CARGO_HOME/bin" >> $GITHUB_PATH[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1453074Z [36;1mfi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1484919Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1485499Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1485898Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1486346Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1486782Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1487240Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1590758Z ##[group]Run rustup toolchain install stable --component rustfmt --component clippy --profile minimal --no-self-update
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1591877Z [36;1mrustup toolchain install stable --component rustfmt --component clippy --profile minimal --no-self-update[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1622935Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1623496Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1623889Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1624308Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1624713Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1625161Z   RUSTUP_PERMIT_COPY_RENAME: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.1625586Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.4143021Z info: syncing channel updates for stable-x86_64-unknown-linux-gnu
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7303256Z info: latest update on 2026-05-28 for version 1.96.0 (ac68faa20 2026-05-25)
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7478933Z info: component clippy is up to date
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7480029Z info: component rustfmt is up to date
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7491979Z 
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7576913Z   stable-x86_64-unknown-linux-gnu unchanged - rustc 1.96.0 (ac68faa20 2026-05-25)
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7577487Z 
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7700516Z ##[group]Run rustup default stable
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7700910Z [36;1mrustup default stable[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7732668Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7733076Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7733332Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7733611Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7733880Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7734172Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7844061Z info: using existing install for stable-x86_64-unknown-linux-gnu
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7852067Z info: default toolchain set to stable-x86_64-unknown-linux-gnu
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7854389Z 
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7935232Z   stable-x86_64-unknown-linux-gnu unchanged - rustc 1.96.0 (ac68faa20 2026-05-25)
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.7936094Z 
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8013990Z ##[group]Run : create cachekey
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8014362Z [36;1m: create cachekey[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8014939Z [36;1mDATE=$(rustc +stable --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8015989Z [36;1mHASH=$(rustc +stable --version --verbose | sed -ne 's/^commit-hash: //p')[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8016576Z [36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8048279Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8048688Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8048935Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8049459Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8049735Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8050079Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8769304Z ##[group]Run : disable incremental compilation
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8769805Z [36;1m: disable incremental compilation[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8770200Z [36;1mif [ -z "${CARGO_INCREMENTAL+set}" ]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8770602Z [36;1m  echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8770940Z [36;1mfi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8803067Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8803496Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8803742Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8804027Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8804296Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8804783Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8887640Z ##[group]Run : enable colors in Cargo output
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8888034Z [36;1m: enable colors in Cargo output[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8888399Z [36;1mif [ -z "${CARGO_TERM_COLOR+set}" ]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8888785Z [36;1m  echo CARGO_TERM_COLOR=always >> $GITHUB_ENV[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8889450Z [36;1mfi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8918618Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8919276Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8919555Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8919848Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8920113Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8920421Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.8920689Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9000265Z ##[group]Run : enable Cargo sparse registry
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9000665Z [36;1m: enable Cargo sparse registry[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9001092Z [36;1m# implemented in 1.66, stabilized in 1.68, made default in 1.70[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9001892Z [36;1mif [ -z "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL+set}" -o -f "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol ]; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9002667Z [36;1m  if rustc +stable --version --verbose | grep -q '^release: 1\.6[89]\.'; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9003287Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9003899Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse >> $GITHUB_ENV[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9004456Z [36;1m  elif rustc +stable --version --verbose | grep -q '^release: 1\.6[67]\.'; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9005084Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9005704Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git >> $GITHUB_ENV[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9006101Z [36;1m  fi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9006349Z [36;1mfi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9035658Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9036078Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9036320Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9036611Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9036881Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9037181Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9037445Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9400474Z ##[group]Run : work around spurious network errors in curl 8.0
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9401213Z [36;1m: work around spurious network errors in curl 8.0[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9402172Z [36;1m# https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9402869Z [36;1mif rustc +stable --version --verbose | grep -q '^release: 1\.7[01]\.'; then[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9403386Z [36;1m  echo CARGO_HTTP_MULTIPLEXING=false >> $GITHUB_ENV[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9403952Z [36;1mfi[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9436077Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9436475Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9436739Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9437022Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9437289Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9437590Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9437859Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9664871Z ##[group]Run rustc +stable --version --verbose
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9665312Z [36;1mrustc +stable --version --verbose[0m
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9697891Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9698314Z env:
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9698563Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9698849Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9699605Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9699928Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9700197Z ##[endgroup]
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9877312Z rustc 1.96.0 (ac68faa20 2026-05-25)
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9878399Z binary: rustc
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9879846Z commit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9880496Z commit-date: 2026-05-25
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9881199Z host: x86_64-unknown-linux-gnu
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9881519Z release: 1.96.0
+Backend Checks (Rust)	Install Rust toolchain	2026-06-24T02:51:50.9881803Z LLVM version: 22.1.2
+Backend Checks (Rust)	Rust Cache	∩╗┐2026-06-24T02:51:51.0028915Z ##[group]Run Swatinem/rust-cache@v2
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0029721Z with:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0029978Z   prefix-key: v0-rust
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0030260Z   add-job-id-key: true
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0030563Z   add-rust-environment-hash-key: true
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0030897Z   cache-targets: true
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0031171Z   cache-all-crates: false
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0031459Z   cache-workspace-crates: false
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0031751Z   save-if: true
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0032005Z   cache-provider: github
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0032272Z   cache-bin: true
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0032519Z   lookup-only: false
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0032792Z   cmd-format: {0}
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0033028Z env:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0033263Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0033534Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0033795Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0034091Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.0034344Z ##[endgroup]
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.3010881Z (node:2373) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:51.3012521Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8799775Z ##[group]Cache Configuration
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8800288Z Cache Provider:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8800758Z     github
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8801089Z Workspaces:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8801446Z     /home/runner/work/StellarRoute/StellarRoute
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8801917Z Cache Paths:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8802252Z     /home/runner/.cargo/bin
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8802640Z     /home/runner/.cargo/.crates.toml
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8803147Z     /home/runner/.cargo/.crates2.json
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8803571Z     /home/runner/.cargo/registry
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8803978Z     /home/runner/.cargo/git
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8804472Z     /home/runner/work/StellarRoute/StellarRoute/target
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8805024Z Restore Key:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8805442Z     v0-rust-backend-checks-Linux-x64-c1fdd86c
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8805977Z Cache Key:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8806437Z     v0-rust-backend-checks-Linux-x64-c1fdd86c-0811fd9c
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8807001Z .. Prefix:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8807392Z   - v0-rust-backend-checks-Linux-x64
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8807898Z .. Environment considered:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8808320Z   - Rust Versions:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8808920Z     - 1.96.0 x86_64-unknown-linux-gnu ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8810156Z     - 1.96.0 x86_64-unknown-linux-gnu ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8810863Z   - CARGO_HOME
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8811279Z   - CARGO_INCREMENTAL
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8812091Z   - CARGO_TERM_COLOR
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8812480Z   - RUST_BACKTRACE
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8812846Z .. Lockfiles considered:
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8813952Z   - /home/runner/work/StellarRoute/StellarRoute/crates/api/Cargo.toml
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8815019Z   - /home/runner/work/StellarRoute/StellarRoute/crates/contracts/Cargo.toml
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8816240Z   - /home/runner/work/StellarRoute/StellarRoute/crates/indexer/Cargo.toml
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8817337Z   - /home/runner/work/StellarRoute/StellarRoute/crates/routing/Cargo.toml
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8818413Z   - /home/runner/work/StellarRoute/StellarRoute/crates/sdk-rust/Cargo.toml
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8820157Z ##[endgroup]
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8820505Z 
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.8820718Z ... Restoring cache ...
+Backend Checks (Rust)	Rust Cache	2026-06-24T02:51:52.9944522Z No cache found.
+Backend Checks (Rust)	Cargo check workspace	∩╗┐2026-06-24T02:51:53.0110475Z ##[group]Run cargo check --workspace
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0110841Z [36;1mcargo check --workspace[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0144296Z shell: /usr/bin/bash -e {0}
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0144572Z env:
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0144769Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0145011Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0145231Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0145484Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0145703Z   CACHE_ON_FAILURE: false
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0145922Z ##[endgroup]
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0393273Z [1m[33mwarning[0m: profiles for the non root package will be ignored, specify profiles at the workspace root:
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0394145Z package:   /home/runner/work/StellarRoute/StellarRoute/crates/contracts/Cargo.toml
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.0394737Z workspace: /home/runner/work/StellarRoute/StellarRoute/Cargo.toml
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:53.5362061Z [1m[92m    Updating[0m crates.io index
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7529842Z [1m[92m     Locking[0m 557 packages to latest compatible versions
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7546189Z [1m[92m      Adding[0m arbitrary v1.3.2 [1m[33m(available: v1.4.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7583942Z [1m[92m      Adding[0m axum v0.7.9 [1m[33m(available: v0.8.9)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7724255Z [1m[92m      Adding[0m config v0.13.4 [1m[33m(available: v0.15.24)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7733132Z [1m[92m      Adding[0m criterion v0.5.1 [1m[33m(available: v0.8.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7759347Z [1m[92m      Adding[0m dashmap v5.5.3 [1m[33m(available: v6.2.1)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7765343Z [1m[92m      Adding[0m derive_arbitrary v1.3.2 [1m[33m(available: v1.4.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7802824Z [1m[92m      Adding[0m generic-array v0.14.7 [1m[33m(available: v0.14.9)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7848218Z [1m[92m      Adding[0m hmac v0.12.1 [1m[33m(available: v0.13.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7979754Z [1m[92m      Adding[0m opentelemetry v0.21.0 [1m[33m(available: v0.32.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7980942Z [1m[92m      Adding[0m opentelemetry-http v0.10.0 [1m[33m(available: v0.32.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7982091Z [1m[92m      Adding[0m opentelemetry-otlp v0.14.0 [1m[33m(available: v0.32.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.7985813Z [1m[92m      Adding[0m opentelemetry_sdk v0.21.2 [1m[33m(available: v0.32.1)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8022065Z [1m[92m      Adding[0m prometheus v0.13.4 [1m[33m(available: v0.14.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8035976Z [1m[92m      Adding[0m rand v0.8.6 [1m[33m(available: v0.10.1)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8043778Z [1m[92m      Adding[0m rand_chacha v0.3.1 [1m[33m(available: v0.10.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8058077Z [1m[92m      Adding[0m redis v0.24.1 [1m[33m(available: v1.2.4)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8098418Z [1m[92m      Adding[0m reqwest v0.11.27 [1m[33m(available: v0.13.4)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8244869Z [1m[92m      Adding[0m sha2 v0.10.9 [1m[33m(available: v0.11.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8255826Z [1m[92m      Adding[0m soroban-builtin-sdk-macros v21.2.1 [1m[33m(available: v21.2.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8258280Z [1m[92m      Adding[0m soroban-env-common v21.2.1 [1m[33m(available: v21.2.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8261195Z [1m[92m      Adding[0m soroban-env-guest v21.2.1 [1m[33m(available: v21.2.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8268417Z [1m[92m      Adding[0m soroban-env-host v21.2.1 [1m[33m(available: v21.2.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8275103Z [1m[92m      Adding[0m soroban-env-macros v21.2.1 [1m[33m(available: v21.2.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8289865Z [1m[92m      Adding[0m soroban-sdk v21.7.7 [1m[33m(available: v26.1.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8309517Z [1m[92m      Adding[0m soroban-token-sdk v21.7.7 [1m[33m(available: v26.1.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8314247Z [1m[92m      Adding[0m sqlx v0.8.6 [1m[33m(available: v0.9.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8336937Z [1m[92m      Adding[0m stellar-xdr v21.2.0 [1m[33m(available: v27.0.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8374179Z [1m[92m      Adding[0m thiserror v1.0.69 [1m[33m(available: v2.0.18)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8421039Z [1m[92m      Adding[0m tokio-tungstenite v0.20.1 [1m[33m(available: v0.29.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8432960Z [1m[92m      Adding[0m toml v0.8.23 [1m[33m(available: v1.1.2+spec-1.1.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8456057Z [1m[92m      Adding[0m tower v0.4.13 [1m[33m(available: v0.5.3)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8461026Z [1m[92m      Adding[0m tower-http v0.5.2 [1m[33m(available: v0.7.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8468697Z [1m[92m      Adding[0m tracing-opentelemetry v0.22.0 [1m[33m(available: v0.33.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8487735Z [1m[92m      Adding[0m utoipa v4.2.3 [1m[33m(available: v5.5.0)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8494830Z [1m[92m      Adding[0m utoipa-swagger-ui v6.0.0 [1m[33m(available: v9.0.2)[0m
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.8877274Z [1m[92m Downloading[0m crates ...
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9483296Z [1m[92m  Downloaded[0m adler2 v2.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9678057Z [1m[92m  Downloaded[0m errno v0.3.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9706050Z [1m[92m  Downloaded[0m matchers v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9738944Z [1m[92m  Downloaded[0m hex-literal v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9783427Z [1m[92m  Downloaded[0m generic-array v0.14.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9818474Z [1m[92m  Downloaded[0m md-5 v0.10.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9860019Z [1m[92m  Downloaded[0m linked-hash-map v0.5.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9894724Z [1m[92m  Downloaded[0m mime v0.3.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9935653Z [1m[92m  Downloaded[0m num-derive v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:54.9988108Z [1m[92m  Downloaded[0m openssl-probe v0.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0034547Z [1m[92m  Downloaded[0m ipnet v2.12.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0141486Z [1m[92m  Downloaded[0m rand_chacha v0.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0230509Z [1m[92m  Downloaded[0m rkyv_derive v0.7.46
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0306583Z [1m[92m  Downloaded[0m rust-embed-utils v8.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0360064Z [1m[92m  Downloaded[0m semver v1.0.28
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0418252Z [1m[92m  Downloaded[0m tinystr v0.8.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0463985Z [1m[92m  Downloaded[0m tokio-retry v0.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0497469Z [1m[92m  Downloaded[0m unicode-ident v1.0.24
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0543440Z [1m[92m  Downloaded[0m zerofrom v0.1.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0565088Z [1m[92m  Downloaded[0m zerovec-derive v0.11.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0590729Z [1m[92m  Downloaded[0m zmij v1.0.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0618027Z [1m[92m  Downloaded[0m tower v0.5.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0730058Z [1m[92m  Downloaded[0m zerocopy-derive v0.8.52
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0830565Z [1m[92m  Downloaded[0m zerotrie v0.2.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0877150Z [1m[92m  Downloaded[0m zip v0.6.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0923656Z [1m[92m  Downloaded[0m zerovec v0.11.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.0987050Z [1m[92m  Downloaded[0m unicode-properties v0.1.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1008411Z [1m[92m  Downloaded[0m unicode-normalization v0.1.25
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1047016Z [1m[92m  Downloaded[0m tracing-subscriber v0.3.23
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1134228Z [1m[92m  Downloaded[0m wasmparser v0.116.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1195592Z [1m[92m  Downloaded[0m libc v0.2.186
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1597795Z [1m[92m  Downloaded[0m winnow v0.7.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1700167Z [1m[92m  Downloaded[0m wasmi_arena v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1710666Z [1m[92m  Downloaded[0m zerocopy v0.8.52
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1933254Z [1m[92m  Downloaded[0m uuid v1.23.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1967158Z [1m[92m  Downloaded[0m utoipa v4.2.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.1994603Z [1m[92m  Downloaded[0m utoipa-gen v4.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2051542Z [1m[92m  Downloaded[0m rust-embed v8.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2135690Z [1m[92m  Downloaded[0m utf8parse v0.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2146213Z [1m[92m  Downloaded[0m tracing-opentelemetry v0.22.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2185026Z [1m[92m  Downloaded[0m writeable v0.6.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2208681Z [1m[92m  Downloaded[0m whoami v1.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2230479Z [1m[92m  Downloaded[0m tracing v0.1.44
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2387735Z [1m[92m  Downloaded[0m wasmparser-nostd v0.100.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2435055Z [1m[92m  Downloaded[0m walkdir v2.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.2454747Z [1m[92m  Downloaded[0m vcpkg v0.2.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3000184Z [1m[92m  Downloaded[0m url v2.5.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3027627Z [1m[92m  Downloaded[0m typenum v1.20.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3064136Z [1m[92m  Downloaded[0m tower-http v0.5.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3147802Z [1m[92m  Downloaded[0m tonic v0.9.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3209030Z [1m[92m  Downloaded[0m winnow v1.0.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3307533Z [1m[92m  Downloaded[0m wasmi_core v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3320897Z [1m[92m  Downloaded[0m urlencoding v2.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3332004Z [1m[92m  Downloaded[0m toml_edit v0.22.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3376601Z [1m[92m  Downloaded[0m tokio v1.52.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3830960Z [1m[92m  Downloaded[0m tokio-util v0.7.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3910658Z [1m[92m  Downloaded[0m zeroize v1.9.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3927770Z [1m[92m  Downloaded[0m yoke v0.8.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.3947696Z [1m[92m  Downloaded[0m encoding_rs v0.8.35
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4146929Z [1m[92m  Downloaded[0m yaml-rust v0.4.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4172138Z [1m[92m  Downloaded[0m wyz v0.5.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4184822Z [1m[92m  Downloaded[0m want v0.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4194951Z [1m[92m  Downloaded[0m version_check v0.9.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4208413Z [1m[92m  Downloaded[0m utf8_iter v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4218955Z [1m[92m  Downloaded[0m unicode-bidi v0.3.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4244800Z [1m[92m  Downloaded[0m toml_edit v0.25.12+spec-1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4286353Z [1m[92m  Downloaded[0m stellar-xdr v21.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4394235Z [1m[92m  Downloaded[0m sha3 v0.10.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4439693Z [1m[92m  Downloaded[0m zerofrom-derive v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4450749Z [1m[92m  Downloaded[0m ucd-trie v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4465810Z [1m[92m  Downloaded[0m tungstenite v0.24.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4498485Z [1m[92m  Downloaded[0m tracing-core v0.1.36
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4532980Z [1m[92m  Downloaded[0m tower v0.4.13
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4639660Z [1m[92m  Downloaded[0m toml v0.8.23
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4664559Z [1m[92m  Downloaded[0m time v0.3.51
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4811212Z [1m[92m  Downloaded[0m syn v1.0.109
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4907881Z [1m[92m  Downloaded[0m yoke-derive v0.8.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4921068Z [1m[92m  Downloaded[0m utf-8 v0.7.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4934274Z [1m[92m  Downloaded[0m unicase v2.9.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4949536Z [1m[92m  Downloaded[0m tracing-log v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4964568Z [1m[92m  Downloaded[0m tracing-attributes v0.1.31
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.4992616Z [1m[92m  Downloaded[0m toml_write v0.1.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5007537Z [1m[92m  Downloaded[0m toml_datetime v1.1.1+spec-1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5021081Z [1m[92m  Downloaded[0m toml_datetime v0.6.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5032319Z [1m[92m  Downloaded[0m syn v2.0.118
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5138628Z [1m[92m  Downloaded[0m soroban-env-macros v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5149618Z [1m[92m  Downloaded[0m try-lock v0.2.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5159375Z [1m[92m  Downloaded[0m tracing-serde v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5168627Z [1m[92m  Downloaded[0m tower-service v0.3.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5178182Z [1m[92m  Downloaded[0m tower-layer v0.3.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5190994Z [1m[92m  Downloaded[0m toml_parser v1.1.2+spec-1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5214185Z [1m[92m  Downloaded[0m toml v0.5.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5243026Z [1m[92m  Downloaded[0m tokio-tungstenite v0.24.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5264249Z [1m[92m  Downloaded[0m tokio-stream v0.1.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5315589Z [1m[92m  Downloaded[0m tokio-io-timeout v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5328441Z [1m[92m  Downloaded[0m tinyvec_macros v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5337675Z [1m[92m  Downloaded[0m tinyvec v1.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5369577Z [1m[92m  Downloaded[0m time-macros v0.2.30
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5395958Z [1m[92m  Downloaded[0m thread_local v1.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5412955Z [1m[92m  Downloaded[0m thiserror-impl v2.0.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5429207Z [1m[92m  Downloaded[0m sqlx-postgres v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5518919Z [1m[92m  Downloaded[0m sqlx v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5663051Z [1m[92m  Downloaded[0m soroban-wasmi v0.31.1-soroban.20.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5731954Z [1m[92m  Downloaded[0m tokio-native-tls v0.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5750344Z [1m[92m  Downloaded[0m tokio-macros v2.7.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5762091Z [1m[92m  Downloaded[0m time-core v0.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5774162Z [1m[92m  Downloaded[0m thiserror-impl v1.0.69
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5788497Z [1m[92m  Downloaded[0m thiserror v2.0.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5855998Z [1m[92m  Downloaded[0m thiserror v1.0.69
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5913448Z [1m[92m  Downloaded[0m tap v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5924405Z [1m[92m  Downloaded[0m synstructure v0.13.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5938046Z [1m[92m  Downloaded[0m sync_wrapper v1.0.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5945887Z [1m[92m  Downloaded[0m sync_wrapper v0.1.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5955369Z [1m[92m  Downloaded[0m subtle v2.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5967909Z [1m[92m  Downloaded[0m strsim v0.11.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5981865Z [1m[92m  Downloaded[0m stringprep v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.5998406Z [1m[92m  Downloaded[0m stellar-strkey v0.0.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6022596Z [1m[92m  Downloaded[0m stable_deref_trait v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6032304Z [1m[92m  Downloaded[0m sqlx-sqlite v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6079042Z [1m[92m  Downloaded[0m sqlx-mysql v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6139685Z [1m[92m  Downloaded[0m sqlx-macros-core v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6162469Z [1m[92m  Downloaded[0m sqlx-core v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6244502Z [1m[92m  Downloaded[0m spki v0.7.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6263454Z [1m[92m  Downloaded[0m spin v0.9.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6287860Z [1m[92m  Downloaded[0m soroban-spec-rust v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6297303Z [1m[92m  Downloaded[0m soroban-spec v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6305313Z [1m[92m  Downloaded[0m soroban-sdk-macros v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6323576Z [1m[92m  Downloaded[0m soroban-sdk v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6362286Z [1m[92m  Downloaded[0m soroban-ledger-snapshot v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6369504Z [1m[92m  Downloaded[0m soroban-env-host v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6526109Z [1m[92m  Downloaded[0m serde_with v3.21.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6656901Z [1m[92m  Downloaded[0m regex-syntax v0.8.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6724834Z [1m[92m  Downloaded[0m static_assertions v1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6740828Z [1m[92m  Downloaded[0m sqlx-macros v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6750231Z [1m[92m  Downloaded[0m soroban-token-sdk v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6758534Z [1m[92m  Downloaded[0m soroban-env-common v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6783498Z [1m[92m  Downloaded[0m soroban-builtin-sdk-macros v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6791336Z [1m[92m  Downloaded[0m socket2 v0.6.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6809866Z [1m[92m  Downloaded[0m socket2 v0.5.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6828179Z [1m[92m  Downloaded[0m socket2 v0.4.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6845244Z [1m[92m  Downloaded[0m smallvec v1.15.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6861623Z [1m[92m  Downloaded[0m slab v0.4.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6878501Z [1m[92m  Downloaded[0m simdutf8 v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6903177Z [1m[92m  Downloaded[0m simd-adler32 v0.3.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6922961Z [1m[92m  Downloaded[0m signature v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6938994Z [1m[92m  Downloaded[0m signal-hook-registry v1.4.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6952444Z [1m[92m  Downloaded[0m shlex v2.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.6967213Z [1m[92m  Downloaded[0m sharded-slab v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7016080Z [1m[92m  Downloaded[0m sha2 v0.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7071540Z [1m[92m  Downloaded[0m sha2 v0.10.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7109262Z [1m[92m  Downloaded[0m sha1_smol v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7124825Z [1m[92m  Downloaded[0m sha1 v0.10.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7143977Z [1m[92m  Downloaded[0m serde_with_macros v3.21.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7167083Z [1m[92m  Downloaded[0m serde_urlencoded v0.7.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7192282Z [1m[92m  Downloaded[0m serde_spanned v0.6.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7208462Z [1m[92m  Downloaded[0m serde_path_to_error v0.1.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7232400Z [1m[92m  Downloaded[0m serde_json v1.0.150
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7340863Z [1m[92m  Downloaded[0m serde_derive v1.0.228
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7382031Z [1m[92m  Downloaded[0m serde_core v1.0.228
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7412570Z [1m[92m  Downloaded[0m serde v1.0.228
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7447984Z [1m[92m  Downloaded[0m schemars v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7624781Z [1m[92m  Downloaded[0m rustls-pemfile v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7648935Z [1m[92m  Downloaded[0m rustc-demangle v0.1.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7667660Z [1m[92m  Downloaded[0m rust_decimal v1.42.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7756211Z [1m[92m  Downloaded[0m rust-ini v0.18.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7773094Z [1m[92m  Downloaded[0m reqwest v0.11.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7868534Z [1m[92m  Downloaded[0m openssl v0.10.81
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.7972963Z [1m[92m  Downloaded[0m gimli v0.32.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8050353Z [1m[92m  Downloaded[0m sec1 v0.7.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8067729Z [1m[92m  Downloaded[0m seahash v4.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8086059Z [1m[92m  Downloaded[0m scopeguard v1.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8099787Z [1m[92m  Downloaded[0m schemars v0.9.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8249751Z [1m[92m  Downloaded[0m same-file v1.0.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8264266Z [1m[92m  Downloaded[0m ryu v1.0.23
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8298134Z [1m[92m  Downloaded[0m rustversion v1.0.22
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8327223Z [1m[92m  Downloaded[0m rustc_version v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8340627Z [1m[92m  Downloaded[0m rsa v0.9.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8393968Z [1m[92m  Downloaded[0m ron v0.7.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8446219Z [1m[92m  Downloaded[0m rkyv v0.7.46
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8533221Z [1m[92m  Downloaded[0m regex-automata v0.4.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8672585Z [1m[92m  Downloaded[0m regex v1.12.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8728900Z [1m[92m  Downloaded[0m redis v0.24.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8798985Z [1m[92m  Downloaded[0m rand v0.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8837702Z [1m[92m  Downloaded[0m protobuf v2.28.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8910751Z [1m[92m  Downloaded[0m pest v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.8957671Z [1m[92m  Downloaded[0m opentelemetry_sdk v0.21.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9030289Z [1m[92m  Downloaded[0m object v0.37.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9139791Z [1m[92m  Downloaded[0m libm v0.2.16
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9250754Z [1m[92m  Downloaded[0m itertools v0.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9317456Z [1m[92m  Downloaded[0m idna v1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9354016Z [1m[92m  Downloaded[0m icu_properties_data v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9463751Z [1m[92m  Downloaded[0m hyper v1.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9532936Z [1m[92m  Downloaded[0m hyper v0.14.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9609276Z [1m[92m  Downloaded[0m hkdf v0.12.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9634028Z [1m[92m  Downloaded[0m hashbrown v0.17.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9687367Z [1m[92m  Downloaded[0m hashbrown v0.15.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9738230Z [1m[92m  Downloaded[0m h2 v0.4.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9804113Z [1m[92m  Downloaded[0m h2 v0.3.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:55.9869377Z [1m[92m  Downloaded[0m futures-util v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0002757Z [1m[92m  Downloaded[0m curve25519-dalek v4.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0084514Z [1m[92m  Downloaded[0m chrono v0.4.45
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0151500Z [1m[92m  Downloaded[0m brotli v8.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0298081Z [1m[92m  Downloaded[0m bitvec v1.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0467706Z [1m[92m  Downloaded[0m rust-embed-impl v8.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0476653Z [1m[92m  Downloaded[0m rfc6979 v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0488209Z [1m[92m  Downloaded[0m rend v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0502934Z [1m[92m  Downloaded[0m ref-cast-impl v1.0.25
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0512149Z [1m[92m  Downloaded[0m ref-cast v1.0.25
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0543579Z [1m[92m  Downloaded[0m rand_core v0.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0560328Z [1m[92m  Downloaded[0m rand v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0601884Z [1m[92m  Downloaded[0m prometheus v0.13.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0651444Z [1m[92m  Downloaded[0m proc-macro2 v1.0.106
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0682778Z [1m[92m  Downloaded[0m prettyplease v0.2.37
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0720270Z [1m[92m  Downloaded[0m pin-project v1.1.13
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0856710Z [1m[92m  Downloaded[0m pest_meta v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0891815Z [1m[92m  Downloaded[0m opentelemetry-proto v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.0971168Z [1m[92m  Downloaded[0m opentelemetry v0.21.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1009227Z [1m[92m  Downloaded[0m num-bigint-dig v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1055204Z [1m[92m  Downloaded[0m num-bigint v0.4.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1101924Z [1m[92m  Downloaded[0m nom v7.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1153656Z [1m[92m  Downloaded[0m mio v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1215004Z [1m[92m  Downloaded[0m minimal-lexical v0.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1264005Z [1m[92m  Downloaded[0m memchr v2.8.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1322797Z [1m[92m  Downloaded[0m itertools v0.10.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1387484Z [1m[92m  Downloaded[0m indexmap v2.14.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1433770Z [1m[92m  Downloaded[0m hyper-util v0.1.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1498770Z [1m[92m  Downloaded[0m http v1.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1536277Z [1m[92m  Downloaded[0m http v0.2.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1571560Z [1m[92m  Downloaded[0m hashbrown v0.14.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1618989Z [1m[92m  Downloaded[0m hashbrown v0.12.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1658103Z [1m[92m  Downloaded[0m futures-intrusive v0.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1702956Z [1m[92m  Downloaded[0m flate2 v1.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1753354Z [1m[92m  Downloaded[0m der v0.7.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1808467Z [1m[92m  Downloaded[0m darling_core v0.23.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1864600Z [1m[92m  Downloaded[0m crypto-bigint v0.5.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1938271Z [1m[92m  Downloaded[0m const-oid v0.10.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.1963146Z [1m[92m  Downloaded[0m config v0.13.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2043643Z [1m[92m  Downloaded[0m combine v4.6.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2098257Z [1m[92m  Downloaded[0m clap_builder v4.6.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2162654Z [1m[92m  Downloaded[0m cc v1.2.65
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2192657Z [1m[92m  Downloaded[0m bytes v1.12.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2227664Z [1m[92m  Downloaded[0m brotli-decompressor v5.0.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2286791Z [1m[92m  Downloaded[0m borsh v1.7.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2359226Z [1m[92m  Downloaded[0m base64 v0.21.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2398067Z [1m[92m  Downloaded[0m backtrace v0.3.76
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2449538Z [1m[92m  Downloaded[0m axum v0.7.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2525738Z [1m[92m  Downloaded[0m axum v0.6.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2601519Z [1m[92m  Downloaded[0m async-compression v0.4.42
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2672932Z [1m[92m  Downloaded[0m arc-swap v1.9.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2713428Z [1m[92m  Downloaded[0m rand_core v0.6.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2727275Z [1m[92m  Downloaded[0m quote v1.0.46
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2755102Z [1m[92m  Downloaded[0m prost-derive v0.11.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2767966Z [1m[92m  Downloaded[0m prost v0.11.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2788529Z [1m[92m  Downloaded[0m proc-macro-error v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2823915Z [1m[92m  Downloaded[0m primeorder v0.13.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2837214Z [1m[92m  Downloaded[0m ppv-lite86 v0.2.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2850611Z [1m[92m  Downloaded[0m postgres-types v0.2.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2877159Z [1m[92m  Downloaded[0m postgres-protocol v0.6.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2897824Z [1m[92m  Downloaded[0m pkg-config v0.3.33
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2914799Z [1m[92m  Downloaded[0m pkcs8 v0.10.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2943713Z [1m[92m  Downloaded[0m pkcs1 v0.7.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.2967661Z [1m[92m  Downloaded[0m pin-project-lite v0.2.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3026939Z [1m[92m  Downloaded[0m pin-project-internal v1.1.13
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3042545Z [1m[92m  Downloaded[0m pest_generator v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3058883Z [1m[92m  Downloaded[0m pest_derive v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3083556Z [1m[92m  Downloaded[0m pem-rfc7468 v0.7.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3104948Z [1m[92m  Downloaded[0m paste v1.0.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3136927Z [1m[92m  Downloaded[0m parking_lot_core v0.9.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3158406Z [1m[92m  Downloaded[0m parking_lot v0.12.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3183788Z [1m[92m  Downloaded[0m p256 v0.13.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3217868Z [1m[92m  Downloaded[0m libsqlite3-sys v0.30.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3825208Z [1m[92m  Downloaded[0m opentelemetry-semantic-conventions v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3841719Z [1m[92m  Downloaded[0m opentelemetry-otlp v0.14.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3866386Z [1m[92m  Downloaded[0m openssl-sys v0.9.117
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3922885Z [1m[92m  Downloaded[0m once_cell v1.21.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3949159Z [1m[92m  Downloaded[0m num-traits v0.2.19
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.3975630Z [1m[92m  Downloaded[0m miniz_oxide v0.8.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4000518Z [1m[92m  Downloaded[0m k256 v0.13.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4036837Z [1m[92m  Downloaded[0m indexmap v1.9.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4068465Z [1m[92m  Downloaded[0m icu_normalizer_data v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4089599Z [1m[92m  Downloaded[0m icu_normalizer v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4137147Z [1m[92m  Downloaded[0m icu_locale_core v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4207418Z [1m[92m  Downloaded[0m icu_collections v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4270660Z [1m[92m  Downloaded[0m futures v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4319992Z [1m[92m  Downloaded[0m flume v0.11.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4354897Z [1m[92m  Downloaded[0m event-listener v5.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4375460Z [1m[92m  Downloaded[0m ethnum v1.5.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4417847Z [1m[92m  Downloaded[0m ed25519-dalek v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4449238Z [1m[92m  Downloaded[0m darling_core v0.20.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4501645Z [1m[92m  Downloaded[0m darling v0.23.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4556585Z [1m[92m  Downloaded[0m darling v0.20.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4605876Z [1m[92m  Downloaded[0m crossbeam-utils v0.8.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4632787Z [1m[92m  Downloaded[0m utoipa-swagger-ui v6.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4754369Z [1m[92m  Downloaded[0m crossbeam-channel v0.5.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4794129Z [1m[92m  Downloaded[0m crc32fast v1.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4813006Z [1m[92m  Downloaded[0m const-oid v0.9.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4831667Z [1m[92m  Downloaded[0m clap_derive v4.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4853366Z [1m[92m  Downloaded[0m clap v4.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4948707Z [1m[92m  Downloaded[0m chacha20 v0.10.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.4972842Z [1m[92m  Downloaded[0m bitflags v2.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5017714Z [1m[92m  Downloaded[0m base64ct v1.8.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5043410Z [1m[92m  Downloaded[0m base64 v0.22.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5081206Z [1m[92m  Downloaded[0m base64 v0.13.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5111173Z [1m[92m  Downloaded[0m axum-macros v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5223979Z [1m[92m  Downloaded[0m axum-core v0.3.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5244553Z [1m[92m  Downloaded[0m arrayvec v0.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5265302Z [1m[92m  Downloaded[0m anyhow v1.0.102
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5321751Z [1m[92m  Downloaded[0m allocator-api2 v0.2.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5347671Z [1m[92m  Downloaded[0m aho-corasick v1.1.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5400404Z [1m[92m  Downloaded[0m radium v0.7.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5410887Z [1m[92m  Downloaded[0m ptr_meta_derive v0.1.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5418294Z [1m[92m  Downloaded[0m ptr_meta v0.1.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5427099Z [1m[92m  Downloaded[0m proc-macro-error-attr v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5437415Z [1m[92m  Downloaded[0m proc-macro-crate v3.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5451303Z [1m[92m  Downloaded[0m powerfmt v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5462654Z [1m[92m  Downloaded[0m potential_utf v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5473729Z [1m[92m  Downloaded[0m percent-encoding v2.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5482888Z [1m[92m  Downloaded[0m pathdiff v0.2.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5492666Z [1m[92m  Downloaded[0m parking v2.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5504418Z [1m[92m  Downloaded[0m ordered-multimap v0.4.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5517089Z [1m[92m  Downloaded[0m ordered-float v4.6.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5532143Z [1m[92m  Downloaded[0m opentelemetry-http v0.10.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5541646Z [1m[92m  Downloaded[0m num-iter v0.1.45
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5551797Z [1m[92m  Downloaded[0m num-integer v0.1.46
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5567624Z [1m[92m  Downloaded[0m native-tls v0.2.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5582587Z [1m[92m  Downloaded[0m mime_guess v2.0.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5599392Z [1m[92m  Downloaded[0m log v0.4.33
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5624477Z [1m[92m  Downloaded[0m icu_provider v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5651051Z [1m[92m  Downloaded[0m icu_properties v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5674532Z [1m[92m  Downloaded[0m getrandom v0.4.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5712220Z [1m[92m  Downloaded[0m dotenvy v0.15.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5739955Z [1m[92m  Downloaded[0m displaydoc v0.2.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5760557Z [1m[92m  Downloaded[0m digest v0.11.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5784091Z [1m[92m  Downloaded[0m digest v0.10.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5802609Z [1m[92m  Downloaded[0m deranged v0.5.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5816361Z [1m[92m  Downloaded[0m data-encoding v2.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5826693Z [1m[92m  Downloaded[0m dashmap v5.5.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5851399Z [1m[92m  Downloaded[0m ctutils v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5871067Z [1m[92m  Downloaded[0m crc-catalog v2.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5885426Z [1m[92m  Downloaded[0m cpufeatures v0.3.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5899942Z [1m[92m  Downloaded[0m cpufeatures v0.2.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5913986Z [1m[92m  Downloaded[0m concurrent-queue v2.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5930911Z [1m[92m  Downloaded[0m compression-codecs v0.4.38
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5970655Z [1m[92m  Downloaded[0m cmov v0.5.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5988545Z [1m[92m  Downloaded[0m clap_lex v1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.5999429Z [1m[92m  Downloaded[0m bs58 v0.5.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6022431Z [1m[92m  Downloaded[0m axum-core v0.4.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6043097Z [1m[92m  Downloaded[0m async-trait v0.1.89
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6080590Z [1m[92m  Downloaded[0m arbitrary v1.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6099795Z [1m[92m  Downloaded[0m anstyle-query v1.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6111612Z [1m[92m  Downloaded[0m anstyle-parse v1.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6127411Z [1m[92m  Downloaded[0m anstyle v1.0.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6142217Z [1m[92m  Downloaded[0m iana-time-zone v0.1.65
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6170868Z [1m[92m  Downloaded[0m hybrid-array v0.4.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6192849Z [1m[92m  Downloaded[0m httparse v1.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6217903Z [1m[92m  Downloaded[0m hmac v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6242868Z [1m[92m  Downloaded[0m futures-channel v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6261786Z [1m[92m  Downloaded[0m ecdsa v0.16.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6278804Z [1m[92m  Downloaded[0m curve25519-dalek-derive v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6289374Z [1m[92m  Downloaded[0m crypto-common v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6298492Z [1m[92m  Downloaded[0m crc v3.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6315551Z [1m[92m  Downloaded[0m crate-git-revision v0.0.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6328197Z [1m[92m  Downloaded[0m byteorder v1.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6343941Z [1m[92m  Downloaded[0m borsh-derive v1.7.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6376003Z [1m[92m  Downloaded[0m bitflags v1.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6408280Z [1m[92m  Downloaded[0m autocfg v1.5.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6426999Z [1m[92m  Downloaded[0m openssl-macros v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6435851Z [1m[92m  Downloaded[0m num-conv v0.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6444135Z [1m[92m  Downloaded[0m nu-ansi-term v0.50.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6468356Z [1m[92m  Downloaded[0m litemap v0.8.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6491716Z [1m[92m  Downloaded[0m http-body-util v0.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6509070Z [1m[92m  Downloaded[0m hmac v0.12.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6528266Z [1m[92m  Downloaded[0m getrandom v0.2.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6557776Z [1m[92m  Downloaded[0m foldhash v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6569960Z [1m[92m  Downloaded[0m find-msvc-tools v0.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6585503Z [1m[92m  Downloaded[0m fallible-iterator v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6596980Z [1m[92m  Downloaded[0m dlv-list v0.3.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6606589Z [1m[92m  Downloaded[0m darling_macro v0.23.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6613390Z [1m[92m  Downloaded[0m darling_macro v0.20.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6619690Z [1m[92m  Downloaded[0m ctor v0.2.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6629099Z [1m[92m  Downloaded[0m compression-core v0.4.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6639923Z [1m[92m  Downloaded[0m colorchoice v1.0.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6648946Z [1m[92m  Downloaded[0m md-5 v0.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6665767Z [1m[92m  Downloaded[0m matchit v0.7.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6685014Z [1m[92m  Downloaded[0m lock_api v0.4.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6697311Z [1m[92m  Downloaded[0m keccak v0.1.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6708676Z [1m[92m  Downloaded[0m indexmap-nostd v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6721946Z [1m[92m  Downloaded[0m hyper-timeout v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6734602Z [1m[92m  Downloaded[0m futures-executor v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6748457Z [1m[92m  Downloaded[0m ff v0.13.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6763498Z [1m[92m  Downloaded[0m dyn-clone v1.0.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6779790Z [1m[92m  Downloaded[0m downcast-rs v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6792693Z [1m[92m  Downloaded[0m crypto-common v0.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6803697Z [1m[92m  Downloaded[0m crossbeam-queue v0.3.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6815565Z [1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6824555Z [1m[92m  Downloaded[0m hashlink v0.10.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6842316Z [1m[92m  Downloaded[0m group v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6857141Z [1m[92m  Downloaded[0m glob v0.3.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6871839Z [1m[92m  Downloaded[0m futures-macro v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6882185Z [1m[92m  Downloaded[0m foreign-types-shared v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6888492Z [1m[92m  Downloaded[0m foreign-types v0.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6895940Z [1m[92m  Downloaded[0m escape-bytes v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6910820Z [1m[92m  Downloaded[0m cfg_aliases v0.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6920366Z [1m[92m  Downloaded[0m bytecheck v0.6.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6929248Z [1m[92m  Downloaded[0m lazy_static v1.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6946948Z [1m[92m  Downloaded[0m json5 v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6963857Z [1m[92m  Downloaded[0m itoa v1.0.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6977916Z [1m[92m  Downloaded[0m idna_adapter v1.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6987220Z [1m[92m  Downloaded[0m ident_case v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.6995403Z [1m[92m  Downloaded[0m hyper-tls v0.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7007784Z [1m[92m  Downloaded[0m httpdate v1.0.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7019466Z [1m[92m  Downloaded[0m http-body v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7028764Z [1m[92m  Downloaded[0m http-body v0.4.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7046094Z [1m[92m  Downloaded[0m home v0.5.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7055692Z [1m[92m  Downloaded[0m fnv v1.0.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7064215Z [1m[92m  Downloaded[0m ed25519 v2.2.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7081843Z [1m[92m  Downloaded[0m cfg-if v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7094504Z [1m[92m  Downloaded[0m block-buffer v0.10.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7104684Z [1m[92m  Downloaded[0m atomic-waker v1.1.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7116686Z [1m[92m  Downloaded[0m hex v0.4.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7132450Z [1m[92m  Downloaded[0m funty v2.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7139887Z [1m[92m  Downloaded[0m form_urlencoded v1.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7147753Z [1m[92m  Downloaded[0m bytecheck_derive v0.6.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7154872Z [1m[92m  Downloaded[0m block-buffer v0.12.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7166992Z [1m[92m  Downloaded[0m base32 v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7175657Z [1m[92m  Downloaded[0m anstream v1.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7194981Z [1m[92m  Downloaded[0m futures-task v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7206780Z [1m[92m  Downloaded[0m futures-sink v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7215199Z [1m[92m  Downloaded[0m futures-core v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7228511Z [1m[92m  Downloaded[0m elliptic-curve v0.13.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7266878Z [1m[92m  Downloaded[0m bytes-lit v0.0.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7280196Z [1m[92m  Downloaded[0m base16ct v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7293454Z [1m[92m  Downloaded[0m atoi v2.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7306677Z [1m[92m  Downloaded[0m alloc-stdlib v0.2.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7318410Z [1m[92m  Downloaded[0m futures-io v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7327122Z [1m[92m  Downloaded[0m equivalent v1.0.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7336976Z [1m[92m  Downloaded[0m either v1.16.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7351293Z [1m[92m  Downloaded[0m ahash v0.7.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7375466Z [1m[92m  Downloaded[0m heck v0.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7388347Z [1m[92m  Downloaded[0m addr2line v0.25.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7406547Z [1m[92m  Downloaded[0m derive_arbitrary v1.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.7415895Z [1m[92m  Downloaded[0m alloc-no-stdlib v2.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.9617406Z [1m[92m   Compiling[0m proc-macro2 v1.0.106
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.9671702Z [1m[92m   Compiling[0m unicode-ident v1.0.24
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.9675713Z [1m[92m   Compiling[0m quote v1.0.46
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:56.9690008Z [1m[92m   Compiling[0m serde_core v1.0.228
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:51:59.7360314Z [1m[92m   Compiling[0m serde v1.0.228
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:01.8280336Z [1m[92m   Compiling[0m libc v0.2.186
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:01.8360469Z [1m[92m    Checking[0m cfg-if v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:01.8649936Z [1m[92m   Compiling[0m version_check v0.9.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:03.1451555Z [1m[92m   Compiling[0m syn v2.0.118
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:03.2731461Z [1m[92m   Compiling[0m zmij v1.0.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:03.4620529Z [1m[92m   Compiling[0m serde_json v1.0.150
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:03.5720330Z [1m[92m   Compiling[0m memchr v2.8.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:04.0001058Z [1m[92m    Checking[0m pin-project-lite v0.2.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:04.3992048Z [1m[92m   Compiling[0m autocfg v1.5.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:04.5358028Z [1m[92m   Compiling[0m parking_lot_core v0.9.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:04.6100548Z [1m[92m    Checking[0m bytes v1.12.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:04.7681066Z [1m[92m    Checking[0m typenum v1.20.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:04.9210882Z [1m[92m    Checking[0m itoa v1.0.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.0270534Z [1m[92m    Checking[0m getrandom v0.2.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.1351119Z [1m[92m    Checking[0m scopeguard v1.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.1800516Z [1m[92m    Checking[0m futures-core v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.1873891Z [1m[92m    Checking[0m lock_api v0.4.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.2580533Z [1m[92m    Checking[0m once_cell v1.21.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.3650644Z [1m[92m   Compiling[0m generic-array v0.14.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.3870414Z [1m[92m    Checking[0m zeroize v1.9.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.4847590Z [1m[92m    Checking[0m futures-sink v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.5410278Z [1m[92m    Checking[0m subtle v2.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.6325316Z [1m[92m    Checking[0m errno v0.3.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:05.8389577Z [1m[92m   Compiling[0m thiserror v1.0.69
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.0542535Z [1m[92m    Checking[0m signal-hook-registry v1.4.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.1200774Z [1m[92m    Checking[0m rand_core v0.6.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.1971609Z [1m[92m    Checking[0m socket2 v0.6.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.2350442Z [1m[92m    Checking[0m mio v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.4600559Z [1m[92m    Checking[0m equivalent v1.0.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.4990372Z [1m[92m    Checking[0m const-oid v0.9.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.5176584Z [1m[92m   Compiling[0m zerocopy v0.8.52
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.5870431Z [1m[92m    Checking[0m block-buffer v0.10.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.6620384Z [1m[92m    Checking[0m crypto-common v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.7310480Z [1m[92m   Compiling[0m synstructure v0.13.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:06.8230421Z [1m[92m    Checking[0m hashbrown v0.17.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.2330574Z [1m[92m    Checking[0m digest v0.10.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.2600930Z [1m[92m    Checking[0m log v0.4.33
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.3300887Z [1m[92m    Checking[0m indexmap v2.14.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.3890600Z [1m[92m    Checking[0m futures-channel v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.4157589Z [1m[92m    Checking[0m tracing-core v0.1.36
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.5334534Z [1m[92m    Checking[0m futures-task v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.6270847Z [1m[92m    Checking[0m futures-io v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.6950323Z [1m[92m    Checking[0m slab v0.4.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:07.7050468Z [1m[92m   Compiling[0m num-traits v0.2.19
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:08.1670667Z [1m[92m   Compiling[0m find-msvc-tools v0.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:08.3580854Z [1m[92m   Compiling[0m shlex v2.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:08.4401846Z [1m[92m   Compiling[0m serde_derive v1.0.228
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:08.5000647Z [1m[92m   Compiling[0m zerofrom-derive v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:08.5410975Z [1m[92m   Compiling[0m yoke-derive v0.8.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:09.5761041Z [1m[92m   Compiling[0m thiserror-impl v1.0.69
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:09.6560456Z [1m[92m   Compiling[0m zerovec-derive v0.11.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:10.6909845Z [1m[92m   Compiling[0m tokio-macros v2.7.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:10.7065306Z [1m[92m   Compiling[0m displaydoc v0.2.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:11.2440890Z [1m[92m   Compiling[0m tracing-attributes v0.1.31
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:11.3161065Z [1m[92m   Compiling[0m futures-macro v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:11.5360577Z [1m[92m    Checking[0m ppv-lite86 v0.2.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.0140655Z [1m[92m    Checking[0m futures-util v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.1030758Z [1m[92m    Checking[0m smallvec v1.15.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.4170639Z [1m[92m    Checking[0m tracing v0.1.44
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.4290371Z [1m[92m    Checking[0m parking_lot v0.12.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.5231372Z [1m[92m   Compiling[0m crate-git-revision v0.0.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.5809588Z [1m[92m   Compiling[0m either v1.16.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.5881558Z [1m[92m    Checking[0m tokio v1.52.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.7210414Z [1m[92m   Compiling[0m cc v1.2.65
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.8200693Z [1m[92m   Compiling[0m icu_properties_data v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:12.9300258Z [1m[92m   Compiling[0m strsim v0.11.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:13.2000407Z [1m[92m   Compiling[0m pkg-config v0.3.33
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:13.7200501Z [1m[92m   Compiling[0m icu_normalizer_data v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:14.1000530Z [1m[92m   Compiling[0m ident_case v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:14.1730480Z [1m[92m   Compiling[0m vcpkg v0.2.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:14.5370628Z [1m[92m    Checking[0m rand_chacha v0.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:14.6940461Z [1m[92m   Compiling[0m crossbeam-utils v0.8.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:14.8340595Z [1m[92m   Compiling[0m openssl-sys v0.9.117
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:14.8830577Z [1m[92m    Checking[0m rand v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:15.1536414Z [1m[92m    Checking[0m zerofrom v0.1.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:15.2437336Z [1m[92m    Checking[0m stable_deref_trait v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:15.2923542Z [1m[92m    Checking[0m cpufeatures v0.2.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:15.3256723Z [1m[92m    Checking[0m yoke v0.8.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:15.8801093Z [1m[92m   Compiling[0m darling_core v0.23.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:16.4830554Z [1m[92m   Compiling[0m httparse v1.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:16.5020600Z [1m[92m    Checking[0m percent-encoding v2.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:16.5370988Z [1m[92m    Checking[0m tower-service v0.3.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:16.6750583Z [1m[92m    Checking[0m zerovec v0.11.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:16.7393735Z [1m[92m   Compiling[0m openssl v0.10.81
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:16.9650433Z [1m[92m   Compiling[0m stellar-strkey v0.0.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.0693633Z [1m[92m   Compiling[0m hex v0.4.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.2030586Z [1m[92m   Compiling[0m openssl-macros v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.3211345Z [1m[92m    Checking[0m fnv v1.0.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.3730534Z [1m[92m   Compiling[0m rustversion v1.0.22
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.6150803Z [1m[92m    Checking[0m tokio-util v0.7.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.6330831Z [1m[92m   Compiling[0m async-trait v0.1.89
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:17.9636917Z [1m[92m   Compiling[0m native-tls v0.2.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.1490463Z [1m[92m   Compiling[0m sha2 v0.10.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.4570442Z [1m[92m    Checking[0m http v0.2.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.5460646Z [1m[92m    Checking[0m tinystr v0.8.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.6710480Z [1m[92m   Compiling[0m darling_macro v0.23.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.6800433Z [1m[92m   Compiling[0m getrandom v0.4.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.8367148Z [1m[92m    Checking[0m litemap v0.8.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.8740464Z [1m[92m    Checking[0m rand_core v0.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.9080801Z [1m[92m   Compiling[0m darling v0.23.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.9520417Z [1m[92m   Compiling[0m serde_with_macros v3.21.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.9707443Z [1m[92m    Checking[0m writeable v0.6.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:18.9780520Z [1m[92m    Checking[0m httpdate v1.0.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.0580215Z [1m[92m    Checking[0m potential_utf v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.0730284Z [1m[92m    Checking[0m zerotrie v0.2.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.0804381Z [1m[92m    Checking[0m icu_locale_core v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.1318218Z [1m[92m    Checking[0m utf8_iter v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.2720502Z [1m[92m    Checking[0m icu_collections v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.7970876Z [1m[92m    Checking[0m icu_provider v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.8700800Z [1m[92m    Checking[0m hmac v0.12.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.9520651Z [1m[92m    Checking[0m hybrid-array v0.4.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:19.9950843Z [1m[92m   Compiling[0m ahash v0.7.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.1870439Z [1m[92m   Compiling[0m semver v1.0.28
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.2750628Z [1m[92m   Compiling[0m anyhow v1.0.102
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.4560528Z [1m[92m    Checking[0m mime v0.3.17
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.5280058Z [1m[92m    Checking[0m http-body v0.4.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.6300545Z [1m[92m    Checking[0m form_urlencoded v1.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.8270632Z [1m[92m    Checking[0m try-lock v0.2.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.8519506Z [1m[92m    Checking[0m foreign-types-shared v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.8800972Z [1m[92m    Checking[0m tower-layer v0.3.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:20.8900466Z [1m[92m    Checking[0m bitflags v2.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.0060570Z [1m[92m    Checking[0m cpufeatures v0.3.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.0400518Z [1m[92m    Checking[0m cmov v0.5.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.0520704Z [1m[92m   Compiling[0m syn v1.0.109
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.2101129Z [1m[92m    Checking[0m ctutils v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.2797201Z [1m[92m    Checking[0m foreign-types v0.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.3190997Z [1m[92m    Checking[0m want v0.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.3906276Z [1m[92m    Checking[0m icu_normalizer v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.5630907Z [1m[92m    Checking[0m icu_properties v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.6417618Z [1m[92m    Checking[0m block-buffer v0.12.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.6960537Z [1m[92m    Checking[0m crypto-common v0.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:21.7350371Z [1m[92m    Checking[0m h2 v0.3.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.3120269Z [1m[92m    Checking[0m socket2 v0.5.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.3590687Z [1m[92m   Compiling[0m crc32fast v1.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.5190538Z [1m[92m    Checking[0m byteorder v1.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.5602541Z [1m[92m    Checking[0m const-oid v0.10.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.5964700Z [1m[92m   Compiling[0m thiserror v2.0.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.6841080Z [1m[92m    Checking[0m digest v0.11.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.7020538Z [1m[92m    Checking[0m idna_adapter v1.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:22.8107837Z [1m[92m    Checking[0m hashbrown v0.12.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:23.2850598Z [1m[92m    Checking[0m chacha20 v0.10.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:23.6160593Z [1m[92m   Compiling[0m thiserror-impl v2.0.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:24.8340500Z [1m[92m    Checking[0m openssl-probe v0.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:24.8923064Z [1m[92m   Compiling[0m heck v0.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:24.9520650Z [1m[92m    Checking[0m hyper v0.14.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:25.0750676Z [1m[92m    Checking[0m tinyvec_macros v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:25.1068888Z [1m[92m    Checking[0m base64 v0.13.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:25.3830950Z [1m[92m    Checking[0m tinyvec v1.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:25.7180990Z [1m[92m    Checking[0m rand v0.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:26.1960416Z [1m[92m    Checking[0m idna v1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:26.2640559Z [1m[92m   Compiling[0m rustc_version v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:26.4267599Z [1m[92m    Checking[0m tokio-stream v0.1.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:26.8176668Z [1m[92m   Compiling[0m stellar-xdr v21.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:26.9518206Z [1m[92m    Checking[0m http v1.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:27.0130467Z [1m[92m    Checking[0m base32 v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:27.0240341Z [1m[92m    Checking[0m base64 v0.22.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:27.2840934Z [1m[92m    Checking[0m iana-time-zone v0.1.65
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:27.3616125Z [1m[92m    Checking[0m chrono v0.4.45
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:27.7240477Z [1m[92m    Checking[0m url v2.5.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:27.7290322Z [1m[92m    Checking[0m unicode-normalization v0.1.25
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:28.0930601Z [1m[92m    Checking[0m serde_with v3.21.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:28.8325449Z [1m[92m   Compiling[0m indexmap v1.9.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:28.8610148Z [1m[92m   Compiling[0m foldhash v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:28.9600963Z [1m[92m    Checking[0m ryu v1.0.23
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:28.9980354Z [1m[92m    Checking[0m escape-bytes v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.0770487Z [1m[92m    Checking[0m urlencoding v2.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.1520365Z [1m[92m   Compiling[0m rust_decimal v1.42.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.1970551Z [1m[92m    Checking[0m unicode-properties v0.1.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.3316202Z [1m[92m    Checking[0m sync_wrapper v0.1.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.4890585Z [1m[92m    Checking[0m base64 v0.21.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.9104806Z [1m[92m    Checking[0m unicode-bidi v0.3.18
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:29.9810704Z [1m[92m   Compiling[0m allocator-api2 v0.2.21
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:30.2100473Z [1m[92m    Checking[0m stringprep v0.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:30.2909775Z [1m[92m   Compiling[0m hashbrown v0.15.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:33.6060654Z [1m[92m    Checking[0m opentelemetry v0.21.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:34.6810592Z [1m[92m   Compiling[0m concurrent-queue v2.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:34.8420552Z [1m[92m    Checking[0m sha2 v0.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.1220887Z [1m[92m    Checking[0m hmac v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.2330970Z [1m[92m    Checking[0m md-5 v0.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.4530485Z [1m[92m   Compiling[0m axum-core v0.3.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.5449015Z [1m[92m    Checking[0m futures-executor v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.5720472Z [1m[92m   Compiling[0m pin-project-internal v1.1.13
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.6431462Z [1m[92m    Checking[0m bitflags v1.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:35.7869885Z [1m[92m    Checking[0m matchit v0.7.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.0590502Z [1m[92m    Checking[0m utf8parse v0.2.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.1141032Z [1m[92m   Compiling[0m parking v2.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.2090563Z [1m[92m   Compiling[0m arrayvec v0.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.5110378Z [1m[92m   Compiling[0m ucd-trie v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.6976978Z [1m[92m    Checking[0m fallible-iterator v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.8651012Z [1m[92m   Compiling[0m crc-catalog v2.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:36.9716143Z [1m[92m    Checking[0m postgres-protocol v0.6.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:37.2690248Z [1m[92m   Compiling[0m crc v3.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:39.0520173Z [1m[92m   Compiling[0m pest v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:39.7441049Z [1m[92m    Checking[0m pin-project v1.1.13
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:40.3284516Z [1m[92m   Compiling[0m event-listener v5.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:40.5520560Z [1m[92m    Checking[0m anstyle-parse v1.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:40.8970709Z [1m[92m   Compiling[0m futures-intrusive v0.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:42.0570675Z [1m[92m   Compiling[0m hashlink v0.10.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:42.3245449Z [1m[92m    Checking[0m serde_urlencoded v0.7.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:42.4530486Z [1m[92m    Checking[0m http-body v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:42.5040670Z [1m[92m   Compiling[0m crossbeam-queue v0.3.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:42.6147782Z [1m[92m    Checking[0m uuid v1.23.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:42.8918916Z [1m[92m   Compiling[0m axum v0.6.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:43.0045866Z [1m[92m   Compiling[0m itertools v0.10.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:43.0140686Z [1m[92m    Checking[0m der v0.7.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:43.5680394Z [1m[92m    Checking[0m ff v0.13.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:43.6457381Z [1m[92m   Compiling[0m aho-corasick v1.1.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:45.1000936Z [1m[92m    Checking[0m colorchoice v1.0.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:45.6340665Z [1m[92m    Checking[0m anstyle v1.0.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:45.7880501Z [1m[92m   Compiling[0m regex-syntax v0.8.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:45.9640737Z [1m[92m    Checking[0m is_terminal_polyfill v1.70.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:46.0060572Z [1m[92m    Checking[0m lazy_static v1.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:46.0510311Z [1m[92m    Checking[0m anstyle-query v1.1.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:46.0960498Z [1m[92m    Checking[0m base16ct v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:46.7831455Z [1m[92m    Checking[0m sec1 v0.7.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:46.9160234Z [1m[92m    Checking[0m anstream v1.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:47.0966343Z [1m[92m   Compiling[0m sqlx-core v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:48.3110427Z [1m[92m   Compiling[0m regex-automata v0.4.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:48.7880639Z [1m[92m   Compiling[0m prost-derive v0.11.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:50.1610313Z [1m[92m    Checking[0m group v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:50.2390468Z [1m[92m   Compiling[0m hkdf v0.12.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:50.3290603Z [1m[92m    Checking[0m tower v0.4.13
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:51.3061036Z [1m[92m   Compiling[0m pest_meta v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:51.5919266Z [1m[92m    Checking[0m postgres-types v0.2.14
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.0510640Z [1m[92m    Checking[0m tokio-native-tls v0.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.1550600Z [1m[92m    Checking[0m crossbeam-channel v0.5.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.7736793Z [1m[92m   Compiling[0m atoi v2.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.8240564Z [1m[92m    Checking[0m tokio-io-timeout v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.8580400Z [1m[92m   Compiling[0m md-5 v0.10.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.9160851Z [1m[92m   Compiling[0m itertools v0.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:52.9550638Z [1m[92m    Checking[0m ordered-float v4.6.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:53.0990448Z [1m[92m    Checking[0m signature v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:53.1760434Z [1m[92m    Checking[0m crypto-bigint v0.5.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:53.2476174Z [1m[92m   Compiling[0m proc-macro-error-attr v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:53.4780200Z [1m[92m   Compiling[0m libm v0.2.16
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.2360596Z [1m[92m   Compiling[0m home v0.5.12
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.3520170Z [1m[92m   Compiling[0m paste v1.0.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.3740526Z [1m[92m   Compiling[0m simd-adler32 v0.3.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.5000684Z [1m[92m   Compiling[0m adler2 v2.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.5300286Z [1m[92m    Checking[0m clap_lex v1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.5696006Z [1m[92m    Checking[0m glob v0.3.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.5840719Z [1m[92m   Compiling[0m dotenvy v0.15.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.6307607Z [1m[92m   Compiling[0m whoami v1.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.7000558Z [1m[92m    Checking[0m opentelemetry_sdk v0.21.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.8410960Z [1m[92m   Compiling[0m sqlx-postgres v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:54.8651437Z [1m[92m    Checking[0m clap_builder v4.6.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:55.7140402Z [1m[92m   Compiling[0m miniz_oxide v0.8.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:56.6530576Z [1m[92m    Checking[0m elliptic-curve v0.13.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:56.9420445Z [1m[92m    Checking[0m hyper-timeout v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:57.1240876Z [1m[92m    Checking[0m hyper-tls v0.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:57.2321037Z [1m[92m   Compiling[0m pest_generator v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:57.7420797Z [1m[92m   Compiling[0m regex v1.12.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:57.9770372Z [1m[92m    Checking[0m prost v0.11.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:58.2690544Z [1m[92m    Checking[0m rustls-pemfile v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:58.3500466Z [1m[92m   Compiling[0m clap_derive v4.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:59.1915087Z [1m[92m   Compiling[0m proc-macro-error v1.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:52:59.3110596Z [1m[92m    Checking[0m encoding_rs v0.8.35
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.1361324Z [1m[92m    Checking[0m dlv-list v0.3.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.2702456Z [1m[92m    Checking[0m ipnet v2.12.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.3274074Z [1m[92m   Compiling[0m protobuf v2.28.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.4464502Z [1m[92m   Compiling[0m same-file v1.0.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.5465011Z [1m[92m   Compiling[0m walkdir v2.5.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.5900581Z [1m[92m    Checking[0m reqwest v0.11.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:00.8901016Z [1m[92m    Checking[0m tonic v0.9.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:01.1670794Z [1m[92m    Checking[0m ordered-multimap v0.4.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:01.3950185Z [1m[92m    Checking[0m clap v4.6.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:01.7700453Z [1m[92m   Compiling[0m sqlx-macros-core v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:01.8850430Z [1m[92m   Compiling[0m flate2 v1.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:02.0530527Z [1m[92m   Compiling[0m pest_derive v2.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:02.2565680Z [1m[92m    Checking[0m matchers v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:02.5100795Z [1m[92m   Compiling[0m soroban-env-macros v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.5120131Z [1m[92m    Checking[0m sharded-slab v0.1.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.5320608Z [1m[92m    Checking[0m http-body-util v0.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.6110898Z [1m[92m   Compiling[0m curve25519-dalek v4.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.8150506Z [1m[92m    Checking[0m rfc6979 v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.8306773Z [1m[92m    Checking[0m sha1 v0.10.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.8720954Z [1m[92m    Checking[0m tracing-serde v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.9480436Z [1m[92m    Checking[0m toml_datetime v0.6.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:03.9561009Z [1m[92m    Checking[0m serde_spanned v0.6.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.0261122Z [1m[92m   Compiling[0m num-derive v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.0401662Z [1m[92m    Checking[0m tracing-log v0.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.1330894Z [1m[92m    Checking[0m thread_local v1.1.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.1660631Z [1m[92m    Checking[0m data-encoding v2.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.2460397Z [1m[92m    Checking[0m nu-ansi-term v0.50.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.5330566Z [1m[92m    Checking[0m sync_wrapper v1.0.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.5460258Z [1m[92m    Checking[0m atomic-waker v1.1.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.5850533Z [1m[92m    Checking[0m utf-8 v0.7.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.5935485Z [1m[92m    Checking[0m winnow v0.7.15
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.7130389Z [1m[92m    Checking[0m linked-hash-map v0.5.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.7387082Z [1m[92m   Compiling[0m prometheus v0.13.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.8426232Z [1m[92m   Compiling[0m unicase v2.9.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.8528561Z [1m[92m    Checking[0m indexmap-nostd v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.8720457Z [1m[92m    Checking[0m toml_write v0.1.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:04.9976437Z [1m[92m    Checking[0m minimal-lexical v0.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:05.0090881Z [1m[92m    Checking[0m downcast-rs v1.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:05.0530543Z [1m[92m    Checking[0m wasmi_core v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:05.1593570Z [1m[92m    Checking[0m wasmparser-nostd v0.100.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:05.1690248Z [1m[92m    Checking[0m nom v7.1.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:05.3400548Z [1m[92m   Compiling[0m mime_guess v2.0.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:05.7291254Z [1m[92m    Checking[0m yaml-rust v0.4.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:06.0740659Z [1m[92m    Checking[0m toml_edit v0.22.27
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:06.5062660Z [1m[92m    Checking[0m tungstenite v0.24.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:06.9111063Z [1m[92m    Checking[0m hyper v1.10.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:07.4950866Z [1m[92m    Checking[0m tracing-subscriber v0.3.23
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:07.5310498Z [1m[92m    Checking[0m ecdsa v0.16.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:07.8693094Z [1m[92m   Compiling[0m sqlx-macros v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:08.1080514Z [1m[92m    Checking[0m json5 v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:08.4240929Z [1m[92m   Compiling[0m zip v0.6.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:08.5498049Z [1m[92m    Checking[0m opentelemetry-proto v0.4.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:08.9020698Z [1m[92m    Checking[0m rust-ini v0.18.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:08.9140634Z [1m[92m   Compiling[0m rust-embed-utils v8.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:08.9406910Z [1m[92m    Checking[0m ron v0.7.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.0461064Z [1m[92m    Checking[0m futures v0.3.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.0600982Z [1m[92m    Checking[0m opentelemetry-semantic-conventions v0.13.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.0910561Z [1m[92m   Compiling[0m soroban-env-common v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.1419442Z [1m[92m    Checking[0m toml v0.5.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.2140469Z [1m[92m   Compiling[0m curve25519-dalek-derive v0.1.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.6180421Z [1m[92m    Checking[0m pathdiff v0.2.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.6660567Z [1m[92m    Checking[0m hashbrown v0.14.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.6841092Z [1m[92m   Compiling[0m prettyplease v0.2.37
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.8000758Z [1m[92m    Checking[0m alloc-no-stdlib v2.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.8680855Z [1m[92m    Checking[0m compression-core v0.4.32
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.8934867Z [1m[92m    Checking[0m spin v0.9.8
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.9460362Z [1m[92m    Checking[0m wasmi_arena v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:09.9985116Z [1m[92m    Checking[0m compression-codecs v0.4.38
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:10.0414822Z [1m[92m    Checking[0m soroban-wasmi v0.31.1-soroban.20.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:10.1231560Z [1m[92m   Compiling[0m darling_core v0.20.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:10.1510536Z [1m[92m    Checking[0m dashmap v5.5.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:10.4200558Z [1m[92m    Checking[0m alloc-stdlib v0.2.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:10.4990421Z [1m[92m    Checking[0m config v0.13.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:11.4770589Z [1m[92m    Checking[0m wasmparser v0.116.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:11.8101368Z [1m[92m    Checking[0m opentelemetry-otlp v0.14.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:11.9935875Z [1m[92m   Compiling[0m rust-embed-impl v8.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:12.3820589Z [1m[92m   Compiling[0m utoipa-swagger-ui v6.0.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:12.5053285Z [1m[92m    Checking[0m sqlx v0.8.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:12.6020509Z [1m[92m    Checking[0m tracing-opentelemetry v0.22.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:12.7301131Z [1m[92m   Compiling[0m utoipa-gen v4.3.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:12.7710257Z [1m[92m    Checking[0m toml v0.8.23
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:12.8151811Z [1m[92m    Checking[0m hyper-util v0.1.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:13.0390870Z [1m[92m    Checking[0m tokio-tungstenite v0.24.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:13.1842198Z [1m[92m    Checking[0m axum-core v0.4.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:13.2318598Z [1m[92m    Checking[0m tower v0.5.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:13.5691975Z [1m[92m    Checking[0m primeorder v0.13.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:13.7910948Z [1m[92m    Checking[0m ed25519 v2.2.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:14.5560573Z [1m[92m   Compiling[0m axum-macros v0.4.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:15.0560625Z [1m[92m    Checking[0m serde_path_to_error v0.1.20
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:15.3392210Z [1m[92m   Compiling[0m soroban-env-host v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:15.4585799Z [1m[92m    Checking[0m static_assertions v1.1.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:15.4973433Z [1m[92m    Checking[0m keccak v0.1.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:15.9510953Z [1m[92m    Checking[0m ethnum v1.5.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:16.2313746Z [1m[92m    Checking[0m axum v0.7.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:17.1900728Z [1m[92m    Checking[0m utoipa v4.2.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:18.2460844Z [1m[92m   Compiling[0m soroban-spec v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:18.7980329Z [1m[92m    Checking[0m sha3 v0.10.9
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:18.8580348Z [1m[92m    Checking[0m ed25519-dalek v2.2.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:18.9611144Z [1m[92m    Checking[0m p256 v0.13.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:18.9945265Z [1m[92m    Checking[0m rust-embed v8.11.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:19.0470911Z [1m[92m    Checking[0m stellarroute-indexer v0.1.0 (/home/runner/work/StellarRoute/StellarRoute/crates/indexer)
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:19.4570489Z [1m[92m   Compiling[0m darling_macro v0.20.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:19.6970387Z [1m[92m    Checking[0m brotli-decompressor v5.0.3
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.3191035Z [1m[92m    Checking[0m stellarroute-routing v0.1.0 (/home/runner/work/StellarRoute/StellarRoute/crates/routing)
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.3392369Z [1m[92m    Checking[0m async-compression v0.4.42
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.3650966Z [1m[92m    Checking[0m k256 v0.13.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.5580596Z [1m[92m   Compiling[0m soroban-builtin-sdk-macros v21.2.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.6984384Z [1m[92m   Compiling[0m soroban-sdk-macros v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.8290885Z [1m[92m    Checking[0m tokio-retry v0.3.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:20.9330683Z [1m[92m    Checking[0m arc-swap v1.9.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:21.1190493Z [1m[92m    Checking[0m combine v4.6.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:21.1437251Z [1m[92m   Compiling[0m num-integer v0.1.46
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:21.6610456Z [1m[92m    Checking[0m socket2 v0.4.10
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:21.8850837Z [1m[92m    Checking[0m hex-literal v0.4.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:21.9300351Z [1m[92m    Checking[0m sha1_smol v1.0.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:22.5800913Z [1m[92m   Compiling[0m num-bigint v0.4.6
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:24.1460751Z [1m[92m    Checking[0m tower-http v0.5.2
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:24.3780342Z [1m[92m    Checking[0m brotli v8.0.4
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:24.9434249Z [1m[92m    Checking[0m redis v0.24.1
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:25.6552177Z [1m[92m   Compiling[0m soroban-spec-rust v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:25.9349692Z [1m[92m   Compiling[0m darling v0.20.11
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:25.9843511Z [1m[92m    Checking[0m opentelemetry-http v0.10.0
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:26.0320665Z [1m[92m   Compiling[0m soroban-sdk v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:26.1470451Z [1m[92m    Checking[0m soroban-ledger-snapshot v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:26.3091100Z [1m[92m   Compiling[0m bytes-lit v0.0.5
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:26.5561126Z [1m[92m    Checking[0m stellarroute-sdk v0.1.0 (/home/runner/work/StellarRoute/StellarRoute/crates/sdk-rust)
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:27.9472744Z [1m[92m    Checking[0m stellarroute-api v0.1.0 (/home/runner/work/StellarRoute/StellarRoute/crates/api)
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:28.3856819Z [1m[92m    Checking[0m soroban-token-sdk v21.7.7
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:28.4522749Z [1m[92m    Checking[0m stellarroute-contracts v0.1.0 (/home/runner/work/StellarRoute/StellarRoute/crates/contracts)
+Backend Checks (Rust)	Cargo check workspace	2026-06-24T02:53:34.4878245Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1m 41s
+Backend Checks (Rust)	Check formatting	∩╗┐2026-06-24T02:53:34.6286232Z ##[group]Run cargo fmt --all -- --check
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6286633Z [36;1mcargo fmt --all -- --check[0m
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6319817Z shell: /usr/bin/bash -e {0}
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6320080Z env:
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6320279Z   CARGO_TERM_COLOR: always
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6320528Z   RUST_BACKTRACE: 1
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6320758Z   CARGO_HOME: /home/runner/.cargo
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6321026Z   CARGO_INCREMENTAL: 0
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6321252Z   CACHE_ON_FAILURE: false
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:34.6321482Z ##[endgroup]
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1196780Z Diff in /home/runner/work/StellarRoute/StellarRoute/crates/api/src/cache/mod.rs:478:
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1197820Z                          .map(|guard| guard.is_none())
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1198474Z                          .unwrap_or(true);
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1198947Z                      if abandoned {
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1199863Z -                        self.inflight
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1200367Z -                            .abandoned
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1206733Z -                            .store(true, AtomicOrdering::Release);
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1207624Z +                        self.inflight.abandoned.store(true, AtomicOrdering::Release);
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1208315Z                      }
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1208680Z  
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1209369Z                      self.inflight.notify.notify_waiters();
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1210230Z Diff in /home/runner/work/StellarRoute/StellarRoute/crates/api/src/cache/mod.rs:591:
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1211038Z                          .map(|guard| guard.is_none())
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1211568Z                          .unwrap_or(true);
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1212019Z                      if abandoned {
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1212454Z -                        self.inflight
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1212875Z -                            .abandoned
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1213407Z -                            .store(true, AtomicOrdering::Release);
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1214152Z +                        self.inflight.abandoned.store(true, AtomicOrdering::Release);
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1215317Z                      }
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1215670Z  
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.1216046Z                      self.inflight.notify.notify_waiters();
+Backend Checks (Rust)	Check formatting	2026-06-24T02:53:35.5358865Z ##[error]Process completed with exit code 1.
+Backend Checks (Rust)	Post Run actions/checkout@v4	∩╗┐2026-06-24T02:53:35.5503874Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.5505206Z Post job cleanup.
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6457583Z [command]/usr/bin/git version
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6495607Z git version 2.54.0
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6536210Z Temporarily overriding HOME='/home/runner/work/_temp/4310bf96-e9d2-426b-af42-d84ad06f66ea' before making global git config changes
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6537623Z Adding repository directory to the temporary git global config as a safe directory
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6543019Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/StellarRoute/StellarRoute
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6581684Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6615706Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6852129Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6883425Z http.https://github.com/.extraheader
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6895677Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.6929901Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.7164741Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Backend Checks (Rust)	Post Run actions/checkout@v4	2026-06-24T02:53:35.7199770Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Backend Checks (Rust)	Complete job	∩╗┐2026-06-24T02:53:35.7585205Z Cleaning up orphan processes
+Backend Checks (Rust)	Complete job	2026-06-24T02:53:35.7893933Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

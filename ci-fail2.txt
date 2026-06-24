@@ -1,0 +1,7 @@
+﻿gh : run 28070051142 is still in progress; logs will be available when it is complete
+At C:\Users\HP-USER\AppData\Local\Temp\ps-script-2a9ae812-bf57-4036-8dd3-3fbcb885bf98.ps1:107 char:35
++ ... -USER\StellarRoute; gh run view 28070051142 --log-failed 2>&1 | Out-F ...
++                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (run 28070051142... it is complete:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

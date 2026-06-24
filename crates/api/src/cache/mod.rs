@@ -478,9 +478,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                         .map(|guard| guard.is_none())
                         .unwrap_or(true);
                     if abandoned {
-                        self.inflight
-                            .abandoned
-                            .store(true, AtomicOrdering::Release);
+                        self.inflight.abandoned.store(true, AtomicOrdering::Release);
                     }
 
                     self.inflight.notify.notify_waiters();
@@ -591,9 +589,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                         .map(|guard| guard.is_none())
                         .unwrap_or(true);
                     if abandoned {
-                        self.inflight
-                            .abandoned
-                            .store(true, AtomicOrdering::Release);
+                        self.inflight.abandoned.store(true, AtomicOrdering::Release);
                     }
 
                     self.inflight.notify.notify_waiters();

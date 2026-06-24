@@ -457,6 +457,8 @@ impl HybridOptimizer {
             compute_time_us,
             hop_count: path.hops.len(),
             score,
+            anomaly_score: 0.0,
+            anomaly_reasons: Vec::new(),
         })
     }
 

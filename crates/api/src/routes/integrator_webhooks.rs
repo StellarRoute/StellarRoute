@@ -13,7 +13,7 @@ use crate::{
     state::AppState,
 };
 
-fn resolve_consumer_id(headers: &HeaderMap) -> Result<String> {
+pub(crate) fn resolve_consumer_id(headers: &HeaderMap) -> Result<String> {
     headers
         .get("x-api-key")
         .and_then(|value| value.to_str().ok())
@@ -88,8 +88,45 @@ pub async fn upsert_quote_expiration_webhook(
             consumer_id,
             webhook_url: body.webhook_url,
             enabled,
-            generated_signing_secret,
         },
         request_id.to_string(),
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderName, HeaderValue};
+
+    #[test]
+    fn test_resolve_consumer_id_valid() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-api-key"),
+            HeaderValue::from_static("test_key"),
+        );
+        let result = resolve_consumer_id(&headers);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "api_key:test_key");
+    }
+
+    #[test]
+    fn test_resolve_consumer_id_missing() {
+        let headers = HeaderMap::new();
+        let result = resolve_consumer_id(&headers);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn test_resolve_consumer_id_empty() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-api-key"),
+            HeaderValue::from_static("   "),
+        );
+        let result = resolve_consumer_id(&headers);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
 }

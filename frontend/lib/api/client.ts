@@ -444,14 +444,14 @@ export class StellarRouteClient {
   }
 
   /**
-   * GET /api/v1/history/{base}/{quote}
+   * GET /api/v1/price-history/{base}/{quote}
    */
   getPriceHistory(
     base: string,
     quote: string,
     opts?: FetchOptions,
   ): Promise<PriceHistoryResponse> {
-    const path = `/api/v1/history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
+    const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
     return this.request<PriceHistoryResponse>(path, opts);
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useWalletOnboarding } from '@/hooks/useWalletOnboarding';
@@ -97,7 +97,6 @@ export function WalletButton() {
       <AccountSwitcher
         onAccountChange={(newAddress) => {
           console.log('Account changed to:', newAddress);
-          // This could trigger balance/quote refreshes
           setShowQrCode(false);
         }}
       />

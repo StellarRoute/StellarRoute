@@ -281,6 +281,104 @@ export function computeBundleSize(chunkSizesKb) {
 import zlib from "zlib";
 import path from "path";
 
+function gzipChunkSize(buildDir, chunkPath) {
+  const relativePath = chunkPath.startsWith("_next/")
+    ? chunkPath.slice("_next/".length)
+    : chunkPath.startsWith("/_next/")
+      ? chunkPath.slice("/_next/".length)
+      : chunkPath;
+  const filePath = path.join(buildDir, relativePath);
+
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  const content = fs.readFileSync(filePath);
+  return zlib.gzipSync(content).length;
+}
+
+function extractEntryJsFiles(manifestContent, projectPath) {
+  const entryStart = manifestContent.indexOf('"entryJSFiles":');
+  if (entryStart === -1) {
+    return [];
+  }
+
+  const entrySection = manifestContent.slice(entryStart);
+  const escapedPath = projectPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`"\\[project\\]${escapedPath}":\\[([^\\]]+)\\]`);
+  const match = entrySection.match(pattern);
+  if (!match) {
+    return [];
+  }
+
+  const files = [];
+  const fileRegex = /"([^"]+\.js)"/g;
+  let fileMatch;
+  while ((fileMatch = fileRegex.exec(match[1])) !== null) {
+    files.push(fileMatch[1]);
+  }
+
+  return files;
+}
+
+function collectAppRouterSwapChunks(buildDir) {
+  const swapManifestPath = path.join(
+    buildDir,
+    "server/app/swap/page_client-reference-manifest.js",
+  );
+
+  if (!fs.existsSync(swapManifestPath)) {
+    return null;
+  }
+
+  const manifestContent = fs.readFileSync(swapManifestPath, "utf8");
+  const swapChunks = extractEntryJsFiles(manifestContent, "/app/swap/page");
+
+  if (!swapChunks.length) {
+    return null;
+  }
+
+  return new Set(swapChunks);
+}
+
+function summarizeChunks(buildDir, swapChunks) {
+  let totalBytes = 0;
+  const asyncChunks = [];
+
+  for (const chunk of swapChunks) {
+    if (!chunk.endsWith(".js")) continue;
+
+    const gzipBytes = gzipChunkSize(buildDir, chunk);
+    if (gzipBytes === null) {
+      continue;
+    }
+
+    totalBytes += gzipBytes;
+
+    const relativePath = chunk.startsWith("_next/")
+      ? chunk.slice("_next/".length)
+      : chunk.startsWith("/_next/")
+        ? chunk.slice("/_next/".length)
+        : chunk;
+    const isAsync =
+      relativePath.includes("chunks/") &&
+      !relativePath.includes("framework") &&
+      !relativePath.includes("main");
+
+    if (isAsync) {
+      asyncChunks.push({
+        name: relativePath,
+        sizeKb: gzipBytes / 1024,
+      });
+    }
+  }
+
+  return {
+    totalKb: totalBytes / 1024,
+    asyncChunks: asyncChunks.sort((a, b) => b.sizeKb - a.sizeKb),
+  };
+}
+
 /**
  * Collect client chunk paths for the /swap route from Next.js build manifests.
  *
@@ -383,11 +481,18 @@ export function parseBundleSize(buildDir) {
     }
   }
 
-  const swapChunks = collectSwapChunkPaths(
+  let swapChunks = collectSwapChunkPaths(
     buildDir,
     buildManifest,
     appBuildManifest,
   );
+
+  if (swapChunks.size === 0) {
+    const appRouterChunks = collectAppRouterSwapChunks(buildDir);
+    if (appRouterChunks?.size) {
+      swapChunks = appRouterChunks;
+    }
+  }
 
   if (swapChunks.size === 0) {
     const available = [
@@ -400,38 +505,7 @@ export function parseBundleSize(buildDir) {
     process.exit(1);
   }
 
-  let totalBytes = 0;
-  const asyncChunks = [];
-  
-  for (const chunk of swapChunks) {
-    if (!chunk.endsWith(".js")) continue;
-    
-    const relativePath = chunk.startsWith("_next/")
-      ? chunk.slice("_next/".length)
-      : chunk;
-    const filePath = path.join(buildDir, relativePath);
-
-    if (!fs.existsSync(filePath)) {
-      continue;
-    }
-
-    const content = fs.readFileSync(filePath);
-    const gzipBytes = zlib.gzipSync(content).length;
-    totalBytes += gzipBytes;
-    
-    const isAsync = relativePath.includes("chunks/") && !relativePath.includes("framework") && !relativePath.includes("main");
-    if (isAsync) {
-      asyncChunks.push({
-        name: relativePath,
-        sizeKb: gzipBytes / 1024,
-      });
-    }
-  }
-
-  return {
-    totalKb: totalBytes / 1024,
-    asyncChunks: asyncChunks.sort((a, b) => b.sizeKb - a.sizeKb),
-  };
+  return summarizeChunks(buildDir, swapChunks);
 }
 
 // ---------------------------------------------------------------------------

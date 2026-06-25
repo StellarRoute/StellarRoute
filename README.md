@@ -299,6 +299,15 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    cargo test
    ```
 
+6. **Run routing benchmarks** (optional; also gated in CI on `crates/routing/` changes)
+   ```bash
+   # Criterion micro-benchmarks for pathfinding and optimizer tuning
+   cargo bench -p stellarroute-routing
+
+   # CI latency gate (initialization + single lookup on graph fixture, <100ms)
+   cargo test -p stellarroute-routing pathfinding_latency_gate --release -- --nocapture
+   ```
+
 For detailed setup instructions, see the [Development Setup Guide](docs/development/SETUP.md).
 
 Frontend contributors should also use the [Frontend Developer Onboarding Guide](docs/development/frontend-guide.md).

@@ -20,6 +20,7 @@ export default function OrderbookPage() {
 
   useEffect(() => {
     if (!pairs?.length) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setSelectedPairKey((current) => {
       if (current && pairs.some((pair) => pairKey(pair) === current)) {
         return current;
@@ -173,12 +174,12 @@ export default function OrderbookPage() {
                         key={`${bid.price}-${index}`} 
                         className={cn(
                           "grid grid-cols-3 py-1.5 px-2 rounded transition-all duration-200",
-                          "hover:bg-emerald-500/10 hover:scale-[1.02] cursor-pointer",
-                          isHighlightedPair && "bg-emerald-500/5"
+                          "hover:bg-bid-green/10 hover:scale-[1.02] cursor-pointer",
+                          isHighlightedPair && "bg-bid-green/5"
                         )}
                         data-testid={isHighlightedPair ? "highlighted-bid-row" : "bid-row"}
                       >
-                        <span className="text-emerald-600 font-medium">{bid.price}</span>
+                        <span className="text-bid-green font-medium">{bid.price}</span>
                         <span className="text-muted-foreground">{bid.amount}</span>
                         <span className="text-muted-foreground">{bid.total}</span>
                       </div>
@@ -202,12 +203,12 @@ export default function OrderbookPage() {
                         key={`${ask.price}-${index}`} 
                         className={cn(
                           "grid grid-cols-3 py-1.5 px-2 rounded transition-all duration-200",
-                          "hover:bg-red-500/10 hover:scale-[1.02] cursor-pointer",
-                          isHighlightedPair && "bg-red-500/5"
+                          "hover:bg-ask-red/10 hover:scale-[1.02] cursor-pointer",
+                          isHighlightedPair && "bg-ask-red/5"
                         )}
                         data-testid={isHighlightedPair ? "highlighted-ask-row" : "ask-row"}
                       >
-                        <span className="text-red-500 font-medium">{ask.price}</span>
+                        <span className="text-ask-red font-medium">{ask.price}</span>
                         <span className="text-muted-foreground">{ask.amount}</span>
                         <span className="text-muted-foreground">{ask.total}</span>
                       </div>

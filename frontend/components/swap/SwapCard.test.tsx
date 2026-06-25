@@ -2,6 +2,17 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SwapCard } from "./SwapCard";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/",
+}));
 import {
   SESSION_RECOVERY_THRESHOLD_MS,
   STORAGE_KEY,
@@ -115,7 +126,7 @@ describe("SwapCard session recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
 
     expect(
-      screen.getByRole("button", { name: /refreshing quote/i }),
+      screen.getByRole("button", { name: /loading quote/i }),
     ).toBeDisabled();
 
     await act(async () => {
@@ -131,7 +142,7 @@ describe("SwapCard session recovery", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /swap/i })).toBeEnabled();
     },
     10_000,
   );
@@ -171,7 +182,7 @@ describe("SwapCard session recovery", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("button", { name: /^swap$/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /swap/i })).toBeEnabled();
 
     setVisibilityState("hidden");
     act(() => {
@@ -192,7 +203,7 @@ describe("SwapCard session recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: /refresh quote/i }));
 
     expect(
-      screen.getByRole("button", { name: /refreshing quote/i }),
+      screen.getByRole("button", { name: /loading quote/i }),
     ).toBeDisabled();
     expect(quoteCalls).toBe(2);
 

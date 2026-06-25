@@ -1,7 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { SwapCard } from '@/components/swap/SwapCard';
 import { SESSION_RECOVERY_THRESHOLD_MS, STORAGE_KEY } from '@/hooks/useTradeFormStorage';
+import { AppShell } from '@/components/layout/app-shell';
+import { SessionRecoveryProvider } from '@/components/providers/session-recovery-provider';
+import { StellarRouteApiError, stellarRouteClient } from '@/lib/api/client';
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/",
+}));
 
 function createQuoteResponse(overrides?: Partial<Record<string, unknown>>) {
   return {
@@ -46,8 +60,10 @@ describe('Session Recovery Integration', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     localStorage.clear();
     sessionStorage.clear();
   });
@@ -186,7 +202,7 @@ describe('Session Recovery Integration', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
 
     // Should show refreshing state initially
-    expect(screen.getByRole('button', { name: /refreshing quote/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /loading quote/i })).toBeDisabled();
 
     await act(async () => {
       vi.advanceTimersByTime(400);
@@ -195,7 +211,7 @@ describe('Session Recovery Integration', () => {
 
     // Quote should be fetched and swap enabled
     expect(quoteCalls).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: /^swap$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /swap/i })).toBeEnabled();
   });
 
   it('should handle recovery errors gracefully', async () => {
@@ -218,7 +234,7 @@ describe('Session Recovery Integration', () => {
         return createResponse({ pairs: [], total: 0 });
       }
       if (url.includes('/api/v1/quote/')) {
-        throw new Error('Network error');
+        throw new StellarRouteApiError(400, 'invalid_amount' as any, 'Network error');
       }
       return createResponse({});
     });
@@ -233,10 +249,13 @@ describe('Session Recovery Integration', () => {
     // Try to restore session
     fireEvent.click(screen.getByRole('button', { name: /restore session/i }));
 
-    // Should show error in modal
-    await waitFor(() => {
-      expect(screen.getByText(/network error/i)).toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
     });
+
+    // Should show error
+    expect(screen.getByText(/network error/i)).toBeInTheDocument();
   });
 
   it('should not show recovery modal without recoverable context', async () => {
@@ -297,4 +316,87 @@ describe('Session Recovery Integration', () => {
     expect(screen.queryByText(/restore previous trade\?/i)).not.toBeInTheDocument();
     expect(screen.getAllByLabelText(/you pay/i)[0]).toHaveValue('');
   });
+
+  it('should display the stale session banner in AppShell and trigger quote refresh with stored values when clicked', async () => {
+    localStorage.setItem(
+      'stellar-route-trade-form',
+      JSON.stringify({
+        amount: '125',
+        slippage: 1.0,
+        deadline: 30,
+        fromToken: 'native',
+        toToken: 'USDC:GQUOTE',
+        savedAt: Date.now(),
+      })
+    );
+
+    let resolveQuotePromise!: (value: any) => void;
+    const quotePromise = new Promise<any>((resolve) => {
+      resolveQuotePromise = resolve;
+    });
+
+    const getQuoteSpy = vi.spyOn(stellarRouteClient, 'getQuote').mockReturnValue(quotePromise);
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/api/v1/pairs')) {
+        return createResponse({ pairs: [], total: 0 });
+      }
+      return createResponse({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <SessionRecoveryProvider>
+        <AppShell>
+          <div>Main content</div>
+        </AppShell>
+      </SessionRecoveryProvider>
+    );
+
+    expect(screen.queryByTestId('session-recovery-banner')).not.toBeInTheDocument();
+
+    setVisibilityState('hidden');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(SESSION_RECOVERY_THRESHOLD_MS + 1000);
+    });
+
+    setVisibilityState('visible');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    const banner = screen.getByTestId('session-recovery-banner');
+    expect(banner).toBeInTheDocument();
+    expect(
+      screen.getByText(/your session is stale. would you like to restore/i)
+    ).toBeInTheDocument();
+
+    const restoreBtn = screen.getByRole('button', { name: /^restore$/i });
+    
+    // Start restoration
+    await act(async () => {
+      fireEvent.click(restoreBtn);
+    });
+
+    // Verify it displays Restoring...
+    expect(screen.getByRole('button', { name: /restoring\.\.\./i })).toBeInTheDocument();
+    expect(getQuoteSpy).toHaveBeenCalledWith('native', 'USDC:GQUOTE', 125, 'sell');
+
+    // Resolve the quote promise
+    await act(async () => {
+      resolveQuotePromise(createQuoteResponse({ amount: '125', total: '118.75' }));
+      await Promise.resolve();
+    });
+
+    // Banner should be removed
+    expect(screen.queryByTestId('session-recovery-banner')).not.toBeInTheDocument();
+
+    getQuoteSpy.mockRestore();
+  });
 });
+

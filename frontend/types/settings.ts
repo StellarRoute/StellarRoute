@@ -41,6 +41,8 @@ export interface Settings {
    * 1.0 = 100% (default), 2.0 = 200%.
    */
   fontScale: FontScale;
+  /** Accessibility high contrast mode. */
+  highContrast: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,4 +51,5 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: DEFAULT_LOCALE,
   accentColor: DEFAULT_ACCENT_COLOR,
   fontScale: DEFAULT_FONT_SCALE,
+  highContrast: false,
 };

@@ -76,6 +76,8 @@ export function SwapCard() {
     fromAmount,
     setFromAmount,
     toAmount,
+    side,
+    setSide,
     slippage,
     setSlippage,
     deadline,
@@ -163,7 +165,11 @@ export function SwapCard() {
       ? 'refresh'
       : null;
   const requiresFreshQuote =
-    recoveryRequestedAt !== null && (quote.loading || quote.isStale);
+    recoveryRequestedAt !== null &&
+    (quote.lastQuotedAtMs === null ||
+      quote.lastQuotedAtMs < recoveryRequestedAt ||
+      quote.loading ||
+      quote.isStale);
 
   // Connection status indicator
   const { isOnline } = useOnlineStatus();

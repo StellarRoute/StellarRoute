@@ -68,7 +68,7 @@ export function PriceInfoPanel({
         <div className="text-xs text-muted-foreground mb-1">
           24h Price Trend
         </div>
-        <PriceSparkline data={mockPriceData} />
+        <PriceSparkline rangeData={{ "24h": mockPriceData }} />
       </div>
 
       {/* Existing UI */}

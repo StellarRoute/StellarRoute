@@ -325,20 +325,51 @@ export function parseBundleSize(buildDir) {
 
   const pages = manifest.pages ?? {};
 
+  let swapChunks;
   // Check /swap route exists in manifest
   if (!pages["/swap"]) {
-    const available = Object.keys(pages).join(", ");
-    console.error(
-      `[perf-budget] ERROR: Route "/swap" not found in build manifest. Available routes: ${available}`
-    );
-    process.exit(1);
-  }
+    const appManifestPath = path.join(buildDir, "server", "app", "swap", "page_client-reference-manifest.js");
+    if (fs.existsSync(appManifestPath)) {
+      try {
+        const fileContent = fs.readFileSync(appManifestPath, "utf8");
+        const marker = 'globalThis.__RSC_MANIFEST["/swap/page"] =';
+        const index = fileContent.indexOf(marker);
+        if (index !== -1) {
+          let jsonText = fileContent.slice(index + marker.length).trim();
+          if (jsonText.endsWith(";")) {
+            jsonText = jsonText.slice(0, -1).trim();
+          }
+          const appManifest = JSON.parse(jsonText);
+          const entryJS = appManifest.entryJSFiles ?? {};
+          swapChunks = new Set(entryJS["[project]/app/swap/page"] ?? []);
+        }
+      } catch (e) {
+        console.warn(`[perf-budget] Warning: Failed to parse page_client-reference-manifest.js: ${e.message}`);
+      }
+    }
 
-  // Collect all unique JS chunks for /swap + /_app (shared)
-  const swapChunks = new Set([
-    ...(pages["/swap"] ?? []),
-    ...(pages["/_app"] ?? []),
-  ]);
+    if (!swapChunks) {
+      const chunksDir = path.join(buildDir, "static", "chunks");
+      if (fs.existsSync(chunksDir)) {
+        const files = fs.readdirSync(chunksDir);
+        swapChunks = new Set(
+          files.filter((f) => f.endsWith(".js")).map((f) => `static/chunks/${f}`)
+        );
+      } else {
+        const available = Object.keys(pages).join(", ");
+        console.error(
+          `[perf-budget] ERROR: Route "/swap" not found in build manifest. Available routes: ${available}`
+        );
+        process.exit(1);
+      }
+    }
+  } else {
+    // Collect all unique JS chunks for /swap + /_app (shared)
+    swapChunks = new Set([
+      ...(pages["/swap"] ?? []),
+      ...(pages["/_app"] ?? []),
+    ]);
+  }
 
   let totalBytes = 0;
   for (const chunk of swapChunks) {

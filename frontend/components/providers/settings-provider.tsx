@@ -24,6 +24,7 @@ interface SettingsContextType {
   updateAccentColor: (color: AccentColor) => void;
   /** Update the root font-size multiplier (issue #522). */
   updateFontScale: (scale: FontScale) => void;
+  updateHighContrast: (value: boolean) => void;
   resetSettings: () => void;
 }
 
@@ -94,6 +95,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     applyFontScale(settings.fontScale);
   }, [settings.fontScale]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (settings.highContrast) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+  }, [settings.highContrast]);
+
   // ── Updaters ───────────────────────────────────────────────────────────────
 
   const isValidSlippage = (value: number) =>
@@ -128,6 +138,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, fontScale: scale }));
   };
 
+  const updateHighContrast = (value: boolean) => {
+    setSettings((prev) => ({ ...prev, highContrast: value }));
+  };
+
   const resetSettings = () => {
     setTheme(DEFAULT_SETTINGS.theme);
     setSettings(DEFAULT_SETTINGS);
@@ -142,6 +156,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         updateLocale,
         updateAccentColor,
         updateFontScale,
+        updateHighContrast,
         resetSettings,
       }}
     >

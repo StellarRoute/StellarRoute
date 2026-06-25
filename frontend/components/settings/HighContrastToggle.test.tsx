@@ -1,5 +1,5 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SettingsProvider } from "@/components/providers/settings-provider";
@@ -13,6 +13,10 @@ describe("HighContrastToggle", () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.documentElement.classList.remove("high-contrast");
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("renders with label and description", () => {

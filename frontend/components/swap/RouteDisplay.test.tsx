@@ -217,3 +217,77 @@ describe('RouteDisplay — property tests', () => {
     }
   );
 });
+
+// ---------------------------------------------------------------------------
+// Telemetry tests
+// ---------------------------------------------------------------------------
+
+describe('RouteDisplay — telemetry', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('emits telemetry event on alternative route selection', async () => {
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).toHaveBeenCalledTimes(1);
+      const event = telemetryListener.mock.calls[0][0] as CustomEvent;
+      expect(event.detail).toEqual({
+        venue: 'AQUA Pool',
+        hopCount: 1,
+      });
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+    }
+  });
+
+  it('does not emit telemetry event when NEXT_PUBLIC_TELEMETRY_ENABLED is false', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TELEMETRY_ENABLED', 'false');
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+      vi.unstubAllEnvs();
+    }
+  });
+});
+

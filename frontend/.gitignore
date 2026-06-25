@@ -40,6 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# performance budget outputs
 perf-results.json
 perf-contributor-report.txt
+test-results/
+playwright-report/
+

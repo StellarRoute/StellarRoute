@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/utils';
+import { emitRouteEvent } from '@/lib/telemetry';
 
 import { ConfidenceIndicator } from './ConfidenceIndicator';
 import { RouteDisplaySkeleton } from './RouteDisplaySkeleton';
@@ -159,6 +160,7 @@ export function RouteDisplay({
 
   const handleSelect = (route: AlternativeRoute) => {
     setSelectedRouteId(route.id);
+    emitRouteEvent(route.venue, route.hops?.length ?? 0);
     onSelect?.(route);
   };
   const shouldVirtualize = routes.length > ROUTE_VIRTUALIZATION_THRESHOLD;

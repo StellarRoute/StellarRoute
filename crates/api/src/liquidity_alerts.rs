@@ -279,6 +279,8 @@ fn timestamp_from_orderbook(orderbook: &OrderbookResponse) -> Option<DateTime<Ut
 mod tests {
     use super::*;
 
+    use crate::models::OrderbookSummary;
+
     fn orderbook(bids: Vec<(&str, &str)>, asks: Vec<(&str, &str)>) -> OrderbookResponse {
         OrderbookResponse {
             base_asset: AssetInfo::native(),
@@ -299,6 +301,12 @@ mod tests {
                     total: "0".to_string(),
                 })
                 .collect(),
+            summary: OrderbookSummary {
+                bid: None,
+                ask: None,
+                spread_bps: None,
+                midpoint: None,
+            },
             timestamp: 1_717_171_717,
         }
     }

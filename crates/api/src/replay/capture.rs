@@ -147,6 +147,8 @@ mod tests {
                 to_asset: AssetInfo::native(),
                 price: "1.0000000".to_string(),
                 source: "sdex".to_string(),
+                liquidity_depth: None,
+                fee_bps: None,
             }],
             timestamp: 0,
             expires_at: None,
@@ -155,6 +157,8 @@ mod tests {
             rationale: None,
             price_impact: None,
             exclusion_diagnostics: None,
+            midpoint: None,
+            spread_bps: None,
             data_freshness: Some(DataFreshness {
                 fresh_count: 1,
                 stale_count: 0,

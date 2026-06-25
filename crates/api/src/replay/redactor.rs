@@ -75,7 +75,8 @@ fn redact_canonical_asset(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::replay::artifact::{
-        HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION,
+        DecisionGraphSnapshot, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact,
+        CURRENT_SCHEMA_VERSION,
     };
     use chrono::Utc;
     use proptest::prelude::*;
@@ -126,6 +127,7 @@ mod tests {
                     }
                 ]
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 
@@ -152,6 +154,7 @@ mod tests {
                 "quote_asset": { "asset_type": "native" },
                 "price": "1.0000000"
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 

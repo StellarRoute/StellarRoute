@@ -152,16 +152,31 @@ impl SdexIndexer {
 
                                         // Index the offer
                                         let pool = self.db.pool();
-                                        if let Err(e) =
-                                            self.upsert_asset(pool, &offer.selling).await
+                                        let selling_asset_id =
+                                            match self.upsert_asset(pool, &offer.selling).await {
+                                                Ok(id) => id,
+                                                Err(e) => {
+                                                    warn!("Failed to upsert selling asset: {}", e);
+                                                    continue;
+                                                }
+                                            };
+                                        let buying_asset_id =
+                                            match self.upsert_asset(pool, &offer.buying).await {
+                                                Ok(id) => id,
+                                                Err(e) => {
+                                                    warn!("Failed to upsert buying asset: {}", e);
+                                                    continue;
+                                                }
+                                            };
+                                        if let Err(e) = self
+                                            .upsert_offer(
+                                                pool,
+                                                &offer,
+                                                selling_asset_id,
+                                                buying_asset_id,
+                                            )
+                                            .await
                                         {
-                                            warn!("Failed to upsert selling asset: {}", e);
-                                        }
-                                        if let Err(e) = self.upsert_asset(pool, &offer.buying).await
-                                        {
-                                            warn!("Failed to upsert buying asset: {}", e);
-                                        }
-                                        if let Err(e) = self.upsert_offer(pool, &offer).await {
                                             warn!("Failed to upsert offer {}: {}", offer.id, e);
                                         } else {
                                             debug!("Indexed offer {} via streaming", offer.id);
@@ -246,15 +261,26 @@ impl SdexIndexer {
             }
 
             // Extract and upsert assets
-            if let Err(e) = self.upsert_asset(pool, &offer.selling).await {
-                warn!("Failed to upsert selling asset: {}", e);
-            }
-            if let Err(e) = self.upsert_asset(pool, &offer.buying).await {
-                warn!("Failed to upsert buying asset: {}", e);
-            }
+            let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
+                Ok(id) => id,
+                Err(e) => {
+                    warn!("Failed to upsert selling asset: {}", e);
+                    continue;
+                }
+            };
+            let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
+                Ok(id) => id,
+                Err(e) => {
+                    warn!("Failed to upsert buying asset: {}", e);
+                    continue;
+                }
+            };
 
             // Upsert offer
-            match self.upsert_offer(pool, &offer).await {
+            match self
+                .upsert_offer(pool, &offer, selling_asset_id, buying_asset_id)
+                .await
+            {
                 Ok(_) => indexed += 1,
                 Err(e) => {
                     warn!("Failed to upsert offer {}: {}", offer.id, e);
@@ -267,54 +293,55 @@ impl SdexIndexer {
 
     /// Upsert an asset into the database
     #[tracing::instrument(skip(self, pool, asset), fields(asset_type = %asset.key().0))]
-    async fn upsert_asset(&self, pool: &PgPool, asset: &Asset) -> Result<()> {
+    async fn upsert_asset(&self, pool: &PgPool, asset: &Asset) -> Result<uuid::Uuid> {
         let (asset_type, asset_code, asset_issuer) = asset.key();
 
-        sqlx::query(
+        sqlx::query_scalar(
             r#"
-            INSERT INTO assets (asset_type, asset_code, asset_issuer, created_at, updated_at)
-            VALUES ($1, $2, $3, NOW(), NOW())
+            INSERT INTO assets (asset_type, asset_code, asset_issuer, created_at)
+            VALUES ($1, $2, $3, NOW())
             ON CONFLICT (asset_type, asset_code, asset_issuer)
-            DO UPDATE SET updated_at = NOW()
+            DO UPDATE SET asset_type = EXCLUDED.asset_type
+            RETURNING id
             "#,
         )
         .bind(asset_type)
         .bind(asset_code)
         .bind(asset_issuer)
-        .execute(pool)
+        .fetch_one(pool)
         .await
-        .map_err(IndexerError::DatabaseQuery)?;
-
-        Ok(())
+        .map_err(IndexerError::DatabaseQuery)
     }
 
     /// Upsert an offer into the database
     #[tracing::instrument(skip(self, pool, offer), fields(offer_id = offer.id))]
-    async fn upsert_offer(&self, pool: &PgPool, offer: &Offer) -> Result<()> {
-        let (selling_type, selling_code, selling_issuer) = offer.selling.key();
-        let (buying_type, buying_code, buying_issuer) = offer.buying.key();
+    async fn upsert_offer(
+        &self,
+        pool: &PgPool,
+        offer: &Offer,
+        selling_asset_id: uuid::Uuid,
+        buying_asset_id: uuid::Uuid,
+    ) -> Result<()> {
         let trace_context = TraceContext::current();
 
         sqlx::query(
             r#"
             INSERT INTO sdex_offers (
-                offer_id, seller_id, selling_asset_type, selling_asset_code, selling_asset_issuer,
-                buying_asset_type, buying_asset_code, buying_asset_issuer,
-                amount, price_n, price_d, price, last_modified_ledger, last_modified_time,
-                paging_token,
-                source_trace_id, source_span_id,
-                created_at, updated_at
+                offer_id, seller, selling_asset_id, buying_asset_id,
+                amount, price_n, price_d, price, last_modified_ledger, paging_token,
+                source_trace_id, source_span_id, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8::numeric, $9, $10, $11, $12, NOW())
             ON CONFLICT (offer_id)
             DO UPDATE SET
-                seller_id = EXCLUDED.seller_id,
+                seller = EXCLUDED.seller,
+                selling_asset_id = EXCLUDED.selling_asset_id,
+                buying_asset_id = EXCLUDED.buying_asset_id,
                 amount = EXCLUDED.amount,
                 price_n = EXCLUDED.price_n,
                 price_d = EXCLUDED.price_d,
                 price = EXCLUDED.price,
                 last_modified_ledger = EXCLUDED.last_modified_ledger,
-                last_modified_time = EXCLUDED.last_modified_time,
                 paging_token = EXCLUDED.paging_token,
                 source_trace_id = EXCLUDED.source_trace_id,
                 source_span_id = EXCLUDED.source_span_id,
@@ -323,18 +350,13 @@ impl SdexIndexer {
         )
         .bind(offer.id as i64)
         .bind(offer.seller.as_str())
-        .bind(selling_type)
-        .bind(selling_code)
-        .bind(selling_issuer)
-        .bind(buying_type)
-        .bind(buying_code)
-        .bind(buying_issuer)
+        .bind(selling_asset_id)
+        .bind(buying_asset_id)
         .bind(offer.amount.as_str())
         .bind(offer.price_n)
         .bind(offer.price_d)
         .bind(offer.price.as_str())
         .bind(offer.last_modified_ledger as i64)
-        .bind(offer.last_modified_time)
         .bind(offer.paging_token.as_deref())
         .bind(trace_context.trace_id)
         .bind(trace_context.span_id)

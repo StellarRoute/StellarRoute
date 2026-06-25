@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { NetworkBadge } from "@/components/shared/network-badge"
 import { MobileNav } from "./mobile-nav"
 import { cn } from "@/lib/utils"
+import { ROUTES } from "@/lib/constants"
 import { ThemeToggle } from "../ThemeToggle"
 
 interface NavItem {
@@ -19,7 +20,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Swap", href: "/swap" },
+  { label: "Swap", href: ROUTES.SWAP },
   { label: "Orderbook", href: "/orderbook" },
   { label: "History", href: "/history" },
   // Future routes - disabled for now
@@ -49,7 +50,7 @@ export function Header() {
         {/* Logo and Navigation */}
         <div className="flex items-center gap-6 md:gap-8">
           <Link
-            href="/swap"
+            href={ROUTES.SWAP}
             className="flex items-center gap-2 font-semibold text-xl hover:opacity-80 transition-opacity"
             aria-label="StellarRoute Swap"
           >

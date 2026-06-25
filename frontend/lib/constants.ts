@@ -11,5 +11,5 @@ export const APP_DESCRIPTION =
 
 export const ROUTES = {
   HOME: '/',
-  SWAP: '/',
+  SWAP: '/swap',
 } as const;

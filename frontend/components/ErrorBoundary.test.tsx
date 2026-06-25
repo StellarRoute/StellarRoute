@@ -35,7 +35,7 @@ describe("ErrorBoundary", () => {
 
   it("reloads the page when refresh button is clicked", () => {
     const originalLocation = window.location;
-    // @ts-ignore
+    // @ts-expect-error - mock window.location deletion
     delete window.location;
     window.location = { ...originalLocation, reload: vi.fn() };
 

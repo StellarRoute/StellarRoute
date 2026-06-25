@@ -4,6 +4,9 @@ import { useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { TradeRouteDisplay } from '@/components/shared/TradeRouteDisplay';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { cn } from '@/lib/utils';
+import { emitRouteEvent } from '@/lib/telemetry';
 import { useProgressiveLoadingTransition } from '@/hooks/useProgressiveLoadingTransition';
 import { useRouteSwitchTransition } from '@/hooks/useRouteSwitchTransition';
 import type { PriceQuote } from '@/types';
@@ -149,6 +152,7 @@ export function RouteDisplay({
 
   const handleSelect = (route: AlternativeRoute) => {
     setSelectedRouteId(route.id);
+    emitRouteEvent(route.venue, route.hops?.length ?? 0);
     onSelect?.(route);
   };
   const shouldVirtualize = routes.length > ROUTE_VIRTUALIZATION_THRESHOLD;

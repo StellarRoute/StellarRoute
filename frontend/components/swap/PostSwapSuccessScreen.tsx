@@ -11,7 +11,7 @@ import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 
 export interface PostSwapSuccessScreenProps {
   txHash: string;
-  tradeParams?: TradeParams;
+  tradeParams?: Partial<TradeParams>;
   onDone?: () => void;
   onSwapAgain?: () => void;
   explorerUrl?: string;

@@ -25,6 +25,7 @@ const STORAGE_KEY = 'stellarroute_swap_warnings';
 const MAX_WARNINGS = 20;
 
 function loadWarnings(): SwapWarning[] {
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -41,6 +42,7 @@ function loadWarnings(): SwapWarning[] {
 }
 
 function saveWarnings(warnings: SwapWarning[]): void {
+  if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(warnings));
   } catch (e) {

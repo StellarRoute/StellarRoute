@@ -31,9 +31,13 @@ export function WalletButton() {
     ? `${address.slice(0, 4)}...${address.slice(-4)}`
     : '';
 
-  const copyAddress = () => {
+  const copyAddress = async () => {
     if (address) {
-      void navigator.clipboard.writeText(address);
+      try {
+        await navigator.clipboard.writeText(address);
+      } catch (err) {
+        console.error('Failed to copy address:', err);
+      }
     }
   };
 

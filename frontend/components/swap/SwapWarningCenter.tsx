@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { X, AlertCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,8 @@ export interface SwapWarning {
 }
 
 interface SwapWarningCenterProps {
+  warnings?: SwapWarning[];
+  onRemoveWarning?: (id: string) => void;
   onClearAll?: () => void;
   className?: string;
 }
@@ -96,19 +98,34 @@ export function useSwapWarningCenter() {
 /**
  * Warning center panel component (collapsed/expandable)
  */
-export function SwapWarningCenter({ onClearAll, className }: SwapWarningCenterProps) {
-  const { warnings, removeWarning, clearAll } = useSwapWarningCenter();
+export function SwapWarningCenter({
+  warnings: customWarnings,
+  onRemoveWarning,
+  onClearAll,
+  className,
+}: SwapWarningCenterProps) {
+  const localHook = useSwapWarningCenter();
+  const warnings = customWarnings ?? localHook.warnings;
+  const removeWarning = onRemoveWarning ?? localHook.removeWarning;
+  const clearAll = localHook.clearAll;
+
   const [isOpen, setIsOpen] = useState(false);
 
-  const errorCount = warnings.filter((w) => w.type === 'error').length;
-  const warningCount = warnings.filter((w) => w.type === 'warning').length;
+  const sortedWarnings = [...warnings].sort((a, b) => {
+    if (a.type === 'error' && b.type !== 'error') return -1;
+    if (a.type !== 'error' && b.type === 'error') return 1;
+    return b.timestamp - a.timestamp;
+  });
+
+  const errorCount = sortedWarnings.filter((w) => w.type === 'error').length;
+  const warningCount = sortedWarnings.filter((w) => w.type === 'warning').length;
 
   const handleClearAll = useCallback(() => {
     clearAll();
     onClearAll?.();
   }, [clearAll, onClearAll]);
 
-  if (warnings.length === 0) return null;
+  if (sortedWarnings.length === 0) return null;
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -121,7 +138,7 @@ export function SwapWarningCenter({ onClearAll, className }: SwapWarningCenterPr
           <div className="flex items-center gap-2 text-sm">
             <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             <span className="font-medium text-amber-700 dark:text-amber-300">
-              Recent Swap Issues ({warnings.length})
+              Recent Swap Issues ({sortedWarnings.length})
             </span>
           </div>
           <span className="text-xs text-amber-600 dark:text-amber-400">
@@ -142,7 +159,7 @@ export function SwapWarningCenter({ onClearAll, className }: SwapWarningCenterPr
               <span className="text-sm font-semibold">Swap Warning Center</span>
             </div>
             <div className="flex items-center gap-2">
-              {warnings.length > 0 && (
+              {sortedWarnings.length > 0 && (
                 <button
                   onClick={handleClearAll}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
@@ -162,12 +179,12 @@ export function SwapWarningCenter({ onClearAll, className }: SwapWarningCenterPr
 
           {/* Warnings List */}
           <div className="max-h-[400px] overflow-y-auto divide-y divide-border/20">
-            {warnings.length === 0 ? (
+            {sortedWarnings.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                 No warnings to display
               </p>
             ) : (
-              warnings.map((warning) => (
+              sortedWarnings.map((warning) => (
                 <div
                   key={warning.id}
                   className={cn(

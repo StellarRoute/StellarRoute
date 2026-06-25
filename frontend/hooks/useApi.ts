@@ -162,12 +162,38 @@ export function useOrderbook(
   base: string,
   quote: string,
   refreshIntervalMs = 10_000,
-): UseApiState<Orderbook> & { refresh: () => void } {
-  return useFetch(
+): UseApiState<Orderbook> & {
+  refresh: () => void;
+  midpoint?: string;
+  spreadBps?: number;
+} {
+  const result = useFetch(
     (signal) => stellarRouteClient.getOrderbook(base, quote, { signal }),
     [base, quote],
     { refreshIntervalMs },
   );
+
+  let midpoint: string | undefined = undefined;
+  let spreadBps: number | undefined = undefined;
+
+  if (result.data) {
+    const bids = [...result.data.bids].sort((a, b) => Number(b.price) - Number(a.price));
+    const asks = [...result.data.asks].sort((a, b) => Number(a.price) - Number(b.price));
+    const bestBid = bids[0] ? Number(bids[0].price) : null;
+    const bestAsk = asks[0] ? Number(asks[0].price) : null;
+
+    if (bestBid !== null && bestAsk !== null && bestBid > 0 && bestAsk > 0 && bestAsk >= bestBid) {
+      const mid = (bestBid + bestAsk) / 2;
+      midpoint = mid.toString();
+      spreadBps = Math.round(((bestAsk - bestBid) / mid) * 10000);
+    }
+  }
+
+  return {
+    ...result,
+    midpoint,
+    spreadBps,
+  };
 }
 
 export function usePriceHistory(

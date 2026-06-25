@@ -3,6 +3,7 @@
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle, ShieldAlert, Zap, Compass } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSwapI18n } from '@/lib/swap-i18n';
 
 interface ExpertSettingsProps {
   expertMode: boolean;
@@ -21,6 +22,7 @@ export function ExpertSettings({
   onBypassConfirmationChange,
   onExtendedRouteDetailsChange,
 }: ExpertSettingsProps) {
+  const { t } = useSwapI18n();
 
   return (
     <div className="space-y-4 pt-4 border-t border-border/20">
@@ -31,12 +33,12 @@ export function ExpertSettings({
             "h-4 w-4 transition-colors duration-300",
             expertMode ? "text-amber-500 animate-pulse" : "text-muted-foreground"
           )} />
-          <span className="text-sm font-semibold tracking-tight">Expert Mode</span>
+          <span className="text-sm font-semibold tracking-tight">{t('settings.expert.mode')}</span>
         </div>
         <button
           role="switch"
           aria-checked={expertMode}
-          aria-label="Toggle Expert Mode"
+          aria-label={t('settings.expert.mode')}
           onClick={() => onExpertModeChange(!expertMode)}
           className={cn(
             "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px] min-w-[44px] items-center",
@@ -58,7 +60,7 @@ export function ExpertSettings({
           <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400 font-medium leading-relaxed">
             <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
             <p>
-              Expert Mode enables highly custom values and features. Be careful: high slippage limits can result in bad execution prices or frontrunning.
+              {t('settings.expert.warning')}
             </p>
           </div>
 
@@ -74,10 +76,10 @@ export function ExpertSettings({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs font-bold tracking-tight text-foreground group-hover:text-amber-500 transition-colors">
                   <Zap className="h-3.5 w-3.5" />
-                  Bypass Confirmation Modal
+                  {t('settings.expert.bypass')}
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-normal">
-                  Execute transactions instantly with a single click. Useful for fast-moving markets.
+                  {t('settings.expert.bypassDescription')}
                 </p>
               </div>
             </label>
@@ -92,10 +94,10 @@ export function ExpertSettings({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs font-bold tracking-tight text-foreground group-hover:text-amber-500 transition-colors">
                   <Compass className="h-3.5 w-3.5" />
-                  Extended Route Diagnostics
+                  {t('settings.expert.diagnostics')}
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-normal">
-                  Show raw liquidity pools, pool reserves, and exact multi-hop route metrics.
+                  {t('settings.expert.diagnosticsDescription')}
                 </p>
               </div>
             </label>

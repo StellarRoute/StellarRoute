@@ -16,6 +16,17 @@ interface SpreadIndicatorProps {
   className?: string;
 }
 
+export function getSpreadColor(spreadBps: number): string {
+  return spreadBps < 10 ? "text-emerald-500" :
+         spreadBps < 50 ? "text-blue-500" :
+         spreadBps < 200 ? "text-amber-500" :
+         "text-destructive";
+}
+
+export function getSpreadPercent(spreadBps: number): string {
+  return (spreadBps / 100).toFixed(2);
+}
+
 /**
  * Displays the market spread vs midpoint for the current trading pair.
  * Helps contextualize the quoted price against global market conditions.
@@ -39,21 +50,19 @@ export function SpreadIndicator({
   }
 
   if (midpoint === undefined || spreadBps === undefined) {
-    return null;
+    return (
+      <div 
+        className={cn("flex justify-between items-center text-xs", className)}
+        data-testid="spread-indicator-empty"
+      >
+        <span className="text-muted-foreground font-medium">Market Spread</span>
+        <span className="text-muted-foreground font-mono">—</span>
+      </div>
+    );
   }
 
-  const spreadPercent = (spreadBps / 100).toFixed(2);
-  
-  // Color code the spread
-  // < 0.1% = excellent (green)
-  // < 0.5% = good (blue)
-  // < 2.0% = wide (amber)
-  // > 2.0% = critical (red)
-  const spreadColor = 
-    spreadBps < 10 ? "text-emerald-500" :
-    spreadBps < 50 ? "text-blue-500" :
-    spreadBps < 200 ? "text-amber-500" :
-    "text-destructive";
+  const spreadPercent = getSpreadPercent(spreadBps);
+  const spreadColor = getSpreadColor(spreadBps);
 
   return (
     <div className={cn("flex justify-between items-center text-xs", className)}>

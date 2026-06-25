@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useWalletOnboarding } from '@/hooks/useWalletOnboarding';
@@ -19,8 +19,9 @@ export function WalletButton() {
     address,
     isConnected,
     network,
+    walletNetwork,
     availableWallets,
-    isLoading: loading,
+    isLoading,
     error,
     connect,
     disconnect,
@@ -50,8 +51,8 @@ export function WalletButton() {
   });
 
   const mismatch =
-    network &&
-    network.toUpperCase() !== APP_NETWORK.toUpperCase();
+    walletNetwork &&
+    walletNetwork.toUpperCase() !== APP_NETWORK.toUpperCase();
 
   // Auto-open onboarding for first-time users
   useEffect(() => {
@@ -64,7 +65,7 @@ export function WalletButton() {
   const handleOnboardingConnect = async (walletId: any) => {
     try {
       await connect(walletId);
-      setWalletNetworkForOnboarding(network ?? null);
+      setWalletNetworkForOnboarding(walletNetwork ?? null);
       markOnboardingAsCompleted();
     } catch (err) {
       // Error will be shown in onboarding modal
@@ -86,7 +87,7 @@ export function WalletButton() {
           open={showOnboardingModal}
           onOpenChange={setShowOnboardingModal}
           availableWallets={availableWallets}
-          isLoading={loading}
+          isLoading={isLoading}
           error={error?.message ?? null}
           onConnect={handleOnboardingConnect}
           walletNetwork={walletNetworkForOnboarding}
@@ -100,7 +101,6 @@ export function WalletButton() {
       <AccountSwitcher
         onAccountChange={(newAddress) => {
           console.log('Account changed to:', newAddress);
-          // This could trigger balance/quote refreshes
           setShowQrCode(false);
         }}
       />
@@ -160,12 +160,12 @@ export function WalletButton() {
       )}
 
       <div className="text-sm text-muted-foreground">
-        Wallet network: {network ?? 'Unknown'}
+        Wallet network: {walletNetwork ?? network ?? 'Unknown'}
       </div>
 
       {mismatch && (
         <div className="text-sm text-yellow-600 font-medium">
-          Network mismatch: app is {APP_NETWORK}, wallet is {network}
+          Network mismatch: app is {APP_NETWORK}, wallet is {walletNetwork}
         </div>
       )}
 

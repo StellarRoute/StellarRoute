@@ -9,11 +9,26 @@ import {
 import { Button } from "@/components/ui/button";
 import { SlippageSettings } from "./SlippageSettings";
 import { DeadlineSettings } from "./DeadlineSettings";
+import { ExpertSettings } from "./ExpertSettings";
+import { useExpertSettings } from "@/hooks/useExpertSettings";
 import { useTradeFormStorage } from "@/hooks/useTradeFormStorage";
 import { useSettings } from "@/components/providers/settings-provider";
 import { useSwapI18n } from "@/lib/swap-i18n";
 
-export function SettingsPanel() {
+interface SettingsPanelProps {
+  expertSettings?: {
+    expertMode: boolean;
+    bypassConfirmation: boolean;
+    extendedRouteDetails: boolean;
+    updateExpertMode: (val: boolean) => void;
+    updateBypassConfirmation: (val: boolean) => void;
+    updateExtendedRouteDetails: (val: boolean) => void;
+  };
+}
+
+export function SettingsPanel({ expertSettings: customExpertSettings }: SettingsPanelProps = {}) {
+  const localExpertSettings = useExpertSettings();
+  const expertSettings = customExpertSettings ?? localExpertSettings;
   const { deadline, setDeadline, reset: resetForm } = useTradeFormStorage();
   const { resetSettings } = useSettings();
   const { t } = useSwapI18n();
@@ -21,6 +36,7 @@ export function SettingsPanel() {
   const handleReset = () => {
     resetForm();
     resetSettings();
+    expertSettings.updateExpertMode(false);
   };
 
   return (
@@ -52,6 +68,14 @@ export function SettingsPanel() {
         <div className="space-y-6">
           <SlippageSettings />
           <DeadlineSettings value={deadline} onChange={setDeadline} />
+          <ExpertSettings
+            expertMode={expertSettings.expertMode}
+            bypassConfirmation={expertSettings.bypassConfirmation}
+            extendedRouteDetails={expertSettings.extendedRouteDetails}
+            onExpertModeChange={expertSettings.updateExpertMode}
+            onBypassConfirmationChange={expertSettings.updateBypassConfirmation}
+            onExtendedRouteDetailsChange={expertSettings.updateExtendedRouteDetails}
+          />
         </div>
       </PopoverContent>
     </Popover>

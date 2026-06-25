@@ -15,7 +15,7 @@ This document maps every wallet-related code path to its current status — **st
 | **View network** | `getNetworkDetails()` (Freighter) / hardcoded `"testnet"` (xBull) | ⚠️ Partial | xBull always returns `"testnet"` — needs real network detection for mainnet |
 | **Sign transaction** | `signTransactionWithWallet(xdr, walletId)` in `lib/wallet/index.ts` | ✅ Production ready | Freighter: `signTransaction()`; xBull: `window.xbull.sign()` |
 | **Sign transaction stub** | `signTransactionStub(xdr)` in `lib/wallet/index.ts` | 🔴 Stub only | Returns `{ ok: false }` — used in tests and out-of-scope flows. **Never call in production.** |
-| **Spendable balance** | `stubSpendableBalance` in `useWalletBalance.ts` | 🔴 Stub only | Returns a hardcoded/mock balance. Replace with Horizon `accounts/{id}` call before Phase B. |
+| **Spendable balance** | `useWalletBalance` in `hooks/useWalletBalance.ts` | ✅ Production ready | Fetches `GET /accounts/{address}` from Horizon; native spendable balance subtracts `XLM_FEE_RESERVE`; consumed by `SwapCard` for balance display, loading/error states, and MAX |
 | **Auto-reconnect** | `WalletProvider` effect in `wallet-provider.tsx` | ✅ Production ready | Reads `stellarroute.wallet.lastWalletId` from `localStorage`, respects `autoReconnectPreferred` flag |
 | **Reconnect on focus/online** | `WalletProvider` window event listeners | ✅ Production ready | Throttled to 5 s to avoid hammering the wallet extension |
 | **Network mismatch detection** | `networkMismatch` in `WalletProvider` | ✅ Production ready | Compares app `network` state with `walletNetwork` returned by wallet |
@@ -34,7 +34,6 @@ This document maps every wallet-related code path to its current status — **st
 | Symbol | File | What it does | Replace with |
 |---|---|---|---|
 | `signTransactionStub` | `lib/wallet/index.ts` | Echoes XDR back, `ok: false` | Remove call sites; always use `signTransactionWithWallet` |
-| `stubSpendableBalance` | `hooks/useWalletBalance.ts` | Returns mock balance | Fetch `GET /accounts/{address}` from Horizon; parse `balances[]` |
 | `submitTransaction` (stub body) | `lib/wallet/submit.ts` | Not yet posting to Horizon | POST XDR to `https://horizon.stellar.org/transactions` (or testnet equivalent) |
 | `refreshCapabilities` mock | `components/providers/wallet-provider.tsx` | Sets empty `statuses: []` | Call `checkWalletCapabilities(walletId, network)` from `lib/wallet/index.ts` |
 
@@ -51,7 +50,7 @@ This document maps every wallet-related code path to its current status — **st
 
 Before enabling real on-chain swaps (Phase B):
 
-- [ ] **Replace `stubSpendableBalance`** — fetch live balance from Horizon `accounts/{address}`; use `buying_liabilities` / `selling_liabilities` for available balance calculation
+- [x] **Replace `stubSpendableBalance`** — `useWalletBalance` fetches live balance from Horizon `accounts/{address}`; native MAX subtracts fee reserve (future: `buying_liabilities` / `selling_liabilities` for trustline holds)
 - [ ] **Implement `submitTransaction`** in `lib/wallet/submit.ts` — POST signed XDR to Horizon `/transactions`; handle `400 tx_bad_auth`, `400 op_underfunded`, and network timeouts
 - [ ] **Wire `refreshCapabilities`** in `WalletProvider` — replace mock with `checkWalletCapabilities(walletId, network)` so `WalletCapabilitiesBanner` reflects real status
 - [ ] **Fix xBull network detection** — replace hardcoded `"testnet"` with a real API call so `networkMismatch` works on mainnet
@@ -96,7 +95,7 @@ const signedXdr = await xbull.sign({ xdr, network: 'testnet' });
 - `frontend/lib/wallet/index.ts` — all wallet adapter functions
 - `frontend/components/providers/wallet-provider.tsx` — React context; lifecycle, reconnect, mismatch detection
 - `frontend/lib/wallet/submit.ts` — Horizon broadcast stub
-- `frontend/hooks/useWalletBalance.ts` — balance stub
+- `frontend/hooks/useWalletBalance.ts` — Horizon account balance fetch for swap UI
 - `frontend/hooks/useTransactionLifecycle.ts` — sign + submit orchestration
 - [Freighter API docs](https://docs.freighter.app)
 - [Horizon REST API](https://developers.stellar.org/api/horizon)

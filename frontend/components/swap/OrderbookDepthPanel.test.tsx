@@ -33,14 +33,28 @@ afterEach(() => cleanup());
 
 describe("OrderbookDepthPanel", () => {
   it("renders loading skeletons while fetching", () => {
-    mockUseOrderbook.mockReturnValue({ data: undefined, loading: true, error: null, refresh: vi.fn() });
+    mockUseOrderbook.mockReturnValue({
+      data: undefined,
+      loading: true,
+      error: null,
+      refresh: vi.fn(),
+      midpoint: undefined,
+      spreadBps: undefined,
+    });
     const { container } = render(<OrderbookDepthPanel base="XLM" quote="USDC" maxRows={3} />);
     // Skeletons rendered (6 rows × 3 cells = 18 skeleton divs)
     expect(container.querySelectorAll("[data-slot='skeleton']").length).toBeGreaterThan(0);
   });
 
   it("renders bid and ask columns with correct data", () => {
-    mockUseOrderbook.mockReturnValue({ data: mockOrderbook, loading: false, error: null, refresh: vi.fn() });
+    mockUseOrderbook.mockReturnValue({
+      data: mockOrderbook,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      midpoint: "0.105",
+      spreadBps: 95,
+    });
     render(<OrderbookDepthPanel base="XLM" quote="USDC" />);
     expect(screen.getByText("Bids")).toBeInTheDocument();
     expect(screen.getByText("Asks")).toBeInTheDocument();
@@ -49,7 +63,14 @@ describe("OrderbookDepthPanel", () => {
   });
 
   it("bids are sorted descending (highest price first)", () => {
-    mockUseOrderbook.mockReturnValue({ data: mockOrderbook, loading: false, error: null, refresh: vi.fn() });
+    mockUseOrderbook.mockReturnValue({
+      data: mockOrderbook,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      midpoint: "0.105",
+      spreadBps: 95,
+    });
     render(<OrderbookDepthPanel base="XLM" quote="USDC" />);
     const bidPrices = screen.getAllByText(/^0\.0[0-9]|^0\.1[0-9]/);
     // First bid price should be 0.10 (highest)
@@ -62,6 +83,8 @@ describe("OrderbookDepthPanel", () => {
       loading: false,
       error: new Error("Network error"),
       refresh: vi.fn(),
+      midpoint: undefined,
+      spreadBps: undefined,
     });
     render(<OrderbookDepthPanel base="XLM" quote="USDC" />);
     expect(screen.getByText("Orderbook unavailable")).toBeInTheDocument();
@@ -74,6 +97,8 @@ describe("OrderbookDepthPanel", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
+      midpoint: undefined,
+      spreadBps: undefined,
     });
     render(<OrderbookDepthPanel base="XLM" quote="USDC" />);
     expect(screen.getByText("No bids")).toBeInTheDocument();
@@ -81,7 +106,14 @@ describe("OrderbookDepthPanel", () => {
   });
 
   it("has accessible section label", () => {
-    mockUseOrderbook.mockReturnValue({ data: mockOrderbook, loading: false, error: null, refresh: vi.fn() });
+    mockUseOrderbook.mockReturnValue({
+      data: mockOrderbook,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      midpoint: "0.105",
+      spreadBps: 95,
+    });
     render(<OrderbookDepthPanel base="XLM" quote="USDC" />);
     expect(screen.getByRole("region", { name: /orderbook for XLM\/USDC/i })).toBeInTheDocument();
   });

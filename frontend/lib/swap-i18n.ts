@@ -154,7 +154,13 @@ export type SwapTranslationKey =
   | "settings.slippage.highWarning"
   | "settings.locale.title"
   | "settings.locale.description"
-  | "settings.locale.example";
+  | "settings.locale.example"
+  | "settings.expert.mode"
+  | "settings.expert.warning"
+  | "settings.expert.bypass"
+  | "settings.expert.bypassDescription"
+  | "settings.expert.diagnostics"
+  | "settings.expert.diagnosticsDescription";
 
 type SwapTranslations = Record<SwapTranslationKey, string>;
 
@@ -314,6 +320,12 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "settings.locale.title": "Language & Region",
     "settings.locale.description": "Choose your preferred language and number formatting. This affects how amounts, prices, and other numbers are displayed.",
     "settings.locale.example": "Example: {amount} · {percent}",
+    "settings.expert.mode": "Expert Mode",
+    "settings.expert.warning": "Expert Mode enables highly custom values and features. Be careful: high slippage limits can result in bad execution prices or frontrunning.",
+    "settings.expert.bypass": "Bypass Confirmation Modal",
+    "settings.expert.bypassDescription": "Execute transactions instantly with a single click. Useful for fast-moving markets.",
+    "settings.expert.diagnostics": "Extended Route Diagnostics",
+    "settings.expert.diagnosticsDescription": "Show raw liquidity pools, pool reserves, and exact multi-hop route metrics.",
   },
   "zh-CN": {
     "swap.card.title": "兑换",
@@ -462,6 +474,12 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "settings.locale.title": "语言和地区",
     "settings.locale.description": "选择你的首选语言和数字格式。这会影响金额、价格和其他数字的显示方式。",
     "settings.locale.example": "示例：{amount} · {percent}",
+    "settings.expert.mode": "专家模式",
+    "settings.expert.warning": "专家模式允许高度自定义的数值和功能。请注意：较高的滑点限制可能会导致糟糕的执行价格或遭遇抢先交易。",
+    "settings.expert.bypass": "绕过确认弹窗",
+    "settings.expert.bypassDescription": "单击即可立即执行交易。适用于瞬息万变的市场。",
+    "settings.expert.diagnostics": "扩展路径诊断",
+    "settings.expert.diagnosticsDescription": "显示原始流动性池、池储备量和精确的多跳路径指标。",
   },
 };
 

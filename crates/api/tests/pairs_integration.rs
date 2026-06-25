@@ -201,3 +201,57 @@ async fn get_pairs_returns_correct_content_type() {
         "Content-Type must be application/json, got: {content_type}"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a running PostgreSQL database (set DATABASE_URL)"]
+async fn get_markets_returns_same_as_pairs() {
+    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute".to_string()
+    });
+
+    let pool = PgPool::connect(&db_url)
+        .await
+        .expect("Failed to connect to database");
+
+    let router = Server::new(ServerConfig::default(), DatabasePools::new(pool, None))
+        .await
+        .into_router();
+
+    // Get pairs response
+    let pairs_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/pairs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("Pairs request failed");
+    assert_eq!(pairs_response.status(), StatusCode::OK);
+
+    let pairs_body = axum::body::to_bytes(pairs_response.into_body(), usize::MAX)
+        .await
+        .expect("Failed to read pairs body");
+    let pairs_json: Value = serde_json::from_slice(&pairs_body).expect("Pairs body is not valid JSON");
+
+    // Get markets response
+    let markets_response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/markets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("Markets request failed");
+    assert_eq!(markets_response.status(), StatusCode::OK);
+
+    let markets_body = axum::body::to_bytes(markets_response.into_body(), usize::MAX)
+        .await
+        .expect("Failed to read markets body");
+    let markets_json: Value = serde_json::from_slice(&markets_body).expect("Markets body is not valid JSON");
+
+    // Verify responses are identical
+    assert_eq!(pairs_json, markets_json);
+}

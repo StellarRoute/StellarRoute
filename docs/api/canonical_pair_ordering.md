@@ -59,7 +59,7 @@ BTC  <  USDC  <  native
 |-----------|-------|----------|
 | **Routing crate** | `stellarroute_routing` | `normalize_asset()`, `normalize_pair()`, `normalize_pair_owned()` |
 | **API cache keys** | `orderbook`, `liquidity_revision`, `quote_pair_pattern` | Keys are constructed with canonical ordering |
-| **Pairs listing** | `GET /api/v1/pairs` | Response sorted by canonical `base_asset` then `counter_asset` |
+| **Pairs/markets listing** | `GET /api/v1/pairs`, `GET /api/v1/markets` | Response sorted by canonical `base_asset` then `counter_asset`; /markets is an alias for /pairs |
 | **Liquidity alerts** | `pair_key()` | Threshold lookup keys use canonical ordering |
 | **Exactly-once ledger** | `RequestIdentity::canonical_key()` | Individual assets are normalised (pair order preserved for direction semantics) |
 

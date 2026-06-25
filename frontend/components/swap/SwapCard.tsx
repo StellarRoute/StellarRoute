@@ -90,6 +90,8 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     fromAmount,
     setFromAmount,
     toAmount,
+    side,
+    setSide,
     slippage,
     setSlippage,
     deadline,
@@ -203,7 +205,11 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
       ? 'refresh'
       : null;
   const requiresFreshQuote =
-    recoveryRequestedAt !== null && (quote.loading || quote.isStale);
+    recoveryRequestedAt !== null &&
+    (quote.lastQuotedAtMs === null ||
+      quote.lastQuotedAtMs < recoveryRequestedAt ||
+      quote.loading ||
+      quote.isStale);
 
   // --- Issue #745: Swap Warning Center Logic ---
   const [warnings, setWarnings] = useState<SwapWarning[]>([]);

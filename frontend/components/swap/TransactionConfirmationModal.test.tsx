@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import fc from 'fast-check';
 import { TransactionConfirmationModal } from './TransactionConfirmationModal';
+
+afterEach(() => {
+  cleanup();
+});
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -54,14 +58,14 @@ describe('TransactionConfirmationModal — reduced-motion', () => {
     setReducedMotion(true);
     render(<TransactionConfirmationModal {...BASE_PROPS} status="pending" />);
     const spinner = screen.getByTestId('tcm-spinner');
-    expect(spinner.className).not.toContain('animate-spin');
+    expect(spinner.classList.contains('animate-spin')).toBe(false);
   });
 
   it('spinner HAS animate-spin when status=pending and motion is allowed', () => {
     setReducedMotion(false);
     render(<TransactionConfirmationModal {...BASE_PROPS} status="pending" />);
     const spinner = screen.getByTestId('tcm-spinner');
-    expect(spinner.className).toContain('animate-spin');
+    expect(spinner.classList.contains('animate-spin')).toBe(true);
   });
 
   it('spinner is present in the DOM when status=submitted and reduced motion is active', () => {
@@ -74,14 +78,14 @@ describe('TransactionConfirmationModal — reduced-motion', () => {
     setReducedMotion(true);
     render(<TransactionConfirmationModal {...BASE_PROPS} status="submitted" />);
     const spinner = screen.getByTestId('tcm-spinner');
-    expect(spinner.className).not.toContain('animate-spin');
+    expect(spinner.classList.contains('animate-spin')).toBe(false);
   });
 
   it('spinner HAS animate-spin when status=submitted and motion is allowed', () => {
     setReducedMotion(false);
     render(<TransactionConfirmationModal {...BASE_PROPS} status="submitted" />);
     const spinner = screen.getByTestId('tcm-spinner');
-    expect(spinner.className).toContain('animate-spin');
+    expect(spinner.classList.contains('animate-spin')).toBe(true);
   });
 });
 
@@ -101,13 +105,14 @@ describe('TransactionConfirmationModal — property tests', () => {
           fc.boolean(),
           fc.constantFrom('pending' as const, 'submitted' as const),
           (prefersReduced, status) => {
+            cleanup();
             setReducedMotion(prefersReduced);
             const { unmount } = render(
               <TransactionConfirmationModal {...BASE_PROPS} status={status} />
             );
             const spinner = screen.getByTestId('tcm-spinner');
             const isPresent = !!spinner;
-            const hasSpin = spinner.className.includes('animate-spin');
+            const hasSpin = spinner.classList.contains('animate-spin');
             unmount();
 
             if (prefersReduced) {

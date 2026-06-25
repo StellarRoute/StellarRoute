@@ -32,16 +32,61 @@ describe('PostSwapSuccessScreen', () => {
   const mockClipboardWriteText = vi.fn().mockResolvedValue(undefined);
   const mockShare = vi.fn().mockResolvedValue(undefined);
 
+  let originalClipboard: any;
+  let originalShare: any;
+  let originalCanShare: any;
+
   beforeEach(() => {
-    Object.assign(navigator, {
-      clipboard: { writeText: mockClipboardWriteText },
-      share: mockShare,
-      canShare: () => true,
+    originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    originalShare = Object.getOwnPropertyDescriptor(navigator, 'share');
+    originalCanShare = Object.getOwnPropertyDescriptor(navigator, 'canShare');
+
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: mockClipboardWriteText },
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(navigator, 'share', {
+      value: mockShare,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(navigator, 'canShare', {
+      value: () => true,
+      configurable: true,
+      writable: true,
     });
     vi.clearAllMocks();
   });
 
   afterEach(() => {
+    if (originalClipboard) {
+      try {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } catch (e) {}
+    } else {
+      try {
+        delete (navigator as any).clipboard;
+      } catch (e) {}
+    }
+    if (originalShare) {
+      try {
+        Object.defineProperty(navigator, 'share', originalShare);
+      } catch (e) {}
+    } else {
+      try {
+        delete (navigator as any).share;
+      } catch (e) {}
+    }
+    if (originalCanShare) {
+      try {
+        Object.defineProperty(navigator, 'canShare', originalCanShare);
+      } catch (e) {}
+    } else {
+      try {
+        delete (navigator as any).canShare;
+      } catch (e) {}
+    }
     vi.restoreAllMocks();
   });
 
@@ -116,8 +161,22 @@ describe('PostSwapSuccessScreen', () => {
 
   it('falls back to clipboard copy if Web Share API is not supported', async () => {
     // Override canShare to simulate unsupported environment
-    Object.assign(navigator, { canShare: undefined, share: undefined });
+    Object.defineProperty(navigator, 'canShare', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(navigator, 'share', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
     const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: mockClipboardWriteText },
+      configurable: true,
+      writable: true,
+    });
     
     render(<PostSwapSuccessScreen {...defaultProps} />);
     await user.click(screen.getByLabelText('Share explorer link'));

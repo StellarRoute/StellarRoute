@@ -235,6 +235,37 @@ export interface RouteResponse {
 }
 
 /**
+ * Supported time windows for price history queries.
+ */
+export type PriceHistoryWindow = '1h' | '4h' | '24h' | '7d' | '30d';
+
+/**
+ * A single price history data point.
+ */
+export interface PriceHistoryPoint {
+  /** Unix timestamp (ms) of this data point (hour-truncated). */
+  timestamp: number;
+  /** Average mid-price for this interval. */
+  price: string;
+}
+
+/**
+ * Response from `GET /api/v1/price-history/{base}/{quote}`.
+ */
+export interface PriceHistoryResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  /** Time window of the returned data. */
+  window: string;
+  /** Data source identifier. */
+  source: string;
+  /** Unix timestamp (ms) when this response was generated. */
+  generated_at: number;
+  /** Ordered price history points (oldest first). */
+  points: PriceHistoryPoint[];
+}
+
+/**
  * Error response from the StellarRoute API.
  */
 export interface ApiError {

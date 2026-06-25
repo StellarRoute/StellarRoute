@@ -4,6 +4,8 @@ import type {
   Orderbook,
   PairsResponse,
   PathStep,
+  PriceHistoryResponse,
+  PriceHistoryWindow,
   PriceQuote,
   QuoteRequestItem,
   BatchQuoteResponse,
@@ -303,6 +305,28 @@ export class StellarRouteClient {
       'POST',
       requests,
     );
+  }
+
+  /**
+   * `GET /api/v1/price-history/{base}/{quote}` — fetch price history for charting/sparklines.
+   *
+   * @param base  Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
+   * @param quote Quote asset identifier.
+   * @param options Optional parameters: `window` for the time range.
+   *
+   * @throws {@link StellarRouteApiError} with `status === 404` when the pair is not found.
+   */
+  getPriceHistory(
+    base: string,
+    quote: string,
+    options?: { window?: PriceHistoryWindow; signal?: AbortSignal },
+  ): Promise<PriceHistoryResponse> {
+    const params = new URLSearchParams();
+    if (options?.window !== undefined) params.set('window', options.window);
+
+    const qs = params.toString();
+    const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${qs ? `?${qs}` : ''}`;
+    return this.request<PriceHistoryResponse>(path, options?.signal);
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────────

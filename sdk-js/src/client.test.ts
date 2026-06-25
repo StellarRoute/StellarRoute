@@ -225,6 +225,71 @@ describe('getRoutes', () => {
   });
 });
 
+// ── getPriceHistory ─────────────────────────────────────────────────────────
+
+describe('getPriceHistory', () => {
+  const samplePriceHistory = {
+    base_asset: NATIVE,
+    quote_asset: USDC,
+    window: '24h',
+    source: 'orderbook_snapshots.mid_price',
+    generated_at: 1_717_171_717,
+    points: [
+      { timestamp: 1_717_164_400, price: '0.1050000' },
+      { timestamp: 1_717_168_000, price: '0.1055000' },
+      { timestamp: 1_717_171_600, price: '0.1060000' },
+    ],
+  };
+
+  it('returns typed PriceHistoryResponse on 200', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(samplePriceHistory));
+    const result = await new StellarRouteClient().getPriceHistory('native', 'USDC');
+    expect(result.window).toBe('24h');
+    expect(result.source).toBe('orderbook_snapshots.mid_price');
+    expect(result.points).toHaveLength(3);
+    expect(result.points[0]?.price).toBe('0.1050000');
+  });
+
+  it('calls the correct endpoint', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(samplePriceHistory));
+    await new StellarRouteClient().getPriceHistory('native', 'USDC');
+    const url = new URL(spy.mock.calls[0]?.[0] as string);
+    expect(url.pathname).toBe('/api/v1/price-history/native/USDC');
+  });
+
+  it('appends window query param when provided', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(samplePriceHistory));
+    await new StellarRouteClient().getPriceHistory('native', 'USDC', { window: '7d' });
+    const url = new URL(spy.mock.calls[0]?.[0] as string);
+    expect(url.searchParams.get('window')).toBe('7d');
+  });
+
+  it('omits window param when not provided', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(samplePriceHistory));
+    await new StellarRouteClient().getPriceHistory('native', 'USDC');
+    const url = new URL(spy.mock.calls[0]?.[0] as string);
+    expect(url.searchParams.has('window')).toBe(false);
+  });
+
+  it('URL-encodes asset identifiers with colons', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(samplePriceHistory));
+    await new StellarRouteClient().getPriceHistory('native', 'USDC:GDUKMGUGDZQK6YH...');
+    expect(spy.mock.calls[0]?.[0]).toContain('USDC%3AGDUKMGUGDZQK6YH');
+  });
+
+  it('throws StellarRouteApiError on 404 pair-not-found', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiError('not_found', 'Pair not found', 404),
+    );
+    const err = await new StellarRouteClient({ retries: 0 })
+      .getPriceHistory('native', 'GHOST')
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).isNotFound()).toBe(true);
+  });
+});
+
 // ── Error handling ────────────────────────────────────────────────────────────
 
 describe('error handling', () => {

@@ -31,6 +31,10 @@ pub struct LiquidityEdge {
     pub liquidity: i128,
     pub price: f64,
     pub fee_bps: u32,
+    /// Score indicating routing irregularities or flash-loan anomalies
+    pub anomaly_score: Option<f64>,
+    /// Categorized structural anomalies or reasons for transaction flags
+    pub anomaly_reasons: Option<Vec<String>>,
 }
 
 /// Represents a path through liquidity sources

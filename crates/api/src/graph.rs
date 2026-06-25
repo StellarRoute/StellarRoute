@@ -162,6 +162,8 @@ impl GraphManager {
                             liquidity: (a * 1e7) as i128,
                             price: p,
                             fee_bps: if is_amm { 30 } else { 20 },
+                            anomaly_score: None,
+                            anomaly_reasons: None,
                         });
                     }
                 }
@@ -181,8 +183,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_graph_manager_snapshot_consistency() {
-        // Mock pool - we won't actually query it in this unit test
-        // but we need it for the struct.
         let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
         let manager = GraphManager::new(pool);
 
@@ -195,18 +195,17 @@ mod tests {
                 liquidity: 100,
                 price: 1.0,
                 fee_bps: 30,
+                anomaly_score: None,
+                anomaly_reasons: None,
             }
         ];
 
-        // Set initial state
         manager.edges.store(Arc::new(initial_edges.clone()));
 
-        // Obtain a snapshot
         let snapshot1 = manager.get_edges();
         assert_eq!(snapshot1.len(), 1);
         assert_eq!(snapshot1[0].from, "XLM");
 
-        // Update the manager with new data
         let new_edges = vec![
             LiquidityEdge {
                 from: "USDC".to_string(),
@@ -216,16 +215,16 @@ mod tests {
                 liquidity: 200,
                 price: 0.99,
                 fee_bps: 30,
+                anomaly_score: None,
+                anomaly_reasons: None,
             }
         ];
         manager.edges.store(Arc::new(new_edges));
 
-        // Obtain a second snapshot
         let snapshot2 = manager.get_edges();
         assert_eq!(snapshot2.len(), 1);
         assert_eq!(snapshot2[0].from, "USDC");
 
-        // Verify snapshot1 is STILL valid and unchanged
         assert_eq!(snapshot1.len(), 1);
         assert_eq!(snapshot1[0].from, "XLM");
     }
@@ -244,6 +243,8 @@ mod tests {
                 liquidity: 100,
                 price: 1.0,
                 fee_bps: 30,
+                anomaly_score: None,
+                anomaly_reasons: None,
             }
         ];
         manager.edges.store(Arc::new(initial_edges));
@@ -272,6 +273,8 @@ mod tests {
                         liquidity: 100,
                         price: 1.0,
                         fee_bps: 30,
+                        anomaly_score: None,
+                        anomaly_reasons: None,
                     }
                 ];
                 m2.edges.store(Arc::new(edges));

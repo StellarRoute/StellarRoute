@@ -3,6 +3,7 @@
 //! Provides pathfinding algorithms for optimal swap routing across SDEX and Soroban AMM pools.
 //! Supports N-hop paths with safety bounds, cycle prevention, and price impact calculation.
 
+pub mod compaction;
 pub mod error;
 pub mod fixtures;
 pub mod health;

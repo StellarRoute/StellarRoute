@@ -43,7 +43,7 @@ jobs:
       - name: Run Vitest suite
         run: npm --prefix frontend run test
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
           CI: "true"
 
   frontend-build:

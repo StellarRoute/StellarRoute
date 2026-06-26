@@ -10,7 +10,12 @@ export default defineConfig({
     include: ["**/*.test.{ts,tsx}"],
     setupFiles: ["./vitest.setup.ts"],
     pool: "forks",
-    maxWorkers: 2,
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
+    maxWorkers: 1,
   },
   resolve: {
     alias: {

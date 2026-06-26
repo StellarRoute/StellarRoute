@@ -60,7 +60,10 @@ enum Commands {
         #[arg(long, default_value_t = 10, help = "Maximum number of pairs to print")]
         limit: usize,
     },
-    #[command(about = "Get a price quote for a trading pair")]
+    #[command(
+        about = "Get a price quote for a trading pair",
+        after_help = "Examples:\n  # Sell 100 XLM for USDC (human output)\n  stellarroute quote native USDC --amount 100 --quote-type sell\n\n  # Buy 50 USDC worth of XLM, JSON output\n  stellarroute quote native USDC --amount 50 --quote-type buy --output json\n\n  # Indicative price with no amount (server defaults to 1 unit)\n  stellarroute quote native USDC\n\nSlippage tolerance is enforced server-side; use the REST API directly\nif you need to pass a custom slippage_bps value."
+    )]
     Quote {
         #[arg(
             value_parser = parse_asset,
@@ -75,14 +78,16 @@ enum Commands {
         #[arg(
             long,
             value_parser = PositiveAmountParser,
-            help = "Trade amount as a positive decimal string"
+            help = "Trade amount as a positive decimal string (e.g. 100, 0.5)",
+            long_help = "Amount of the base asset to trade, expressed as a positive decimal string.\n\nExamples: 100, 0.5, 1000.25\n\nWhen omitted the server uses a default of 1 unit, which is useful for\nchecking an indicative mid-market price without committing to a size.\n\nThe value is passed verbatim to the REST API as the `amount` query\nparameter; no rounding or truncation is applied by the CLI."
         )]
         amount: Option<String>,
         #[arg(
             long,
             value_enum,
             default_value_t = QuoteTypeArg::Sell,
-            help = "Whether the amount is for selling or buying the base asset"
+            help = "Direction of the quote: sell or buy the base asset (default: sell)",
+            long_help = "Controls which side of the trade `amount` describes:\n\n  sell  The caller wants to sell `amount` of the base asset and receive\n        as much of the quote asset as possible. The REST API returns the\n        best executable ask price.\n\n  buy   The caller wants to buy `amount` of the base asset by spending\n        quote-asset tokens. The REST API returns the best executable\n        bid price.\n\nMatches the `quote_type` query parameter on GET /api/v1/quote/{base}/{quote}.\nDefaults to sell."
         )]
         quote_type: QuoteTypeArg,
     },

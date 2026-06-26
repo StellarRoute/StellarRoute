@@ -25,8 +25,8 @@ jobs:
       - name: Run tests
         run: cd sdk-js && npm test
 
-  frontend-build:
-    name: Frontend Production Build
+  frontend-tests:
+    name: Frontend Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +40,22 @@ jobs:
         run: npm ci --prefix frontend
       - name: Lint frontend
         run: npm --prefix frontend run lint
+      - name: Run Vitest suite
+        run: npm --prefix frontend run test
+
+  frontend-build:
+    name: Frontend Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --prefix frontend
       - name: Build frontend
         run: npm --prefix frontend run build
       - name: Performance budget check

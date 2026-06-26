@@ -1,3 +1,4 @@
+"use client";
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -11,6 +12,7 @@ import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton
 import { CopyButton } from "@/components/shared/CopyButton"
 import { ExplorerLink } from "@/components/shared/ExplorerLink"
 import { RelativeTime } from "@/components/shared/RelativeTime"
+import { AssetIcon } from "@/components/shared/AssetIcon"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
 import { TransactionRecord } from "@/types/transaction"
@@ -263,14 +265,34 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">-{tx.fromAmount}</span>
-                          <span className="text-xs text-muted-foreground">{tx.fromAsset}</span>
+                        <div className="flex items-center gap-2">
+                          <AssetIcon
+                            symbol={tx.fromAsset}
+                            src={tx.fromIcon}
+                            size={20}
+                            className="rounded-full border border-border/60 bg-muted"
+                            imageClassName="h-full w-full"
+                            fallbackClassName="text-[0.65rem]"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm">-{tx.fromAmount}</span>
+                            <span className="text-xs text-muted-foreground">{tx.fromAsset}</span>
+                          </div>
                         </div>
                         <ArrowRight className="w-4 h-4 text-muted-foreground/50" />
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm text-success">+{tx.toAmount}</span>
-                          <span className="text-xs text-muted-foreground">{tx.toAsset}</span>
+                        <div className="flex items-center gap-2">
+                          <AssetIcon
+                            symbol={tx.toAsset}
+                            src={tx.toIcon}
+                            size={20}
+                            className="rounded-full border border-border/60 bg-muted"
+                            imageClassName="h-full w-full"
+                            fallbackClassName="text-[0.65rem]"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm text-success">+{tx.toAmount}</span>
+                            <span className="text-xs text-muted-foreground">{tx.toAsset}</span>
+                          </div>
                         </div>
                       </div>
                     </TableCell>

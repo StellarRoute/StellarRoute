@@ -36,7 +36,7 @@ export function BatchSwapPreview({
   onCancel,
   onRetry,
 }: BatchSwapPreviewProps) {
-  const isEnabled = useFeatureFlag("batchSwaps");
+  const { enabled: isEnabled } = useFeatureFlag("batch_swaps");
   const prefersReducedMotion = useReducedMotion();
 
   // Gated behind feature flag

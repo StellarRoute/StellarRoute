@@ -6,6 +6,8 @@ import { WalletProvider, useWallet } from './wallet-provider';
 import * as walletLib from '@/lib/wallet';
 import { NETWORK_STORAGE_KEY } from '@/lib/network-policy';
 
+vi.unmock('@/components/providers/wallet-provider');
+
 // Mock the wallet library
 vi.mock('@/lib/wallet', () => ({
   getAvailableWallets: vi.fn(),

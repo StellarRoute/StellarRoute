@@ -94,6 +94,8 @@ pub struct RateLimitInfo {
     pub remaining: Option<u32>,
     /// Unix timestamp when the window resets.
     pub reset: Option<u64>,
+    /// Seconds to wait before retrying, from the `Retry-After` header.
+    pub retry_after: Option<u64>,
 }
 
 // ── Main error type ───────────────────────────────────────────────────────────

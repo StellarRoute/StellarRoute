@@ -87,8 +87,8 @@ export function Header() {
         <div className="flex items-center gap-2">
           <div className="max-sm:hidden">
             <NetworkBadge />
-            <ThemeToggle />
           </div>
+          <ThemeToggle />
           <div className="hidden md:block">
             <WalletButton />
           </div>

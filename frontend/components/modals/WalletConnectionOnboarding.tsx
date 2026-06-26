@@ -261,7 +261,8 @@ export function WalletConnectionOnboarding({
             <DialogHeader>
               <DialogTitle>Select Your Wallet</DialogTitle>
               <DialogDescription>
-                Connecting on {NETWORK_LABELS[selectedNetwork] ?? appNetwork}
+                Connecting on {NETWORK_LABELS[selectedNetwork] ?? appNetwork}. Choose
+                which Stellar wallet you&apos;d like to connect.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -346,6 +347,12 @@ export function WalletConnectionOnboarding({
             </DialogHeader>
             <div className="space-y-6 py-8 flex flex-col items-center">
               <CheckCircle className="h-12 w-12 text-green-500" />
+              <div className="text-center space-y-2">
+                <p className="font-medium text-green-700">Connection Successful</p>
+                <p className="text-sm text-muted-foreground">
+                  You&apos;re ready to start trading on StellarRoute
+                </p>
+              </div>
               <Button onClick={handleClose} className="w-full">
                 Start Trading
               </Button>
@@ -366,6 +373,17 @@ export function WalletConnectionOnboarding({
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{connectionError}</AlertDescription>
               </Alert>
+
+              <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
+                <p className="font-medium">Troubleshooting tips:</p>
+                <ul className="space-y-1 text-muted-foreground list-inside list-disc">
+                  <li>Ensure your wallet extension/app is enabled</li>
+                  <li>Try refreshing the page</li>
+                  <li>Check that you&apos;re using the correct network</li>
+                  <li>Clear your browser cache and try again</li>
+                </ul>
+              </div>
+
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setStep('select-wallet')} className="flex-1">
                   Try Different Wallet

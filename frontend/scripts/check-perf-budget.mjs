@@ -188,7 +188,7 @@ async function main(argv) {
 
   // Measure bundle size
   console.log("[perf-budget] Measuring bundle size...");
-  const bundleSizeKb = parseBundleSize(BUILD_DIR);
+  const { totalKb: bundleSizeKb, asyncChunks } = parseBundleSize(BUILD_DIR);
 
   // Measure TTI (skipped in bundle-only mode — CI environments cannot run a production server)
   let ttiMs = 0;
@@ -258,7 +258,7 @@ async function main(argv) {
   }
 
   // Print summary
-  printSummary(results, baseline);
+  printSummary(results, baseline, asyncChunks);
 
   process.exit(overallPassed ? 0 : 1);
 }

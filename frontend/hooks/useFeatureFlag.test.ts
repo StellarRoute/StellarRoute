@@ -6,8 +6,6 @@ import {
   invalidateFlagCache,
 } from "./useFeatureFlag";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function mockFetch(flags: Record<string, boolean>) {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -21,8 +19,6 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_FLAG_ROUTES_BETA;
   delete process.env.NEXT_PUBLIC_FLAG_SWAP_UI_V2;
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("useFeatureFlag", () => {
   it("defaults to false when no env or remote config", async () => {

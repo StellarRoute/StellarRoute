@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SettingsProvider, useSettings } from "@/components/providers/settings-provider";
@@ -23,6 +23,10 @@ describe("SettingsProvider", () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.documentElement.classList.remove("high-contrast");
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("initializes to default settings and persists updates", async () => {

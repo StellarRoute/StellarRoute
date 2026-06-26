@@ -18,6 +18,25 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
+const { mockWalletState } = vi.hoisted(() => ({
+  mockWalletState: {
+    capabilities: null as {
+      checkedAt: number;
+      statuses: Array<{
+        capability: string;
+        allowed: boolean;
+        reason?: string;
+        resolution?: string;
+      }>;
+    } | null,
+  },
+}));
+
+const defaultAllowedCapabilities = {
+  checkedAt: Date.now(),
+  statuses: [{ capability: 'sign_transaction', allowed: true }],
+};
+
 vi.mock('./ShareQuoteButton', () => ({
   ShareQuoteButton: () => <button data-testid="mock-share-quote-button">Share</button>,
 }));
@@ -58,7 +77,7 @@ vi.mock('@/components/providers/wallet-provider', () => {
         accountSwitchState: { isDetecting: false, hasChanged: false, previousAddress: null },
         isTransactionPending: false,
         setTransactionPending: React.useCallback(() => {}, []),
-        capabilities: null,
+        capabilities: mockWalletState.capabilities,
         refreshCapabilities: React.useCallback(async () => {}, []),
         syncMismatch: false,
         resyncWallet: React.useCallback(async () => {}, []),
@@ -90,6 +109,10 @@ function setNavigatorOnline(value: boolean) {
     value,
   });
 }
+
+beforeEach(() => {
+  mockWalletState.capabilities = defaultAllowedCapabilities;
+});
 
 describe('SwapCard network resilience and states', () => {
   beforeEach(() => {
@@ -218,6 +241,54 @@ describe('SwapCard network resilience and states', () => {
         name: /insufficient balance/i,
       });
       expect(balanceButton).toBeDisabled();
+    });
+  });
+
+  it('shows permission blocked state when sign_transaction capability is denied', async () => {
+    const user = userEvent.setup();
+    mockWalletState.capabilities = {
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'request_access', allowed: true },
+        { capability: 'view_address', allowed: true },
+        { capability: 'view_network', allowed: false, reason: 'xBull only supports testnet' },
+        {
+          capability: 'sign_transaction',
+          allowed: false,
+          reason: 'xBull only supports testnet',
+          resolution: 'Switch app to testnet',
+        },
+      ],
+    };
+
+    renderWithProviders(<SwapCard />);
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '5' } });
+
+    await waitFor(() => {
+      const blockedButton = screen.getByRole('button', {
+        name: /wallet permissions required/i,
+      });
+      expect(blockedButton).toBeDisabled();
+    });
+  });
+
+  it('blocks swap while wallet capabilities are unresolved', async () => {
+    const user = userEvent.setup();
+    mockWalletState.capabilities = null;
+    renderWithProviders(<SwapCard />);
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '5' } });
+
+    await waitFor(() => {
+      const blockedButton = screen.getByRole('button', {
+        name: /wallet permissions required/i,
+      });
+      expect(blockedButton).toBeDisabled();
     });
   });
 });

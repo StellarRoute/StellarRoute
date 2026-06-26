@@ -31,6 +31,7 @@ import { useCompactMode } from '@/hooks/useCompactMode';
 import { useShareableQuote } from '@/hooks/useShareableQuote';
 import { ShareQuoteButton } from './ShareQuoteButton';
 import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner';
+import { WalletCapabilitiesBanner } from '@/components/shared/WalletCapabilitiesBanner';
 import { DiagnosticsPanel } from '@/components/shared/DiagnosticsPanel';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { signTransactionWithWallet } from '@/lib/wallet';
@@ -151,6 +152,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     walletId,
     network: walletAppNetwork,
     networkMismatch,
+    capabilities,
     connect,
   } = useWallet();
 
@@ -310,7 +312,8 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
           signTransactionWithWallet(
             xdr,
             walletId,
-            getNetworkPassphrase(walletAppNetwork)
+            getNetworkPassphrase(walletAppNetwork),
+            walletAddress ?? undefined
           )
       : undefined,
     submitTransaction: (signedXdr) =>
@@ -368,6 +371,12 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     if (optimistic.submitLock) return 'executing';
     if (!isConnected) return 'no_wallet';
     if (networkMismatch) return 'no_wallet'; // Swap disabled while network mismatch
+    const signBlocked =
+      !capabilities ||
+      capabilities.statuses.some(
+        (s) => s.capability === 'sign_transaction' && !s.allowed
+      );
+    if (signBlocked) return 'permission_blocked';
     if (memoError) return 'error'; // Block swap if there is a memo validation error
     if (!fromAmount || parseFloat(fromAmount) === 0) return 'no_amount';
     if (quote.error) return 'error';
@@ -383,6 +392,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     fromBalance,
     isConnected,
     networkMismatch,
+    capabilities,
     optimistic.submitLock,
     quote.error,
     quote.isStale,
@@ -672,6 +682,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     >
       {/* Network Mismatch Banner */}
       <NetworkMismatchBanner className="mb-4" />
+      <WalletCapabilitiesBanner className="mb-4" />
 
       {/* Shared Quote Stale Warning */}
       {isSharedQuoteStale && refreshSharedQuote && (

@@ -5,13 +5,15 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use chrono::{DateTime, TimeZone, Utc};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse};
 
 const DEFAULT_COOLDOWN_SECONDS: u64 = 300;
+const DEFAULT_RETRY_DELAY_MS: u64 = 2000;
 const WEBHOOK_ENV: &str = "LIQUIDITY_THINNESS_ALERT_WEBHOOK_URL";
 const THRESHOLDS_ENV: &str = "LIQUIDITY_THINNESS_ALERT_THRESHOLDS";
+const RETRY_DELAY_ENV: &str = "LIQUIDITY_THINNESS_ALERT_RETRY_DELAY_MS";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PairThinnessThreshold {
@@ -57,6 +59,15 @@ pub struct LiquidityThinnessAlerts {
     thresholds: HashMap<String, PairThinnessThreshold>,
     last_sent_at: DashMap<String, DateTime<Utc>>,
     client: reqwest::Client,
+    retry_delay_ms: u64,
+}
+
+fn redact_url(url: &str) -> String {
+    if let Some((base, _)) = url.split_once('?') {
+        format!("{base}?[redacted]")
+    } else {
+        url.to_string()
+    }
 }
 
 impl LiquidityThinnessAlerts {
@@ -66,10 +77,36 @@ impl LiquidityThinnessAlerts {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
 
+        let retry_delay_ms = std::env::var(RETRY_DELAY_ENV)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_RETRY_DELAY_MS);
+
+        // Validate webhook URL if provided
+        let webhook_url = webhook_url.and_then(|url| {
+            if reqwest::Url::parse(&url).is_ok() {
+                Some(url)
+            } else {
+                error!(
+                    "{} is set but contains an invalid URL: {}; liquidity thinness alerts are disabled",
+                    WEBHOOK_ENV,
+                    redact_url(&url)
+                );
+                None
+            }
+        });
+
         let thresholds = std::env::var(THRESHOLDS_ENV)
             .ok()
             .map(|raw| Self::parse_thresholds(&raw))
             .unwrap_or_default();
+
+        if webhook_url.is_none() {
+            warn!(
+                "{} is not set; liquidity thinness alerts are disabled",
+                WEBHOOK_ENV
+            );
+        }
 
         if webhook_url.is_some() && thresholds.is_empty() {
             warn!(
@@ -89,6 +126,7 @@ impl LiquidityThinnessAlerts {
                     warn!("Failed to build alert webhook HTTP client: {}", err);
                     reqwest::Client::new()
                 }),
+            retry_delay_ms,
         }
     }
 
@@ -98,6 +136,7 @@ impl LiquidityThinnessAlerts {
             thresholds: HashMap::new(),
             last_sent_at: DashMap::new(),
             client: reqwest::Client::new(),
+            retry_delay_ms: DEFAULT_RETRY_DELAY_MS,
         }
     }
 
@@ -114,6 +153,29 @@ impl LiquidityThinnessAlerts {
                 );
                 HashMap::new()
             }
+        }
+    }
+
+    pub fn with_thresholds_and_url(
+        thresholds: HashMap<String, PairThinnessThreshold>,
+        webhook_url: Option<String>,
+    ) -> Self {
+        let webhook_url = webhook_url.and_then(|url| {
+            if reqwest::Url::parse(&url).is_ok() {
+                Some(url)
+            } else {
+                None
+            }
+        });
+        Self {
+            thresholds: thresholds
+                .into_iter()
+                .map(|(pair, threshold)| (normalize_pair_key(&pair), threshold))
+                .collect(),
+            webhook_url,
+            last_sent_at: DashMap::new(),
+            client: reqwest::Client::new(),
+            retry_delay_ms: DEFAULT_RETRY_DELAY_MS,
         }
     }
 
@@ -204,27 +266,77 @@ impl LiquidityThinnessAlerts {
     }
 
     async fn send(&self, webhook_url: String, payload: LiquidityThinnessAlertPayload) {
-        match self.client.post(&webhook_url).json(&payload).send().await {
-            Ok(response) if response.status().is_success() => {
-                debug!(
-                    pair = payload.pair,
-                    status = %response.status(),
-                    "Sent liquidity thinness webhook"
-                );
-            }
-            Ok(response) => {
-                warn!(
-                    pair = payload.pair,
-                    status = %response.status(),
-                    "Liquidity thinness webhook returned non-success status"
-                );
-            }
-            Err(err) => {
-                warn!(
-                    pair = payload.pair,
-                    error = %err,
-                    "Failed to send liquidity thinness webhook"
-                );
+        let pair = payload.pair.clone();
+        let bid_depth = payload.depth_snapshot.bid_depth;
+        let ask_depth = payload.depth_snapshot.ask_depth;
+        let threshold_bid = payload.threshold.min_bid_depth;
+        let threshold_ask = payload.threshold.min_ask_depth;
+
+        let mut attempts = 0;
+        const MAX_ATTEMPTS: u8 = 2;
+        loop {
+            attempts += 1;
+            let result = self.client.post(&webhook_url).json(&payload).send().await;
+            match result {
+                Ok(response) if response.status().is_success() => {
+                    info!(
+                        pair = pair,
+                        bid_depth = bid_depth,
+                        ask_depth = ask_depth,
+                        threshold_bid = threshold_bid,
+                        threshold_ask = threshold_ask,
+                        status = %response.status(),
+                        "Liquidity thinness alert dispatched successfully"
+                    );
+                    return;
+                }
+                Ok(response) => {
+                    let status = response.status();
+                    let body = response
+                        .text()
+                        .await
+                        .unwrap_or_default()
+                        .chars()
+                        .take(512)
+                        .collect::<String>();
+
+                    if attempts >= MAX_ATTEMPTS {
+                        error!(
+                            pair = pair,
+                            status = %status,
+                            response_body = body,
+                            "Liquidity thinness alert dispatch failed after retry"
+                        );
+                        return;
+                    } else {
+                        warn!(
+                            pair = pair,
+                            status = %status,
+                            response_body = body,
+                            "Liquidity thinness alert dispatch failed, retrying in {}ms",
+                            self.retry_delay_ms
+                        );
+                        tokio::time::sleep(Duration::from_millis(self.retry_delay_ms)).await;
+                    }
+                }
+                Err(err) => {
+                    if attempts >= MAX_ATTEMPTS {
+                        error!(
+                            pair = pair,
+                            error = %err,
+                            "Liquidity thinness alert dispatch failed after retry"
+                        );
+                        return;
+                    } else {
+                        warn!(
+                            pair = pair,
+                            error = %err,
+                            "Liquidity thinness alert dispatch failed, retrying in {}ms",
+                            self.retry_delay_ms
+                        );
+                        tokio::time::sleep(Duration::from_millis(self.retry_delay_ms)).await;
+                    }
+                }
             }
         }
     }
@@ -299,7 +411,7 @@ mod tests {
                     total: "0".to_string(),
                 })
                 .collect(),
-            timestamp: 1_717_171_717,
+            timestamp: 1717171717,
         }
     }
 

@@ -7,25 +7,21 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 const mockHealthyResponse = {
-  data: {
-    status: 'healthy',
-    timestamp: '2024-01-01T00:00:00Z',
-    version: '1.0.0',
-    components: {
-      database: 'healthy',
-      redis: 'healthy',
-    },
+  status: 'healthy',
+  timestamp: '2024-01-01T00:00:00Z',
+  version: '1.0.0',
+  components: {
+    database: 'healthy',
+    redis: 'healthy',
   },
 };
 
 const mockDepsResponse = {
-  data: {
-    status: 'ok',
-    timestamp: '2024-01-01T00:00:00Z',
-    components: {
-      horizon: 'healthy',
-      soroban_rpc: 'healthy',
-    },
+  status: 'ok',
+  timestamp: '2024-01-01T00:00:00Z',
+  components: {
+    horizon: 'healthy',
+    soroban_rpc: 'healthy',
   },
 };
 
@@ -64,7 +60,9 @@ describe('StatusDashboard', () => {
       expect(screen.getByText('All Systems Operational')).toBeInTheDocument();
     }, { timeout: 3000 });
 
-    expect(screen.getByText(/Version: 1\.0\.0/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Version: 1\.0\.0/)).toBeInTheDocument();
+    }, { timeout: 3000 });
   });
 
   it('handles fetch errors gracefully', async () => {
@@ -76,7 +74,7 @@ describe('StatusDashboard', () => {
       expect(screen.getByText('Connection Error')).toBeInTheDocument();
     }, { timeout: 3000 });
 
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText('Network connection interrupted')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
   });
 

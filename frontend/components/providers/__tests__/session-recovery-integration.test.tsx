@@ -306,7 +306,7 @@ describe('Session Recovery Integration', () => {
         return createResponse({ pairs: [], total: 0 });
       }
       if (url.includes('/api/v1/quote/')) {
-        throw new StellarRouteApiError(400, 'invalid_amount' as any, 'Network error');
+        throw new StellarRouteApiError(0, 'network_error', 'Network error');
       }
       return createResponse({});
     });
@@ -327,7 +327,7 @@ describe('Session Recovery Integration', () => {
     });
 
     // Should show error
-    expect(screen.getAllByText(/network error/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/network connection interrupted/i)[0]).toBeInTheDocument();
   });
 
   it('should not show recovery modal without recoverable context', async () => {

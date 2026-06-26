@@ -53,7 +53,38 @@ BTC  <  USDC  <  native
 
 ---
 
-## Where canonical ordering is applied
+## Regression tests
+
+The ordering rules are pinned by unit tests in
+`crates/api/src/routes/pairs.rs` (module `routes::pairs::tests`).  Both
+`GET /api/v1/pairs` and `GET /api/v1/markets` share a single code path via
+`list_pairs`, so the tests cover both endpoints simultaneously.
+
+| Test name | What it guards |
+|-----------|----------------|
+| `sort_is_strictly_ascending_by_canonical_base_then_counter` | Final list is lexicographically ascending by `(base_asset, counter_asset)` |
+| `sort_is_idempotent_on_already_sorted_input` | Sorting an already-sorted list is a no-op |
+| `sort_empty_list_is_a_no_op` | Empty input does not panic |
+| `sort_single_element_is_unchanged` | One-element list is unchanged |
+| `sort_tie_breaks_on_counter_asset` | Tie on `base_asset` breaks on `counter_asset` ascending |
+| `normalize_infos_selling_becomes_base_when_lex_smaller` | Selling asset is `base` when it is lexicographically smaller |
+| `normalize_infos_buying_becomes_base_when_lex_smaller` | Buying asset is `base` when it is lexicographically smaller |
+| `normalize_infos_is_commutative` | Per-pair normalization is independent of input order |
+| `markets_and_pairs_apply_identical_sort_and_normalization` | `/markets` and `/pairs` produce identical canonical ordering |
+| `asset_canonical_form_native` | `AssetInfo::native()` → `"native"` / display `"XLM"` |
+| `asset_canonical_form_credit4_with_issuer` | `AssetInfo::credit(...)` → `"CODE:ISSUER"` |
+| `asset_canonical_form_credit12_with_issuer` | 12-char codes formatted correctly |
+| `canonical_ordering_btc_lt_usdc_lt_native` | ASCII ordering: `BTC:… < USDC:… < "native"` |
+
+Run them with:
+
+```sh
+cargo test -p stellarroute-api routes::pairs::tests
+```
+
+---
+
+
 
 | Component | Scope | Function |
 |-----------|-------|----------|

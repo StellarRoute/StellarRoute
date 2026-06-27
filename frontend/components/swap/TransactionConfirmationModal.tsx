@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import type { TransactionStatus } from '@/types/transaction';
 import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import { PostSwapSuccessScreen } from './PostSwapSuccessScreen';
+import { useSwapI18n } from '@/lib/swap-i18n';
 
 export interface TransactionConfirmationModalProps {
   isOpen: boolean;
@@ -38,63 +39,42 @@ export interface TransactionConfirmationModalProps {
   onSwapAgain?: () => void;
 }
 
-const STATUS_CONFIG = {
+const STATUS_ICON_CONFIG = {
   review: {
     icon: ArrowRightLeft,
     iconClass: 'text-foreground',
     iconMotionClass: '',
     bgClass: 'bg-muted/10',
-    heading: 'Review Swap',
-    description: 'Please review your swap details before confirming.',
-    announcement: 'Review your swap details.',
   },
   pending: {
     icon: Loader2,
     iconClass: 'text-amber-500',
     iconMotionClass: 'animate-spin',
     bgClass: 'bg-amber-500/10',
-    heading: 'Waiting for wallet\u2026',
-    description:
-      'Waiting for wallet signature. Please approve the transaction in your wallet.',
-    announcement: 'Waiting for wallet signature.',
   },
   submitted: {
     icon: Loader2,
     iconClass: 'text-amber-500',
     iconMotionClass: 'animate-spin',
     bgClass: 'bg-amber-500/10',
-    heading: 'Awaiting confirmation',
-    description: 'Transaction submitted, awaiting confirmation on the network.',
-    announcement: 'Transaction submitted, awaiting confirmation.',
   },
   confirmed: {
     icon: CheckCircle2,
     iconClass: 'text-green-500',
     iconMotionClass: '',
     bgClass: 'bg-green-500/10',
-    heading: 'Swap confirmed',
-    description: 'Your swap has been confirmed on the Stellar network.',
-    announcement: 'Swap confirmed successfully.',
   },
   failed: {
     icon: XCircle,
     iconClass: 'text-destructive',
     iconMotionClass: '',
     bgClass: 'bg-destructive/10',
-    heading: 'Swap failed',
-    description:
-      'The swap could not be completed. You can try again or dismiss.',
-    announcement: 'Swap failed.',
   },
   dropped: {
     icon: Clock,
     iconClass: 'text-muted-foreground',
     iconMotionClass: '',
     bgClass: 'bg-muted/20',
-    heading: 'Transaction timed out',
-    description:
-      'The transaction was not confirmed within the deadline. You can resubmit or dismiss.',
-    announcement: 'Transaction timed out.',
   },
 } as const;
 
@@ -119,9 +99,44 @@ export function TransactionConfirmationModal({
 }: TransactionConfirmationModalProps) {
   const primaryActionRef = useRef<HTMLButtonElement>(null);
   const prefersReducedMotion = useReducedMotion();
-  const config = STATUS_CONFIG[status];
-  const Icon = config.icon;
+  const { t } = useSwapI18n();
+  const iconConfig = STATUS_ICON_CONFIG[status];
+  const Icon = iconConfig.icon;
   const isInFlight = IN_FLIGHT_STATUSES.includes(status);
+
+  const statusTextConfig = {
+    review: {
+      heading: t('swap.confirm.review.heading'),
+      description: t('swap.confirm.review.description'),
+      announcement: t('swap.confirm.review.announcement'),
+    },
+    pending: {
+      heading: t('swap.confirm.pending.heading'),
+      description: t('swap.confirm.pending.description'),
+      announcement: t('swap.confirm.pending.announcement'),
+    },
+    submitted: {
+      heading: t('swap.confirm.submitted.heading'),
+      description: t('swap.confirm.submitted.description'),
+      announcement: t('swap.confirm.submitted.announcement'),
+    },
+    confirmed: {
+      heading: t('swap.confirm.confirmed.heading'),
+      description: t('swap.confirm.confirmed.description'),
+      announcement: t('swap.confirm.confirmed.announcement'),
+    },
+    failed: {
+      heading: t('swap.confirm.failed.heading'),
+      description: t('swap.confirm.failed.description'),
+      announcement: t('swap.confirm.failed.announcement'),
+    },
+    dropped: {
+      heading: t('swap.confirm.dropped.heading'),
+      description: t('swap.confirm.dropped.description'),
+      announcement: t('swap.confirm.dropped.announcement'),
+    },
+  };
+  const config = { ...iconConfig, ...statusTextConfig[status] };
 
   // Move focus to primary action button on each status transition
   useEffect(() => {
@@ -187,19 +202,19 @@ export function TransactionConfirmationModal({
           {tradeParams && (status === 'review' || status === 'confirmed') && (
             <div className="bg-muted/30 rounded-2xl p-4 border border-border/20 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">You pay</span>
+                <span className="text-muted-foreground">{t('swap.confirm.summary.youPay')}</span>
                 <span className="font-medium">
                   {tradeParams.fromAmount} {tradeParams.fromAsset}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">You receive</span>
+                <span className="text-muted-foreground">{t('swap.confirm.summary.youReceive')}</span>
                 <span className="font-medium">
                   {tradeParams.toAmount} {tradeParams.toAsset}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Min received</span>
+                <span className="text-muted-foreground">{t('swap.confirm.summary.minReceived')}</span>
                 <span className="font-medium">{tradeParams.minReceived}</span>
               </div>
             </div>
@@ -224,14 +239,14 @@ export function TransactionConfirmationModal({
                 onClick={onConfirm}
                 className="flex-1 h-12 rounded-xl font-bold shadow-lg"
               >
-                Confirm Swap
+                {t('swap.confirm.cta.confirmSwap')}
               </Button>
               <Button
                 variant="outline"
                 onClick={onCancel}
                 className="flex-1 h-12 rounded-xl font-bold"
               >
-                Cancel
+                {t('swap.confirm.cta.cancel')}
               </Button>
             </>
           )}
@@ -243,7 +258,7 @@ export function TransactionConfirmationModal({
               onClick={onCancel}
               className="flex-1 h-12 rounded-xl font-bold"
             >
-              Cancel
+              {t('swap.confirm.cta.cancel')}
             </Button>
           )}
 
@@ -254,7 +269,7 @@ export function TransactionConfirmationModal({
               disabled
               className="flex-1 h-12 rounded-xl font-bold opacity-50"
             >
-              Processing&hellip;
+              {t('swap.confirm.cta.processing')}
             </Button>
           )}
 
@@ -264,7 +279,7 @@ export function TransactionConfirmationModal({
               onClick={onDone}
               className="flex-1 h-12 rounded-xl font-bold shadow-lg shadow-green-500/20"
             >
-              Done
+              {t('swap.confirm.cta.done')}
             </Button>
           )}
 
@@ -275,14 +290,14 @@ export function TransactionConfirmationModal({
                 onClick={onTryAgain}
                 className="flex-1 h-12 rounded-xl font-bold"
               >
-                Try Again
+                {t('swap.confirm.cta.tryAgain')}
               </Button>
               <Button
                 variant="outline"
                 onClick={onDismiss}
                 className="flex-1 h-12 rounded-xl font-bold"
               >
-                Dismiss
+                {t('swap.confirm.cta.dismiss')}
               </Button>
             </>
           )}
@@ -294,14 +309,14 @@ export function TransactionConfirmationModal({
                 onClick={onResubmit}
                 className="flex-1 h-12 rounded-xl font-bold"
               >
-                Resubmit
+                {t('swap.confirm.cta.resubmit')}
               </Button>
               <Button
                 variant="outline"
                 onClick={onDismiss}
                 className="flex-1 h-12 rounded-xl font-bold"
               >
-                Dismiss
+                {t('swap.confirm.cta.dismiss')}
               </Button>
             </>
           )}

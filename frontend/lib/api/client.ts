@@ -21,6 +21,24 @@ import type {
 } from '@/types';
 
 // ---------------------------------------------------------------------------
+// Status-page refresh interval — single source of truth matching the design
+// spec (auto-refresh every 30 s, matches StatusDashboard.tsx behaviour).
+// ---------------------------------------------------------------------------
+
+export const STATUS_PAGE_REFRESH_MS = 30_000;
+
+// ---------------------------------------------------------------------------
+// Dependency health response shape (returned by GET /health/deps)
+// ---------------------------------------------------------------------------
+
+export interface DepsHealthStatus {
+  status: string;
+  /** ISO-8601 UTC timestamp */
+  timestamp: string;
+  components: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
 // Error class
 // ---------------------------------------------------------------------------
 
@@ -287,6 +305,11 @@ export class StellarRouteClient {
   /** GET /health — overall service health check */
   getHealth(opts?: FetchOptions): Promise<HealthStatus> {
     return this.request<HealthStatus>('/health', opts);
+  }
+
+  /** GET /health/deps — external dependency health check */
+  getDepsHealth(opts?: FetchOptions): Promise<DepsHealthStatus> {
+    return this.request<DepsHealthStatus>('/health/deps', opts);
   }
 
   /** GET /api/v1/pairs — list all trading pairs */

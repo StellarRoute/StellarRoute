@@ -88,7 +88,11 @@ mod tests {
         }
 
         pub fn get_rsrvs(e: Env) -> (i128, i128) {
-            let reserve_in = e.storage().instance().get(&symbol_short!("RIN")).unwrap_or(0);
+            let reserve_in = e
+                .storage()
+                .instance()
+                .get(&symbol_short!("RIN"))
+                .unwrap_or(0);
             let reserve_out = e
                 .storage()
                 .instance()
@@ -106,7 +110,9 @@ mod tests {
 
         let adapter_id = env.register_contract(None, ConstantProductAdapter);
         env.as_contract(&adapter_id, || {
-            env.storage().instance().set(&symbol_short!("POOL"), &pool_id);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("POOL"), &pool_id);
         });
 
         PoolAdapterClient::new(env, &adapter_id)

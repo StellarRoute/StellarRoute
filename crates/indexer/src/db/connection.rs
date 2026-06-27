@@ -70,6 +70,7 @@ impl Database {
         let migration_0011 = include_str!("../../migrations/0011_trace_context_provenance.sql");
         let migration_0012 = include_str!("../../migrations/0012_contract_swap_activity.sql");
         let migration_0013 = include_str!("../../migrations/0013_amm_pools.sql");
+        let migration_0014 = include_str!("../../migrations/0014_reconciliation.sql");
 
         // Execute migrations in order
         info!("Running migration 0001_init.sql");
@@ -220,6 +221,18 @@ impl Database {
             .map_err(|e| {
                 error!("Migration 0013 failed: {}", e);
                 IndexerError::DatabaseMigration(format!("Failed to run 0013_amm_pools.sql: {}", e))
+            })?;
+
+        info!("Running migration 0014_reconciliation.sql");
+        sqlx::query(migration_0014)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Migration 0014 failed: {}", e);
+                IndexerError::DatabaseMigration(format!(
+                    "Failed to run 0014_reconciliation.sql: {}",
+                    e
+                ))
             })?;
 
         info!("Database migrations completed");

@@ -221,6 +221,10 @@ The script uses the router's `get_ttl_status` response:
 
 - Mainnet extension costs real XLM; monitor spend carefully.
 - Testnet extension is a low-cost operation, but still requires a funded account.
+- To enable failure alerts to a Slack-compatible webhook, set the `TTL_ALERT_WEBHOOK_URL` environment variable:
+  ```bash
+  TTL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/... ./scripts/extend-ttl.sh --network testnet
+  ```
 
 ## Pool registration with `scripts/register-pools.sh`
 

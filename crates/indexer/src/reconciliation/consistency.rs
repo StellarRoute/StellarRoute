@@ -261,13 +261,93 @@ pub async fn check_price_divergence(
 
 /// Check for liquidity anomalies (sudden changes in reserves/amounts)
 pub async fn check_liquidity_anomalies(
-    _db: &PgPool,
-    _thresholds: &CheckThresholds,
+    db: &PgPool,
+    thresholds: &CheckThresholds,
 ) -> Result<Vec<ConsistencyCheckResult>> {
-    let results = Vec::new();
+    let mut results = Vec::new();
 
-    // Liquidity anomaly checks would require multiple snapshots
-    // For now, return empty results
+    let anomaly_rows = sqlx::query(
+        r#"
+        WITH reserve_changes AS (
+            SELECT
+                pool_address,
+                reserve_selling,
+                reserve_buying,
+                recorded_at,
+                LAG(reserve_selling) OVER (
+                    PARTITION BY pool_address ORDER BY recorded_at
+                ) AS prev_selling,
+                LAG(reserve_buying) OVER (
+                    PARTITION BY pool_address ORDER BY recorded_at
+                ) AS prev_buying
+            FROM amm_pool_reserve_history
+        ),
+        measured AS (
+            SELECT
+                pool_address,
+                reserve_selling,
+                reserve_buying,
+                prev_selling,
+                prev_buying,
+                recorded_at,
+                GREATEST(
+                    ABS(reserve_selling - prev_selling) / NULLIF(prev_selling, 0) * 100.0,
+                    ABS(reserve_buying - prev_buying) / NULLIF(prev_buying, 0) * 100.0
+                ) AS change_pct
+            FROM reserve_changes
+            WHERE prev_selling IS NOT NULL
+              AND prev_buying IS NOT NULL
+        )
+        SELECT
+            pool_address,
+            reserve_selling,
+            reserve_buying,
+            prev_selling,
+            prev_buying,
+            change_pct,
+            recorded_at
+        FROM measured
+        WHERE change_pct > $1
+        ORDER BY recorded_at DESC
+        LIMIT 1000
+        "#,
+    )
+    .bind(thresholds.liquidity_change_pct)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    for row in anomaly_rows {
+        let pool_address: String = row.get("pool_address");
+        let change_pct: f64 = row.try_get("change_pct").unwrap_or(0.0);
+
+        let severity = if change_pct > thresholds.liquidity_change_pct * 2.0 {
+            DriftSeverity::Critical
+        } else {
+            DriftSeverity::Warning
+        };
+
+        results.push(ConsistencyCheckResult {
+            check_type: CheckType::LiquidityAnomaly,
+            entity_type: "amm_pool".to_string(),
+            entity_ref: pool_address,
+            severity,
+            expected_value: json!({
+                "max_change_pct": thresholds.liquidity_change_pct
+            }),
+            actual_value: json!({
+                "reserve_selling": row.try_get::<String, _>("reserve_selling").ok(),
+                "reserve_buying": row.try_get::<String, _>("reserve_buying").ok(),
+                "prev_selling": row.try_get::<String, _>("prev_selling").ok(),
+                "prev_buying": row.try_get::<String, _>("prev_buying").ok(),
+            }),
+            drift_percentage: Some(change_pct),
+            context: json!({
+                "recorded_at": row.get::<DateTime<Utc>, _>("recorded_at"),
+            }),
+            timestamp: Utc::now(),
+        });
+    }
 
     Ok(results)
 }

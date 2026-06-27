@@ -110,7 +110,41 @@ The same database and Redis assumptions are used by the API server and the integ
 
 ---
 
-## 5. Routing benchmarks
+## 5. Indexer reconciliation integration tests
+
+The reconciliation integration suite under `crates/indexer/tests/reconciliation_test.rs` exercises the reconciliation engine against a live Postgres fixture. These tests simulate Horizon outage (SDEX staleness), AMM liquidity drains, and post-recovery clean passes.
+
+### Prerequisites
+
+```bash
+docker-compose up -d
+./scripts/wait-for-dbs.sh
+export DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
+```
+
+The local Docker Postgres password is `stellarroute_dev` (see `docker-compose.yml`).
+
+### Commands
+
+```bash
+# Unit tests only (no database required)
+cargo test -p stellarroute-indexer reconciliation_test
+
+# Full reconciliation integration suite (ignored tests)
+cargo test -p stellarroute-indexer reconciliation_test -- --ignored
+```
+
+Migration `0014_reconciliation.sql` creates the reconciliation tables (`reconciliation_checks`, `reconciliation_thresholds`, `reconciliation_runs`, `drift_events`, `repair_actions`, and `amm_pool_reserve_history`) when the indexer migrations run.
+
+### Covered scenarios
+
+- **SDEX staleness detection**: stale `sdex_offers` rows trigger `data_staleness` checks
+- **AMM liquidity anomaly**: sudden reserve drops in `amm_pool_reserve_history` trigger `liquidity_anomaly` checks
+- **Post-recovery pass**: refreshed offers and cleaned fixtures produce a zero-failure reconciliation cycle
+
+---
+
+## 6. Routing benchmarks
 
 Routing performance benchmarks are located in `crates/routing/benches/` and are run with Criterion.
 
@@ -125,7 +159,7 @@ Use the benchmark suite when tuning pathfinding, optimizer logic, or route-selec
 
 ---
 
-## 6. Frontend Vitest suite
+## 7. Frontend Vitest suite
 
 The frontend test suite uses Vitest and jsdom.
 
@@ -165,7 +199,7 @@ This is the CI-oriented Ladle build command used for the frontend story/snapshot
 
 ---
 
-## 7. CI workflow mapping
+## 8. CI workflow mapping
 
 The local commands above map to the GitHub Actions workflows in `.github/workflows/`:
 
@@ -179,7 +213,7 @@ Use this mapping when you need to explain which CI path a test failure is likely
 
 ---
 
-## 8. Coverage expectations
+## 9. Coverage expectations
 
 The roadmap references these minimum expectations:
 
@@ -190,7 +224,7 @@ These are planning targets for the wider test strategy; use them to judge whethe
 
 ---
 
-## 9. Common fixes for stale or broken local runs
+## 10. Common fixes for stale or broken local runs
 
 - Lockfile drift or Cargo resolution issues:
   - Run `cargo generate-lockfile` if the lockfile is out of date, then rerun `cargo test`.

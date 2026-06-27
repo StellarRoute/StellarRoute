@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const useOptimisticE2EServer =
+  process.env.PLAYWRIGHT_E2E === "true" ||
+  process.argv.some((arg) => arg.includes("optimistic-swap"));
+
 /**
  * Playwright configuration for mobile visual regression tests.
  * Feature: mobile-swap-experience
@@ -17,15 +21,16 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   /* Reporter */
   reporter: process.env.CI ? "github" : "list",
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+    },
+  },
   use: {
     /* Base URL for the Next.js dev server */
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
     /* Collect trace on first retry */
     trace: "on-first-retry",
-    /* Screenshot comparison threshold — CI fails when diff exceeds this */
-    toHaveScreenshot: {
-      maxDiffPixelRatio: 0.02, // 2% pixel ratio threshold
-    },
   },
   projects: [
     {
@@ -52,6 +57,7 @@ export default defineConfig({
     },
     {
       name: "optimistic-swap",
+      timeout: 60_000,
       use: {
         ...devices["Desktop Chrome"],
         trace: "retain-on-failure",
@@ -62,9 +68,17 @@ export default defineConfig({
   ],
   /* Start the Next.js dev server before running tests */
   webServer: {
-    command: "npm run dev",
+    command: useOptimisticE2EServer
+      ? "npm run dev -- --webpack"
+      : "npm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      ...(useOptimisticE2EServer
+        ? { PLAYWRIGHT_E2E: "true", NEXT_PUBLIC_API_PROXY: "true" }
+        : {}),
+    },
   },
 });

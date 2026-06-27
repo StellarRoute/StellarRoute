@@ -107,7 +107,125 @@ export STELLAR_NETWORK=testnet
 ```
 
 ### 3. Register Pools
-Edit `config/pools-testnet.json` with real pool addresses, then:
+
+Before running the script you need real Soroban AMM pool contract addresses. Follow the steps below to discover them, then update `config/pools-testnet.json`.
+
+#### Step 1 — Discover pool contract addresses on testnet
+
+Soroban AMM pools are ordinary contracts deployed independently of StellarRoute. There are three ways to find their addresses:
+
+**Option A — Stellar Expert (browser)**
+
+1. Open [https://testnet.stellar.expert/explorer/testnet](https://testnet.stellar.expert/explorer/testnet).
+2. Search for the AMM factory contract or a known pool token pair (e.g. `XLM/USDC`).
+3. Copy the contract ID (starts with `C`, 56 characters).
+
+**Option B — Soroban RPC query**
+
+If you know the factory contract address, enumerate pools via its `get_pools` method:
+
+```bash
+soroban contract invoke \
+  --id <FACTORY_CONTRACT_ID> \
+  --network testnet \
+  -- get_pools
+```
+
+Each returned entry is a pool contract ID you can use in `pools-testnet.json`.
+
+**Option C — Stellar Horizon liquidity-pools endpoint**
+
+Classic AMM pools (constant-product) are also discoverable via Horizon:
+
+```bash
+curl "https://horizon-testnet.stellar.org/liquidity_pools?limit=20" | jq '.._embedded.records[].id'
+```
+
+> **Note:** Horizon liquidity pool IDs are hex strings, not Soroban contract addresses. Use this only if the StellarRoute adapter contract accepts Horizon pool IDs. For Soroban-native pools, prefer Option A or B.
+
+#### Step 2 — Edit `config/pools-testnet.json`
+
+Replace each `PLACEHOLDER_POOL_ADDRESS_*` value with the contract ID you discovered. Keep the `name` and `notes` fields for operator reference.
+
+**Example filled `config/pools-testnet.json`:**
+
+```json
+{
+  "description": "Testnet liquidity pool addresses to register with the StellarRoute router contract.",
+  "pools": [
+    {
+      "name": "XLM/USDC Testnet Pool",
+      "address": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "notes": "Constant-product AMM pool — XLM base, USDC quote"
+    },
+    {
+      "name": "XLM/BTC Testnet Pool",
+      "address": "CBEZJWFMKJHPJ3YHPYUGJFMXM5VBXE3HMGHQRQNMFVNRQWKQ6RZXKWM",
+      "notes": "Constant-product AMM pool — XLM base, BTC quote"
+    }
+  ]
+}
+```
+
+> The addresses above are illustrative examples. Use real contract IDs obtained from Step 1.
+
+Any entry whose `address` starts with `PLACEHOLDER` is automatically skipped by the registration script.
+
+#### Step 3 — Run the registration script
+
+```bash
+./scripts/register-pools.sh --network testnet
+```
+
+The script reads `config/pools-testnet.json`, skips placeholder entries, and calls the router contract's `register_pool` function for each real address.
+
+**Expected log output (successful run):**
+
+```
+[INFO]  Registering 2 pools on testnet (contract: C...ROUTER...)
+[INFO]  [1/2] Registering: XLM/USDC Testnet Pool (CBIELTK6...)
+[OK]    Verified: XLM/USDC Testnet Pool is registered
+[INFO]  [2/2] Registering: XLM/BTC Testnet Pool (CBEZJWFM...)
+[OK]    Verified: XLM/BTC Testnet Pool is registered
+
+[OK]    ===== POOL REGISTRATION COMPLETE =====
+[OK]    Registered: 2
+[OK]    Failed:     0
+[OK]    Total on-chain pool count: 2
+```
+
+**Expected log output (placeholder entries present):**
+
+```
+[WARN]  Skipping placeholder pool: XLM/USDC Testnet Pool
+[WARN]  Skipping placeholder pool: XLM/BTC Testnet Pool
+
+[OK]    ===== POOL REGISTRATION COMPLETE =====
+[OK]    Registered: 0
+[OK]    Failed:     0
+[OK]    Total on-chain pool count: 0
+```
+
+If `Registered: 0` is shown for a non-placeholder run, verify the router contract is deployed (`./scripts/deploy.sh` must have run first) and that `config/deployment-testnet.json` exists with a valid contract ID.
+
+#### Relationship between pool config and `register_pool`
+
+Each entry in `pools-testnet.json` maps directly to one `register_pool` invocation on the router contract:
+
+```
+pools-testnet.json entry.address
+        │
+        ▼
+router.register_pool(pool = <address>)   ← on-chain call
+        │
+        ▼
+router.is_pool_registered(pool = <address>)  ← verification call
+```
+
+Once registered, the StellarRoute indexer discovers pools via `get_pool_count` / `get_pools` at startup and includes their reserve data in the `amm_pool_reserves` table and `normalized_liquidity` view used by the quote and routing APIs.
+
+For full details on the registration script internals see [`docs/contracts/deployment-runbook.md`](../contracts/deployment-runbook.md#pool-registration-with-scriptsregister-poolssh).
+
 ```bash
 ./scripts/register-pools.sh --network testnet
 ```

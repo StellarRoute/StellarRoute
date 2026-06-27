@@ -558,6 +558,110 @@ describe('error handling', () => {
   });
 });
 
+// ── simulateRoute ─────────────────────────────────────────────────────────────
+
+const sampleSimulateRequest = {
+  route: {
+    hops: [{ from_asset: 'native', to_asset: 'USDC:GDUKMGUGDZQK6YH...', source: 'sdex' }],
+  },
+  amount: '100',
+  slippage_bps: 50,
+};
+
+const sampleSimulateResponse = {
+  quote: sampleQuote,
+  exclusion_diagnostics: { excluded_venues: [] },
+};
+
+describe('simulateRoute', () => {
+  it('POSTs to /api/v1/simulate/route with the request body', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(sampleSimulateResponse));
+    const result = await new StellarRouteClient().simulateRoute(sampleSimulateRequest);
+
+    expect(spy.mock.calls[0]?.[0]).toBe('http://localhost:8080/api/v1/simulate/route');
+    const init = spy.mock.calls[0]?.[1];
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(init?.body as string)).toEqual(sampleSimulateRequest);
+    expect(result.quote.price).toBe('0.99');
+  });
+
+  it('returns exclusion_diagnostics when present', async () => {
+    const withDiag = {
+      ...sampleSimulateResponse,
+      exclusion_diagnostics: {
+        excluded_venues: [{ venue_ref: 'amm:pool1', reason: 'stale_data' }],
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(withDiag));
+    const result = await new StellarRouteClient().simulateRoute(sampleSimulateRequest);
+    expect(result.exclusion_diagnostics?.excluded_venues[0]?.venue_ref).toBe('amm:pool1');
+  });
+
+  it('throws StellarRouteApiError on 404', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiError('not_found', 'No route found', 404),
+    );
+    const err = await new StellarRouteClient({ retries: 0 })
+      .simulateRoute(sampleSimulateRequest)
+      .catch((e: unknown) => e);
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).isNotFound()).toBe(true);
+  });
+
+  it('throws StellarRouteApiError on 400 validation error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiError('validation_error', 'Invalid hops', 400),
+    );
+    const err = await new StellarRouteClient({ retries: 0 })
+      .simulateRoute({ route: { hops: [] }, amount: '0' })
+      .catch((e: unknown) => e);
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).isValidationError()).toBe(true);
+  });
+});
+
+// ── executeSwap ───────────────────────────────────────────────────────────────
+
+describe('executeSwap', () => {
+  it('calls simulateRoute first, then throws not_implemented stub', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(sampleSimulateResponse));
+    const err = await new StellarRouteClient({ retries: 0 })
+      .executeSwap({
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        slippage_bps: 50,
+      })
+      .catch((e: unknown) => e);
+
+    // simulateRoute was called
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[0]).toContain('/api/v1/simulate/route');
+
+    // Stub error is returned
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).status).toBe(501);
+    expect((err as StellarRouteApiError).code).toBe('not_implemented');
+  });
+
+  it('propagates simulation failure without reaching the stub', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiError('not_found', 'No route', 404),
+    );
+    const err = await new StellarRouteClient({ retries: 0 })
+      .executeSwap({
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).isNotFound()).toBe(true);
+    expect((err as StellarRouteApiError).code).not.toBe('not_implemented');
+  });
+});
+
 // ── isStellarRouteApiError type guard ─────────────────────────────────────────
 
 describe('isStellarRouteApiError', () => {

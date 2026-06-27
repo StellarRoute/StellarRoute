@@ -440,6 +440,38 @@ export interface PriceHistoryResponse {
 }
 
 /**
+ * Parameters for {@link StellarRouteClient.executeSwap}.
+ */
+export interface ExecuteSwapParams {
+  /** Route to execute (same shape as SimulateRouteRequest.route). */
+  route: SimulateRouteRequest['route'];
+  /** Input amount as a decimal string. */
+  amount: string;
+  /** Stellar account G-address of the swap sender. */
+  sender: string;
+  /** Minimum acceptable output amount as a decimal string (slippage guard). */
+  min_output?: string;
+  /** Slippage tolerance in basis points (default: 50). */
+  slippage_bps?: number;
+}
+
+/**
+ * Result returned by {@link StellarRouteClient.executeSwap} when the
+ * swap-build endpoint is available.
+ *
+ * The caller is responsible for signing the `xdr_envelope` and submitting it
+ * to the Stellar network.
+ */
+export interface ExecuteSwapResult {
+  /** Base64-encoded Stellar XDR transaction envelope ready to sign. */
+  xdr_envelope: string;
+  /** Expected output amount from the simulation that was used to build the transaction. */
+  expected_output: string;
+  /** Unix timestamp (ms) after which this XDR envelope should be considered stale. */
+  expires_at: number;
+}
+
+/**
  * Error response from the StellarRoute API.
  */
 export interface ApiError {

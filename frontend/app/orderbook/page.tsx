@@ -59,7 +59,7 @@ export default function OrderbookPage() {
   } = useOrderbook(
     selectedPair?.base_asset ?? "",
     selectedPair?.counter_asset ?? "",
-    10_000,
+    { refreshIntervalMs: 10_000 },
   );
 
   return (

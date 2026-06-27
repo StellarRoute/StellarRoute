@@ -84,6 +84,47 @@ export interface PriceQuote {
   price_impact?: string;
 }
 
+export interface RouteHop {
+  from_asset: Asset;
+  to_asset: Asset;
+  price: string;
+  amount_out_of_hop: string;
+  fee_bps: number;
+  source: string;
+}
+
+export interface RouteCandidate {
+  estimated_output: string;
+  impact_bps: number;
+  score: number;
+  policy_used: string;
+  path: RouteHop[];
+}
+
+export interface RoutesResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  amount: string;
+  routes: RouteCandidate[];
+  /** Unix timestamp (ms) */
+  timestamp: number;
+}
+
+export interface PriceHistoryPoint {
+  /** Unix timestamp (ms) */
+  timestamp: number;
+  price: string;
+}
+
+export interface PriceHistoryResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  points: PriceHistoryPoint[];
+  interval?: string;
+  next_cursor?: string;
+  prev_cursor?: string;
+}
+
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy';
   version: string;

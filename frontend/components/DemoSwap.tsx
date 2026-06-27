@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TransactionConfirmationModal } from "@/components/shared/TransactionConfirmationModal";
+import { TransactionConfirmationModal } from "@/components/swap/TransactionConfirmationModal";
 import { TradeRouteDisplay } from "@/components/shared/TradeRouteDisplay";
 import { usePairs } from "@/hooks/useApi";
 import { useQuoteRefresh } from "@/hooks/useQuoteRefresh";
@@ -335,23 +335,22 @@ export function DemoSwap() {
 
       <TransactionConfirmationModal
         isOpen={isModalOpen}
-        onOpenChange={(open) => {
-          if (!open && txStatus !== "pending" && txStatus !== "submitted") {
-            setIsModalOpen(false);
-          }
-        }}
-        fromAsset={selectedPair?.base ?? "XLM"}
-        fromAmount={parseResult.status === "ok" ? parseResult.normalized : ""}
-        toAsset={selectedPair?.counter ?? "USDC"}
-        toAmount={quote?.total ?? "—"}
-        exchangeRate={quote?.price ?? "—"}
-        priceImpact="0.1%"
-        networkFee="0.00001"
-        slippageTolerancePct={settings?.slippageTolerance}
-        routePath={quote?.path?.length ? quote.path : mockRoute}
         status={txStatus}
         txHash={txHash}
         errorMessage={errorMessage}
+        tradeParams={{
+          fromAsset: selectedPair?.base ?? "XLM",
+          fromAmount: parseResult.status === "ok" ? parseResult.normalized : "",
+          toAsset: selectedPair?.counter ?? "USDC",
+          toAmount: quote?.total ?? "—",
+          exchangeRate: quote?.price ?? "—",
+          priceImpact: "0.1%",
+          minReceived: quote?.total ?? "—",
+          networkFee: "0.00001",
+          routePath: quote?.path?.length ? quote.path : mockRoute,
+          slippageTolerance: settings?.slippageTolerance,
+          deadline: settings?.transactionDeadline,
+        }}
         onConfirm={handleConfirm}
         onCancel={cancel}
         onTryAgain={handleTryAgain}

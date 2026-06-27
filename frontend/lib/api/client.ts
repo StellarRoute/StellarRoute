@@ -12,8 +12,10 @@ import type {
   HealthStatus,
   Orderbook,
   PairsResponse,
+  PriceHistoryResponse,
   PriceQuote,
   QuoteType,
+  RoutesResponse,
   ApiErrorCode,
 } from '@/types';
 
@@ -71,6 +73,22 @@ function parseRetryAfterMs(headerValue: string | null): number | null {
 
 interface FetchOptions {
   signal?: AbortSignal;
+}
+
+export interface RoutesQueryOptions {
+  amount?: number;
+  limit?: number;
+  maxHops?: number;
+  environment?: string;
+}
+
+export interface PriceHistoryQueryOptions {
+  interval?: string;
+  from?: number;
+  to?: number;
+  limit?: number;
+  cursor?: string;
+  window?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +242,54 @@ export class StellarRouteClient {
     if (amount !== undefined) params.set('amount', String(amount));
     const path = `/api/v1/quote/${encodeURIComponent(base)}/${encodeURIComponent(quote)}?${params}`;
     return this.request<PriceQuote>(path, opts);
+  }
+
+  /**
+   * GET /api/v1/routes/{base}/{quote}
+   */
+  getRoutes(
+    base: string,
+    quote: string,
+    query: RoutesQueryOptions = {},
+    opts?: FetchOptions,
+  ): Promise<RoutesResponse> {
+    const params = new URLSearchParams();
+    if (query.amount !== undefined) params.set('amount', String(query.amount));
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.maxHops !== undefined) params.set('max_hops', String(query.maxHops));
+    if (query.environment) params.set('environment', query.environment);
+
+    const queryString = params.toString();
+    const path = `/api/v1/routes/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${
+      queryString ? `?${queryString}` : ''
+    }`;
+
+    return this.request<RoutesResponse>(path, opts);
+  }
+
+  /**
+   * GET /api/v1/price-history/{base}/{quote}
+   */
+  getPriceHistory(
+    base: string,
+    quote: string,
+    query: PriceHistoryQueryOptions = {},
+    opts?: FetchOptions,
+  ): Promise<PriceHistoryResponse> {
+    const params = new URLSearchParams();
+    if (query.interval) params.set('interval', query.interval);
+    if (query.from !== undefined) params.set('from', String(query.from));
+    if (query.to !== undefined) params.set('to', String(query.to));
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.window) params.set('window', query.window);
+
+    const queryString = params.toString();
+    const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${
+      queryString ? `?${queryString}` : ''
+    }`;
+
+    return this.request<PriceHistoryResponse>(path, opts);
   }
 
   /**

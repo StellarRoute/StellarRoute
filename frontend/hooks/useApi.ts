@@ -12,16 +12,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  StellarRouteApiError,
   stellarRouteClient,
+  type BatchQuoteResponse,
+  type PriceHistoryQueryOptions,
+  type QuoteRequestItem,
+  type RoutesQueryOptions,
 } from '@/lib/api/client';
 import { QUOTE_AMOUNT_DEBOUNCE_MS } from '@/lib/quote-stale';
 import type {
   HealthStatus,
   Orderbook,
   PairsResponse,
+  PriceHistoryResponse,
   PriceQuote,
   QuoteType,
+  RoutesResponse,
   TradingPair,
 } from '@/types';
 
@@ -32,7 +37,13 @@ import type {
 export interface UseApiState<T> {
   data: T | undefined;
   loading: boolean;
-  error: StellarRouteApiError | Error | null;
+  error: Error | null;
+}
+
+export interface UseFetchOptions {
+  refreshIntervalMs?: number;
+  skip?: boolean;
+  onError?: (error: Error) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,18 +53,17 @@ export interface UseApiState<T> {
 function useFetch<T>(
   fetcher: (signal: AbortSignal) => Promise<T>,
   deps: unknown[],
-  refreshIntervalMs?: number,
-  skip?: boolean,
+  options: UseFetchOptions = {},
 ): UseApiState<T> & { refresh: () => void } {
+  const { refreshIntervalMs, skip = false, onError } = options;
+
   const [state, setState] = useState<UseApiState<T>>({
     data: undefined,
-    loading: true,
+    loading: !skip,
     error: null,
   });
 
-  // Stable ref so the interval callback always sees the latest fetcher
   const fetcherRef = useRef(fetcher);
-  
   useEffect(() => {
     fetcherRef.current = fetcher;
   }, [fetcher]);
@@ -68,7 +78,6 @@ function useFetch<T>(
     }
 
     const controller = new AbortController();
-
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     fetcherRef
@@ -80,10 +89,13 @@ function useFetch<T>(
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted) {
+          const normalizedError =
+            err instanceof Error ? err : new Error(String(err));
+          onError?.(normalizedError);
           setState({
             data: undefined,
             loading: false,
-            error: err instanceof Error ? err : new Error(String(err)),
+            error: normalizedError,
           });
         }
       });
@@ -92,7 +104,6 @@ function useFetch<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, skip, ...deps]);
 
-  // Auto-refresh
   useEffect(() => {
     if (!refreshIntervalMs || skip) return;
     const id = setInterval(() => setTick((n) => n + 1), refreshIntervalMs);
@@ -122,29 +133,31 @@ function useDebounced<T>(value: T, delayMs: number): T {
 export function usePairs(): UseApiState<TradingPair[]> & {
   refresh: () => void;
 } {
-  const result = useFetch(
+  return useFetch(
     (signal) =>
       stellarRouteClient
         .getPairs({ signal })
         .then((res: PairsResponse) => res.pairs),
     [],
   );
-  return result;
 }
 
 // ---------------------------------------------------------------------------
-// useOrderbook — fetch orderbook with auto-refresh every 10 s
+// useOrderbook — fetch orderbook with auto-refresh
 // ---------------------------------------------------------------------------
 
 export function useOrderbook(
   base: string,
   quote: string,
-  refreshIntervalMs = 10_000,
+  options: UseFetchOptions = { refreshIntervalMs: 10_000 },
 ): UseApiState<Orderbook> & { refresh: () => void } {
   return useFetch(
     (signal) => stellarRouteClient.getOrderbook(base, quote, { signal }),
     [base, quote],
-    refreshIntervalMs,
+    {
+      ...options,
+      skip: options.skip || !base || !quote,
+    },
   );
 }
 
@@ -152,21 +165,16 @@ export function useOrderbook(
 // useQuote — debounced amount; no request while input is invalid / empty
 // ---------------------------------------------------------------------------
 
-
-
 export function useQuote(
   base: string,
   quote: string,
   amount: number | undefined,
   type: QuoteType = 'sell',
-  /** Optional polling interval. Prefer `useQuoteRefresh` for manual/auto refresh UX. */
-  refreshIntervalMs?: number,
+  options: UseFetchOptions = {},
 ): UseApiState<PriceQuote> & { refresh: () => void } {
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
 
-  const skip =
-    !base ||
-    !quote ||
+  const invalidAmount =
     debouncedAmount === undefined ||
     !Number.isFinite(debouncedAmount) ||
     debouncedAmount <= 0;
@@ -177,8 +185,76 @@ export function useQuote(
         signal,
       }),
     [base, quote, debouncedAmount, type],
-    refreshIntervalMs,
-    skip,
+    {
+      ...options,
+      skip: options.skip || !base || !quote || invalidAmount,
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// usePriceHistory — fetch OHLC/price series points
+// ---------------------------------------------------------------------------
+
+export interface UsePriceHistoryOptions extends UseFetchOptions {
+  query?: PriceHistoryQueryOptions;
+}
+
+export function usePriceHistory(
+  base: string | undefined,
+  quote: string | undefined,
+  options: UsePriceHistoryOptions = {},
+): UseApiState<PriceHistoryResponse> & { refresh: () => void } {
+  const { query, ...fetchOptions } = options;
+  const skip = fetchOptions.skip || !base || !quote;
+
+  return useFetch(
+    (signal) =>
+      stellarRouteClient.getPriceHistory(base ?? '', quote ?? '', query, {
+        signal,
+      }),
+    [base, quote, JSON.stringify(query ?? {})],
+    {
+      ...fetchOptions,
+      skip,
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// useRoutes — fetch ranked route candidates
+// ---------------------------------------------------------------------------
+
+export interface UseRoutesOptions extends UseFetchOptions {
+  query?: Omit<RoutesQueryOptions, 'amount'>;
+}
+
+export function useRoutes(
+  base: string,
+  quote: string,
+  amount: number | undefined,
+  options: UseRoutesOptions = {},
+): UseApiState<RoutesResponse> & { refresh: () => void } {
+  const { query, ...fetchOptions } = options;
+  const invalidAmount =
+    amount === undefined || !Number.isFinite(amount) || amount <= 0;
+
+  return useFetch(
+    (signal) =>
+      stellarRouteClient.getRoutes(
+        base,
+        quote,
+        {
+          ...query,
+          amount,
+        },
+        { signal },
+      ),
+    [base, quote, amount, JSON.stringify(query ?? {})],
+    {
+      ...fetchOptions,
+      skip: fetchOptions.skip || !base || !quote || invalidAmount,
+    },
   );
 }
 
@@ -186,18 +262,17 @@ export function useQuote(
 // useBatchQuote — fetch multiple quotes at once
 // ---------------------------------------------------------------------------
 
-import type { QuoteRequestItem, BatchQuoteResponse } from '@/lib/api/client';
-
 export function useBatchQuote(
   requests: QuoteRequestItem[],
-  skip = false,
-  refreshIntervalMs?: number,
+  options: UseFetchOptions = {},
 ): UseApiState<BatchQuoteResponse> & { refresh: () => void } {
   return useFetch(
     (signal) => stellarRouteClient.getQuotesBatch(requests, { signal }),
     [JSON.stringify(requests)],
-    refreshIntervalMs,
-    skip || requests.length === 0,
+    {
+      ...options,
+      skip: options.skip || requests.length === 0,
+    },
   );
 }
 
@@ -206,11 +281,11 @@ export function useBatchQuote(
 // ---------------------------------------------------------------------------
 
 export function useHealth(
-  refreshIntervalMs = 60_000,
+  options: UseFetchOptions = { refreshIntervalMs: 60_000 },
 ): UseApiState<HealthStatus> & { refresh: () => void } {
   return useFetch(
     (signal) => stellarRouteClient.getHealth({ signal }),
     [],
-    refreshIntervalMs,
+    options,
   );
 }

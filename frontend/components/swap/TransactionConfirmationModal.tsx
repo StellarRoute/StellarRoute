@@ -142,10 +142,10 @@ export function TransactionConfirmationModal({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
         className="sm:max-w-[420px] p-0 overflow-hidden border-border/40 bg-background/95 backdrop-blur-xl rounded-[32px] shadow-2xl"
-        aria-describedby="tcm-state-desc"
+        aria-describedby="modal-state-desc"
       >
         {/* Visually hidden state description for aria-describedby */}
-        <p id="tcm-state-desc" className="sr-only">
+        <p id="modal-state-desc" className="sr-only">
           {config.description}
         </p>
 

@@ -19,6 +19,7 @@ import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
+import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
@@ -79,7 +80,6 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const { t } = useSwapI18n();
   const { isCompact, toggleCompact } = useCompactMode();
   const tradingPairContext = useOptionalTradingPair();
-  const { enabled: realXdrEnabled } = useFeatureFlag('real_xdr');
 
   // Wrap useSearchParams in try-catch for SSR
   let parseParams: ReturnType<typeof useShareableQuote>['parseParams'] | null =
@@ -318,6 +318,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     networkMismatch,
     capabilities,
     connect,
+    setTransactionPending,
   } = useWallet();
 
   // Fetch real wallet balance for the selected from-asset
@@ -473,7 +474,36 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     wsConnected: quote.wsConnected,
   });
 
+  const walletReady =
+    isConnected && !!walletId && !!walletAddress && !networkMismatch;
+
+  const productionSwapDeps = useMemo(() => {
+    if (!walletReady || !walletId || !walletAddress) return null;
+    const networkPassphrase = getNetworkPassphrase(walletAppNetwork);
+    const horizonUrl = getHorizonUrl(walletAppNetwork);
+    return {
+      buildXdr: (params: TradeParams) =>
+        buildPathPaymentXdr({
+          walletAddress: params.walletAddress || walletAddress,
+          fromAsset: params.fromAsset,
+          fromAmount: params.fromAmount,
+          toAsset: params.toAsset,
+          minReceived: params.minReceived,
+          routePath: params.routePath,
+          networkPassphrase,
+          horizonUrl,
+        }),
+      signTransaction: (xdr: string) =>
+        signTransactionWithWallet(xdr, walletId, networkPassphrase),
+      submitTransaction: (signedXdr: string) =>
+        submitToHorizon(signedXdr, walletAppNetwork),
+    };
+  }, [walletReady, walletId, walletAddress, walletAppNetwork]);
+
   const optimistic = useOptimisticSwap({
+<<<<<<< HEAD
+    ...(productionSwapDeps ?? {}),
+=======
     signTransaction: walletId
       ? (xdr) =>
           signTransactionWithWallet(
@@ -500,6 +530,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
             horizonUrl: getHorizonUrl(walletAppNetwork),
           })
       : undefined,
+>>>>>>> origin/main
     rollbackTarget: {
       setFromToken,
       setToToken,
@@ -511,6 +542,21 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     },
     onConfirmed: balanceState.refetch,
   });
+
+  useEffect(() => {
+    if (optimistic.status === 'pending' || optimistic.status === 'submitted') {
+      setTransactionPending(true);
+      return;
+    }
+    if (
+      optimistic.status === 'confirmed' ||
+      optimistic.status === 'failed' ||
+      optimistic.status === 'dropped' ||
+      optimistic.status === 'review'
+    ) {
+      setTransactionPending(false);
+    }
+  }, [optimistic.status, setTransactionPending]);
 
   // Handle background transaction toasts when bypassConfirmation is enabled
   useEffect(() => {
@@ -682,6 +728,12 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   }, []);
 
   const handleConfirm = useCallback(() => {
+    if (!productionSwapDeps) {
+      toast.error(
+        'Wallet not ready for signing. Please connect your wallet and try again.'
+      );
+      return;
+    }
     const snap: PreSubmitSnapshot = {
       fromToken,
       toToken,
@@ -718,6 +770,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     toSymbol,
     optimistic,
     walletAddress,
+    productionSwapDeps,
   ]);
 
   const handleSwap = useCallback(() => {

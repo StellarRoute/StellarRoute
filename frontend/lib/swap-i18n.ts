@@ -395,7 +395,7 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.confirm.failed.description": "The swap could not be completed. You can try again or dismiss.",
     "swap.confirm.failed.announcement": "Swap failed.",
     "swap.confirm.dropped.heading": "Transaction timed out",
-    "swap.confirm.dropped.description": "The transaction was not confirmed within the deadline. You can resubmit or dismiss.",
+    "swap.confirm.dropped.description": "Horizon did not confirm your transaction within 60 seconds. You can resubmit or dismiss.",
     "swap.confirm.dropped.announcement": "Transaction timed out.",
     "swap.confirm.summary.youPay": "You pay",
     "swap.confirm.summary.youReceive": "You receive",

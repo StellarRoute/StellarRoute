@@ -43,43 +43,6 @@ use crate::{
     state::AppState,
 };
 
-fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
-    headers
-        .get("x-api-key")
-        .and_then(|h| h.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| format!("api_key:{value}"))
-}
-
-fn build_quote_webhook_payload(
-    consumer_id: String,
-    base: &str,
-    quote: &str,
-    quote_resp: &QuoteResponse,
-) -> QuoteExpirationWebhookPayload {
-    let quote_id = format!(
-        "{}:{}:{}:{}",
-        base, quote, quote_resp.timestamp, quote_resp.amount
-    );
-
-    QuoteExpirationWebhookPayload {
-        event_id: Uuid::new_v4().to_string(),
-        consumer_id,
-        quote_id,
-        pair: format!("{base}/{quote}"),
-        reason: "ttl_expired".to_string(),
-        expired_at: quote_resp
-            .expires_at
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
-        event: "quote.expired".to_string(),
-        timestamp: chrono::Utc::now().timestamp_millis(),
-        base_asset: base.to_string(),
-        quote_asset: quote.to_string(),
-        amount_in: quote_resp.amount.clone(),
-    }
-}
-
 /// Get price quote for a trading pair
 ///
 /// Returns the best available price for trading the specified amount
@@ -659,21 +622,33 @@ pub(crate) async fn get_quote_inner(
             // Return pre-serialized JSON on hot cache hits to avoid deserializing and reserializing.
             if let Some(cache) = &state.cache {
                 if let Ok(mut cache) = cache.try_lock() {
-                    if let Some(cached_json) = cache.get_json(&quote_cache_key).await {
-                        state.cache_metrics.inc_quote_hit();
-                        crate::metrics::record_cache_hit("quote");
-                        tracing::Span::current().record("cache_hit", true);
-                        debug!("Returning cached quote for {}/{}", base, quote);
-                        return Arc::new(Ok((
-                            PreparedQuoteResponse::from_cached_json(cached_json),
-                            true,
-                        )));
+                    match cache.get_json(&quote_cache_key).await {
+                        crate::cache::CacheResult::Hit(cached_json) => {
+                            state.cache_metrics.inc_quote_hit();
+                            crate::metrics::record_cache_hit("quote");
+                            tracing::Span::current().record("cache_hit", true);
+                            debug!("Returning cached quote for {}/{}", base, quote);
+                            return Arc::new(Ok((
+                                PreparedQuoteResponse::from_cached_json(cached_json),
+                                true,
+                            )));
+                        }
+                        crate::cache::CacheResult::Miss => {
+                            crate::metrics::record_cache_miss("quote");
+                        }
+                        crate::cache::CacheResult::Unavailable => {
+                            debug!(
+                                "Redis unavailable for quote cache lookup {}/{}; computing fresh quote",
+                                base, quote
+                            );
+                        }
                     }
                 }
+            } else {
+                crate::metrics::record_cache_miss("quote");
             }
 
-            // Cache miss
-            crate::metrics::record_cache_miss("quote");
+            // Cache miss or Redis unavailable — compute from DB/routing.
 
             // Compute best price with freshness scoring
             let response = match compute_quote_response(
@@ -1415,7 +1390,10 @@ async fn maybe_invalidate_quote_cache(
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
             let revision_key = cache::keys::liquidity_revision(base, quote);
-            let cached_revision = cache.get::<String>(&revision_key).await;
+            let cached_revision = match cache.get::<String>(&revision_key).await {
+                crate::cache::CacheResult::Hit(value) => Some(value),
+                crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => None,
+            };
 
             if cached_revision.as_deref() != Some(liquidity_revision.as_str()) {
                 if cached_revision.is_some() {

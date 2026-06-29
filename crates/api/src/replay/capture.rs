@@ -142,13 +142,20 @@ mod tests {
             total: "100.0000000".to_string(),
             quote_type: "sell".to_string(),
             degraded: false,
+            midpoint: None,
+            spread_bps: None,
             path: vec![PathStep {
                 from_asset: AssetInfo::native(),
                 to_asset: AssetInfo::native(),
                 price: "1.0000000".to_string(),
                 source: "sdex".to_string(),
+<<<<<<< HEAD
+                liquidity_depth: None,
+                fee_bps: None,
+=======
                 fee_bps: None,
                 liquidity_depth: None,
+>>>>>>> origin/main
             }],
             timestamp: 0,
             expires_at: None,

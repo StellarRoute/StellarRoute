@@ -122,6 +122,10 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     reset,
   } = useSwapState();
 
+  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
+    null
+  );
+
   // Fetch ranked routes from /api/v1/routes
   const routesState = useRoutes(
     fromToken,
@@ -206,10 +210,6 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     return list;
   }, [quote.data, routesState.data]);
 
-  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
-    null
-  );
-
   const handleRouteSelect = useCallback((route: AlternativeRoute) => {
     setSelectedRoute(route);
     // Trigger re-quote
@@ -217,7 +217,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     
     const hopCount = route.rawPath ? route.rawPath.length : (quote.data?.path.length ?? 1);
     emitRouteEvent(route.venue, hopCount);
-  }, [quote]);
+  }, [quote, setSelectedRoute]);
 
   const isRoutesLoading = quote.loading || routesState.loading;
 
@@ -639,7 +639,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     }
     setRecoveryRequestedAt(null);
     closeRecoveryModal();
-  }, [closeRecoveryModal, discardPending, recoveryReason, reset]);
+  }, [closeRecoveryModal, discardPending, recoveryReason, reset, setSelectedRoute]);
 
   const handleRestoreRecovery = useCallback(async () => {
     setSelectedRoute(null);
@@ -662,7 +662,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     } finally {
       setIsRecoveringSession(false);
     }
-  }, [closeRecoveryModal, quote, recoveryReason, restorePending]);
+  }, [closeRecoveryModal, quote, recoveryReason, restorePending, setSelectedRoute]);
 
   // Handle "Swap Again" action: close modal but keep form state intact
   const handleSwapAgain = useCallback(() => {
@@ -753,7 +753,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const handleSwitchTokens = useCallback(() => {
     setSelectedRoute(null);
     switchTokens();
-  }, [switchTokens]);
+  }, [switchTokens, setSelectedRoute]);
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {

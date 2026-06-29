@@ -63,6 +63,9 @@ jobs:
         run: npm ci --prefix frontend
       - name: Run frontend tests
         run: npm --prefix frontend run test
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+          CI: "true"
 
   frontend-storybook:
     name: Frontend Ladle Storybook

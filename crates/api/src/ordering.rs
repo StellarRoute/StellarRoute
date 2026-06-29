@@ -108,6 +108,9 @@ fn compare_by_key(a: &RouteCandidate, b: &RouteCandidate, key: SortKey) -> Order
         SortKey::ImpactBps => a.impact_bps.cmp(&b.impact_bps),
         SortKey::HopCount => a.path.len().cmp(&b.path.len()),
         SortKey::FirstVenue => {
+            let empty = String::new();
+            let a_venue = a.path.first().map(|h| &h.source).unwrap_or(&empty);
+            let b_venue = b.path.first().map(|h| &h.source).unwrap_or(&empty);
             let a_venue = a.path.first().map(|h| h.source.as_str()).unwrap_or("");
             let b_venue = b.path.first().map(|h| h.source.as_str()).unwrap_or("");
             a_venue.cmp(b_venue)
@@ -141,6 +144,9 @@ pub fn tie_break(a: &RouteCandidate, b: &RouteCandidate) -> Ordering {
     }
 
     // Lexicographic order of first venue for determinism
+    let empty = String::new();
+    let a_venue = a.path.first().map(|h| &h.source).unwrap_or(&empty);
+    let b_venue = b.path.first().map(|h| &h.source).unwrap_or(&empty);
     let a_venue = a.path.first().map(|h| h.source.as_str()).unwrap_or("");
     let b_venue = b.path.first().map(|h| h.source.as_str()).unwrap_or("");
     a_venue.cmp(b_venue)

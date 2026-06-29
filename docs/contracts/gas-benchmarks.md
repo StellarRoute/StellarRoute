@@ -130,26 +130,27 @@ Automated tests fail if gas consumption increases by >10% from baseline:
 cargo test bench_ --release -- --nocapture
 ```
 
+## Updating Baselines
+
+The CPU cost baselines for `execute_swap` are stored in `crates/contracts/gas_baselines.json`. To update:
+
+1. Run the benchmarks locally:
+   ```bash
+   cd crates/contracts
+   cargo test bench_ --release -- --nocapture
+   ```
+2. Extract the new CPU cost values from the output (look for `execute_swap_1_hop_cpu_cost` and `execute_swap_4_hops_cpu_cost` lines)
+3. Update `crates/contracts/gas_baselines.json` with the new values
+4. Commit the updated baseline file to the repository
+
 ## CI Integration
 
-Add to `.github/workflows/contracts.yml`:
-
-```yaml
-- name: Run Gas Benchmarks
-  run: |
-    cd crates/contracts
-    cargo test bench_ --release -- --nocapture
-    
-- name: Check WASM Size
-  run: |
-    cd crates/contracts
-    cargo build --release --target wasm32-unknown-unknown
-    SIZE=$(wasm-opt --version && wasm-opt -Oz target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm -o optimized.wasm && stat -f%z optimized.wasm)
-    if [ $SIZE -gt 57344 ]; then
-      echo "WASM size $SIZE exceeds 56KB limit"
-      exit 1
-    fi
-```
+The `.github/workflows/gas-benchmarks.yml` workflow automatically:
+1. Runs the gas benchmark tests
+2. Checks that CPU costs do not exceed 10% over the baselines
+3. Verifies the optimized WASM size stays under 100KB
+4. Uploads `benchmark_results.txt` and `optimized.wasm` as artifacts
+5. Posts a comment with results on pull requests
 
 ## Performance Improvements Summary
 
@@ -175,6 +176,6 @@ Add to `.github/workflows/contracts.yml`:
 
 ---
 
-**Last Updated**: 2026-02-24  
+**Last Updated**: 2026-06-27  
 **Contract Version**: 1  
 **Benchmark Environment**: Soroban SDK 21.0

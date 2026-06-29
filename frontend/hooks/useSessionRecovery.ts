@@ -67,9 +67,10 @@ export function useSessionRecovery() {
     if (!lastCheckpointRef.current) {
       updateCheckpoint(false);
     }
-  }, []);
+  }, [updateCheckpoint]);
 
   // Check if there's recoverable context in storage
+  // Note: Aligned with useFormStateRecovery which uses the 'stellar-route-trade-form' key in localStorage
   const checkRecoverableContext = useCallback(() => {
     try {
       const formData = localStorage.getItem('stellar-route-trade-form');

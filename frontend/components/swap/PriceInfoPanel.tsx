@@ -12,6 +12,9 @@ import { PriceImpactIndicator } from "./PriceImpactIndicator";
 import { Button } from "@/components/ui/button";
 import { useSwapI18n } from "@/lib/swap-i18n";
 import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
+import { PriceHistorySparkline } from "@/components/shared/PriceHistorySparkline";
+import { usePriceHistory } from "@/hooks/useApi";
+import type { PriceHistoryPoint } from "@/types";
 
 interface PriceInfoPanelProps {
   rate?: string;
@@ -21,6 +24,8 @@ interface PriceInfoPanelProps {
   isLoading?: boolean;
   onExportJson?: () => void;
   onExportCsv?: () => void;
+  fromAsset?: string;
+  toAsset?: string;
 }
 
 export function PriceInfoPanel({
@@ -31,9 +36,23 @@ export function PriceInfoPanel({
   isLoading = false,
   onExportJson,
   onExportCsv,
+  fromAsset,
+  toAsset,
 }: PriceInfoPanelProps) {
   const { t } = useSwapI18n();
   const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
+  
+  const shouldFetchPriceHistory = Boolean(fromAsset && toAsset && !isLoading);
+  const { data: priceHistoryData, loading: priceHistoryLoading } = usePriceHistory(
+    fromAsset ?? '',
+    toAsset ?? '',
+    60_000,
+    !shouldFetchPriceHistory
+  );
+
+  const prefersReducedMotion = typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
 
   if (showSkeleton) {
     return (
@@ -47,6 +66,15 @@ export function PriceInfoPanel({
 
   return (
     <div className={`rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20 ${contentClassName}`.trim()}>
+      {shouldFetchPriceHistory && (
+        <PriceHistorySparkline
+          points={priceHistoryData?.points}
+          loading={priceHistoryLoading}
+          className={prefersReducedMotion ? 'hidden' : ''}
+        />
+      )}
+
+      {/* Existing UI */}
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
           <span>{t("swap.quote.rate")}</span>

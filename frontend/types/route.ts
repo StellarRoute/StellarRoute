@@ -1,5 +1,26 @@
 import { PathStep } from './index';
 
+/**
+ * Split-path shape returned by the quote API. The parser accepts both the
+ * current snake_case payload and the older SDK aliases during rollout.
+ */
+export interface ApiSplitPath {
+  path?: PathStep[];
+  steps?: PathStep[];
+  percentage?: number;
+  allocation_percent?: number;
+  allocation_bps?: number;
+  weight?: number;
+  output_amount?: string;
+  outputAmount?: string;
+}
+
+export interface SplitRouteQuotePayload {
+  split_paths?: ApiSplitPath[];
+  splitPaths?: ApiSplitPath[];
+  routes?: ApiSplitPath[];
+}
+
 export interface SplitPath {
   /** Percentage of trade allocated to this path (0-100) */
   percentage: number;

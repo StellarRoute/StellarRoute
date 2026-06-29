@@ -42,6 +42,8 @@ use std::time::Duration;
 let client = ClientBuilder::new("http://127.0.0.1:3000")
     .timeout(Duration::from_secs(10))
     .user_agent("my-backend/1.0")
+    .max_retries(3)
+    .base_backoff(Duration::from_millis(500))
     .build()?;
 ```
 
@@ -50,6 +52,26 @@ Or the convenience constructor:
 ```rust
 let client = StellarRouteClient::new("http://127.0.0.1:3000")?;
 ```
+
+## Automatic retries
+
+By default (`max_retries = 0`), the client returns errors immediately. Set
+`max_retries` on the builder to enable automatic retries with exponential
+backoff on 429 (rate-limited) and 5xx (server error) responses.
+
+```rust
+let client = ClientBuilder::new("http://localhost:3000")
+    .max_retries(3)
+    .base_backoff(Duration::from_millis(500)) // default
+    .build()?;
+```
+
+Retry behavior:
+- **429 responses**: Honors the `Retry-After` header when present; otherwise
+  uses exponential backoff (`base_backoff × 2^attempt`).
+- **5xx responses**: Uses exponential backoff, capped at 30 seconds.
+- **Other errors** (4xx): Not retried — returned immediately.
+- When all retries are exhausted, the last error is returned.
 
 ## Async usage
 
@@ -186,6 +208,35 @@ cargo run -p stellarroute-sdk --bin stellarroute -- <command>
 cargo run -p stellarroute-sdk --bin stellarroute -- quote native USDC --amount 100 --quote-type sell --output json
 cargo run -p stellarroute-sdk --bin stellarroute -- orderbook native USDC --levels 20 --output table
 cargo run -p stellarroute-sdk --bin stellarroute -- pairs --limit 30
+```
+
+### Quote flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--amount <decimal>` | _(omit for indicative price)_ | Positive decimal amount of the base asset to trade, e.g. `100` or `0.5`. When omitted the server uses `1` unit. |
+| `--quote-type <sell\|buy>` | `sell` | `sell` — trade away the base asset; `buy` — acquire the base asset. Maps to `quote_type` on `GET /api/v1/quote`. |
+
+Slippage tolerance (`slippage_bps`) is enforced server-side and is not a CLI flag.
+
+### Copy-paste example against localhost
+
+```bash
+# Sell 100 XLM for USDC, human output (default)
+cargo run -p stellarroute-sdk --bin stellarroute -- \
+  --api-url http://127.0.0.1:3000 \
+  quote native USDC --amount 100 --quote-type sell
+
+# Buy 50 USDC worth of XLM, JSON output
+cargo run -p stellarroute-sdk --bin stellarroute -- \
+  --api-url http://127.0.0.1:3000 \
+  --output json \
+  quote native USDC --amount 50 --quote-type buy
+
+# Indicative price with no amount (server defaults to 1 unit)
+cargo run -p stellarroute-sdk --bin stellarroute -- \
+  --api-url http://127.0.0.1:3000 \
+  quote native USDC
 ```
 
 ### Output formats

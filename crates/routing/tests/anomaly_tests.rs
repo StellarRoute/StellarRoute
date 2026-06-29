@@ -48,7 +48,11 @@ fn test_optimizer_flags_anomalies() {
             to: "USDC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "anomalous_pool".to_string(),
+<<<<<<< HEAD
             liquidity: 10_000_000,
+=======
+            liquidity: 10_000_000_000,
+>>>>>>> origin/main
             price: 1.0,
             fee_bps: 30,
         },
@@ -57,7 +61,11 @@ fn test_optimizer_flags_anomalies() {
             to: "USDC".to_string(),
             venue_type: "sdex".to_string(),
             venue_ref: "healthy_offer".to_string(),
+<<<<<<< HEAD
             liquidity: 10_000_000,
+=======
+            liquidity: 10_000_000_000,
+>>>>>>> origin/main
             price: 1.01,
             fee_bps: 20,
         },
@@ -65,8 +73,13 @@ fn test_optimizer_flags_anomalies() {
 
     let routing_policy = RoutingPolicy::default();
     let result = optimizer
-        .find_optimal_routes("XLM", "USDC", &edges, 100, &routing_policy)
+        .find_optimal_routes("XLM", "USDC", &edges, 100_000_000, &routing_policy)
         .unwrap();
 
+<<<<<<< HEAD
     assert!(!result.selected_path.hops.is_empty());
+=======
+    // Optimizer should complete and return route metrics for the selected path
+    assert!(result.metrics.hop_count >= 1);
+>>>>>>> origin/main
 }

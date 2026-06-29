@@ -14,12 +14,14 @@
     "test:visual": "playwright test e2e/visual-baseline.spec.ts",
     "test:visual:update": "playwright test e2e/visual-baseline.spec.ts --update-snapshots",
     "storybook": "ladle dev",
-    "storybook:ci": "ladle build",
+    "storybook:ci": "ladle build && node scripts/check-storybook-build.mjs",
     "perf:check": "node scripts/check-perf-budget.mjs",
+    "perf:check:ci": "node scripts/check-perf-budget.mjs --bundle-only",
     "perf:baseline": "node scripts/check-perf-budget.mjs --update-baseline"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
+    "@stellar/stellar-base": "^15.0.0",
     "@tanstack/react-virtual": "^3.13.23",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",

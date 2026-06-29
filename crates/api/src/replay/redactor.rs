@@ -107,6 +107,7 @@ mod tests {
                 staleness_threshold_secs: 30,
                 min_tvl_threshold_e7: 1_000_000_000,
             },
+            decision_graph: DecisionGraphSnapshot::default(),
             original_output: serde_json::json!({
                 "base_asset": {
                     "asset_type": "credit_alphanum4",
@@ -150,6 +151,7 @@ mod tests {
                 staleness_threshold_secs: 30,
                 min_tvl_threshold_e7: 1_000_000_000,
             },
+            decision_graph: DecisionGraphSnapshot::default(),
             original_output: serde_json::json!({
                 "base_asset": { "asset_type": "native", "asset_issuer": null },
                 "quote_asset": { "asset_type": "native" },

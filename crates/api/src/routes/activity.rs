@@ -18,6 +18,13 @@ pub struct SwapActivityQuery {
     pub before_ledger: Option<i64>,
 }
 
+/// Resolve effective pagination parameters for swap activity listing.
+pub(crate) fn resolve_swap_activity_params(params: &SwapActivityQuery) -> (i64, i64) {
+    let limit = params.limit.unwrap_or(50).clamp(1, 100);
+    let before_ledger = params.before_ledger.unwrap_or(i64::MAX);
+    (limit, before_ledger)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SwapActivityItem {
     pub event_id: String,
@@ -57,8 +64,7 @@ pub async fn list_swap_activity(
     Query(params): Query<SwapActivityQuery>,
     request_id: crate::middleware::RequestId,
 ) -> Result<Json<ApiResponse<SwapActivityResponse>>> {
-    let limit = params.limit.unwrap_or(50).clamp(1, 100);
-    let before_ledger = params.before_ledger.unwrap_or(i64::MAX);
+    let (limit, before_ledger) = resolve_swap_activity_params(&params);
 
     let rows = sqlx::query(
         r#"
@@ -108,4 +114,50 @@ pub async fn list_swap_activity(
         SwapActivityResponse { swaps },
         request_id.to_string(),
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SwapActivityQuery;
+
+    #[test]
+    fn resolve_swap_activity_params_defaults_and_clamps_limit() {
+        use super::resolve_swap_activity_params;
+
+        assert_eq!(
+            resolve_swap_activity_params(&SwapActivityQuery {
+                limit: None,
+                before_ledger: None,
+            }),
+            (50, i64::MAX)
+        );
+        assert_eq!(
+            resolve_swap_activity_params(&SwapActivityQuery {
+                limit: Some(2),
+                before_ledger: None,
+            }),
+            (2, i64::MAX)
+        );
+        assert_eq!(
+            resolve_swap_activity_params(&SwapActivityQuery {
+                limit: Some(500),
+                before_ledger: None,
+            }),
+            (100, i64::MAX)
+        );
+        assert_eq!(
+            resolve_swap_activity_params(&SwapActivityQuery {
+                limit: Some(0),
+                before_ledger: None,
+            }),
+            (1, i64::MAX)
+        );
+        assert_eq!(
+            resolve_swap_activity_params(&SwapActivityQuery {
+                limit: Some(10),
+                before_ledger: Some(90),
+            }),
+            (10, 90)
+        );
+    }
 }

@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse};
+use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse, OrderbookSummary};
 
 const DEFAULT_COOLDOWN_SECONDS: u64 = 300;
 const WEBHOOK_ENV: &str = "LIQUIDITY_THINNESS_ALERT_WEBHOOK_URL";

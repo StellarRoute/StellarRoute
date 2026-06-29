@@ -54,7 +54,12 @@ const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
 const ROUTE_ROW_HEIGHT = 44;
 const ROUTE_OVERSCAN = 2;
 
-function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
+/**
+ * Generates synthetic demo routes for Storybook / local development only.
+ * This function must never be called in production — use live API data instead.
+ * @internal
+ */
+export function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
   const venues = ['AQUA Pool', 'SDEX', 'Blend Pool', 'Phoenix AMM'];
   const baseAmount = Number.parseFloat(amountOut || '0');
 
@@ -150,7 +155,14 @@ export function RouteDisplay({
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [localSelectedRouteId, setLocalSelectedRouteId] = useState<string | null>(null);
-  const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
+  const routes: AlternativeRoute[] = (() => {
+    if (alternativeRoutes !== undefined) return alternativeRoutes;
+    // In production, render an empty list and wait for live API data.
+    // In dev/test, fall back to synthetic demo routes so the component
+    // remains useful without a running API (e.g. Storybook, local dev).
+    if (process.env.NODE_ENV === 'production') return [];
+    return buildAlternativeRoutes(amountOut);
+  })();
   
   const activeRouteId = selectedRouteIdProp !== undefined ? selectedRouteIdProp : localSelectedRouteId;
   const scrollRef = useRef<HTMLDivElement | null>(null);

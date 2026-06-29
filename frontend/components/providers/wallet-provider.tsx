@@ -8,6 +8,7 @@ import {
   disconnectWallet,
   getAvailableWallets,
   refreshWalletSession,
+  checkWalletCapabilities,
 } from '@/lib/wallet';
 import type {
   AvailableWallet,
@@ -51,6 +52,34 @@ const WalletContext = createContext<WalletContextValue | undefined>(undefined);
 
 const AUTO_RECONNECT_PREFERENCE_KEY = 'stellarroute.wallet.autoReconnect';
 const LAST_WALLET_ID_KEY = 'stellarroute.wallet.lastWalletId';
+
+function createCheckingCapabilities(): Capabilities {
+  return {
+    checkedAt: Date.now(),
+    statuses: [
+      {
+        capability: 'sign_transaction',
+        allowed: false,
+        reason: 'Checking wallet permissions',
+        resolution: 'Wait a moment, then try again',
+      },
+    ],
+  };
+}
+
+function createFailedCapabilities(message?: string): Capabilities {
+  return {
+    checkedAt: Date.now(),
+    statuses: [
+      {
+        capability: 'sign_transaction',
+        allowed: false,
+        reason: message ?? 'Failed to verify wallet permissions',
+        resolution: 'Reconnect your wallet or use Check again',
+      },
+    ],
+  };
+}
 
 interface WalletProviderProps {
   children: ReactNode;
@@ -147,6 +176,7 @@ export function WalletProvider({
       setWalletNetwork(session.network ?? null);
       setWalletId(session.walletId);
       setLastWalletId(session.walletId);
+      setCapabilities(createCheckingCapabilities());
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Unknown error');
       setError({ message: e.message });
@@ -186,6 +216,7 @@ export function WalletProvider({
     setIsConnected(session.isConnected);
     setWalletNetwork(session.network ?? null);
     setWalletId(session.walletId);
+    setCapabilities(null);
     setError(null);
     setAccountSwitchState({
       isDetecting: false,
@@ -337,9 +368,24 @@ export function WalletProvider({
   const networkMismatch = isConnected && walletNetwork !== null && walletNetwork !== network;
 
   const refreshCapabilities = React.useCallback(async () => {
-    // mock implementation
-    setCapabilities({ checkedAt: Date.now(), statuses: [] });
-  }, []);
+    if (!walletId || !isConnected) {
+      setCapabilities(null);
+      return;
+    }
+    setCapabilities(createCheckingCapabilities());
+    try {
+      const caps = await checkWalletCapabilities(walletId, network);
+      setCapabilities(caps);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to verify wallet permissions';
+      setCapabilities(createFailedCapabilities(message));
+    }
+  }, [walletId, isConnected, network]);
+
+  React.useEffect(() => {
+    void refreshCapabilities();
+  }, [refreshCapabilities]);
 
   const resyncWallet = React.useCallback(async () => {
     if (typeof window === 'undefined') return;

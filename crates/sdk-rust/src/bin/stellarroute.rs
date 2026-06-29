@@ -75,14 +75,16 @@ enum Commands {
         #[arg(
             long,
             value_parser = PositiveAmountParser,
-            help = "Trade amount as a positive decimal string"
+            help = "Trade amount as a positive decimal (e.g. 100, 0.5); omit for an indicative 1-unit price",
+            long_help = "Amount of the base asset to trade, as a positive decimal string (e.g. 100, 0.5, 1000.25).\n\nWhen omitted the server defaults to 1 unit and returns an indicative\nmid-market price. The value is forwarded verbatim to the REST API\n`amount` query parameter; the CLI does not round or truncate it."
         )]
         amount: Option<String>,
         #[arg(
             long,
             value_enum,
             default_value_t = QuoteTypeArg::Sell,
-            help = "Whether the amount is for selling or buying the base asset"
+            help = "Direction of the quote: sell or buy the base asset (default: sell)",
+            long_help = "Controls which side of the trade `amount` describes.\n\n  sell  Sell `amount` of the base asset and receive as much of the\n        quote asset as possible. Maps to `quote_type=sell` on\n        GET /api/v1/quote/{base}/{quote}.\n\n  buy   Spend quote-asset tokens to acquire `amount` of the base\n        asset. Maps to `quote_type=buy` on the same endpoint.\n\nSlippage tolerance (slippage_bps) is enforced server-side and is not\na CLI flag. Use the REST API directly for custom slippage values.\n\nDefault: sell."
         )]
         quote_type: QuoteTypeArg,
     },

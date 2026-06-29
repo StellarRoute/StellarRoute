@@ -1,5 +1,17 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@/lib/wallet/xdr-builder', () => ({
+  XdrBuildError: class XdrBuildError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+      this.name = 'XdrBuildError';
+    }
+  },
+}));
+
 import { useOptimisticSwap } from './useOptimisticSwap';
 import type { PreSubmitSnapshot, RollbackTarget } from '@/types/transaction';
 import type { TradeParams } from './useTransactionLifecycle';
@@ -45,14 +57,24 @@ function makeRollbackTarget(): RollbackTarget & { calls: Record<string, unknown[
   };
 }
 
+function makeBuildXdr() {
+  return vi.fn().mockResolvedValue('AAAAunsigned_xdr');
+}
+
 describe('useOptimisticSwap', () => {
   it('captures snapshot with correct values on initiateSwap', async () => {
     const rollbackTarget = makeRollbackTarget();
     const signFn = vi.fn(() => new Promise<string>((resolve) => setTimeout(() => resolve('signed'), 100)));
     const submitFn = vi.fn(() => Promise.resolve({ hash: 'hash123' }));
+    const buildXdr = makeBuildXdr();
 
     const { result } = renderHook(() =>
-      useOptimisticSwap({ rollbackTarget, signTransaction: signFn, submitTransaction: submitFn })
+      useOptimisticSwap({
+        rollbackTarget,
+        buildXdr,
+        signTransaction: signFn,
+        submitTransaction: submitFn,
+      })
     );
 
     act(() => {
@@ -66,9 +88,15 @@ describe('useOptimisticSwap', () => {
     const rollbackTarget = makeRollbackTarget();
     const signFn = vi.fn(() => new Promise<string>((resolve) => setTimeout(() => resolve('signed'), 100)));
     const submitFn = vi.fn(() => Promise.resolve({ hash: 'hash123' }));
+    const buildXdr = makeBuildXdr();
 
     const { result } = renderHook(() =>
-      useOptimisticSwap({ rollbackTarget, signTransaction: signFn, submitTransaction: submitFn })
+      useOptimisticSwap({
+        rollbackTarget,
+        buildXdr,
+        signTransaction: signFn,
+        submitTransaction: submitFn,
+      })
     );
 
     act(() => {
@@ -82,9 +110,15 @@ describe('useOptimisticSwap', () => {
     const rollbackTarget = makeRollbackTarget();
     const signFn = vi.fn(() => Promise.reject(new Error('user rejected')));
     const submitFn = vi.fn(() => Promise.resolve({ hash: 'hash123' }));
+    const buildXdr = makeBuildXdr();
 
     const { result } = renderHook(() =>
-      useOptimisticSwap({ rollbackTarget, signTransaction: signFn, submitTransaction: submitFn })
+      useOptimisticSwap({
+        rollbackTarget,
+        buildXdr,
+        signTransaction: signFn,
+        submitTransaction: submitFn,
+      })
     );
 
     await act(async () => {
@@ -123,9 +157,15 @@ describe('useOptimisticSwap', () => {
   it('cancel releases the lock', async () => {
     const rollbackTarget = makeRollbackTarget();
     const signFn = vi.fn(() => new Promise<string>((resolve) => setTimeout(() => resolve('signed'), 5000)));
+    const buildXdr = makeBuildXdr();
 
     const { result } = renderHook(() =>
-      useOptimisticSwap({ rollbackTarget, signTransaction: signFn })
+      useOptimisticSwap({
+        rollbackTarget,
+        buildXdr,
+        signTransaction: signFn,
+        submitTransaction: vi.fn().mockResolvedValue({ hash: 'hash123' }),
+      })
     );
 
     act(() => {
@@ -144,9 +184,15 @@ describe('useOptimisticSwap', () => {
   it('duplicate initiateSwap calls are silently ignored while locked', async () => {
     const rollbackTarget = makeRollbackTarget();
     const signFn = vi.fn(() => new Promise<string>((resolve) => setTimeout(() => resolve('signed'), 5000)));
+    const buildXdr = makeBuildXdr();
 
     const { result } = renderHook(() =>
-      useOptimisticSwap({ rollbackTarget, signTransaction: signFn })
+      useOptimisticSwap({
+        rollbackTarget,
+        buildXdr,
+        signTransaction: signFn,
+        submitTransaction: vi.fn().mockResolvedValue({ hash: 'hash123' }),
+      })
     );
 
     act(() => {
@@ -155,7 +201,9 @@ describe('useOptimisticSwap', () => {
       result.current.initiateSwap({ ...mockTradeParams, snapshot: mockSnapshot });
     });
 
-    expect(signFn).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(signFn).toHaveBeenCalledTimes(1);
+    });
     expect(result.current.submitLock).toBe(true);
   });
 });

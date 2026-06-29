@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { cn } from "@/lib/utils";
-import { ViewState } from "@/components/shared/ViewState";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, Lock, RefreshCw, AlertTriangle, TrendingDown } from "lucide-react";
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { cn } from '@/lib/utils';
+import { ViewState } from '@/components/shared/ViewState';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AlertTriangle, ArrowRight, Lock, RefreshCw } from 'lucide-react';
 
 export interface BatchSwapLeg {
   id: string;
@@ -36,23 +36,31 @@ export function BatchSwapPreview({
   onCancel,
   onRetry,
 }: BatchSwapPreviewProps) {
-  const { enabled: isEnabled } = useFeatureFlag("batch_swaps");
+  const { enabled: isEnabled } = useFeatureFlag('batch_swaps');
   const prefersReducedMotion = useReducedMotion();
 
   // Gated behind feature flag
   if (!isEnabled) {
     return (
-      <Card className={cn(
-        'p-6 border border-warning/20 bg-warning/5 backdrop-blur-md rounded-2xl flex flex-col items-center text-center gap-4',
-        !prefersReducedMotion && 'animate-in fade-in duration-300'
-      )}>
+      <Card
+        className={cn(
+          'p-6 border border-warning/20 bg-warning/5 backdrop-blur-md rounded-2xl flex flex-col items-center text-center gap-4',
+          !prefersReducedMotion && 'animate-in fade-in duration-300'
+        )}
+      >
         <div className="h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center text-warning shadow-[0_0_15px_rgba(245,158,11,0.15)]">
           <Lock className="h-5 w-5" />
         </div>
         <div className="space-y-1.5">
-          <h3 className="text-base font-semibold tracking-tight text-amber-900 dark:text-amber-100">Batch Swap Beta</h3>
+          <h3 className="text-base font-semibold tracking-tight text-amber-900 dark:text-amber-100">
+            Batch Swap Beta
+          </h3>
           <p className="text-sm text-amber-800/80 dark:text-amber-200/80 max-w-sm">
-            Batch swapping is currently in developer preview. Please enable the <code className="font-mono bg-warning/15 px-1.5 py-0.5 rounded text-xs">batchSwaps</code> feature flag to interact with batch swaps.
+            Batch swapping is currently in developer preview. Please enable the{' '}
+            <code className="font-mono bg-warning/15 px-1.5 py-0.5 rounded text-xs">
+              batchSwaps
+            </code>{' '}
+            feature flag to interact with batch swaps.
           </p>
         </div>
       </Card>
@@ -91,8 +99,8 @@ export function BatchSwapPreview({
     return (
       <ViewState
         variant="error"
-        title="Simulation Failed"
-        description={error}
+        title="Batch quote unavailable"
+        description={`${error} Adjust the trade size or retry when market data is available.`}
         action={
           onRetry ? (
             <Button
@@ -102,7 +110,7 @@ export function BatchSwapPreview({
               className="gap-2 min-h-[44px] min-w-[100px] rounded-xl hover:bg-destructive/5 transition-colors border-destructive/20 text-destructive hover:text-destructive"
             >
               <RefreshCw className="h-4 w-4" />
-              Retry Simulation
+              Retry quote
             </Button>
           ) : undefined
         }
@@ -115,8 +123,8 @@ export function BatchSwapPreview({
     return (
       <ViewState
         variant="empty"
-        title="No Swap Legs Found"
-        description="Your batch swap is currently empty. Add operations to start previewing your multi-leg transaction."
+        title="No batch quote yet"
+        description="Enter a valid amount and trading pair to preview the batch execution."
       />
     );
   }
@@ -135,12 +143,18 @@ export function BatchSwapPreview({
 
   const uniqueInputs = Object.entries(inputTotals).map(([asset, amount]) => ({
     asset,
-    amount: amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }),
+    amount: amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    }),
   }));
 
   const uniqueOutputs = Object.entries(outputTotals).map(([asset, amount]) => ({
     asset,
-    amount: amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }),
+    amount: amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    }),
   }));
 
   return (
@@ -148,18 +162,24 @@ export function BatchSwapPreview({
       {/* Component Title */}
       <div className="flex justify-between items-baseline border-b border-border/20 pb-3">
         <div>
-          <h3 className="text-base font-bold tracking-tight">Batch Swap Preview</h3>
-          <p className="text-xs text-muted-foreground">Review your multi-leg batch transaction below</p>
+          <h3 className="text-base font-bold tracking-tight">
+            Batch Swap Preview
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Review your multi-leg batch transaction below
+          </p>
         </div>
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-          {legs.length} {legs.length === 1 ? "Leg" : "Legs"}
+          {legs.length} {legs.length === 1 ? 'Leg' : 'Legs'}
         </span>
       </div>
 
       {/* Leg list */}
       <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
         {legs.map((leg, index) => {
-          const priceImpactVal = leg.priceImpact ? parseFloat(leg.priceImpact) : 0;
+          const priceImpactVal = leg.priceImpact
+            ? parseFloat(leg.priceImpact)
+            : 0;
           const isHighImpact = priceImpactVal > 2.0;
 
           return (
@@ -176,8 +196,8 @@ export function BatchSwapPreview({
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                       isHighImpact
-                        ? "bg-destructive/10 text-destructive border border-destructive/20"
-                        : "bg-success/10 text-success border border-success/20"
+                        ? 'bg-destructive/10 text-destructive border border-destructive/20'
+                        : 'bg-success/10 text-success border border-success/20'
                     }`}
                   >
                     {isHighImpact && <AlertTriangle className="h-2.5 w-2.5" />}
@@ -193,14 +213,19 @@ export function BatchSwapPreview({
                   <span className="text-sm font-bold font-mono text-foreground truncate max-w-[100px]">
                     {leg.fromAmount}
                   </span>
-                  <span className="text-xs font-semibold text-muted-foreground">{leg.fromAsset}</span>
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {leg.fromAsset}
+                  </span>
                 </div>
 
                 <div className="flex flex-col items-center justify-center flex-1">
-                  <div className={cn(
-                  'h-8 w-8 rounded-full bg-muted/40 flex items-center justify-center border border-border/20',
-                  !prefersReducedMotion && 'hover:scale-105 transition-transform duration-200'
-                )}>
+                  <div
+                    className={cn(
+                      'h-8 w-8 rounded-full bg-muted/40 flex items-center justify-center border border-border/20',
+                      !prefersReducedMotion &&
+                        'hover:scale-105 transition-transform duration-200'
+                    )}
+                  >
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                 </div>
@@ -210,7 +235,9 @@ export function BatchSwapPreview({
                   <span className="text-sm font-bold font-mono text-primary truncate max-w-[100px]">
                     {leg.toAmount}
                   </span>
-                  <span className="text-xs font-semibold text-muted-foreground">{leg.toAsset}</span>
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {leg.toAsset}
+                  </span>
                 </div>
               </div>
 
@@ -229,19 +256,32 @@ export function BatchSwapPreview({
       </div>
 
       {/* Subtotals card */}
-      <Card data-testid="batch-subtotals" className="p-4 border border-primary/20 bg-primary/[0.02] backdrop-blur-md rounded-xl space-y-3.5">
+      <Card
+        data-testid="batch-subtotals"
+        className="p-4 border border-primary/20 bg-primary/[0.02] backdrop-blur-md rounded-xl space-y-3.5"
+      >
         <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground border-b border-border/10 pb-1.5">
           Consolidated Subtotals
         </h4>
-        
+
         <div className="grid grid-cols-2 gap-4">
           {/* Total Sold */}
           <div className="space-y-1.5">
-            <span className="text-[11px] font-bold text-muted-foreground block">Estimated Total Sent</span>
-            <div data-testid="subtotals-sent" className="space-y-1 max-h-[80px] overflow-y-auto pr-1">
+            <span className="text-[11px] font-bold text-muted-foreground block">
+              Estimated Total Sent
+            </span>
+            <div
+              data-testid="subtotals-sent"
+              className="space-y-1 max-h-[80px] overflow-y-auto pr-1"
+            >
               {uniqueInputs.map(({ asset, amount }) => (
-                <div key={asset} className="flex items-baseline justify-between font-mono text-xs text-foreground">
-                  <span className="font-semibold text-muted-foreground">{asset}</span>
+                <div
+                  key={asset}
+                  className="flex items-baseline justify-between font-mono text-xs text-foreground"
+                >
+                  <span className="font-semibold text-muted-foreground">
+                    {asset}
+                  </span>
                   <span className="font-bold">{amount}</span>
                 </div>
               ))}
@@ -250,11 +290,21 @@ export function BatchSwapPreview({
 
           {/* Total Received */}
           <div className="space-y-1.5 border-l border-border/20 pl-4">
-            <span className="text-[11px] font-bold text-muted-foreground block">Estimated Total Received</span>
-            <div data-testid="subtotals-received" className="space-y-1 max-h-[80px] overflow-y-auto pr-1">
+            <span className="text-[11px] font-bold text-muted-foreground block">
+              Estimated Total Received
+            </span>
+            <div
+              data-testid="subtotals-received"
+              className="space-y-1 max-h-[80px] overflow-y-auto pr-1"
+            >
               {uniqueOutputs.map(({ asset, amount }) => (
-                <div key={asset} className="flex items-baseline justify-between font-mono text-xs text-primary">
-                  <span className="font-semibold text-muted-foreground">{asset}</span>
+                <div
+                  key={asset}
+                  className="flex items-baseline justify-between font-mono text-xs text-primary"
+                >
+                  <span className="font-semibold text-muted-foreground">
+                    {asset}
+                  </span>
                   <span className="font-bold">{amount}</span>
                 </div>
               ))}

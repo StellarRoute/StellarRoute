@@ -13,7 +13,9 @@ const APP_NETWORK = 'TESTNET';
 export function WalletButton() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
-  const [walletNetworkForOnboarding, setWalletNetworkForOnboarding] = useState<string | null>(null);
+  const [walletNetworkForOnboarding, setWalletNetworkForOnboarding] = useState<
+    string | null
+  >(null);
 
   const {
     address,
@@ -60,7 +62,12 @@ export function WalletButton() {
       setShowOnboardingModal(true);
       markOnboardingAsSeenAndOpened();
     }
-  }, [showOnboarding, isFirstConnection, showOnboardingModal, markOnboardingAsSeenAndOpened]);
+  }, [
+    showOnboarding,
+    isFirstConnection,
+    showOnboardingModal,
+    markOnboardingAsSeenAndOpened,
+  ]);
 
   const handleOnboardingConnect = async (walletId: any) => {
     try {
@@ -77,6 +84,7 @@ export function WalletButton() {
     return (
       <>
         <Button
+          id="wallet-button"
           onClick={() => setShowOnboardingModal(true)}
           className="min-h-[44px]"
         >

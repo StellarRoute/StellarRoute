@@ -7,8 +7,10 @@ import { ArrowUpDown, RefreshCw, Stethoscope } from 'lucide-react';
 import { AmountInput } from './AmountInput';
 import { TokenSelector } from './TokenSelector';
 import { PriceInfoPanel } from './PriceInfoPanel';
-import RouteDisplay from './RoutePanelAsync';
 import type { AlternativeRoute } from './RouteDisplay';
+import RouteDisplay from './RoutePanelAsync';
+import { MobileRouteBottomSheet } from './MobileRouteBottomSheet';
+import { BatchSwapPreview, type BatchSwapLeg } from './BatchSwapPreview';
 import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
@@ -17,26 +19,32 @@ import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
+import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
 import { useWalletBalance } from '@/hooks/useWalletBalance';
 import {
+  DEFAULT_DEADLINE,
+  DEFAULT_SLIPPAGE,
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
 } from '@/hooks/useTradeFormStorage';
+import { useBatchQuote } from '@/hooks/useApi';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import type { QuoteRequestItem } from '@/lib/api/client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { useCompactMode } from '@/hooks/useCompactMode';
 import { useShareableQuote } from '@/hooks/useShareableQuote';
 import { ShareQuoteButton } from './ShareQuoteButton';
 import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner';
+import { WalletCapabilitiesBanner } from '@/components/shared/WalletCapabilitiesBanner';
 import { DiagnosticsPanel } from '@/components/shared/DiagnosticsPanel';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { signTransactionWithWallet } from '@/lib/wallet';
 import { submitToHorizon, getNetworkPassphrase, getHorizonUrl } from '@/lib/wallet/submit';
 import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
@@ -52,24 +60,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IconographyLegend } from '@/components/shared/IconographyLegend';
 import {
   getSwapCardStoryPresentation,
   type SwapCardStoryFixture,
 } from './swapCardStory';
 
 export interface SwapCardProps {
+  /** Shows alternative route picker when routes beta is enabled. */
+  showRoutePicker?: boolean;
   /** Ladle story fixture — drives deterministic UI states for visual review. */
   storyFixture?: SwapCardStoryFixture;
 }
 
-export function SwapCard({ storyFixture }: SwapCardProps = {}) {
+export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProps = {}) {
   const storyPresentation = storyFixture
     ? getSwapCardStoryPresentation(storyFixture)
     : null;
   const { t } = useSwapI18n();
   const { isCompact, toggleCompact } = useCompactMode();
   const tradingPairContext = useOptionalTradingPair();
-  const { enabled: realXdrEnabled } = useFeatureFlag('real_xdr');
 
   // Wrap useSearchParams in try-catch for SSR
   let parseParams: ReturnType<typeof useShareableQuote>['parseParams'] | null =
@@ -84,7 +94,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     parseParams = shareableQuote.parseParams;
     isSharedQuoteStale = shareableQuote.isStale;
     refreshSharedQuote = shareableQuote.refreshQuote;
-  } catch (e) {
+  } catch {
     // SSR or missing searchParams context
   }
 
@@ -112,6 +122,10 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     snapshotCurrent,
     reset,
   } = useSwapState();
+
+  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
+    null
+  );
 
   // Fetch ranked routes from /api/v1/routes
   const routesState = useRoutes(
@@ -204,7 +218,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     
     const hopCount = route.rawPath ? route.rawPath.length : (quote.data?.path.length ?? 1);
     emitRouteEvent(route.venue, hopCount);
-  }, [quote]);
+  }, [quote, setSelectedRoute]);
 
   const isRoutesLoading = quote.loading || routesState.loading;
 
@@ -245,6 +259,56 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     updateBypassConfirmation,
     updateExtendedRouteDetails,
   } = useExpertSettings();
+  const { enabled: batchSwapsEnabled } = useFeatureFlag('batch_swaps');
+  const batchRequests = useMemo<QuoteRequestItem[]>(() => {
+    const amount = Number.parseFloat(fromAmount);
+    if (
+      !batchSwapsEnabled ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !fromToken ||
+      !toToken ||
+      fromToken === toToken
+    ) {
+      return [];
+    }
+
+    const firstLegAmount = Number((amount / 2).toFixed(7));
+    const secondLegAmount = Number((amount - firstLegAmount).toFixed(7));
+    return [firstLegAmount, secondLegAmount]
+      .filter((legAmount) => legAmount > 0)
+      .map((legAmount) => ({
+        base: fromToken,
+        quote: toToken,
+        amount: legAmount,
+        quote_type: 'sell',
+      }));
+  }, [batchSwapsEnabled, fromAmount, fromToken, toToken]);
+  const batchQuote = useBatchQuote(
+    batchRequests,
+    !batchSwapsEnabled || batchRequests.length === 0
+  );
+  const batchLegs = useMemo<BatchSwapLeg[]>(
+    () =>
+      batchQuote.data?.quotes.map((legQuote, index) => ({
+        id: `batch-leg-${index}`,
+        fromAsset:
+          legQuote.base_asset.asset_code ??
+          (legQuote.base_asset.asset_type === 'native'
+            ? 'XLM'
+            : fromToken.split(':')[0]),
+        toAsset:
+          legQuote.quote_asset.asset_code ??
+          (legQuote.quote_asset.asset_type === 'native'
+            ? 'XLM'
+            : toToken.split(':')[0]),
+        fromAmount: legQuote.amount,
+        toAmount: legQuote.total,
+        price: legQuote.price,
+        priceImpact: legQuote.price_impact ?? legQuote.priceImpact,
+      })) ?? [],
+    [batchQuote.data, fromToken, toToken]
+  );
 
   const {
     address: walletAddress,
@@ -252,7 +316,9 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     walletId,
     network: walletAppNetwork,
     networkMismatch,
+    capabilities,
     connect,
+    setTransactionPending,
   } = useWallet();
 
   // Fetch real wallet balance for the selected from-asset
@@ -285,9 +351,6 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
   }, [memoValue, memoType]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
-    null
-  );
   const [wakeSnapshot, setWakeSnapshot] = useState<TradeFormSnapshot | null>(
     null
   );
@@ -314,7 +377,9 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
 
   // --- Issue #745: Swap Warning Center Logic ---
   const [warnings, setWarnings] = useState<SwapWarning[]>([]);
-  const [dismissedWarningIds, setDismissedWarningIds] = useState<Set<string>>(new Set());
+  const [dismissedWarningIds, setDismissedWarningIds] = useState<Set<string>>(
+    new Set()
+  );
 
   const handleRemoveWarning = useCallback((id: string) => {
     setDismissedWarningIds((prev) => {
@@ -350,7 +415,8 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
           id,
           type: 'error',
           title: 'High Slippage Risk',
-          message: 'High slippage increases the risk of frontrunning and getting a significantly worse price.',
+          message:
+            'High slippage increases the risk of frontrunning and getting a significantly worse price.',
           timestamp: Date.now(),
           dismissible: false,
         });
@@ -363,7 +429,8 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
           id,
           type: 'warning',
           title: 'Stale Quote',
-          message: 'This quote is more than 60 seconds old. Please refresh for accurate pricing.',
+          message:
+            'This quote is more than 60 seconds old. Please refresh for accurate pricing.',
           timestamp: Date.now(),
           dismissible: false,
         });
@@ -404,34 +471,37 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     isRecovering: quote.isRecovering,
     error: quote.error,
     isOnline,
+    wsConnected: quote.wsConnected,
   });
 
+  const walletReady =
+    isConnected && !!walletId && !!walletAddress && !networkMismatch;
+
+  const productionSwapDeps = useMemo(() => {
+    if (!walletReady || !walletId || !walletAddress) return null;
+    const networkPassphrase = getNetworkPassphrase(walletAppNetwork);
+    const horizonUrl = getHorizonUrl(walletAppNetwork);
+    return {
+      buildXdr: (params: TradeParams) =>
+        buildPathPaymentXdr({
+          walletAddress: params.walletAddress || walletAddress,
+          fromAsset: params.fromAsset,
+          fromAmount: params.fromAmount,
+          toAsset: params.toAsset,
+          minReceived: params.minReceived,
+          routePath: params.routePath,
+          networkPassphrase,
+          horizonUrl,
+        }),
+      signTransaction: (xdr: string) =>
+        signTransactionWithWallet(xdr, walletId, networkPassphrase),
+      submitTransaction: (signedXdr: string) =>
+        submitToHorizon(signedXdr, walletAppNetwork),
+    };
+  }, [walletReady, walletId, walletAddress, walletAppNetwork]);
+
   const optimistic = useOptimisticSwap({
-    signTransaction: walletId
-      ? (xdr) =>
-          signTransactionWithWallet(
-            xdr,
-            walletId,
-            getNetworkPassphrase(walletAppNetwork)
-          )
-      : undefined,
-    submitTransaction: (signedXdr) =>
-      submitToHorizon(signedXdr, walletAppNetwork),
-    // Build real Stellar path-payment XDR when the integration flag is enabled.
-    // Falls back to "mock_xdr" stub when flag is off (default during development).
-    buildXdr: realXdrEnabled && walletAddress
-      ? (params) =>
-          buildPathPaymentXdr({
-            walletAddress: params.walletAddress || walletAddress,
-            fromAsset: params.fromAsset,
-            fromAmount: params.fromAmount,
-            toAsset: params.toAsset,
-            minReceived: params.minReceived,
-            routePath: params.routePath,
-            networkPassphrase: getNetworkPassphrase(walletAppNetwork),
-            horizonUrl: getHorizonUrl(walletAppNetwork),
-          })
-      : undefined,
+    ...(productionSwapDeps ?? {}),
     rollbackTarget: {
       setFromToken,
       setToToken,
@@ -441,7 +511,23 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
         setSelectedRoute(id ? { id, venue: '', expectedAmount: '' } : null),
       refreshQuote: quote.refresh,
     },
+    onConfirmed: balanceState.refetch,
   });
+
+  useEffect(() => {
+    if (optimistic.status === 'pending' || optimistic.status === 'submitted') {
+      setTransactionPending(true);
+      return;
+    }
+    if (
+      optimistic.status === 'confirmed' ||
+      optimistic.status === 'failed' ||
+      optimistic.status === 'dropped' ||
+      optimistic.status === 'review'
+    ) {
+      setTransactionPending(false);
+    }
+  }, [optimistic.status, setTransactionPending]);
 
   // Handle background transaction toasts when bypassConfirmation is enabled
   useEffect(() => {
@@ -487,6 +573,12 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     if (optimistic.submitLock) return 'executing';
     if (!isConnected) return 'no_wallet';
     if (networkMismatch) return 'no_wallet'; // Swap disabled while network mismatch
+    const signBlocked =
+      !capabilities ||
+      capabilities.statuses.some(
+        (s) => s.capability === 'sign_transaction' && !s.allowed
+      );
+    if (signBlocked) return 'permission_blocked';
     if (memoError) return 'error'; // Block swap if there is a memo validation error
     if (!fromAmount || parseFloat(fromAmount) === 0) return 'no_amount';
     if (quote.error) return 'error';
@@ -502,6 +594,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     fromBalance,
     isConnected,
     networkMismatch,
+    capabilities,
     optimistic.submitLock,
     quote.error,
     quote.isStale,
@@ -511,10 +604,8 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     memoError,
   ]);
 
-  const displayButtonState =
-    storyPresentation?.buttonState ?? buttonState;
-  const displayQuoteLoading =
-    storyPresentation?.quoteLoading ?? quote.loading;
+  const displayButtonState = storyPresentation?.buttonState ?? buttonState;
+  const displayQuoteLoading = storyPresentation?.quoteLoading ?? quote.loading;
   const displayQuoteStale = storyPresentation?.quoteStale ?? quote.isStale;
   const displayQuoteError = storyPresentation?.quoteError ?? quote.error;
   const displayQuotePriceImpact =
@@ -522,8 +613,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
   const displayToAmount = storyPresentation?.toAmount ?? toAmount;
   const displayFormattedRate =
     storyPresentation?.formattedRate ?? formattedRate;
-  const displayIsModalOpen =
-    storyPresentation?.confirmModalOpen ?? isModalOpen;
+  const displayIsModalOpen = storyPresentation?.confirmModalOpen ?? isModalOpen;
   const displayOptimisticStatus =
     storyPresentation?.optimisticStatus ?? optimistic.status;
   const displayTradeParams =
@@ -577,7 +667,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     }
     setRecoveryRequestedAt(null);
     closeRecoveryModal();
-  }, [closeRecoveryModal, discardPending, recoveryReason, reset]);
+  }, [closeRecoveryModal, discardPending, recoveryReason, reset, setSelectedRoute]);
 
   const handleRestoreRecovery = useCallback(async () => {
     setSelectedRoute(null);
@@ -600,7 +690,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     } finally {
       setIsRecoveringSession(false);
     }
-  }, [closeRecoveryModal, quote, recoveryReason, restorePending]);
+  }, [closeRecoveryModal, quote, recoveryReason, restorePending, setSelectedRoute]);
 
   // Handle "Swap Again" action: close modal but keep form state intact
   const handleSwapAgain = useCallback(() => {
@@ -609,6 +699,12 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
   }, []);
 
   const handleConfirm = useCallback(() => {
+    if (!productionSwapDeps) {
+      toast.error(
+        'Wallet not ready for signing. Please connect your wallet and try again.'
+      );
+      return;
+    }
     const snap: PreSubmitSnapshot = {
       fromToken,
       toToken,
@@ -645,15 +741,22 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     toSymbol,
     optimistic,
     walletAddress,
+    productionSwapDeps,
   ]);
 
   const handleSwap = useCallback(() => {
-    if (quote.priceImpact > 5) {
+    if (!bypassConfirmation && quote.priceImpact > 5) {
       setIsConfirmModalOpen(true);
       return;
     }
     handleConfirm();
-  }, [quote.priceImpact, handleConfirm]);
+  }, [bypassConfirmation, quote.priceImpact, handleConfirm]);
+
+  const handleSettingsReset = useCallback(() => {
+    setSlippage(DEFAULT_SLIPPAGE);
+    setDeadline(DEFAULT_DEADLINE);
+    updateExpertMode(false);
+  }, [setDeadline, setSlippage, updateExpertMode]);
 
   const handleMax = useCallback(() => {
     // Use spendableBalance for XLM (accounts for base reserve)
@@ -685,7 +788,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
   const handleSwitchTokens = useCallback(() => {
     setSelectedRoute(null);
     switchTokens();
-  }, [switchTokens]);
+  }, [switchTokens, setSelectedRoute]);
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
@@ -795,6 +898,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     >
       {/* Network Mismatch Banner */}
       <NetworkMismatchBanner className="mb-4" />
+      <WalletCapabilitiesBanner className="mb-4" />
 
       {/* Shared Quote Stale Warning */}
       {isSharedQuoteStale && refreshSharedQuote && (
@@ -862,14 +966,17 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
                 )}
               </Button>
               <SettingsPanel
-                expertSettings={{
-                  expertMode,
-                  bypassConfirmation,
-                  extendedRouteDetails,
-                  updateExpertMode,
-                  updateBypassConfirmation,
-                  updateExtendedRouteDetails,
-                }}
+                slippage={slippage}
+                deadline={deadline}
+                expertMode={expertMode}
+                bypassConfirmation={bypassConfirmation}
+                extendedRouteDetails={extendedRouteDetails}
+                onSlippageChange={setSlippage}
+                onDeadlineChange={setDeadline}
+                onExpertModeChange={updateExpertMode}
+                onBypassConfirmationChange={updateBypassConfirmation}
+                onExtendedRouteDetailsChange={updateExtendedRouteDetails}
+                onReset={handleSettingsReset}
               />
               <Button
                 variant="ghost"
@@ -967,7 +1074,8 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
           </div>
 
           {/* Info Panels (Conditional) */}
-          {(parseFloat(fromAmount) > 0 || storyPresentation?.seedFromAmount) && (
+          {(parseFloat(fromAmount) > 0 ||
+            storyPresentation?.seedFromAmount) && (
             <div
               className={cn(
                 'space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500',
@@ -985,11 +1093,31 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
                 onExportJson={() => handleExport('json')}
                 onExportCsv={() => handleExport('csv')}
               />
-              <RouteDisplay
+              <MobileRouteBottomSheet
+                quote={quote.data ?? null}
                 amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
-                isLoading={displayQuoteLoading}
-                onSelect={setSelectedRoute}
+                isLoading={isRoutesLoading}
               />
+              {showRoutePicker && (
+                <RouteDisplay
+                  quote={quote.data ?? null}
+                  amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
+                  isLoading={isRoutesLoading}
+                  alternativeRoutes={mergedAlternativeRoutes}
+                  selectedRouteId={selectedRoute?.id ?? null}
+                  onSelect={handleRouteSelect}
+                  fromAssetCode={fromSymbol}
+                  toAssetCode={toSymbol}
+                />
+              )}
+              {batchSwapsEnabled && (
+                <BatchSwapPreview
+                  legs={batchLegs}
+                  isLoading={batchQuote.loading}
+                  error={batchQuote.error?.message}
+                  onRetry={batchQuote.refresh}
+                />
+              )}
               {/* Share Quote Button */}
               <div className="flex justify-end">
                 <ShareQuoteButton
@@ -1058,11 +1186,13 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
               type="button"
               onClick={() => {
                 setShowMemoField(!showMemoField);
-                if (!showMemoField) setMemoValue(''); 
+                if (!showMemoField) setMemoValue('');
               }}
               className="text-xs font-semibold text-primary/80 hover:text-primary transition-colors flex items-center gap-1.5 focus:outline-none"
             >
-              <span>{showMemoField ? "✕ Remove Memo" : "+ Add Optional Memo"}</span>
+              <span>
+                {showMemoField ? '✕ Remove Memo' : '+ Add Optional Memo'}
+              </span>
             </button>
 
             {showMemoField && (
@@ -1073,7 +1203,10 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
                     variant={memoType === 'text' ? 'default' : 'outline'}
                     size="sm"
                     className="h-7 text-xs rounded-lg flex-1"
-                    onClick={() => { setMemoType('text'); setMemoValue(''); }}
+                    onClick={() => {
+                      setMemoType('text');
+                      setMemoValue('');
+                    }}
                   >
                     Text Memo
                   </Button>
@@ -1082,7 +1215,10 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
                     variant={memoType === 'hash' ? 'default' : 'outline'}
                     size="sm"
                     className="h-7 text-xs rounded-lg flex-1"
-                    onClick={() => { setMemoType('hash'); setMemoValue(''); }}
+                    onClick={() => {
+                      setMemoType('hash');
+                      setMemoValue('');
+                    }}
                   >
                     Hash Memo
                   </Button>
@@ -1093,10 +1229,16 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
                     type="text"
                     value={memoValue}
                     onChange={(e) => setMemoValue(e.target.value)}
-                    placeholder={memoType === 'text' ? "Enter text reference (max 28 bytes)" : "Enter 64-char hex string"}
+                    placeholder={
+                      memoType === 'text'
+                        ? 'Enter text reference (max 28 bytes)'
+                        : 'Enter 64-char hex string'
+                    }
                     className={cn(
-                      "w-full bg-background/50 border rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/20",
-                      memoError ? "border-destructive focus:ring-destructive/20" : "border-border/60 focus:border-primary/40"
+                      'w-full bg-background/50 border rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/20',
+                      memoError
+                        ? 'border-destructive focus:ring-destructive/20'
+                        : 'border-border/60 focus:border-primary/40'
                     )}
                   />
                   {memoError && (
@@ -1213,7 +1355,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
       </p>
 
       <Dialog open={shortcutHelpOpen} onOpenChange={handleShortcutOpenChange}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('swap.shortcuts.title')}</DialogTitle>
           </DialogHeader>
@@ -1239,6 +1381,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
               <kbd className="font-mono">Alt+2</kbd>
             </li>
           </ul>
+          <IconographyLegend embedded className="mt-4" />
         </DialogContent>
       </Dialog>
     </div>

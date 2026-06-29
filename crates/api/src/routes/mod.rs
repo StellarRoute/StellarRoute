@@ -115,5 +115,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/contracts/registry/:contract_name/network/:network",
             get(contract_registry::get_contract_version_by_network),
         )
+        // WebSocket quote stream (real-time quotes)
+        .route("/ws", get(ws::ws_handler))
         .with_state(state)
 }

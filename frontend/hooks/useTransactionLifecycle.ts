@@ -81,7 +81,9 @@ function isRejectionError(message: string): boolean {
   return (
     lower.includes("reject") ||
     lower.includes("denied") ||
-    lower.includes("user declined")
+    lower.includes("user declined") ||
+    lower.includes("cancel") ||
+    lower.includes("cancelled")
   );
 }
 

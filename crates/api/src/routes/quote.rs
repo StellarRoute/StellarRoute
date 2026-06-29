@@ -186,6 +186,8 @@ pub async fn get_quote(
         )
         .await
         {
+            Ok((prepared_quote_resp, cache_hit)) => {
+                let quote_resp = prepared_quote_resp.into_quote()?;
             Ok((prepared_quote, cache_hit)) => {
                 let quote_resp = prepared_quote.into_quote()?;
                 let error_class = "none";
@@ -504,6 +506,12 @@ pub async fn get_batch_quotes(
                 };
 
                 match get_quote_inner(state, base_asset, quote_asset, params, false).await {
+                    Ok((prepared_quote, _cache_hit)) => match prepared_quote.into_quote() {
+                        Ok(quote) => BatchQuoteItemResult::ok(i, quote),
+                        Err(e) => {
+                            let (code, message) = batch_error_from_api_error(&e);
+                            BatchQuoteItemResult::err(i, BatchItemError { code, message })
+                        }
                     Ok((quote, _cache_hit)) => match quote.into_quote() {
                         Ok(inner) => BatchQuoteItemResult::ok(i, inner),
                         Err(e) => BatchQuoteItemResult::err(
@@ -1737,8 +1745,8 @@ mod tests {
     #[test]
     fn insufficient_liquidity_returns_no_route() {
         let candidates = vec![
-            candidate("amm", "pool1", 1.0, 5.0),
-            candidate("sdex", "offer1", 0.99, 2.0),
+            candidate("amm", "pool1", 1.0, 5.0, 30),
+            candidate("sdex", "offer1", 0.99, 2.0, 0),
         ];
 
         let result = evaluate_single_hop_direct_venues(candidates, 10.0);
@@ -1836,7 +1844,7 @@ mod tests {
         // The stale candidate has been excluded by freshness filtering before this call.
         // Only the fresh-but-low-liquidity candidate reaches evaluate_single_hop_direct_venues.
         let fresh_candidates = vec![
-            candidate("sdex", "offer_fresh", 1.0, 5.0), // fresh but only 5 units available
+            candidate("sdex", "offer_fresh", 1.0, 5.0, 0), // fresh but only 5 units available
         ];
         // Request 100 units — exceeds the fresh candidate's available_amount.
         let result = evaluate_single_hop_direct_venues(fresh_candidates, 100.0);
@@ -1858,8 +1866,8 @@ mod tests {
     fn mixed_freshness_with_sufficient_fresh_liquidity_succeeds() {
         // Stale candidate already filtered out; only these fresh candidates remain.
         let fresh_candidates = vec![
-            candidate("amm", "pool_fresh", 1.05, 200.0),
-            candidate("sdex", "offer_fresh", 1.02, 150.0),
+            candidate("amm", "pool_fresh", 1.05, 200.0, 30),
+            candidate("sdex", "offer_fresh", 1.02, 150.0, 0),
         ];
         let amount = 100.0;
 

@@ -48,10 +48,12 @@ export interface PriceHistoryPoint {
   price: string;
 }
 
+export type PriceHistoryWindow = '1h' | '4h' | '24h' | '7d' | '30d';
+
 export interface PriceHistoryResponse {
   base_asset: Asset;
   quote_asset: Asset;
-  window: "24h";
+  window: PriceHistoryWindow;
   source: string;
   /** Unix timestamp in milliseconds */
   generated_at: number;

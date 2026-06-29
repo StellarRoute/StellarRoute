@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -45,8 +45,15 @@ export function WalletConnectionOnboarding({
   const [selectedNetwork, setSelectedNetwork] = useState<string>(APP_NETWORK);
   const [connectionError, setConnectionError] = useState<string | null>(error);
 
-  // Determine if we should show network mismatch after successful connection
-  const showNetworkMismatch = step === 'success' && walletNetwork && walletNetwork.toLowerCase() !== APP_NETWORK.toLowerCase();
+  const isWalletNetworkMismatch =
+    walletNetwork !== null &&
+    walletNetwork.toLowerCase() !== APP_NETWORK.toLowerCase();
+
+  useEffect(() => {
+    if (step === 'success' && isWalletNetworkMismatch) {
+      setStep('network-mismatch');
+    }
+  }, [isWalletNetworkMismatch, step]);
 
   const handleWalletSelect = async (wallet: AvailableWallet) => {
     if (!wallet.installed) {
@@ -66,7 +73,7 @@ export function WalletConnectionOnboarding({
 
     try {
       await onConnect(wallet.id as SupportedWallet);
-      setStep(showNetworkMismatch ? 'network-mismatch' : 'success');
+      setStep('success');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Connection failed. Please try again.';
       setConnectionError(errorMessage);

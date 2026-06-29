@@ -9,7 +9,13 @@ const SETTINGS_STORAGE_KEY = "stellar_route_settings";
 
 export const SWAP_FALLBACK_LOCALE: Locale = DEFAULT_LOCALE;
 
-type SupportedSwapLocale = "en-US" | "zh-CN" | "es-ES";
+type SupportedSwapLocale =
+  | "en-US"
+  | "zh-CN"
+  | "es-ES"
+  | "de-DE"
+  | "fr-FR"
+  | "ja-JP";
 
 export type SwapTranslationKey =
   | "swap.card.title"
@@ -192,7 +198,10 @@ export type SwapTranslationKey =
 
 type SwapTranslations = Record<SwapTranslationKey, string>;
 
-const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
+const SWAP_TRANSLATIONS_BASE: Record<
+  "en-US" | "zh-CN" | "es-ES",
+  SwapTranslations
+> = {
   "en-US": {
     "swap.card.title": "Swap",
     "swap.card.offlineBanner":
@@ -746,13 +755,44 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
   },
 };
 
+const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
+  ...SWAP_TRANSLATIONS_BASE,
+  "de-DE": {
+    ...SWAP_TRANSLATIONS_BASE["en-US"],
+    "swap.card.title": "Tauschen",
+    "swap.pair.youPay": "Du gibst",
+    "swap.pair.youReceive": "Du erhältst",
+    "swap.cta.reviewSwap": "Swap prüfen",
+    "swap.cta.connectWallet": "Wallet verbinden",
+    "swap.confirm.confirmed.heading": "Swap bestätigt",
+  },
+  "fr-FR": {
+    ...SWAP_TRANSLATIONS_BASE["en-US"],
+    "swap.card.title": "Échanger",
+    "swap.pair.youPay": "Vous payez",
+    "swap.pair.youReceive": "Vous recevez",
+    "swap.cta.reviewSwap": "Vérifier l’échange",
+    "swap.cta.connectWallet": "Connecter le wallet",
+    "swap.confirm.confirmed.heading": "Échange confirmé",
+  },
+  "ja-JP": {
+    ...SWAP_TRANSLATIONS_BASE["en-US"],
+    "swap.card.title": "スワップ",
+    "swap.pair.youPay": "支払う",
+    "swap.pair.youReceive": "受け取る",
+    "swap.cta.reviewSwap": "スワップ内容を確認",
+    "swap.cta.connectWallet": "ウォレットを接続",
+    "swap.confirm.confirmed.heading": "スワップが確定しました",
+  },
+};
+
 const SWAP_LOCALE_ALIASES: Record<Locale, SupportedSwapLocale> = {
   "en-US": "en-US",
   "en-GB": "en-US",
-  "de-DE": "en-US",
-  "fr-FR": "en-US",
+  "de-DE": "de-DE",
+  "fr-FR": "fr-FR",
   "es-ES": "es-ES",
-  "ja-JP": "en-US",
+  "ja-JP": "ja-JP",
   "zh-CN": "zh-CN",
 };
 
@@ -795,7 +835,11 @@ export function resolveSwapLocale(locale?: Locale | null): SupportedSwapLocale {
 export function createSwapTranslator(locale?: Locale | null) {
   const requestedLocale = locale ?? SWAP_FALLBACK_LOCALE;
   const resolvedLocale = resolveSwapLocale(requestedLocale);
-  const messages = SWAP_TRANSLATIONS[resolvedLocale];
+  const messages = SWAP_TRANSLATIONS[resolvedLocale] as Record<string, string>;
+  const fallbackMessages = SWAP_TRANSLATIONS[SWAP_FALLBACK_LOCALE] as Record<
+    string,
+    string
+  >;
 
   return {
     locale: resolvedLocale,
@@ -803,7 +847,23 @@ export function createSwapTranslator(locale?: Locale | null) {
     t: (
       key: SwapTranslationKey,
       variables?: Record<string, string | number>,
-    ) => formatMessage(messages[key], variables),
+    ) => {
+      const message = messages[key];
+      if (message) {
+        return formatMessage(message, variables);
+      }
+
+      const fallback = fallbackMessages[key];
+      if (
+        typeof window !== "undefined" &&
+        process.env.NODE_ENV !== "production"
+      ) {
+        console.warn(
+          `[swap-i18n] Missing key "${key}" in locale "${resolvedLocale}", falling back to ${SWAP_FALLBACK_LOCALE}.`,
+        );
+      }
+      return formatMessage(fallback ?? key, variables);
+    },
   };
 }
 

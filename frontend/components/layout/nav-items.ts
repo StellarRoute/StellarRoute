@@ -1,3 +1,5 @@
+import { ROUTES } from '@/lib/constants';
+
 export interface NavItem {
   label: string;
   href: string;
@@ -5,7 +7,7 @@ export interface NavItem {
 }
 
 const BASE_NAV_ITEMS: NavItem[] = [
-  { label: "Swap", href: "/swap" },
+  { label: 'Swap', href: ROUTES.SWAP },
   { label: "Orderbook", href: "/orderbook" },
   { label: "History", href: "/history" },
 ];

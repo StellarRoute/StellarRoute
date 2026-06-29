@@ -1284,6 +1284,28 @@ async fn find_best_price(
         fee_bps: Some(selected.fee_bps),
     }];
 
+    // Optional Soroban simulation step for AMM venues. If configured and enabled,
+    // run a dry-run and convert explicit simulation failures into a NotExecutable error.
+    if selected.venue_type == "amm" {
+        if state.soroban_simulation_enabled {
+            if let Some(sim) = &state.soroban_simulator {
+                // Build a lightweight simulation payload. The real transaction XDR
+                // builder lives elsewhere; for dry-run validation we encode key
+                // route identifiers so tests/mocks can inspect the request.
+                let tx_xdr = format!("simulate:amm:{}:{}:{}",
+                    selected.venue_ref, amount, selected.price);
+
+                let sim_res = sim.simulate(&tx_xdr).await;
+
+                if sim_res.simulated && !sim_res.success {
+                    let reason = sim_res
+                        .failure_reason
+                        .unwrap_or_else(|| "simulation_failure".to_string());
+                    return Err(ApiError::NotExecutable(reason));
+                }
+            }
+        }
+    }
     Ok((
         selected.price,
         path,

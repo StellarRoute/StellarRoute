@@ -5,7 +5,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use stellarroute_routing::fixtures::FixtureBuilder;
-use stellarroute_routing::pathfinder::LiquidityEdge;
 
 #[derive(Parser, Debug)]
 #[command(name = "fixture-gen")]
@@ -160,12 +159,11 @@ fn output_json(builder: &FixtureBuilder, name: &str, output: Option<PathBuf>) ->
         }).collect::<Vec<_>>(),
     });
 
-    let content = serde_json::to_string_pretty(&fixture)
-        .context("failed to serialize fixture to JSON")?;
+    let content =
+        serde_json::to_string_pretty(&fixture).context("failed to serialize fixture to JSON")?;
 
     if let Some(path) = output {
-        fs::write(&path, content)
-            .context(format!("failed to write JSON fixture to {:?}", path))?;
+        fs::write(&path, content).context(format!("failed to write JSON fixture to {:?}", path))?;
         println!("✓ JSON fixture written to {}", path.display());
     } else {
         println!("{}", content);

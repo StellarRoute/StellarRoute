@@ -252,7 +252,7 @@ ls -lh optimized.wasm
 
 ## References
 
-- [Gas Benchmarks Documentation](../docs/contracts/gas-benchmarks.md)
+- [Gas Benchmarks Documentation](./gas-benchmarks.md)
 - [Soroban Resource Limits](https://soroban.stellar.org/docs/learn/resource-limits)
 - [Soroban Fees](https://soroban.stellar.org/docs/learn/fees)
-- [Implementation Summary](../IMPLEMENTATION_SUMMARY.md)
+- [Implementation Summary](../../IMPLEMENTATION_SUMMARY.md)

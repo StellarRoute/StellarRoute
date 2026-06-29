@@ -67,9 +67,10 @@ export function useSessionRecovery() {
     if (!lastCheckpointRef.current) {
       updateCheckpoint(false);
     }
-  }, []);
+  }, [updateCheckpoint]);
 
   // Check if there's recoverable context in storage
+  // Note: Aligned with useFormStateRecovery which uses the 'stellar-route-trade-form' key in localStorage
   const checkRecoverableContext = useCallback(() => {
     try {
       const formData = localStorage.getItem('stellar-route-trade-form');
@@ -139,7 +140,9 @@ export function useSessionRecovery() {
   // Update checkpoint on regular interval
   useEffect(() => {
     const interval = setInterval(() => {
-      updateCheckpoint(false);
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        updateCheckpoint(false);
+      }
     }, 5000);
 
     return () => clearInterval(interval);

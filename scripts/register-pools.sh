@@ -10,7 +10,16 @@ ensure_soroban_cli
 ensure_log_dir
 configure_network
 
-CONTRACT_ID=$(get_contract_id)
+CONTRACT_ID="${STELLARROUTE_TESTNET_ROUTER_ID:-${SOROBAN_CONTRACT_ID:-}}"
+if [[ -z "${CONTRACT_ID}" && -f "$(deployment_file)" ]]; then
+    CONTRACT_ID="$(get_contract_id)"
+fi
+
+if [[ -z "${CONTRACT_ID}" ]]; then
+    log_error "Missing STELLARROUTE_TESTNET_ROUTER_ID or SOROBAN_CONTRACT_ID or deployment artifact."
+    exit 1
+fi
+
 POOLS_FILE="${CONFIG_DIR}/pools-${NETWORK}.json"
 
 if [[ ! -f "${POOLS_FILE}" ]]; then
@@ -23,6 +32,7 @@ log_info "Registering ${POOL_COUNT} pools on ${NETWORK} (contract: ${CONTRACT_ID
 
 REGISTERED=0
 FAILED=0
+SKIPPED=0
 
 for i in $(seq 0 $((POOL_COUNT - 1))); do
     POOL_NAME=$(jq -r ".pools[$i].name" "${POOLS_FILE}")
@@ -30,6 +40,7 @@ for i in $(seq 0 $((POOL_COUNT - 1))); do
 
     if [[ "${POOL_ADDR}" == PLACEHOLDER* ]]; then
         log_warn "Skipping placeholder pool: ${POOL_NAME}"
+        SKIPPED=$((SKIPPED + 1))
         continue
     fi
 
@@ -58,8 +69,14 @@ echo ""
 log_ok "===== POOL REGISTRATION COMPLETE ====="
 log_ok "Registered: ${REGISTERED}"
 log_ok "Failed:     ${FAILED}"
+log_ok "Skipped:    ${SKIPPED}"
 log_ok "Total on-chain pool count: ${TOTAL_POOLS}"
 
 if [[ ${FAILED} -gt 0 ]]; then
+    exit 1
+fi
+
+if [[ ${REGISTERED} -eq 0 ]]; then
+    log_error "No pools registered (all were skipped as placeholders)"
     exit 1
 fi

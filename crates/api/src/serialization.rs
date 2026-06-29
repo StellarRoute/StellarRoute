@@ -14,8 +14,9 @@ pub trait DeterministicSerialize: Serialize + for<'de> Deserialize<'de> + Sized 
         let value = serde_json::to_value(self)?;
         let normalized = Self::normalize_value(value);
         let mut buf = Vec::new();
+        serde_json::to_writer(&mut buf, &normalized)?;
         let mut serializer = serde_json::Serializer::new(&mut buf);
-        serde_json::to_writer(&mut serializer, &normalized)?;
+        normalized.serialize(&mut serializer)?;
         Ok(buf)
     }
 
@@ -29,9 +30,7 @@ pub trait DeterministicSerialize: Serialize + for<'de> Deserialize<'de> + Sized 
                 }
                 Value::Object(sorted.into_iter().collect())
             }
-            Value::Array(arr) => {
-                Value::Array(arr.into_iter().map(Self::normalize_value).collect())
-            }
+            Value::Array(arr) => Value::Array(arr.into_iter().map(Self::normalize_value).collect()),
             Value::Number(n) => {
                 if let Some(f) = n.as_f64() {
                     if f.is_nan() || f.is_infinite() {

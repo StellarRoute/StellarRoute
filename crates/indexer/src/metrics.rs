@@ -61,10 +61,26 @@ lazy_static! {
     /// Total number of SSE events received.
     pub static ref SSE_EVENTS_RECEIVED: IntCounterVec = register_int_counter_vec!(
         "stellarroute_indexer_sse_events_received_total",
-        "Total number of SSE events received from Horizon",
+        "Total number of SSE events received",
         &["source"]
     )
     .expect("Can't create SSE_EVENTS_RECEIVED counter");
+
+    /// Queue depth per partition (placeholder for future implementation)
+    pub static ref PARTITION_QUEUE_DEPTH: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_partition_queue_depth",
+        "Queue depth per partition",
+        &["partition"]
+    )
+    .expect("Can't create PARTITION_QUEUE_DEPTH gauge");
+
+    /// Fairness score per partition (e.g., lag variance)
+    pub static ref FAIRNESS_SCORE: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_fairness_score",
+        "Fairness score per partition",
+        &["partition"]
+    )
+    .expect("Can't create FAIRNESS_SCORE gauge");
 }
 
 /// Record a Horizon throttle event.

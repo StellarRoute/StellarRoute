@@ -46,23 +46,9 @@ StellarRoute exposes Prometheus metrics for monitoring system performance and he
   - `cache_hit`: "true" or "false"
 - **Description**: Total number of quote requests
 
-### Indexer Synchronization Lag
+### Indexer Lag
 
-- **Metrics**:
-  - `stellarroute_indexer_lag_ledgers` (gauge): Number of ledgers the local index is behind the live Horizon sequence.
-  - `stellarroute_indexer_lag_seconds` (gauge): Estimated wall-clock lag of the local index behind Horizon (seconds).
-  - `stellarroute_indexer_last_indexed_ledger` (gauge): Most recently indexed ledger sequence number.
-  - `stellarroute_indexer_horizon_ledger` (gauge): Current Horizon latest ledger sequence number (cached).
-  - `stellarroute_indexer_sync_status` (gauge): Indexer sync health: 1=ok, 0=warning, -1=critical, -2=unknown.
-- **Labels**:
-  - `source`: "sdex" or "amm"
-- **Thresholds**:
-  - `ok`: < 10 ledgers (< 50s)
-  - `warning`: 10-60 ledgers (50s-300s)
-  - `critical`: > 60 ledgers (> 300s)
-- **Behavior**:
-  - When lag is `critical`, `/health/deps` returns `degraded`.
-  - When lag is `critical`, API quote requests are rejected with `stale_market_data` error.
+See [indexer-lag-monitoring.md](indexer-lag-monitoring.md) for full documentation of indexer lag metrics (`stellarroute_indexer_lag_ledgers`, `stellarroute_indexer_lag_seconds`, `stellarroute_indexer_sync_status`, etc.).
 
 ## Prometheus Configuration
 
@@ -76,52 +62,127 @@ scrape_configs:
     metrics_path: "/metrics"
 ```
 
+For SLO alerting rules, include `monitoring/prometheus/slo-alerts.yml`:
+
+```yaml
+rule_files:
+  - 'monitoring/prometheus/slo-alerts.yml'
+```
+
+## Service Level Objectives (SLOs)
+
+SLO definitions are maintained as code in [`config/slo.yaml`](../config/slo.yaml). The following objectives are defined:
+
+| SLO | Target | Window | Compliance Target | Burn Rate Warning | Burn Rate Critical |
+|-----|--------|--------|-------------------|-------------------|-------------------|
+| Quote P95 Latency | < 500ms | 5m | 99.9% | 2x over 30m | 4x over 30m |
+| Quote P99 Latency | < 2s | 5m | 99.5% | 2x over 30m | 4x over 30m |
+| Quote Error Rate | < 1% | 5m | 99.9% | 2x over 30m | 4x over 30m |
+| Route Compute P95 | < 1s | 5m | 99.0% | 2x over 30m | 4x over 30m |
+| Cache Hit Ratio | > 70% | 10m | 99.0% | 2x over 30m | 4x over 30m |
+| Indexer Sync Health | >= 0 | 5m | 99.5% | — | — |
+
+### Burn-Rate Alerting Strategy
+
+Alerts use a multi-window, multi-burn-rate approach:
+
+- **Warning (2x burn rate)**: Error budget consumed at 2x the expected rate over a 30-minute window. Estimated time to exhaust 30-day budget: ~7.5 hours.
+- **Critical (4x burn rate)**: Error budget consumed at 4x the expected rate over a 30-minute window. Estimated time to exhaust 30-day budget: ~3.75 hours.
+
+Both a short window (1-5m) and a long window (30m) must simultaneously breach the SLO target before an alert fires. This prevents flapping from transient spikes while ensuring sustained violations are caught quickly.
+
+## Alerting Rules
+
+Alerting rules are defined in [`monitoring/prometheus/slo-alerts.yml`](../monitoring/prometheus/slo-alerts.yml). They are organized into two groups:
+
+### SLO Burn-Rate Alerts (`stellarroute_slo_alerts`)
+
+| Alert | Severity | Condition | For |
+|-------|----------|-----------|-----|
+| `SLOQuoteP95LatencyBurnWarning` | warning | P95 > 500ms (1m & 30m windows) | 1m |
+| `SLOQuoteP95LatencyBurnCritical` | critical | P95 > 500ms (5m & 30m windows) | 1m |
+| `SLOQuoteP99LatencyBurnWarning` | warning | P99 > 2s (1m & 30m windows) | 1m |
+| `SLOQuoteP99LatencyBurnCritical` | critical | P99 > 2s (5m & 30m windows) | 1m |
+| `SLOQuoteErrorRateBurnWarning` | warning | error rate > 1% (1m & 30m windows) | 1m |
+| `SLOQuoteErrorRateBurnCritical` | critical | error rate > 1% (5m & 30m windows) | 1m |
+| `SLORouteComputeP95LatencyBurnWarning` | warning | P95 > 1s (1m & 30m windows) | 1m |
+| `SLOCacheHitRatioBurnWarning` | warning | hit ratio < 70% (1m & 10m windows) | 2m |
+| `SLOIndexerSyncCritical` | critical | sync_status < 0 | 2m |
+
+### Direct Threshold Alerts (`stellarroute_direct_alerts`)
+
+| Alert | Severity | Condition | For |
+|-------|----------|-----------|-----|
+| `HighQuoteLatency` | warning | P95 > 1s over 5m | 5m |
+| `LowCacheHitRatio` | warning | hit ratio < 50% over 5m | 10m |
+
+## Synthetic Probes
+
+Probe definitions are maintained as code in [`config/slo.yaml`](../config/slo.yaml). The following synthetic probes are defined:
+
+| Probe | Endpoint | Interval | Test Cases | Thresholds |
+|-------|----------|----------|------------|------------|
+| `quote_smoke_test` | GET /api/v1/quote/{base}/{quote} | 5m | XLM/USDC, USDC/XLM, XLM/EURC | max latency 2000ms, 0% error rate |
+| `quote_load_probe` | GET /api/v1/quote/{base}/{quote} | 15m | XLM/USDC, USDC/XLM, XLM/EURC, EURC/USDC | P50 < 200ms, P95 < 500ms, P99 < 2s, error rate < 1% |
+| `route_smoke_test` | GET /api/v1/route/{base}/{quote} | 5m | XLM/USDC | max latency 5000ms, 0% error rate |
+
+The probe runner script [`scripts/slo-probe.sh`](../scripts/slo-probe.sh) executes the smoke test probes from CI or any shell environment:
+
+```bash
+# Run smoke probes against production
+./scripts/slo-probe.sh --base-url https://api.stellarroute.io
+
+# Run with verbose output against local dev
+./scripts/slo-probe.sh --base-url http://localhost:3000 --verbose
+
+# Quiet mode — only show pass/fail summary
+./scripts/slo-probe.sh --base-url https://api.stellarroute.io --quiet
+```
+
+Scheduled execution is configured in [`.github/workflows/slo-probes.yml`](../.github/workflows/slo-probes.yml), which runs smoke probes every 5 minutes on the main branch.
+
 ## Grafana Dashboard
 
-### P50/P95 Quote Latency
+A comprehensive SLO dashboard is available at [`monitoring/grafana/slo-dashboard.json`](../monitoring/grafana/slo-dashboard.json). Import into Grafana via **Dashboards → Import → Upload JSON file**.
 
-```json
-{
-  "title": "Quote Latency P50/P95",
-  "targets": [
-    {
-      "expr": "histogram_quantile(0.50, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))",
-      "legendFormat": "P50"
-    },
-    {
-      "expr": "histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))",
-      "legendFormat": "P95"
-    }
-  ]
-}
+The dashboard includes the following panels:
+
+| Panel | Description | SLO Reference |
+|-------|-------------|---------------|
+| Quote Latency P50/P95/P99 | Latency percentiles with threshold lines at 500ms and 2s | quote_p95_latency, quote_p99_latency |
+| Quote Error Rate | Error rate percentage with threshold at 1% | quote_error_rate |
+| Route Compute Time P95 | P95 route computation with threshold at 1s | route_compute_p95_latency |
+| Cache Hit Ratio | Cache hit percentage with thresholds at 50% and 70% | cache_hit_ratio |
+| SLO Burn Rate – Quote P95 Latency | Multi-window burn rate view (1m vs 30m) | quote_p95_latency |
+| SLO Burn Rate – Quote Error Rate | Multi-window burn rate view (1m vs 30m) | quote_error_rate |
+| Indexer Sync Status | Stat panel per source (ok/warning/critical/unknown) | indexer_sync_health |
+| Indexer Lag (ledgers) | Lag per source with thresholds at 10 and 60 ledgers | indexer_sync_health |
+| SLO Compliance (30d burn rate) | 30-day compliance for error rate SLO | quote_error_rate |
+
+### Individual Panel Queries
+
+For ad-hoc Grafana panels, the following PromQL queries can be used:
+
+**P50/P95/P99 Quote Latency:**
+```promql
+histogram_quantile(0.50, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))
 ```
 
-### Route Compute Time
-
-```json
-{
-  "title": "Route Computation Time",
-  "targets": [
-    {
-      "expr": "rate(stellarroute_route_compute_duration_seconds_sum[5m]) / rate(stellarroute_route_compute_duration_seconds_count[5m])",
-      "legendFormat": "Average Compute Time"
-    }
-  ]
-}
+**Average Route Compute Time:**
+```promql
+rate(stellarroute_route_compute_duration_seconds_sum[5m]) / rate(stellarroute_route_compute_duration_seconds_count[5m])
 ```
 
-### Cache Hit Ratio
+**Cache Hit Ratio:**
+```promql
+rate(stellarroute_cache_hits_total[5m]) / (rate(stellarroute_cache_hits_total[5m]) + rate(stellarroute_cache_misses_total[5m]))
+```
 
-```json
-{
-  "title": "Cache Hit Ratio",
-  "targets": [
-    {
-      "expr": "rate(stellarroute_cache_hits_total[5m]) / (rate(stellarroute_cache_hits_total[5m]) + rate(stellarroute_cache_misses_total[5m]))",
-      "legendFormat": "Cache Hit Ratio"
-    }
-  ]
-}
+**Quote Error Rate:**
+```promql
+rate(stellarroute_quote_requests_total{outcome="error"}[5m]) / rate(stellarroute_quote_requests_total[5m])
 ```
 
 ## Alerting
@@ -152,21 +213,11 @@ annotations:
   description: "Cache hit ratio dropped below 50%"
 ```
 
-## External Dependency Circuit Breakers
+## References
 
-`GET /health/deps` now performs lightweight probes with independent breakers:
-
-- Horizon probe: `GET {STELLAR_HORIZON_URL}/health`
-- Soroban probe: JSON-RPC `getHealth` to `SOROBAN_RPC_URL`
-
-Each dependency has its own breaker state (`closed`, `open`, `half_open`), so one provider can degrade while the other remains healthy.
-
-### Half-open Recovery Behavior
-
-- When a breaker opens, active probes are suppressed and the dependency is reported as `degraded (circuit_open)`.
-- After `recovery_timeout_secs`, the breaker transitions to half-open automatically.
-- In half-open, a normal health probe is attempted.
-- Consecutive probe successes (`success_threshold`) close the breaker.
-- Any failure during half-open re-opens the breaker immediately.
-
-This keeps Soroban RPC outages isolated from Horizon health while still allowing automatic, probe-driven recovery.
+- **SLO definitions**: [`config/slo.yaml`](../config/slo.yaml)
+- **Prometheus alerting rules**: [`monitoring/prometheus/slo-alerts.yml`](../monitoring/prometheus/slo-alerts.yml)
+- **Grafana dashboard**: [`monitoring/grafana/slo-dashboard.json`](../monitoring/grafana/slo-dashboard.json)
+- **Probe runner script**: [`scripts/slo-probe.sh`](../scripts/slo-probe.sh)
+- **CI workflow**: [`.github/workflows/slo-probes.yml`](../.github/workflows/slo-probes.yml)
+- **Indexer lag monitoring**: [`docs/indexer-lag-monitoring.md`](indexer-lag-monitoring.md)

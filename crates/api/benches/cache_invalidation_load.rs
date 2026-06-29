@@ -8,7 +8,6 @@
  *   - Liquidity updates arriving at 50/sec
  *   - Measures: invalidation latency, stale read rate, memory usage
  */
-
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::collections::HashSet;
 
@@ -53,11 +52,7 @@ fn invalidate_full_clear(cache: &mut SimpleCacheStore, _updated_pair: &str, cach
 }
 
 // Strategy 2: Pair-level invalidation (basic)
-fn invalidate_pair_level(
-    cache: &mut SimpleCacheStore,
-    updated_pair: &str,
-    pairs_per_quote: usize,
-) {
+fn invalidate_pair_level(cache: &mut SimpleCacheStore, updated_pair: &str, pairs_per_quote: usize) {
     // Simulate deleting only quotes/routes for this pair
     for i in 0..pairs_per_quote * 2 {
         let key = format!("{}:route:{}", updated_pair, i);
@@ -128,7 +123,11 @@ fn benchmark_invalidation_strategies(c: &mut Criterion) {
             for i in 0..total_cache_entries {
                 cache_clone.set(format!("key_{}", i), "val".to_string());
             }
-            invalidate_full_clear(black_box(&mut cache_clone), "pair_5000", total_cache_entries);
+            invalidate_full_clear(
+                black_box(&mut cache_clone),
+                "pair_5000",
+                total_cache_entries,
+            );
             assert_eq!(cache_clone.size(), 0);
         });
     });
@@ -140,11 +139,7 @@ fn benchmark_invalidation_strategies(c: &mut Criterion) {
             for i in 0..total_cache_entries {
                 cache_clone.set(format!("key_{}", i), "val".to_string());
             }
-            invalidate_pair_level(
-                black_box(&mut cache_clone),
-                "pair_5000",
-                quotes_per_pair,
-            );
+            invalidate_pair_level(black_box(&mut cache_clone), "pair_5000", quotes_per_pair);
             // Should have deleted ~20 entries (10 quotes + 10 routes)
             assert!(cache_clone.size() > total_cache_entries - 30);
         });
@@ -152,9 +147,7 @@ fn benchmark_invalidation_strategies(c: &mut Criterion) {
 
     // Benchmark 3: Hierarchical graph invalidation
     // Simulate a pair that affects 50 dependent pairs (realistic for multi-hop routes)
-    let affected_pairs: Vec<String> = (0..50)
-        .map(|i| format!("pair_{}", 5000 + i))
-        .collect();
+    let affected_pairs: Vec<String> = (0..50).map(|i| format!("pair_{}", 5000 + i)).collect();
 
     group.bench_function("hierarchical_50_dependent_pairs", |b| {
         b.iter(|| {
@@ -171,14 +164,16 @@ fn benchmark_invalidation_strategies(c: &mut Criterion) {
             // Should delete: 20 (direct) + 50*20 (dependent) = 1020 entries
             let expected_deletions = 20 + (50 * 20);
             let remaining = cache_clone.size();
-            assert!(remaining < total_cache_entries && remaining > (total_cache_entries - expected_deletions - 100));
+            assert!(
+                remaining < total_cache_entries
+                    && remaining > (total_cache_entries - expected_deletions - 100)
+            );
         });
     });
 
     // Benchmark 4: Hierarchical with larger dependency tree
-    let large_affected_pairs: Vec<String> = (0..500)
-        .map(|i| format!("pair_{}", 5000 + i))
-        .collect();
+    let large_affected_pairs: Vec<String> =
+        (0..500).map(|i| format!("pair_{}", 5000 + i)).collect();
 
     group.bench_function("hierarchical_500_dependent_pairs", |b| {
         b.iter(|| {

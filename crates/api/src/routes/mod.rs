@@ -1,6 +1,11 @@
 //! API routes
 
+pub mod activity;
+pub mod admin;
+pub mod admin_cache;
+pub mod assets;
 pub mod canary;
+pub mod contract_registry;
 pub mod health;
 pub mod idempotent_quote;
 pub mod integrator_webhooks;
@@ -8,14 +13,14 @@ pub mod kill_switch;
 pub mod metrics;
 pub mod orderbook;
 pub mod pairs;
-pub mod assets;
+pub mod price_history;
 pub mod prometheus;
 pub mod quote;
-
 pub mod replay;
 pub mod routes_endpoint;
-
+pub mod simulation_route;
 pub mod ws;
+
 use axum::{
     routing::{get, post},
     Router,
@@ -37,18 +42,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // API v1 routes
         .route("/api/v1/assets", get(assets::list_assets_metadata))
         .route("/api/v1/assets/:code", get(assets::get_asset_metadata))
+        .route("/api/v1/activity/swaps", get(activity::list_swap_activity))
         .route("/api/v1/pairs", get(pairs::list_pairs))
         .route("/api/v1/markets", get(pairs::list_markets))
+        .route(
+            "/api/v1/price-history/:base/:quote",
+            get(price_history::get_price_history),
+        )
         .route(
             "/api/v1/orderbook/:base/:quote",
             get(orderbook::get_orderbook),
         )
         .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
+        .route("/api/v1/route/:base/:quote", get(quote::get_route))
         .route("/api/v1/quote", post(idempotent_quote::post_quote))
-        .route(
-            "/api/v1/integrator/webhooks/quote-expiration",
-            post(integrator_webhooks::upsert_quote_expiration_webhook),
-        )
         .route(
             "/api/v1/route/:base/:quote",
             get(quote::get_route).route_layer(axum::middleware::from_fn(legacy_route_deprecation)),
@@ -56,6 +63,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/v1/batch/quote",
             axum::routing::post(quote::get_batch_quotes),
+        )
+        .route(
+            "/api/v1/batch/orderbook",
+            axum::routing::post(orderbook::get_batch_orderbooks),
+        )
+        .route(
+            "/api/v1/integrator/webhooks/quote-expiration",
+            post(integrator_webhooks::upsert_quote_expiration_webhook),
         )
         // Replay routes
         .route("/api/v1/replay", get(replay::list_artifacts))
@@ -68,6 +83,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Admin routes
         .route(
+            "/api/v1/admin/cache/flush/:base/:quote",
+            axum::routing::post(admin::flush_cache),
+        )
+        .route("/api/v1/admin/cache/flush", post(admin_cache::flush_cache))
+        .route(
             "/api/v1/admin/kill-switch",
             get(kill_switch::get_kill_switch),
         )
@@ -78,5 +98,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Canary routes
         .route("/api/v1/system/canary/report", get(canary::get_report))
         .route("/api/v1/system/canary/config", post(canary::update_config))
+        .route(
+            "/api/v1/simulate/route",
+            post(simulation_route::simulate_route_dry_run),
+        )
+        // Contract registry routes
+        .route(
+            "/api/v1/contracts/registry",
+            get(contract_registry::list_contract_versions),
+        )
+        .route(
+            "/api/v1/contracts/registry/:contract_name",
+            get(contract_registry::get_contract_version),
+        )
+        .route(
+            "/api/v1/contracts/registry/:contract_name/network/:network",
+            get(contract_registry::get_contract_version_by_network),
+        )
         .with_state(state)
 }

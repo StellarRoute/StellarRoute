@@ -25,14 +25,36 @@ export const metadata: Metadata = {
 
   icons: {
     icon: "/icons/icon-192.svg",
-    apple: "/icons/icon-192.svg"
+    apple: "/icons/icon-192.svg",
   },
 
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "StellarRoute"
-  }
+    title: "StellarRoute",
+  },
+
+  openGraph: {
+    title: "StellarRoute - DEX Aggregator for Stellar",
+    description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+    url: "https://stellarroute.app",
+    type: "website",
+    images: [
+      {
+        url: "/icons/icon-512.svg",
+        width: 512,
+        height: 512,
+        alt: "StellarRoute logo",
+      },
+    ],
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "StellarRoute - DEX Aggregator for Stellar",
+    description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+    images: ["/icons/icon-512.svg"],
+  },
 };
 
 export default function RootLayout({
@@ -47,9 +69,7 @@ export default function RootLayout({
       >
         <ErrorBoundary>
           <Providers>
-            <AppShell>
-              <main className="flex-1">{children}</main>
-            </AppShell>
+            <AppShell>{children}</AppShell>
           </Providers>
         </ErrorBoundary>
 

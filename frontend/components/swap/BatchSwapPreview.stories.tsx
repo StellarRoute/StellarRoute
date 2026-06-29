@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BatchSwapPreview, BatchSwapLeg } from './BatchSwapPreview';
 
 // ── Fixture data ────────────────────────────────────────────────────────────
@@ -145,7 +145,10 @@ export const SimulationError = () => {
 
 /** Feature flag disabled — shows the Beta gate card */
 export const FeatureFlagDisabled = () => {
-  (window as any).__STELLAR_ROUTE_FLAGS__ = { batchSwaps: false };
+  useEffect(() => {
+    (window as any).__STELLAR_ROUTE_FLAGS__ = { batchSwaps: false };
+  }, []);
+
   return (
     <div className="max-w-md mx-auto p-6">
       <BatchSwapPreview legs={twoLegFixture} />

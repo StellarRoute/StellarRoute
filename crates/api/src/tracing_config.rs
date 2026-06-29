@@ -14,7 +14,7 @@
 //! | `LOG_FORMAT`             | `json` \| `pretty`            | `pretty`         |
 
 use opentelemetry::trace::TraceContextExt;
-use opentelemetry::trace::{NonRecordingSpan, SpanContext, SpanId, TraceFlags, TraceId, TraceState};
+use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
 use opentelemetry::{global, Context, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
@@ -197,7 +197,7 @@ impl TraceContext {
             TraceState::default(),
         );
 
-        Some(Context::current_with_span(NonRecordingSpan::new(span_context)))
+        Some(Context::new().with_remote_span_context(span_context))
     }
 }
 

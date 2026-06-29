@@ -75,7 +75,8 @@ fn redact_canonical_asset(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::replay::artifact::{
-        HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION,
+        DecisionGraphSnapshot, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact,
+        CURRENT_SCHEMA_VERSION,
     };
     use chrono::Utc;
     use proptest::prelude::*;
@@ -97,6 +98,7 @@ mod tests {
                 venue_ref: "offer1".to_string(),
                 price: "1.0000000".to_string(),
                 available_amount: "100.0000000".to_string(),
+                fee_bps: None,
             }],
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
@@ -104,6 +106,7 @@ mod tests {
                 staleness_threshold_secs: 30,
                 min_tvl_threshold_e7: 1_000_000_000,
             },
+            decision_graph: DecisionGraphSnapshot::default(),
             original_output: serde_json::json!({
                 "base_asset": {
                     "asset_type": "credit_alphanum4",
@@ -146,6 +149,7 @@ mod tests {
                 staleness_threshold_secs: 30,
                 min_tvl_threshold_e7: 1_000_000_000,
             },
+            decision_graph: DecisionGraphSnapshot::default(),
             original_output: serde_json::json!({
                 "base_asset": { "asset_type": "native", "asset_issuer": null },
                 "quote_asset": { "asset_type": "native" },

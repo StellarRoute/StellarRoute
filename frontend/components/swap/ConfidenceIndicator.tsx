@@ -13,11 +13,25 @@ import {
 
 export type ConfidenceLevel = "high" | "medium" | "low";
 
+export interface RiskFactor {
+  /** Factor name, e.g. "Liquidity Depth" */
+  label: string;
+  /** Severity: ok = green, warn = amber, bad = red */
+  severity: "ok" | "warn" | "bad";
+  /** Short description shown in tooltip */
+  description: string;
+}
+
 interface ConfidenceIndicatorProps {
   /** Confidence score from 0-100 */
   score: number;
   /** Volatility level (optional) */
   volatility?: "high" | "medium" | "low";
+  /**
+   * Explicit risk factor breakdown. When omitted, a default breakdown is
+   * derived from score + volatility so the tooltip always has content.
+   */
+  riskFactors?: RiskFactor[];
 }
 
 /**
@@ -32,18 +46,78 @@ function getConfidenceLevel(score: number): ConfidenceLevel {
   return "low";
 }
 
+/** Build a sensible default factor list when the caller doesn't supply one. */
+function defaultRiskFactors(
+  score: number,
+  volatility?: "high" | "medium" | "low"
+): RiskFactor[] {
+  const liquiditySeverity: RiskFactor["severity"] =
+    score >= 80 ? "ok" : score >= 50 ? "warn" : "bad";
+  const freshnessSeverity: RiskFactor["severity"] =
+    score >= 70 ? "ok" : score >= 40 ? "warn" : "bad";
+  const volatilitySeverity: RiskFactor["severity"] =
+    volatility === "high" ? "bad" : volatility === "medium" ? "warn" : "ok";
+
+  return [
+    {
+      label: "Liquidity Depth",
+      severity: liquiditySeverity,
+      description:
+        liquiditySeverity === "ok"
+          ? "Sufficient depth to fill this order with minimal slippage."
+          : liquiditySeverity === "warn"
+            ? "Moderate depth — larger orders may experience slippage."
+            : "Thin liquidity — high slippage risk for this order size.",
+    },
+    {
+      label: "Source Freshness",
+      severity: freshnessSeverity,
+      description:
+        freshnessSeverity === "ok"
+          ? "Market data is recent and reliable."
+          : freshnessSeverity === "warn"
+            ? "Data is slightly stale; price may have shifted."
+            : "Stale market data — execution price may differ significantly.",
+    },
+    {
+      label: "Volatility",
+      severity: volatilitySeverity,
+      description:
+        volatilitySeverity === "ok"
+          ? "Low volatility — route is stable."
+          : volatilitySeverity === "warn"
+            ? "Moderate volatility — route may change before execution."
+            : "High volatility — route is unstable and may change frequently.",
+    },
+  ];
+}
+
+const SEVERITY_DOT: Record<RiskFactor["severity"], string> = {
+  ok: "bg-success",
+  warn: "bg-warning",
+  bad: "bg-destructive",
+};
+
+const SEVERITY_TEXT: Record<RiskFactor["severity"], string> = {
+  ok: "text-success",
+  warn: "text-warning",
+  bad: "text-destructive",
+};
+
 /**
- * Confidence indicator component for route stability assessment
- * Displays low/medium/high confidence with clear legend
- * Shows high-volatility warnings when applicable
+ * Confidence indicator component for route stability assessment.
+ * Tooltip breaks down risk factors: liquidity depth, volatility, source freshness.
  */
 export function ConfidenceIndicator({
   score,
   volatility,
+  riskFactors,
 }: ConfidenceIndicatorProps) {
   const level = getConfidenceLevel(score);
   const isHighVolatility = volatility === "high";
   const prefersReducedMotion = useReducedMotion();
+
+  const factors = riskFactors ?? defaultRiskFactors(score, volatility);
 
   const config = {
     high: {
@@ -82,35 +156,85 @@ export function ConfidenceIndicator({
                 data-testid="volatile-badge"
                 variant="outline"
                 className={cn(
-                  'text-xs bg-warning/10 text-warning border-warning/20 flex items-center gap-1',
-                  !prefersReducedMotion && 'animate-pulse'
+                  "text-xs bg-warning/10 text-warning border-warning/20 flex items-center gap-1",
+                  !prefersReducedMotion && "animate-pulse"
                 )}
               >
                 <AlertTriangle className="h-3 w-3" />
                 Volatile
               </Badge>
             )}
+            {/* Visually-hidden risk factor summary for screen readers and tests */}
+            <span className="sr-only" aria-label="Risk factor breakdown">
+              <span data-testid="risk-factors">
+                {factors.map((factor) => (
+                  <span
+                    key={factor.label}
+                    data-testid={`risk-factor-${factor.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {factor.label}: {factor.description}
+                  </span>
+                ))}
+              </span>
+            </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[250px]">
+        <TooltipContent side="top" className="max-w-[280px]">
           <div className="space-y-2">
             <p className="font-medium text-sm">Route Confidence: {score}%</p>
-            <div className="text-xs space-y-1">
+
+            {/* Risk factor breakdown */}
+            <div
+              className="space-y-1.5"
+              aria-label="Risk factor breakdown"
+            >
+              {factors.map((factor) => (
+                <div
+                  key={factor.label}
+                  className="flex items-start gap-2"
+                >
+                  <span
+                    className={cn(
+                      "mt-0.5 h-2 w-2 shrink-0 rounded-full",
+                      SEVERITY_DOT[factor.severity]
+                    )}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <span
+                      className={cn(
+                        "text-xs font-semibold",
+                        SEVERITY_TEXT[factor.severity]
+                      )}
+                    >
+                      {factor.label}
+                    </span>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      {factor.description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Legend */}
+            <div className="border-t border-border pt-1.5 text-xs space-y-0.5">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-success" />
-                <span>High (80-100%): Stable route</span>
+                <span>High (80–100%): Stable route</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-warning" />
-                <span>Medium (50-79%): Moderate stability</span>
+                <span>Medium (50–79%): Moderate stability</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-destructive" />
                 <span>Low (&lt;50%): Unstable route</span>
               </div>
             </div>
+
             {isHighVolatility && (
-              <p className="mt-2 border-t border-border pt-2 text-xs text-warning">
+              <p className="border-t border-border pt-1.5 text-xs text-warning">
                 ⚠️ High volatility detected. Route may change frequently.
               </p>
             )}

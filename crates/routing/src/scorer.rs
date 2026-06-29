@@ -121,9 +121,16 @@ impl ScorerRegistry {
             active: "default".to_string(),
         };
         // Register built-ins (these are infallible — names are unique)
-        registry.scorers.insert("default".to_string(), Box::new(DefaultScorer));
-        registry.scorers.insert("fee_minimizing".to_string(), Box::new(FeeMinimizingScorer));
-        registry.scorers.insert("output_maximizing".to_string(), Box::new(OutputMaximizingScorer));
+        registry
+            .scorers
+            .insert("default".to_string(), Box::new(DefaultScorer));
+        registry
+            .scorers
+            .insert("fee_minimizing".to_string(), Box::new(FeeMinimizingScorer));
+        registry.scorers.insert(
+            "output_maximizing".to_string(),
+            Box::new(OutputMaximizingScorer),
+        );
 
         // Read ROUTING_SCORER env var
         if let Ok(name) = std::env::var("ROUTING_SCORER") {
@@ -141,9 +148,15 @@ impl ScorerRegistry {
     }
 
     /// Register a scorer under a unique name.
-    pub fn register(&mut self, name: &str, scorer: Box<dyn RouteScorer>) -> crate::error::Result<()> {
+    pub fn register(
+        &mut self,
+        name: &str,
+        scorer: Box<dyn RouteScorer>,
+    ) -> crate::error::Result<()> {
         if self.scorers.contains_key(name) {
-            return Err(crate::error::RoutingError::DuplicateScorer(name.to_string()));
+            return Err(crate::error::RoutingError::DuplicateScorer(
+                name.to_string(),
+            ));
         }
         self.scorers.insert(name.to_string(), scorer);
         Ok(())
@@ -171,7 +184,10 @@ impl ScorerRegistry {
     /// Score a route using the currently active scorer.
     /// Clamps the result to [0.0, 1.0] and emits tracing::warn! if clamping occurs.
     pub fn score(&self, input: &ScorerInput) -> ScorerOutput {
-        let scorer = self.scorers.get(&self.active).expect("active scorer must be registered");
+        let scorer = self
+            .scorers
+            .get(&self.active)
+            .expect("active scorer must be registered");
         let mut output = scorer.score(input);
         let raw = output.score;
         // f64::clamp handles NaN by returning the lower bound (0.0)
@@ -272,7 +288,11 @@ impl BenchmarkHarness {
                 .collect();
 
             // Sort descending by score
-            ranked.sort_by(|a, b| b.1.score.partial_cmp(&a.1.score).unwrap_or(std::cmp::Ordering::Equal));
+            ranked.sort_by(|a, b| {
+                b.1.score
+                    .partial_cmp(&a.1.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             scorer_results.push(ScorerResult {
                 scorer_name: scorer_name.to_string(),
@@ -286,9 +306,9 @@ impl BenchmarkHarness {
             false
         } else {
             let first_top = scorer_results[0].ranked_paths.first().map(|(p, _)| &p.hops);
-            scorer_results[1..].iter().any(|r| {
-                r.ranked_paths.first().map(|(p, _)| &p.hops) != first_top
-            })
+            scorer_results[1..]
+                .iter()
+                .any(|r| r.ranked_paths.first().map(|(p, _)| &p.hops) != first_top)
         };
 
         BenchmarkReport {
@@ -509,11 +529,16 @@ mod tests {
         struct OutOfRangeScorer;
         impl RouteScorer for OutOfRangeScorer {
             fn score(&self, _input: &ScorerInput) -> ScorerOutput {
-                ScorerOutput { score: 1.5, diagnostics: None }
+                ScorerOutput {
+                    score: 1.5,
+                    diagnostics: None,
+                }
             }
         }
         let mut registry = ScorerRegistry::new();
-        registry.register("out_of_range", Box::new(OutOfRangeScorer)).unwrap();
+        registry
+            .register("out_of_range", Box::new(OutOfRangeScorer))
+            .unwrap();
         registry.set_active("out_of_range").unwrap();
 
         let policy = OptimizerPolicy::default();

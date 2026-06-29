@@ -64,6 +64,23 @@ fn secondary_key_used_on_score_tie() {
 }
 
 #[test]
+fn native_usdc_routes_rank_by_optimizer_score_not_raw_output() {
+    let mut routes = vec![
+        make_route(0.96, "100", 2, 12, "amm:pool-native-usdc"),
+        make_route(0.90, "110", 1, 4, "sdex"),
+    ];
+
+    sort_routes(&mut routes, &OrderingConfig::default());
+
+    assert_eq!(
+        routes[0].path[0].source, "amm:pool-native-usdc",
+        "routes endpoint should surface the optimizer's top-scored route first"
+    );
+    assert_eq!(routes[0].score, 0.96);
+    assert_eq!(routes[1].estimated_output, "110");
+}
+
+#[test]
 fn tertiary_key_used_on_primary_and_secondary_tie() {
     let mut routes = vec![
         make_route(0.9, "100", 3, 10, "sdex"),

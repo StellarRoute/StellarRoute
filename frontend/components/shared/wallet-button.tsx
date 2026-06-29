@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useWallet } from '@/hooks/useWallet';
+import { useWallet } from '@/components/providers/wallet-provider';
 import { useWalletOnboarding } from '@/hooks/useWalletOnboarding';
 import { WalletConnectionOnboarding } from '@/components/modals/WalletConnectionOnboarding';
 import { AccountSwitcher } from './account-switcher';
@@ -13,18 +13,35 @@ const APP_NETWORK = 'TESTNET';
 export function WalletButton() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
-  const [walletNetworkForOnboarding, setWalletNetworkForOnboarding] = useState<string | null>(null);
+  const [walletNetworkForOnboarding, setWalletNetworkForOnboarding] = useState<
+    string | null
+  >(null);
 
   const {
-    session,
+    address,
+    isConnected,
+    network,
+    walletNetwork,
     availableWallets,
-    loading,
+    isLoading,
     error,
-    shortAddress,
     connect,
     disconnect,
-    copyAddress,
   } = useWallet();
+
+  const shortAddress = address
+    ? `${address.slice(0, 4)}...${address.slice(-4)}`
+    : '';
+
+  const copyAddress = async () => {
+    if (address) {
+      try {
+        await navigator.clipboard.writeText(address);
+      } catch (err) {
+        console.error('Failed to copy address:', err);
+      }
+    }
+  };
 
   const {
     showOnboarding,
@@ -32,12 +49,12 @@ export function WalletButton() {
     markOnboardingAsCompleted,
     markOnboardingAsSeenAndOpened,
   } = useWalletOnboarding({
-    isConnected: session.isConnected,
+    isConnected,
   });
 
   const mismatch =
-    session.network &&
-    session.network.toUpperCase() !== APP_NETWORK.toUpperCase();
+    walletNetwork &&
+    walletNetwork.toUpperCase() !== APP_NETWORK.toUpperCase();
 
   // Auto-open onboarding for first-time users
   useEffect(() => {
@@ -45,12 +62,17 @@ export function WalletButton() {
       setShowOnboardingModal(true);
       markOnboardingAsSeenAndOpened();
     }
-  }, [showOnboarding, isFirstConnection, showOnboardingModal, markOnboardingAsSeenAndOpened]);
+  }, [
+    showOnboarding,
+    isFirstConnection,
+    showOnboardingModal,
+    markOnboardingAsSeenAndOpened,
+  ]);
 
   const handleOnboardingConnect = async (walletId: any) => {
     try {
       await connect(walletId);
-      setWalletNetworkForOnboarding(session.network ?? null);
+      setWalletNetworkForOnboarding(walletNetwork ?? null);
       markOnboardingAsCompleted();
     } catch (err) {
       // Error will be shown in onboarding modal
@@ -58,10 +80,11 @@ export function WalletButton() {
     }
   };
 
-  if (!session.isConnected) {
+  if (!isConnected) {
     return (
       <>
         <Button
+          id="wallet-button"
           onClick={() => setShowOnboardingModal(true)}
           className="min-h-[44px]"
         >
@@ -72,8 +95,8 @@ export function WalletButton() {
           open={showOnboardingModal}
           onOpenChange={setShowOnboardingModal}
           availableWallets={availableWallets}
-          isLoading={loading}
-          error={error}
+          isLoading={isLoading}
+          error={error?.message ?? null}
           onConnect={handleOnboardingConnect}
           walletNetwork={walletNetworkForOnboarding}
         />
@@ -86,7 +109,6 @@ export function WalletButton() {
       <AccountSwitcher
         onAccountChange={(newAddress) => {
           console.log('Account changed to:', newAddress);
-          // This could trigger balance/quote refreshes
           setShowQrCode(false);
         }}
       />
@@ -124,11 +146,11 @@ export function WalletButton() {
         </button>
       </div>
 
-      {showQrCode && session.address && (
+      {showQrCode && address && (
         <div className="flex flex-col items-center gap-3 rounded-xl border bg-card p-4 text-card-foreground shadow-md transition-all duration-300 animate-in fade-in slide-in-from-top-2">
           <div className="rounded-lg bg-white p-3 shadow-inner border border-border flex items-center justify-center">
             <QRCodeSVG
-              value={session.address}
+              value={address}
               size={160}
               level="H"
               includeMargin={true}
@@ -139,23 +161,23 @@ export function WalletButton() {
               Public Address
             </span>
             <span className="text-xs font-mono select-all break-all text-foreground/80 leading-relaxed">
-              {session.address}
+              {address}
             </span>
           </div>
         </div>
       )}
 
       <div className="text-sm text-muted-foreground">
-        Wallet network: {session.network ?? 'Unknown'}
+        Wallet network: {walletNetwork ?? network ?? 'Unknown'}
       </div>
 
       {mismatch && (
         <div className="text-sm text-yellow-600 font-medium">
-          Network mismatch: app is {APP_NETWORK}, wallet is {session.network}
+          Network mismatch: app is {APP_NETWORK}, wallet is {walletNetwork}
         </div>
       )}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error.message}</p>}
     </div>
   );
 }

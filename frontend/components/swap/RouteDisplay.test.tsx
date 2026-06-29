@@ -1,297 +1,222 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import fc from 'fast-check';
-import { RouteDisplay } from './RouteDisplay';
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { act } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
-
-function setReducedMotion(value: boolean) {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    configurable: true,
-    value: (query: string) => ({
-      matches: value,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(() => false),
-    }),
-  });
-}
+import { RouteDisplay } from "./RouteDisplay";
 
 const DEFAULT_PROPS = {
-  amountOut: '10.0000',
-  confidenceScore: 85,
-  volatility: 'low' as const,
+  amountOut: "50.0",
 };
 
-// ---------------------------------------------------------------------------
-// Unit tests — reduced motion active
-// ---------------------------------------------------------------------------
-
-describe('RouteDisplay — reduced motion active', () => {
+describe("RouteDisplay", () => {
   afterEach(() => {
     cleanup();
-    setReducedMotion(false);
   });
 
-  it('omits transition-all duration-200 from panel container', () => {
-    setReducedMotion(true);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const panel = screen.getByTestId('route-display');
-    expect(panel.className).not.toContain('transition-all');
-    expect(panel.className).not.toContain('duration-200');
+  it("should render loading skeleton when isLoading is true", () => {
+    render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+
+    const skeletonElements = document.querySelectorAll(".animate-pulse");
+    expect(skeletonElements.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('omits transition-all duration-150 active:scale-95 from chevron button', () => {
-    setReducedMotion(true);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const chevronBtn = screen.getByRole('button', { name: /show route details/i });
-    expect(chevronBtn.className).not.toContain('transition-all');
-    expect(chevronBtn.className).not.toContain('active:scale-95');
+  it("should render actual content when isLoading is false or undefined", () => {
+    render(<RouteDisplay amountOut="50.0" isLoading={false} />);
+
+    expect(screen.getByText("Best Route")).toBeInTheDocument();
   });
 
-  it('omits transition-transform duration-200 from ChevronDown icon', () => {
-    setReducedMotion(true);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const chevronBtn = screen.getByRole('button', { name: /show route details/i });
-    const icon = chevronBtn.querySelector('[data-testid="icon"]');
-    expect(icon).toBeTruthy();
-    expect(icon!.getAttribute('class')).not.toContain('transition-transform');
-    expect(icon!.getAttribute('class')).not.toContain('duration-200');
+  it("should accept isLoading prop as true", () => {
+    const { container } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+
+    const skeletons = container.querySelectorAll(".animate-pulse");
+    expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('omits transition-colors duration-150 from route summary row', () => {
-    setReducedMotion(true);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const panel = screen.getByTestId('route-display');
-    // The route summary row is the muted/50 bg div
-    const rows = panel.querySelectorAll('.bg-muted\\/50');
-    const routeRow = Array.from(rows).find((el) =>
-      el.className.includes('rounded-lg')
-    );
-    expect(routeRow).toBeTruthy();
-    expect(routeRow!.className).not.toContain('transition-colors');
-    expect(routeRow!.className).not.toContain('duration-150');
+  it("should accept isLoading prop as false", () => {
+    const { container } = render(<RouteDisplay amountOut="50.0" isLoading={false} />);
+
+    const skeletons = container.querySelectorAll(".animate-pulse");
+    expect(skeletons.length).toBe(0);
   });
 
-  it('omits animate-in slide-in-from-bottom-2 from extended diagnostics panel', async () => {
-    setReducedMotion(true);
-    render(
-      <RouteDisplay
-        {...DEFAULT_PROPS}
-        extendedRouteDetails
-        alternativeRoutes={[
-          { id: 'r0', venue: 'AQUA', expectedAmount: '9.9' },
-        ]}
-      />
-    );
-    // Click to show details so the diagnostics panel renders
-    const chevronBtn = screen.getByRole('button', { name: /show route details/i });
-    await userEvent.click(chevronBtn);
+  it("should maintain layout stability during state transitions", () => {
+    const { container, rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
 
-    const diag = screen.getByTestId('extended-diagnostics');
-    expect(diag.className).not.toContain('animate-in');
-    expect(diag.className).not.toContain('slide-in-from-bottom-2');
-  });
+    const initialHeight = container.querySelector(".rounded-xl")?.clientHeight;
 
-  it('omits transition-all duration-150 active:scale-[0.99] from alternative route buttons', () => {
-    setReducedMotion(true);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const routeBtns = screen.getAllByTestId(/^alternative-route-/);
-    routeBtns.forEach((btn) => {
-      expect(btn.className).not.toContain('transition-all');
-      expect(btn.className).not.toContain('active:scale-[0.99]');
-    });
-  });
-});
+    rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
 
-// ---------------------------------------------------------------------------
-// Unit tests — motion allowed
-// ---------------------------------------------------------------------------
+    const finalHeight = container.querySelector(".rounded-xl")?.clientHeight;
 
-describe('RouteDisplay — motion allowed', () => {
-  afterEach(() => {
-    cleanup();
-    setReducedMotion(false);
-  });
-
-  it('includes transition-all duration-200 on panel container', () => {
-    setReducedMotion(false);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const panel = screen.getByTestId('route-display');
-    expect(panel.className).toContain('transition-all');
-    expect(panel.className).toContain('duration-200');
-  });
-
-  it('includes transition-all duration-150 active:scale-95 on chevron button', () => {
-    setReducedMotion(false);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const chevronBtn = screen.getByRole('button', { name: /show route details/i });
-    expect(chevronBtn.className).toContain('transition-all');
-    expect(chevronBtn.className).toContain('active:scale-95');
-  });
-
-  it('includes transition-transform duration-200 on ChevronDown icon', () => {
-    setReducedMotion(false);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const chevronBtn = screen.getByRole('button', { name: /show route details/i });
-    const icon = chevronBtn.querySelector('[data-testid="icon"]');
-    expect(icon!.getAttribute('class')).toContain('transition-transform');
-    expect(icon!.getAttribute('class')).toContain('duration-200');
-  });
-
-  it('includes animate-in slide-in-from-bottom-2 on extended diagnostics panel', async () => {
-    setReducedMotion(false);
-    render(
-      <RouteDisplay
-        {...DEFAULT_PROPS}
-        extendedRouteDetails
-        alternativeRoutes={[
-          { id: 'r0', venue: 'AQUA', expectedAmount: '9.9' },
-        ]}
-      />
-    );
-    const chevronBtn = screen.getByRole('button', { name: /show route details/i });
-    await userEvent.click(chevronBtn);
-
-    const diag = screen.getByTestId('extended-diagnostics');
-    expect(diag.className).toContain('animate-in');
-    expect(diag.className).toContain('slide-in-from-bottom-2');
-  });
-
-  it('includes transition-all duration-150 active:scale-[0.99] on alternative route buttons', () => {
-    setReducedMotion(false);
-    render(<RouteDisplay {...DEFAULT_PROPS} />);
-    const routeBtns = screen.getAllByTestId(/^alternative-route-/);
-    routeBtns.forEach((btn) => {
-      expect(btn.className).toContain('transition-all');
-      expect(btn.className).toContain('active:scale-[0.99]');
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Property-based tests
-// ---------------------------------------------------------------------------
-
-describe('RouteDisplay — alternative routes with delta badges', () => {
-  afterEach(() => {
-    cleanup();
-    setReducedMotion(false);
-  });
-
-  it('renders loading state for routes', () => {
-    render(
-      <RouteDisplay {...DEFAULT_PROPS} isRoutesLoading alternativeRoutes={[]} />
-    );
-    expect(screen.getByText('Loading routes...')).toBeInTheDocument();
-  });
-
-  it('renders error state for routes', () => {
-    render(
-      <RouteDisplay
-        {...DEFAULT_PROPS}
-        routesError="Failed to fetch routes"
-        alternativeRoutes={[]}
-      />
-    );
-    expect(screen.getByTestId('routes-error')).toBeInTheDocument();
-    expect(screen.getByText('Failed to fetch routes')).toBeInTheDocument();
-  });
-
-  it('renders empty state when no routes available', () => {
-    render(<RouteDisplay {...DEFAULT_PROPS} alternativeRoutes={[]} />);
-    expect(screen.getByTestId('routes-empty')).toBeInTheDocument();
-    expect(
-      screen.getByText('No alternative routes available')
-    ).toBeInTheDocument();
-  });
-
-  it('renders alternative route buttons with delta badges', () => {
-    const routes = [
-      { id: 'r1', venue: 'AQUA Pool', expectedAmount: '≈ 10.0000', score: 95, impactBps: 30, hopCount: 1 },
-      { id: 'r2', venue: 'SDEX', expectedAmount: '≈ 9.9500', score: 90, impactBps: 40, hopCount: 2 },
-    ];
-    render(
-      <RouteDisplay {...DEFAULT_PROPS} alternativeRoutes={routes} />
-    );
-    expect(screen.getByTestId('alternative-route-r1')).toBeInTheDocument();
-    expect(screen.getByTestId('alternative-route-r2')).toBeInTheDocument();
-  });
-
-  it('calls onSelect when an alternative route is clicked', async () => {
-    const onSelect = vi.fn();
-    const routes = [
-      { id: 'r1', venue: 'AQUA Pool', expectedAmount: '≈ 10.0000' },
-      { id: 'r2', venue: 'SDEX', expectedAmount: '≈ 9.9500' },
-    ];
-    const user = userEvent.setup();
-    render(
-      <RouteDisplay
-        {...DEFAULT_PROPS}
-        alternativeRoutes={routes}
-        onSelect={onSelect}
-      />
-    );
-    await user.click(screen.getByTestId('alternative-route-r2'));
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'r2' })
-    );
-  });
-
-  it('shows venue badge labels on route buttons', () => {
-    const routes = [
-      { id: 'r1', venue: 'SDEX', expectedAmount: '≈ 10.0000' },
-      { id: 'r2', venue: 'amm:pool-abc123', expectedAmount: '≈ 9.9500' },
-      { id: 'r3', venue: 'Blend Pool', expectedAmount: '≈ 9.9000' },
-    ];
-    render(<RouteDisplay {...DEFAULT_PROPS} alternativeRoutes={routes} />);
-    expect(screen.getByText('SDEX')).toBeInTheDocument();
-    expect(screen.getByText('AMM')).toBeInTheDocument();
-  });
-});
-
-describe('RouteDisplay — property tests', () => {
-  afterEach(() => {
-    cleanup();
-    setReducedMotion(false);
-  });
-
-  it(
-    // Feature: reduced-motion-swap-animations, Property 7 & 8
-    'Property 7 & 8: transition classes absent iff prefersReducedMotion is true',
-    () => {
-      fc.assert(
-        fc.property(fc.boolean(), (prefersReduced) => {
-          setReducedMotion(prefersReduced);
-          const { unmount } = render(<RouteDisplay {...DEFAULT_PROPS} />);
-
-          const panel = screen.getByTestId('route-display');
-          const hasTransition = panel.className.includes('transition-all');
-
-          const routeBtns = screen.getAllByTestId(/^alternative-route-/);
-          const btnHasTransition = routeBtns.some((btn) =>
-            btn.className.includes('transition-all')
-          );
-
-          unmount();
-
-          if (prefersReduced) {
-            return !hasTransition && !btnHasTransition;
-          } else {
-            return hasTransition && btnHasTransition;
-          }
-        }),
-        { numRuns: 100 }
-      );
+    expect(initialHeight).toBeDefined();
+    expect(finalHeight).toBeDefined();
+    if (initialHeight && finalHeight) {
+      expect(Math.abs(initialHeight - finalHeight)).toBeLessThan(50);
     }
-  );
+  });
+
+  it("virtualizes long alternative route lists and updates the window on scroll", async () => {
+    const routes = Array.from({ length: 20 }, (_, index) => ({
+      id: `route-${index}`,
+      venue: `Pool ${index}`,
+      expectedAmount: `≈ ${(50 - index * 0.1).toFixed(4)}`,
+    }));
+
+    render(
+      <RouteDisplay
+        amountOut="50.0"
+        alternativeRoutes={routes}
+      />,
+    );
+
+    const initialButtons = screen.getAllByTestId(/alternative-route-route-/);
+    expect(initialButtons.length).toBeLessThan(routes.length);
+    expect(screen.getByTestId("alternative-route-route-0")).toBeInTheDocument();
+
+    const scrollContainer = screen.getByTestId("alternative-routes-scroll");
+    scrollContainer.scrollTop = 360;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("alternative-route-route-8")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("alternative-route-route-0")).not.toBeInTheDocument();
+  });
+
+  it("renders route detail drawer with per-hop venue and fee breakdown", async () => {
+    const routes = [
+      {
+        id: "route-0",
+        venue: "AQUA Pool",
+        expectedAmount: "≈ 49.7500",
+        hops: [
+          {
+            id: "hop-0",
+            fromAsset: "XLM",
+            toAsset: "AQUA",
+            venue: "SDEX",
+            fee: "0.00001 XLM",
+          },
+          {
+            id: "hop-1",
+            fromAsset: "AQUA",
+            toAsset: "USDC",
+            venue: "AQUA Pool",
+            fee: "0.00002 XLM",
+          },
+        ],
+      },
+    ];
+
+    render(<RouteDisplay amountOut="50.0" alternativeRoutes={routes} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show route details" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Route detail drawer")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Per-hop route details")).toBeInTheDocument();
+    expect(screen.getByText("Hop 1: XLM -> AQUA")).toBeInTheDocument();
+    expect(screen.getByText("Hop 2: AQUA -> USDC")).toBeInTheDocument();
+    expect(screen.getByText("Estimated total fees")).toBeInTheDocument();
+    expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
+  });
+
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+
+      expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+
+      rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
+      expect(screen.getByText("Best Route")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Telemetry tests
+// ---------------------------------------------------------------------------
+
+describe('RouteDisplay — telemetry', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('emits telemetry event on alternative route selection', async () => {
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).toHaveBeenCalledTimes(1);
+      const event = telemetryListener.mock.calls[0][0] as CustomEvent;
+      expect(event.detail).toEqual({
+        venue: 'AQUA Pool',
+        hopCount: 1,
+      });
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+    }
+  });
+
+  it('does not emit telemetry event when NEXT_PUBLIC_TELEMETRY_ENABLED is false', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TELEMETRY_ENABLED', 'false');
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+      vi.unstubAllEnvs();
+    }
+  });
+});
+

@@ -43,14 +43,27 @@ describe('useSessionRecovery', () => {
         vi.advanceTimersByTime(1000);
       });
 
-      // Simulate tab going to sleep and waking up after 30+ seconds
+      // Simulate tab going to sleep (hidden)
+      act(() => {
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'hidden',
+          writable: true,
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Advance timers by 35 seconds
       act(() => {
         vi.advanceTimersByTime(35000);
-        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Tab wakes up (visible)
+      act(() => {
         Object.defineProperty(document, 'visibilityState', {
           value: 'visible',
           writable: true,
         });
+        document.dispatchEvent(new Event('visibilitychange'));
       });
 
       // Check stale state was set
@@ -64,14 +77,27 @@ describe('useSessionRecovery', () => {
 
       const { result } = renderHook(() => useSessionRecovery());
 
-      // Simulate tab going to sleep and waking up after 30+ seconds
+      // Simulate tab going to sleep (hidden)
+      act(() => {
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'hidden',
+          writable: true,
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Advance timers by 35 seconds
       act(() => {
         vi.advanceTimersByTime(35000);
-        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Tab wakes up (visible)
+      act(() => {
         Object.defineProperty(document, 'visibilityState', {
           value: 'visible',
           writable: true,
         });
+        document.dispatchEvent(new Event('visibilitychange'));
       });
 
       // Should not be stale without recoverable context
@@ -81,14 +107,27 @@ describe('useSessionRecovery', () => {
     it('should not detect as stale for brief visibility changes', () => {
       const { result } = renderHook(() => useSessionRecovery());
 
-      // Simulate brief visibility change
+      // Simulate tab going to sleep (hidden)
       act(() => {
-        vi.advanceTimersByTime(5000); // Only 5 seconds
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'hidden',
+          writable: true,
+        });
         document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Advance timers by 5 seconds
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      // Tab wakes up (visible)
+      act(() => {
         Object.defineProperty(document, 'visibilityState', {
           value: 'visible',
           writable: true,
         });
+        document.dispatchEvent(new Event('visibilitychange'));
       });
 
       // Should not be stale
@@ -118,11 +157,26 @@ describe('useSessionRecovery', () => {
         savedAt: Date.now()
       }));
 
-      const { result } = renderHook(() => useSessionRecovery());
+      const { unmount } = renderHook(() => useSessionRecovery());
 
-      // Simulate page refresh after delay
+      // Simulate initial checkpoint
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      // Simulate page refresh (unmount)
+      unmount();
+
+      // Simulate page refresh delay
       act(() => {
         vi.advanceTimersByTime(35000);
+      });
+
+      // Remount hook
+      const { result } = renderHook(() => useSessionRecovery());
+
+      // Simulate pageshow event
+      act(() => {
         const event = new PageTransitionEvent('pageshow', { persisted: false });
         window.dispatchEvent(event);
       });
@@ -145,14 +199,27 @@ describe('useSessionRecovery', () => {
 
       const { result } = renderHook(() => useSessionRecovery());
 
-      // Set up stale state
+      // Simulate tab going to sleep (hidden)
+      act(() => {
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'hidden',
+          writable: true,
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Advance timers by 35 seconds
       act(() => {
         vi.advanceTimersByTime(35000);
-        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Tab wakes up (visible)
+      act(() => {
         Object.defineProperty(document, 'visibilityState', {
           value: 'visible',
           writable: true,
         });
+        document.dispatchEvent(new Event('visibilitychange'));
       });
 
       expect(result.current.isStale).toBe(true);
@@ -169,16 +236,39 @@ describe('useSessionRecovery', () => {
     });
 
     it('should dismiss recovery without restoring', () => {
+      // Set up recoverable context
+      localStorage.setItem('stellar-route-trade-form', JSON.stringify({
+        amount: '100',
+        slippage: 1.0,
+        deadline: 30,
+        fromToken: 'native',
+        toToken: 'USDC:GQUOTE',
+        savedAt: Date.now()
+      }));
+
       const { result } = renderHook(() => useSessionRecovery());
 
-      // Set up stale state
+      // Simulate tab going to sleep (hidden)
+      act(() => {
+        Object.defineProperty(document, 'visibilityState', {
+          value: 'hidden',
+          writable: true,
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Advance timers by 35 seconds
       act(() => {
         vi.advanceTimersByTime(35000);
-        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      // Tab wakes up (visible)
+      act(() => {
         Object.defineProperty(document, 'visibilityState', {
           value: 'visible',
           writable: true,
         });
+        document.dispatchEvent(new Event('visibilitychange'));
       });
 
       expect(result.current.isStale).toBe(true);

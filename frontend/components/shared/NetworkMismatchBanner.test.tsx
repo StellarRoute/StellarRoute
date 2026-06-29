@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NetworkMismatchBanner } from './NetworkMismatchBanner';
 import * as WalletProvider from '@/components/providers/wallet-provider';
@@ -9,6 +9,10 @@ vi.mock('@/components/providers/wallet-provider', () => ({
 }));
 
 describe('NetworkMismatchBanner', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('does not render when no network mismatch', () => {
     vi.mocked(WalletProvider.useWallet).mockReturnValue({
       networkMismatch: false,

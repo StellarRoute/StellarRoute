@@ -32,9 +32,9 @@
 use crate::pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig};
 use crate::policy::RoutingPolicy;
 use crate::scorer::{BenchmarkHarness, ScorerRegistry};
+use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -62,9 +62,7 @@ impl BenchmarkFixture {
     /// seed and graph parameters.
     pub fn generate_edges(&self) -> Vec<LiquidityEdge> {
         let mut rng = ChaCha8Rng::seed_from_u64(self.seed);
-        let assets: Vec<String> = (0..self.graph_size)
-            .map(|i| format!("ASSET_{i}"))
-            .collect();
+        let assets: Vec<String> = (0..self.graph_size).map(|i| format!("ASSET_{i}")).collect();
 
         // Always include direct and indirect paths between from/to
         let mut edges = vec![
@@ -189,7 +187,11 @@ impl BaselineStore {
 
     /// Upsert a baseline entry.
     pub fn set(&mut self, entry: RouteRegressionEntry) {
-        if let Some(existing) = self.entries.iter_mut().find(|e| e.fixture_name == entry.fixture_name) {
+        if let Some(existing) = self
+            .entries
+            .iter_mut()
+            .find(|e| e.fixture_name == entry.fixture_name)
+        {
             *existing = entry;
         } else {
             self.entries.push(entry);
@@ -365,8 +367,13 @@ impl RegressionRunner {
             latencies.push(latency);
 
             if !paths.is_empty() {
-                let report = BenchmarkHarness::run(&paths, &edges, fixture.amount_in, &self.scorer_registry);
-                if let Some(top) = report.scorer_results.iter().find(|r| r.scorer_name == "default") {
+                let report =
+                    BenchmarkHarness::run(&paths, &edges, fixture.amount_in, &self.scorer_registry);
+                if let Some(top) = report
+                    .scorer_results
+                    .iter()
+                    .find(|r| r.scorer_name == "default")
+                {
                     if let Some((_, out)) = top.ranked_paths.first() {
                         best_score = best_score.max(out.score);
                     }
@@ -379,8 +386,8 @@ impl RegressionRunner {
 
         let baseline_entry = baseline.and_then(|b| b.get(&fixture.name));
         let score_delta = baseline_entry.map(|b| best_score - b.baseline_score);
-        let latency_delta = baseline_entry
-            .map(|b| median_latency as i64 - b.baseline_latency_us as i64);
+        let latency_delta =
+            baseline_entry.map(|b| median_latency as i64 - b.baseline_latency_us as i64);
 
         let (passed, failure_reason) = self.evaluate(best_score, median_latency, baseline_entry);
 
@@ -477,8 +484,14 @@ mod tests {
 
     #[test]
     fn test_different_seeds_produce_different_edges() {
-        let f1 = BenchmarkFixture { seed: 1, ..simple_fixture() };
-        let f2 = BenchmarkFixture { seed: 2, ..simple_fixture() };
+        let f1 = BenchmarkFixture {
+            seed: 1,
+            ..simple_fixture()
+        };
+        let f2 = BenchmarkFixture {
+            seed: 2,
+            ..simple_fixture()
+        };
         let e1 = f1.generate_edges();
         let e2 = f2.generate_edges();
         // At minimum the liquidity values should differ
@@ -525,7 +538,10 @@ mod tests {
         let fixtures = vec![simple_fixture()];
         let baseline = runner.build_baseline(&fixtures);
         let report = runner.run(&fixtures, Some(&baseline));
-        assert!(report.passed, "identical baseline should not trigger regression");
+        assert!(
+            report.passed,
+            "identical baseline should not trigger regression"
+        );
     }
 
     #[test]
@@ -544,7 +560,10 @@ mod tests {
             baseline_latency_us: 1,
         });
         let report = runner.run(&fixtures, Some(&baseline));
-        assert!(!report.passed, "should detect score regression vs inflated baseline");
+        assert!(
+            !report.passed,
+            "should detect score regression vs inflated baseline"
+        );
         assert_eq!(report.failed, 1);
     }
 

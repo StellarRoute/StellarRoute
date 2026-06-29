@@ -100,10 +100,7 @@ impl PoolStats {
 )]
 pub async fn pool_stats(State(state): State<Arc<AppState>>) -> Json<PoolStatsResponse> {
     let primary = PoolStats::from_pool(state.db.write_pool());
-    let replica = state
-        .db
-        .replica_pool()
-        .map(PoolStats::from_pool);
+    let replica = state.db.replica_pool().map(PoolStats::from_pool);
 
     Json(PoolStatsResponse { primary, replica })
 }

@@ -1,0 +1,261 @@
+# StellarRoute SLO Alerting Rules
+# ===============================
+# Prometheus alerting rules that implement SLO burn-rate alerting
+# for the StellarRoute quote endpoint.
+#
+# Alerting strategy: Multi-window, multi-burn-rate approach.
+#   - Warning: 2x burn rate over 30m (consume error budget in ~7.5h)
+#   - Critical: 4x burn rate over 30m (consume error budget in ~3.75h)
+#
+# SLO targets (from config/slo.yaml):
+#   - Quote P95 latency  < 500ms
+#   - Quote P99 latency  < 2s
+#   - Quote error rate   < 1%
+#   - Route compute P95  < 1s
+#   - Cache hit ratio    > 70%
+
+groups:
+  - name: stellarroute_slo_alerts
+    interval: 30s
+    rules:
+      # ── Quote P95 Latency SLO ────────────────────────────────────────────
+      - alert: SLOQuoteP95LatencyBurnWarning
+        expr: |
+          (
+            histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[1m]))
+            >
+            0.5
+          )
+          and
+          (
+            histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[30m]))
+            >
+            0.5
+          )
+        for: 1m
+        labels:
+          severity: warning
+          slo: quote_p95_latency
+        annotations:
+          summary: "SLO burn rate warning: Quote P95 latency exceeded 500ms"
+          description: >
+            Quote P95 latency is {{ $value | humanizeDuration }} over the last 30m.
+            This consumes the error budget at >2x the expected rate.
+
+      - alert: SLOQuoteP95LatencyBurnCritical
+        expr: |
+          (
+            histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))
+            >
+            0.5
+          )
+          and
+          (
+            histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[30m]))
+            >
+            0.5
+          )
+        for: 1m
+        labels:
+          severity: critical
+          slo: quote_p95_latency
+        annotations:
+          summary: "SLO burn rate critical: Quote P95 latency exceeded 500ms"
+          description: >
+            Quote P95 latency is {{ $value | humanizeDuration }} over the last 30m.
+            Error budget is being consumed at >4x the expected rate. Immediate
+            investigation required.
+
+      # ── Quote P99 Latency SLO ────────────────────────────────────────────
+      - alert: SLOQuoteP99LatencyBurnWarning
+        expr: |
+          (
+            histogram_quantile(0.99, rate(stellarroute_quote_request_duration_seconds_bucket[1m]))
+            >
+            2.0
+          )
+          and
+          (
+            histogram_quantile(0.99, rate(stellarroute_quote_request_duration_seconds_bucket[30m]))
+            >
+            2.0
+          )
+        for: 1m
+        labels:
+          severity: warning
+          slo: quote_p99_latency
+        annotations:
+          summary: "SLO burn rate warning: Quote P99 latency exceeded 2s"
+          description: >
+            Quote P99 latency is {{ $value | humanizeDuration }} over the last 30m.
+            Error budget consumption rate is elevated.
+
+      - alert: SLOQuoteP99LatencyBurnCritical
+        expr: |
+          (
+            histogram_quantile(0.99, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))
+            >
+            2.0
+          )
+          and
+          (
+            histogram_quantile(0.99, rate(stellarroute_quote_request_duration_seconds_bucket[30m]))
+            >
+            2.0
+          )
+        for: 1m
+        labels:
+          severity: critical
+          slo: quote_p99_latency
+        annotations:
+          summary: "SLO burn rate critical: Quote P99 latency exceeded 2s"
+          description: >
+            Quote P99 latency is {{ $value | humanizeDuration }} over the last 30m.
+            Error budget is being depleted rapidly. Immediate investigation required.
+
+      # ── Quote Error Rate SLO (< 1%) ──────────────────────────────────────
+      - alert: SLOQuoteErrorRateBurnWarning
+        expr: |
+          (
+            (
+              rate(stellarroute_quote_requests_total{outcome="error"}[1m])
+              /
+              rate(stellarroute_quote_requests_total[1m])
+            )
+            > 0.01
+          )
+          and
+          (
+            (
+              rate(stellarroute_quote_requests_total{outcome="error"}[30m])
+              /
+              rate(stellarroute_quote_requests_total[30m])
+            )
+            > 0.01
+          )
+        for: 1m
+        labels:
+          severity: warning
+          slo: quote_error_rate
+        annotations:
+          summary: "SLO burn rate warning: Quote error rate exceeded 1%"
+          description: >
+            Quote error rate is {{ $value | humanizePercentage }} over the last 30m.
+            This exceeds the 1% SLO target.
+
+      - alert: SLOQuoteErrorRateBurnCritical
+        expr: |
+          (
+            (
+              rate(stellarroute_quote_requests_total{outcome="error"}[5m])
+              /
+              rate(stellarroute_quote_requests_total[5m])
+            )
+            > 0.01
+          )
+          and
+          (
+            (
+              rate(stellarroute_quote_requests_total{outcome="error"}[30m])
+              /
+              rate(stellarroute_quote_requests_total[30m])
+            )
+            > 0.01
+          )
+        for: 1m
+        labels:
+          severity: critical
+          slo: quote_error_rate
+        annotations:
+          summary: "SLO burn rate critical: Quote error rate exceeded 1%"
+          description: >
+            Quote error rate is {{ $value | humanizePercentage }} over the last 30m.
+            Error budget is being depleted rapidly. Immediate investigation required.
+
+      # ── Route Compute P95 Latency SLO ────────────────────────────────────
+      - alert: SLORouteComputeP95LatencyBurnWarning
+        expr: |
+          (
+            histogram_quantile(0.95, rate(stellarroute_route_compute_duration_seconds_bucket[1m]))
+            >
+            1.0
+          )
+          and
+          (
+            histogram_quantile(0.95, rate(stellarroute_route_compute_duration_seconds_bucket[30m]))
+            >
+            1.0
+          )
+        for: 1m
+        labels:
+          severity: warning
+          slo: route_compute_p95_latency
+        annotations:
+          summary: "SLO burn rate warning: Route compute P95 exceeded 1s"
+          description: >
+            Route compute P95 latency is {{ $value | humanizeDuration }} over the last 30m.
+
+      # ── Cache Hit Ratio SLO (> 70%) ──────────────────────────────────────
+      - alert: SLOCacheHitRatioBurnWarning
+        expr: |
+          (
+            (
+              rate(stellarroute_cache_hits_total[1m])
+              /
+              rate(stellarroute_cache_hits_total[1m] + stellarroute_cache_misses_total[1m])
+            )
+            < 0.7
+          )
+          and
+          (
+            (
+              rate(stellarroute_cache_hits_total[10m])
+              /
+              rate(stellarroute_cache_hits_total[10m] + stellarroute_cache_misses_total[10m])
+            )
+            < 0.7
+          )
+        for: 2m
+        labels:
+          severity: warning
+          slo: cache_hit_ratio
+        annotations:
+          summary: "SLO burn rate warning: Cache hit ratio dropped below 70%"
+          description: >
+            Cache hit ratio is {{ $value | humanizePercentage }} over the last 10m.
+
+      # ── Indexer Sync Critical ─────────────────────────────────────────────
+      - alert: SLOIndexerSyncCritical
+        expr: |
+          stellarroute_indexer_sync_status < 0
+        for: 2m
+        labels:
+          severity: critical
+          slo: indexer_sync_health
+        annotations:
+          summary: "SLO breach: Indexer sync status is critical"
+          description: >
+            Indexer sync status for {{ $labels.source }} is critical (value={{ $value }}).
+            Data freshness guarantees are compromised.
+
+  # ── Direct threshold alerts (non-SLO) ───────────────────────────────────
+  - name: stellarroute_direct_alerts
+    interval: 30s
+    rules:
+      - alert: HighQuoteLatency
+        expr: histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quote latency P95 is high"
+          description: "95th percentile quote latency is {{ $value }}s"
+
+      - alert: LowCacheHitRatio
+        expr: rate(stellarroute_cache_hits_total[5m]) / (rate(stellarroute_cache_hits_total[5m]) + rate(stellarroute_cache_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache hit ratio is low"
+          description: "Cache hit ratio dropped below 50%"

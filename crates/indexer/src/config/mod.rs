@@ -1,16 +1,11 @@
 use serde::Deserialize;
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum HorizonMode {
+    #[default]
     Poll,
     Sse,
-}
-
-impl Default for HorizonMode {
-    fn default() -> Self {
-        Self::Poll
-    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -78,6 +73,27 @@ pub struct IndexerConfig {
     /// Snapshot compaction after threshold hours (env: `SNAPSHOT_COMPACTION_HOURS`).
     #[serde(default = "default_snapshot_compaction_hours")]
     pub snapshot_compaction_hours: i32,
+
+    // New partitioning configuration
+    /// Number of partitions for workload distribution (env: `INDEXER_PARTITION_COUNT`).
+    #[serde(default = "default_partition_count")]
+    pub partition_count: usize,
+
+    /// Comma‑separated list of hot pair identifiers (e.g., "XLM/USD,USDC/EUR").
+    #[serde(default = "default_hot_pair_allowlist")]
+    pub hot_pair_allowlist: String,
+
+    /// Volume threshold (in native units) to consider a pair hot (env: `INDEXER_HOT_VOLUME_THRESHOLD`).
+    #[serde(default = "default_hot_pair_volume_threshold")]
+    pub hot_pair_volume_threshold: u64,
+
+    /// Window in seconds for detecting hot pairs based on recent volume.
+    #[serde(default = "default_hot_pair_window_secs")]
+    pub hot_pair_window_secs: u64,
+
+    /// Identifier of this partition instance (env: `INDEXER_PARTITION_ID`).
+    #[serde(default = "default_partition_id")]
+    pub partition_id: usize,
 }
 
 impl std::fmt::Debug for IndexerConfig {
@@ -150,6 +166,24 @@ fn default_snapshot_retention_days() -> i32 {
 
 fn default_snapshot_compaction_hours() -> i32 {
     24
+}
+
+fn default_partition_id() -> usize {
+    0
+}
+
+// New defaults for partitioning and hot‑pair detection
+fn default_partition_count() -> usize {
+    4
+}
+fn default_hot_pair_allowlist() -> String {
+    String::new()
+}
+fn default_hot_pair_volume_threshold() -> u64 {
+    1_000_000_000
+}
+fn default_hot_pair_window_secs() -> u64 {
+    300
 }
 
 impl IndexerConfig {

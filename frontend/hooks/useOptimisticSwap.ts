@@ -11,9 +11,16 @@ export interface UseOptimisticSwapOptions {
   deadlineMs?: number;
   signTransaction?: (xdr: string) => Promise<string>;
   submitTransaction?: (signedXdr: string) => Promise<{ hash: string }>;
+  /** Optional XDR builder — see useTransactionLifecycle for full docs */
+  buildXdr?: (params: TradeParams) => Promise<string>;
   rollbackTarget: RollbackTarget;
   /** Notification preference — passed through to useTransactionLifecycle */
   notificationPreference?: NotificationPreference;
+  /**
+   * Optional callback fired once the swap reaches the `confirmed` state.
+   * Use this to trigger balance refetches or any post-confirmation side effects.
+   */
+  onConfirmed?: () => void;
 }
 
 export interface UseOptimisticSwapResult {
@@ -31,7 +38,7 @@ export interface UseOptimisticSwapResult {
 }
 
 export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimisticSwapResult {
-  const { rollbackTarget, ...lifecycleOptions } = options;
+  const { rollbackTarget, onConfirmed, ...lifecycleOptions } = options;
 
   const lifecycle = useTransactionLifecycle(lifecycleOptions);
   const [submitLock, setSubmitLock] = useState(false);
@@ -40,8 +47,21 @@ export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimis
   const lockRef = useRef(false);
   // Keep rollbackTarget in a ref so the effect closure always has the latest version
   const rollbackTargetRef = useRef(rollbackTarget);
-  rollbackTargetRef.current = rollbackTarget;
   const snapshotRef = useRef<PreSubmitSnapshot | null>(null);
+  // Keep onConfirmed in a ref so the effect closure always has the latest version
+  const onConfirmedRef = useRef(onConfirmed);
+
+  useEffect(() => {
+    rollbackTargetRef.current = rollbackTarget;
+  }, [rollbackTarget]);
+
+  useEffect(() => {
+    onConfirmedRef.current = onConfirmed;
+  }, [onConfirmed]);
+
+  useEffect(() => {
+    rollbackTargetRef.current = rollbackTarget;
+  }, [rollbackTarget]);
 
   function applyRollback(snap: PreSubmitSnapshot) {
     const target = rollbackTargetRef.current;
@@ -54,10 +74,13 @@ export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimis
   }
 
   // Watch for terminal states → release lock + rollback on failure
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (lifecycle.status === 'confirmed') {
       setSubmitLock(false);
       lockRef.current = false;
+      // Fire post-confirmation callback (e.g. balance refetch)
+      onConfirmedRef.current?.();
     } else if (lifecycle.status === 'failed' || lifecycle.status === 'dropped') {
       const snap = snapshotRef.current;
       if (snap) {

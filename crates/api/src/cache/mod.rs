@@ -4,6 +4,7 @@ pub mod adaptive_ttl;
 pub mod invalidation;
 pub mod invalidation_graph;
 pub mod jitter;
+pub mod prewarm_job;
 pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
@@ -21,6 +22,7 @@ pub use adaptive_ttl::{
 
 pub use jitter::JitteredTtl;
 
+pub use prewarm_job::{PrewarmConfig, PrewarmJob};
 pub use prewarmer::{
     CachePrewarmer, DemandForecaster, KeyDemandEntry, PrewarmError, PrewarmMetrics,
 };
@@ -178,82 +180,181 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Arc<T>>,
     {
-        // 1. Check if already in flight
-        let mut mg = self.inflight.lock().await;
-        if let Some(inflight) = mg.get(key) {
-            let inflight = Arc::clone(inflight);
-            drop(mg);
+        // We'll loop until we either return a cached/finished result or become the leader
+        // that runs the computation. This allows followers to retry becoming the leader
+        // if the previous leader was cancelled and removed the inflight entry.
+        let mut maybe_f = Some(f);
+        loop {
+            // 1. Fast-path: check if already in flight
+            let mut mg = self.inflight.lock().await;
+            if let Some(inflight) = mg.get(key) {
+                let inflight = Arc::clone(inflight);
+                drop(mg);
 
-            // Create notification future BEFORE checking the result to avoid race
-            let notified = inflight.notify.notified();
+                // Create notification future BEFORE checking the result to avoid race
+                let notified = inflight.notify.notified();
 
-            // Check if already finished
-            {
+                // Check if already finished
+                {
+                    let res = inflight.result.read().await;
+                    if let Some(result) = res.as_ref() {
+                        return Arc::clone(result);
+                    }
+                }
+
+                // Wait for notification if not finished yet
+                notified.await;
+
+                // After being notified, loop and re-check state: either the result
+                // is present (return it) or the inflight entry was removed and we
+                // should attempt to become the leader (next loop iteration will do so).
                 let res = inflight.result.read().await;
                 if let Some(result) = res.as_ref() {
                     return Arc::clone(result);
                 }
+
+                // No result present: previous leader likely cancelled. Try again.
+                continue;
             }
 
-            // Wait for notification if not finished yet
-            notified.await;
+            // 2. Not in flight: become the leader
+            let inflight = Arc::new(InFlight {
+                result: tokio::sync::RwLock::new(None),
+                notify: tokio::sync::Notify::new(),
+            });
+            mg.insert(key.to_string(), Arc::clone(&inflight));
+            drop(mg);
 
-            // Return the result
-            let res = inflight.result.read().await;
-            return res
-                .as_ref()
-                .map(Arc::clone)
-                .expect("Result must be present after notification");
-        }
-
-        // 2. Not in flight, start the work
-        let inflight = Arc::new(InFlight {
-            result: tokio::sync::RwLock::new(None),
-            notify: tokio::sync::Notify::new(),
-        });
-        mg.insert(key.to_string(), Arc::clone(&inflight));
-        drop(mg);
-
-        // 3. Create a guard to ensure cleanup on drop (cancellation/panic)
-        struct LeaderGuard<T: Send + Sync + 'static> {
-            inflight_map:
-                Arc<tokio::sync::Mutex<std::collections::HashMap<String, Arc<InFlight<T>>>>>,
-            key: String,
-            inflight: Arc<InFlight<T>>,
-        }
-
-        impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
-            fn drop(&mut self) {
-                // We need to notify waiters even if we didn't finish
-                // to avoid them hanging forever.
-                self.inflight.notify.notify_waiters();
-
-                let inflight_map = self.inflight_map.clone();
-                let key = self.key.clone();
-                tokio::spawn(async move {
-                    let mut mg = inflight_map.lock().await;
-                    mg.remove(&key);
-                });
+            // Create a guard to ensure cleanup on drop (cancellation/panic)
+            struct LeaderGuard<T: Send + Sync + 'static> {
+                inflight_map:
+                    Arc<tokio::sync::Mutex<std::collections::HashMap<String, Arc<InFlight<T>>>>>,
+                key: String,
+                inflight: Arc<InFlight<T>>,
             }
+
+            impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
+                fn drop(&mut self) {
+                    // Notify waiters so they can re-check state instead of hanging.
+                    self.inflight.notify.notify_waiters();
+
+                    let inflight_map = self.inflight_map.clone();
+                    let key = self.key.clone();
+                    tokio::spawn(async move {
+                        let mut mg = inflight_map.lock().await;
+                        mg.remove(&key);
+                    });
+                }
+            }
+
+            let _guard = LeaderGuard {
+                inflight_map: self.inflight.clone(),
+                key: key.to_string(),
+                inflight: Arc::clone(&inflight),
+            };
+
+            // Perform the computation as leader by taking and calling the closure.
+            let f_taken = maybe_f
+                .take()
+                .expect("closure must be available when becoming leader");
+            let result = f_taken().await;
+
+            // Save result and notify others
+            {
+                let mut res_mg = inflight.result.write().await;
+                *res_mg = Some(Arc::clone(&result));
+            }
+            // Notify waiters that result is present
+            inflight.notify.notify_waiters();
+
+            return result;
         }
+    }
 
-        let _guard = LeaderGuard {
-            inflight_map: self.inflight.clone(),
-            key: key.to_string(),
-            inflight: Arc::clone(&inflight),
-        };
+    /// Execute a function with single-flight protection and record metrics with `label`.
+    /// Identical concurrent requests for the same key will share the same computation.
+    pub async fn execute_with_label<F, Fut>(&self, key: &str, label: &str, f: F) -> Arc<T>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Arc<T>>,
+    {
+        let mut maybe_f = Some(f);
+        loop {
+            let mut mg = self.inflight.lock().await;
+            if let Some(inflight) = mg.get(key) {
+                let inflight = Arc::clone(inflight);
+                drop(mg);
 
-        // 4. Perform the computation
-        let result = f().await;
+                let notified = inflight.notify.notified();
 
-        // 5. Save result and notify others
-        {
-            let mut res_mg = inflight.result.write().await;
-            *res_mg = Some(Arc::clone(&result));
+                {
+                    let res = inflight.result.read().await;
+                    if let Some(result) = res.as_ref() {
+                        // follower returning existing result -> coalesced
+                        crate::metrics::record_single_flight_coalesced(label);
+                        return Arc::clone(result);
+                    }
+                }
+
+                notified.await;
+
+                let res = inflight.result.read().await;
+                if let Some(result) = res.as_ref() {
+                    crate::metrics::record_single_flight_coalesced(label);
+                    return Arc::clone(result);
+                }
+
+                continue;
+            }
+
+            let inflight = Arc::new(InFlight {
+                result: tokio::sync::RwLock::new(None),
+                notify: tokio::sync::Notify::new(),
+            });
+            mg.insert(key.to_string(), Arc::clone(&inflight));
+            drop(mg);
+
+            struct LeaderGuard<T: Send + Sync + 'static> {
+                inflight_map:
+                    Arc<tokio::sync::Mutex<std::collections::HashMap<String, Arc<InFlight<T>>>>>,
+                key: String,
+                inflight: Arc<InFlight<T>>,
+            }
+
+            impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
+                fn drop(&mut self) {
+                    self.inflight.notify.notify_waiters();
+
+                    let inflight_map = self.inflight_map.clone();
+                    let key = self.key.clone();
+                    tokio::spawn(async move {
+                        let mut mg = inflight_map.lock().await;
+                        mg.remove(&key);
+                    });
+                }
+            }
+
+            let _guard = LeaderGuard {
+                inflight_map: self.inflight.clone(),
+                key: key.to_string(),
+                inflight: Arc::clone(&inflight),
+            };
+
+            let f_taken = maybe_f
+                .take()
+                .expect("closure must be available when becoming leader");
+            // leader -> unique
+            crate::metrics::record_single_flight_unique(label);
+            let result = f_taken().await;
+
+            {
+                let mut res_mg = inflight.result.write().await;
+                *res_mg = Some(Arc::clone(&result));
+            }
+            inflight.notify.notify_waiters();
+
+            return result;
         }
-        // Result is set, now when _guard drops, workers will see the result.
-
-        result
     }
 }
 
@@ -269,6 +370,7 @@ impl<T: Send + Sync + 'static> Default for SingleFlight<T> {
 /// Documented key formats:
 /// - pairs:list -> List of all active trading pairs
 /// - orderbook:{base}:{quote} -> Orderbook for a specific pair
+/// - price-history:{base}:{quote} -> 24h historical price series for a pair
 /// - v1:quote:{base}:{quote}:{amount}:{slippage_bps}:{quote_type} -> Result of a quote request
 /// - liquidity:revision:{base}:{quote} -> Latest observed ledger revision for a pair
 pub mod keys {
@@ -283,8 +385,17 @@ pub mod keys {
     }
 
     /// Cache key for orderbook
+    ///
+    /// Uses canonical pair ordering so that `orderbook(A,B)` and `orderbook(B,A)`
+    /// produce the same key.
     pub fn orderbook(base: &str, quote: &str) -> String {
-        format!("orderbook:{}:{}", base, quote)
+        let (norm_base, norm_quote) = normalize_pair_assets(base, quote);
+        format!("orderbook:{}:{}", norm_base, norm_quote)
+    }
+
+    /// Cache key for 24h price history
+    pub fn price_history(base: &str, quote: &str) -> String {
+        format!("price-history:{}:{}", base, quote)
     }
 
     /// Cache key for quote (versioned: v2)
@@ -308,13 +419,11 @@ pub mod keys {
     }
 
     /// Normalize asset identifiers (e.g. XLM/xlm -> native)
+    ///
+    /// Delegates to the shared [`stellarroute_routing::normalize_asset`] so
+    /// that all crates use the same canonical representation.
     fn normalize_asset(asset: &str) -> String {
-        let asset = asset.to_lowercase();
-        if asset == "xlm" || asset == "native" {
-            "native".to_string()
-        } else {
-            asset.to_uppercase()
-        }
+        stellarroute_routing::normalize_asset(asset)
     }
 
     /// Normalize amounts to a canonical string (7 decimal precision)
@@ -325,22 +434,29 @@ pub mod keys {
         }
     }
 
+    /// Normalize two assets individually then return them in canonical pair order.
+    ///
+    /// Delegates to the shared [`stellarroute_routing::normalize_pair_owned`]
+    /// so that all crates use the same canonical representation.
+    fn normalize_pair_assets(a: &str, b: &str) -> (String, String) {
+        stellarroute_routing::normalize_pair_owned(a, b)
+    }
+
     /// Key used to track the latest liquidity revision observed for a pair
+    ///
+    /// Uses canonical pair ordering so that revision checks are consistent
+    /// regardless of asset ordering.
     pub fn liquidity_revision(base: &str, quote: &str) -> String {
-        format!(
-            "liquidity:revision:{}:{}",
-            normalize_asset(base),
-            normalize_asset(quote)
-        )
+        let (norm_base, norm_quote) = normalize_pair_assets(base, quote);
+        format!("liquidity:revision:{}:{}", norm_base, norm_quote)
     }
 
     /// Pattern that matches all cached quotes for a pair
+    ///
+    /// Uses canonical pair ordering so that invalidation covers both orderings.
     pub fn quote_pair_pattern(base: &str, quote: &str) -> String {
-        format!(
-            "*quote:{}:{}:*",
-            normalize_asset(base),
-            normalize_asset(quote)
-        )
+        let (norm_base, norm_quote) = normalize_pair_assets(base, quote);
+        format!("*quote:{}:{}:*", norm_base, norm_quote)
     }
 }
 
@@ -352,14 +468,25 @@ mod tests {
     async fn test_cache_keys() {
         assert_eq!(keys::pairs_list(), "pairs:list");
         assert_eq!(keys::pairs_list_page(25, 50), "pairs:list:25:50");
-        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:XLM:USDC");
+        // orderbook uses canonical pair ordering: "native" < "USDC" lexicographically
+        assert_eq!(keys::orderbook("USDC", "XLM"), "orderbook:native:USDC");
+        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:native:USDC");
+        assert_eq!(keys::price_history("XLM", "USDC"), "price-history:XLM:USDC");
         assert_eq!(
             keys::quote("xlm", "usdc", "100.0", 50, "sell", true),
             "v2:quote:native:USDC:100.0000000:50:sell:true"
         );
         assert_eq!(
+            keys::liquidity_revision("USDC", "xlm"),
+            "liquidity:revision:native:USDC"
+        );
+        assert_eq!(
             keys::liquidity_revision("xlm", "USDC"),
             "liquidity:revision:native:USDC"
+        );
+        assert_eq!(
+            keys::quote_pair_pattern("USDC", "XLM"),
+            "*quote:native:USDC:*"
         );
         assert_eq!(
             keys::quote_pair_pattern("XLM", "usdc"),
@@ -377,6 +504,23 @@ mod tests {
         assert_eq!(key1, "v2:quote:native:USDC:100.0000000:50:sell:false");
         assert_eq!(key1, key2);
         assert_eq!(key2, key3);
+    }
+
+    #[tokio::test]
+    async fn test_canonical_pair_ordering_in_cache_keys() {
+        // Reversed URL parameters produce the same pair-oriented cache keys
+        assert_eq!(
+            keys::orderbook("USDC", "native"),
+            keys::orderbook("native", "USDC"),
+        );
+        assert_eq!(
+            keys::liquidity_revision("USDC:GA5ZSEJ", "XLM"),
+            keys::liquidity_revision("XLM", "USDC:GA5ZSEJ"),
+        );
+        assert_eq!(
+            keys::quote_pair_pattern("BTC", "ETH"),
+            keys::quote_pair_pattern("ETH", "BTC"),
+        );
     }
 
     #[tokio::test]

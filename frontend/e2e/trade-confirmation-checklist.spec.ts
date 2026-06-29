@@ -336,12 +336,12 @@ test.describe("Checklist: reactive updates on form changes", () => {
     await input.fill("5");
     await page.waitForTimeout(600);
 
-    let swapBtn = page.getByRole("button", { name: /^swap|review/i });
-    await swapBtn.click();
+    const initialSwapBtn = page.getByRole("button", { name: /^swap|review/i });
+    await initialSwapBtn.click();
 
     // Get initial checklist state
     const checklist = page.getByText(/pre-submission checklist/i);
-    let initialVisible = await checklist.isVisible({ timeout: 500 });
+    const initialVisible = await checklist.isVisible({ timeout: 500 });
 
     // Close and modify amount
     if (initialVisible) {
@@ -353,9 +353,9 @@ test.describe("Checklist: reactive updates on form changes", () => {
     await input.fill("200");
     await page.waitForTimeout(600);
 
-    swapBtn = page.getByRole("button", { name: /^swap|review/i });
-    if (await swapBtn.isEnabled({ timeout: 500 })) {
-      await swapBtn.click({ force: true });
+    const secondSwapBtn = page.getByRole("button", { name: /^swap|review/i });
+    if (await secondSwapBtn.isEnabled({ timeout: 500 })) {
+      await secondSwapBtn.click({ force: true });
     }
 
     // Checklist should now show different state (balance fail)
@@ -383,11 +383,11 @@ test.describe("Checklist: reactive updates on form changes", () => {
     await page.waitForTimeout(600);
 
     // Open modal with normal slippage
-    let swapBtn = page.getByRole("button", { name: /^swap|review/i });
+    const swapBtn = page.getByRole("button", { name: /^swap|review/i });
     await swapBtn.click();
 
-    let checklist = page.getByText(/pre-submission checklist/i);
-    let initialVisible = await checklist.isVisible({ timeout: 500 });
+    const checklist = page.getByText(/pre-submission checklist/i);
+    const initialVisible = await checklist.isVisible({ timeout: 500 });
 
     if (initialVisible) {
       // Check initial slippage status

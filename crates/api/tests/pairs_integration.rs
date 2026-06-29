@@ -112,6 +112,7 @@ async fn get_pairs_returns_200_and_valid_json() {
         enable_cors: false,
         enable_compression: false,
         redis_url: None,
+        admin_auth_token: None,
         quote_cache_ttl_seconds: 2,
     };
 

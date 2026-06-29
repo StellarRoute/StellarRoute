@@ -23,6 +23,9 @@ interface HighImpactConfirmModalProps {
   fromSymbol: string;
   toAmount: string;
   toSymbol: string;
+  // --- Issue #506: Added Optional Memo Props ---
+  memoValue?: string;
+  memoType?: 'text' | 'hash';
 }
 
 export function HighImpactConfirmModal({
@@ -34,6 +37,9 @@ export function HighImpactConfirmModal({
   fromSymbol,
   toAmount,
   toSymbol,
+  // --- Issue #506: Destructured Memo Props ---
+  memoValue,
+  memoType,
 }: HighImpactConfirmModalProps) {
   const [isChecked, setIsChecked] = useState(false);
 
@@ -70,6 +76,18 @@ export function HighImpactConfirmModal({
                 <span className="text-foreground">{parseFloat(toAmount).toFixed(4)} {toSymbol}</span>
               </div>
             </div>
+
+            {/* --- Issue #506: Conditional Memo Field Summary Display --- */}
+            {memoValue && (
+              <div className="pt-3 border-t border-border/20 space-y-1">
+                <div className="flex justify-between items-start text-xs">
+                  <span className="font-semibold text-muted-foreground">Stellar Memo ({memoType?.toUpperCase()})</span>
+                  <span className="font-mono text-foreground break-all text-right max-w-[180px]">
+                    {memoValue}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="pt-4 border-t border-border/20 flex justify-between items-center">
               <span className="text-sm font-semibold text-muted-foreground">Price Impact</span>

@@ -195,10 +195,7 @@ impl SorobanSimulator {
             "params": { "transaction": transaction_xdr }
         });
 
-        debug!(
-            "Calling simulateTransaction on {}",
-            self.config.rpc_url
-        );
+        debug!("Calling simulateTransaction on {}", self.config.rpc_url);
 
         let resp = self
             .http
@@ -212,8 +209,7 @@ impl SorobanSimulator {
             return Err(format!("HTTP {}", resp.status()));
         }
 
-        let payload: SimulateTransactionResponse =
-            resp.json().await.map_err(|e| e.to_string())?;
+        let payload: SimulateTransactionResponse = resp.json().await.map_err(|e| e.to_string())?;
 
         if let Some(err) = payload.error {
             return Ok(SimulationResult {
@@ -377,10 +373,7 @@ mod tests {
 
         let result = sim.simulate("AAAA_XDR").await;
         assert!(!result.simulated);
-        assert_eq!(
-            result.failure_reason.as_deref(),
-            Some("timeout")
-        );
+        assert_eq!(result.failure_reason.as_deref(), Some("timeout"));
     }
 
     #[tokio::test]

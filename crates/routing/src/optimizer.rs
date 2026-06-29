@@ -295,9 +295,11 @@ impl HybridOptimizer {
         let policy = self.active_policy();
         let mut excluded_routes = Vec::new();
 
-        let paths =
-            self.pathfinder
-                .find_paths_compacted(from, to, graph, amount_in, routing_policy)?;
+        // Convert compacted graph back to edges for pathfinding
+        let edges = graph.to_edges();
+        let paths = self
+            .pathfinder
+            .find_paths(from, to, &edges, amount_in, routing_policy)?;
 
         if paths.is_empty() {
             return Err(RoutingError::NoRoute(from.to_string(), to.to_string()));
@@ -403,8 +405,6 @@ impl HybridOptimizer {
 
         let mut total_output = amount_in;
         let mut total_impact_bps = 0u32;
-        let mut max_anomaly_score = 0.0f64;
-        let mut all_anomaly_reasons = Vec::new();
 
         // Simulate execution through each hop
         for hop in &path.hops {
@@ -437,8 +437,6 @@ impl HybridOptimizer {
 
             total_output = output;
             total_impact_bps = total_impact_bps.saturating_add(impact_bps);
-            max_anomaly_score = max_anomaly_score.max(hop.anomaly_score);
-            all_anomaly_reasons.extend(hop.anomaly_reasons.clone());
         }
 
         let compute_time_us = start_time.elapsed().as_micros() as u64;
@@ -459,8 +457,8 @@ impl HybridOptimizer {
             compute_time_us,
             hop_count: path.hops.len(),
             score,
-            anomaly_score: max_anomaly_score,
-            anomaly_reasons: all_anomaly_reasons,
+            anomaly_score: 0.0,
+            anomaly_reasons: Vec::new(),
         })
     }
 
@@ -566,7 +564,10 @@ mod tests {
     fn test_set_scorer_delegates_to_registry() {
         let mut optimizer = HybridOptimizer::default();
         assert!(optimizer.set_scorer("fee_minimizing").is_ok());
-        assert_eq!(optimizer.scorer_registry.active_scorer_name(), "fee_minimizing");
+        assert_eq!(
+            optimizer.scorer_registry.active_scorer_name(),
+            "fee_minimizing"
+        );
         assert!(optimizer.set_scorer("nonexistent").is_err());
     }
 
@@ -574,8 +575,12 @@ mod tests {
     fn test_with_scorer_registry_constructor() {
         let mut registry = ScorerRegistry::new();
         registry.set_active("output_maximizing").unwrap();
-        let optimizer = HybridOptimizer::with_scorer_registry(PathfinderConfig::default(), registry);
-        assert_eq!(optimizer.scorer_registry.active_scorer_name(), "output_maximizing");
+        let optimizer =
+            HybridOptimizer::with_scorer_registry(PathfinderConfig::default(), registry);
+        assert_eq!(
+            optimizer.scorer_registry.active_scorer_name(),
+            "output_maximizing"
+        );
     }
 
     #[test]
@@ -608,8 +613,6 @@ mod tests {
             liquidity: 10_000_000,
             price: 0.1,
             fee_bps: 30,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }];
         let policy = RoutingPolicy::default();
         let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 1_000_000, &policy);
@@ -631,8 +634,6 @@ mod tests {
                 venue_ref: "pool1".to_string(),
                 price: 0.1,
                 fee_bps: 30,
-                anomaly_score: 0.0,
-                anomaly_reasons: vec![],
             }],
             estimated_output: 900_000,
         }];

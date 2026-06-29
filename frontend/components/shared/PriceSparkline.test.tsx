@@ -123,6 +123,8 @@ describe("PriceSparkline – missing / empty data", () => {
 
   it("renders the SVG chart when data is present", () => {
     const { container } = render(<PriceSparkline rangeData={FULL_DATA} />);
-    expect(container.querySelector("svg")).toBeInTheDocument();
+    const svgElement = container.querySelector("svg");
+    expect(svgElement).toBeInTheDocument();
+    expect(svgElement).not.toBeNull();
   });
 });

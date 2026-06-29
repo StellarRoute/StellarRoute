@@ -18,11 +18,11 @@ describe('useShareableQuote', () => {
     
     vi.mocked(useRouter).mockReturnValue({
       push: mockPush,
-    } as any);
+    } as ReturnType<typeof useRouter>);
 
     vi.mocked(useSearchParams).mockReturnValue({
       get: (key: string) => mockSearchParams.get(key) || null,
-    } as any);
+    } as ReturnType<typeof useSearchParams>);
   });
 
   describe('parseParams', () => {
@@ -113,7 +113,9 @@ describe('useShareableQuote', () => {
       mockSearchParams.set('ts', oldTimestamp.toString());
 
       const { result } = renderHook(() => useShareableQuote());
-      result.current.parseParams();
+      act(() => {
+        result.current.parseParams();
+      });
 
       expect(result.current.isStale).toBe(true);
     });
@@ -210,7 +212,9 @@ describe('useShareableQuote', () => {
       mockSearchParams.set('ts', (Date.now() - 120000).toString());
 
       const { result } = renderHook(() => useShareableQuote());
-      result.current.parseParams();
+      act(() => {
+        result.current.parseParams();
+      });
       expect(result.current.isStale).toBe(true);
 
       act(() => {
@@ -229,7 +233,9 @@ describe('useShareableQuote', () => {
       mockSearchParams.set('ts', (Date.now() - 120000).toString());
 
       const { result } = renderHook(() => useShareableQuote());
-      result.current.parseParams();
+      act(() => {
+        result.current.parseParams();
+      });
       expect(result.current.isStale).toBe(true);
 
       act(() => {

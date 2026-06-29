@@ -4,9 +4,9 @@
 //! so clients and tests can compare outputs reliably.
 
 use stellarroute_api::serialization::{
-    DeterministicSerialize, NormalizedAnomaly, NormalizedExclusion, NormalizedHop,
-    NormalizedPolicy, NormalizedAlternative, NormalizedRouteDiagnostics,
-    NormalizedRouteMetrics, NormalizedSwapPath,
+    DeterministicSerialize, NormalizedAlternative, NormalizedAnomaly, NormalizedExclusion,
+    NormalizedHop, NormalizedPolicy, NormalizedRouteDiagnostics, NormalizedRouteMetrics,
+    NormalizedSwapPath,
 };
 
 fn make_sample_diagnostics() -> NormalizedRouteDiagnostics {
@@ -110,20 +110,22 @@ fn field_ordering_is_deterministic() {
     let diag = make_sample_diagnostics();
     let json = diag.to_deterministic_json().expect("serialization");
     let json_str = String::from_utf8(json.clone()).expect("valid utf8");
-
+    println!("deterministic json: {}", json_str);
     // Verify that fields appear in sorted order
-    let selected_path_pos = json_str.find("\"selected_path\"").expect("selected_path field");
+    let selected_path_pos = json_str
+        .find("\"selected_path\"")
+        .expect("selected_path field");
     let metrics_pos = json_str.find("\"metrics\"").expect("metrics field");
     let policy_pos = json_str.find("\"policy\"").expect("policy field");
 
-    // Fields should be in alphabetical order
-    assert!(
-        selected_path_pos < metrics_pos,
-        "selected_path should come before metrics"
-    );
+    // Fields should be in alphabetical order (as produced by normalization)
     assert!(
         metrics_pos < policy_pos,
         "metrics should come before policy"
+    );
+    assert!(
+        policy_pos < selected_path_pos,
+        "policy should come before selected_path"
     );
 }
 
@@ -145,7 +147,10 @@ fn normalization_handles_nan_and_infinity() {
     assert!(obj["valid_number"].is_number(), "valid numbers preserved");
     assert!(obj["nan_value"].is_null(), "NaN becomes null");
     assert!(obj["infinity_value"].is_null(), "infinity becomes null");
-    assert!(obj["neg_infinity"].is_null(), "negative infinity becomes null");
+    assert!(
+        obj["neg_infinity"].is_null(),
+        "negative infinity becomes null"
+    );
 }
 
 #[test]

@@ -3,19 +3,15 @@
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
 import { WalletButton } from "@/components/shared/wallet-button";
-import { NotificationInbox } from "@/components/NotificationInbox";
-import { useSwapI18n } from "@/lib/swap-i18n";
 
 export function Header() {
-  const { t } = useSwapI18n();
-
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="container flex h-14 items-center mx-auto px-4">
         <div className="mr-4 flex">
-          <Link href="/" className="mr-6 flex items-center space-x-2">
+          <Link href="/swap" className="mr-6 flex items-center space-x-2">
             <span className="hidden font-bold sm:inline-block">
-              {t("common.appName")}
+              StellarRoute
             </span>
           </Link>
         </div>
@@ -27,31 +23,12 @@ export function Header() {
 
           <nav className="flex items-center gap-4">
             <Link
-              href="/swap"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              {t("common.nav.swap")}
-            </Link>
-            <Link
-              href="/orderbook"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              {t("common.nav.orderbook")}
-            </Link>
-            <Link
               href="/history"
               className="text-sm font-medium hover:text-primary transition-colors"
             >
-              {t("common.nav.history")}
-            </Link>
-            <Link
-              href="/settings"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              {t("common.nav.settings")}
+              History
             </Link>
 
-            <NotificationInbox />
             <WalletButton />
             <ThemeToggle />
           </nav>

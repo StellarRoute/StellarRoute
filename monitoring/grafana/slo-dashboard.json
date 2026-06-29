@@ -1,0 +1,341 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "StellarRoute SLO Dashboard",
+  "description": "SLO monitoring dashboard for StellarRoute quote latency, error rate, cache health, and indexer sync. Targets defined in config/slo.yaml.",
+  "tags": ["stellarroute", "slo", "production"],
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "title": "Quote Latency P50 / P95 / P99",
+      "description": "Percentile quote request latencies. SLO: P95 < 500ms, P99 < 2s",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 2.0 }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "P95" },
+            "properties": [
+              { "id": "custom.lineWidth", "value": 3 },
+              { "id": "custom.lineStyle", "value": { "fill": "solid" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "P99" },
+            "properties": [
+              { "id": "custom.lineWidth", "value": 3 },
+              { "id": "custom.lineDash", "value": [10, 5] }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Quote Error Rate",
+      "description": "Percentage of quote requests resulting in errors. SLO: < 1%",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_quote_requests_total{outcome=\"error\"}[5m]) / rate(stellarroute_quote_requests_total[5m]) * 100",
+          "legendFormat": "Error Rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 1.0 }
+            ]
+          },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "Route Compute Time P95",
+      "description": "95th percentile route computation time. SLO: < 1s",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(stellarroute_route_compute_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1.0 }
+            ]
+          },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "Cache Hit Ratio",
+      "description": "Quote cache hit ratio. SLO: > 70%",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_cache_hits_total[10m]) / (rate(stellarroute_cache_hits_total[10m]) + rate(stellarroute_cache_misses_total[10m])) * 100",
+          "legendFormat": "Hit Ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 70 }
+            ]
+          },
+          "min": 0,
+          "max": 100
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "SLO Burn Rate – Quote P95 Latency",
+      "description": "Multi-window burn rate for P95 latency SLO. Warning at 2x, critical at 4x",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[1m]))",
+          "legendFormat": "Short window (1m)"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[30m]))",
+          "legendFormat": "Long window (30m)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "SLO Burn Rate – Quote Error Rate",
+      "description": "Multi-window burn rate for error rate SLO. Warning at 2x, critical at 4x",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_quote_requests_total{outcome=\"error\"}[1m]) / rate(stellarroute_quote_requests_total[1m])",
+          "legendFormat": "Short window (1m)"
+        },
+        {
+          "expr": "rate(stellarroute_quote_requests_total{outcome=\"error\"}[30m]) / rate(stellarroute_quote_requests_total[30m])",
+          "legendFormat": "Long window (30m)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.01 }
+            ]
+          },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "Indexer Sync Status",
+      "description": "Sync status per source: 1=ok, 0=warning, -1=critical, -2=unknown",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_sync_status",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "value": "1", "text": "OK", "color": "green" },
+            { "type": "value", "value": "0", "text": "WARNING", "color": "yellow" },
+            { "type": "value", "value": "-1", "text": "CRITICAL", "color": "red" },
+            { "type": "value", "value": "-2", "text": "UNKNOWN", "color": "gray" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Indexer Lag (ledgers)",
+      "description": "Ledger lag behind Horizon per source. Warning > 10, critical > 60",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 24 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_lag_ledgers{source=\"sdex\"}",
+          "legendFormat": "SDEX lag"
+        },
+        {
+          "expr": "stellarroute_indexer_lag_ledgers{source=\"amm\"}",
+          "legendFormat": "AMM lag"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 60 }
+            ]
+          },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "SLO Compliance (30d burn rate)",
+      "description": "Current SLO compliance status for each objective",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 24 },
+      "targets": [
+        {
+          "expr": "1 - (rate(stellarroute_quote_requests_total{outcome=\"error\"}[30d]) / rate(stellarroute_quote_requests_total[30d]))",
+          "legendFormat": "Quote Error Rate SLO"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0.9,
+          "max": 1.0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.98 },
+              { "color": "green", "value": 0.999 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["mean"] },
+        "orientation": "horizontal"
+      }
+    }
+  ],
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "pluginId": "prometheus",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Data Source"
+      }
+    ]
+  }
+}

@@ -35,16 +35,10 @@ export function useTokenPairUrl(): UseTokenPairUrlResult {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isInitializing, setIsInitializing] = useState(true);
+  const [isInitializing] = useState(false);
 
   const base = searchParams.get("base") || undefined;
   const quote = searchParams.get("quote") || undefined;
-
-  // Mark initialization as complete after first render
-   
-  useEffect(() => {
-    setIsInitializing(false);
-  }, []);
 
   const setPair = useCallback(
     (newBase: string, newQuote: string) => {

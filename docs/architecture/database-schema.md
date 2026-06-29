@@ -273,6 +273,13 @@ Historical point-in-time snapshots of orderbooks for analytics.
 - Volume trends over time
 - Spread analysis
 
+**Price history contract:**
+
+- The frontend sparkline reads from `GET /api/v1/price-history/{base}/{quote}`.
+- The API aggregates `orderbook_snapshots.mid_price` into hourly buckets over the trailing 24 hours.
+- An empty `points` array means the pair exists but no usable historical snapshots were available in the window.
+- The contract intentionally favors compact payloads so the chart stays lightweight on low-end devices.
+
 ---
 
 ## Supporting Tables

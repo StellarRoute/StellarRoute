@@ -336,6 +336,7 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 *4.1.5: Advanced Features*
 - [ ] Historical trade history display
 - [ ] Market depth visualization
+- [ ] #407 Price chart sparkline for selected pair (24h window) [Stellar Wave, Drips complexity: High]
 - [ ] Settings page (slippage defaults, theme)
 - [ ] Responsive mobile design
 - [ ] Error handling and user feedback

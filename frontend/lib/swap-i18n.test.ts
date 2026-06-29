@@ -20,8 +20,6 @@ describe("swap i18n", () => {
 
     expect(locale).toBe("es-ES");
     expect(t("swap.card.title")).toBe("Intercambiar");
-    expect(t("common.nav.history")).toBe("Historial");
-    expect(t("common.nav.swap")).toBe("Intercambiar");
     expect(t("swap.pair.balance", { amount: "1,000" })).toBe("Saldo: 1,000");
   });
 

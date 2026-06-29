@@ -1,0 +1,166 @@
+# StellarRoute SLO Definitions
+# ============================
+# This file defines Service Level Objectives (SLOs) and synthetic probe
+# configurations for the StellarRoute API. It is consumed by:
+#   - Prometheus alerting rules  (monitoring/prometheus/slo-alerts.yml)
+#   - Grafana dashboard          (monitoring/grafana/slo-dashboard.json)
+#   - slo-probe binary           (crates/slo-probe)
+#
+# Version: 1.0
+# Service: stellarroute-api
+
+version: "1.0"
+service: stellarroute-api
+
+# ── SLO definitions ──────────────────────────────────────────────────────────
+# Each SLO has a target metric, measurement window, threshold, and optional
+# burn-rate parameters for alerting.
+
+slos:
+  # SLO 1: P95 Quote Latency < 500ms
+  - name: quote_p95_latency
+    description: "95th percentile quote request latency stays below 500ms over a 5-minute window"
+    metric: stellarroute_quote_request_duration_seconds
+    type: latency
+    percentile: 0.95
+    window: 5m
+    target_threshold_seconds: 0.5
+    compliance_target: 0.999        # 99.9% of 5m windows should meet this
+    burn_rate:
+      warning: 2.0                  # 2x burn rate triggers warning
+      critical: 4.0                 # 4x burn rate triggers critical
+      window: 30m                   # burn rate evaluation window
+
+  # SLO 2: P99 Quote Latency < 2s
+  - name: quote_p99_latency
+    description: "99th percentile quote request latency stays below 2s over a 5-minute window"
+    metric: stellarroute_quote_request_duration_seconds
+    type: latency
+    percentile: 0.99
+    window: 5m
+    target_threshold_seconds: 2.0
+    compliance_target: 0.995
+    burn_rate:
+      warning: 2.0
+      critical: 4.0
+      window: 30m
+
+  # SLO 3: Quote Error Rate < 1%
+  - name: quote_error_rate
+    description: "Quote request error rate stays below 1% over a 5-minute window"
+    metric: stellarroute_quote_requests_total
+    type: error_rate
+    window: 5m
+    target_threshold_ratio: 0.01
+    compliance_target: 0.999
+    error_label_values: ["error"]   # label values considered errors
+    ok_label_values: ["success"]    # label values considered success
+    burn_rate:
+      warning: 2.0
+      critical: 4.0
+      window: 30m
+
+  # SLO 4: Route Compute Time P95 < 1s
+  - name: route_compute_p95_latency
+    description: "95th percentile route computation time below 1s over a 5-minute window"
+    metric: stellarroute_route_compute_duration_seconds
+    type: latency
+    percentile: 0.95
+    window: 5m
+    target_threshold_seconds: 1.0
+    compliance_target: 0.99
+    burn_rate:
+      warning: 2.0
+      critical: 4.0
+      window: 30m
+
+  # SLO 5: Cache Hit Ratio > 70%
+  - name: cache_hit_ratio
+    description: "Quote cache hit ratio stays above 70% over a 10-minute window"
+    metric: stellarroute_cache_hits_total
+    numerator_metric: stellarroute_cache_hits_total
+    denominator_metric: stellarroute_cache_misses_total
+    type: ratio
+    window: 10m
+    target_threshold_ratio: 0.7
+    compliance_target: 0.99
+    burn_rate:
+      warning: 2.0
+      critical: 4.0
+      window: 30m
+
+  # SLO 6: Indexer Sync Health - no critical lag
+  - name: indexer_sync_health
+    description: "Indexer sync status is not critical for either SDEX or AMM sources"
+    metric: stellarroute_indexer_sync_status
+    type: gauge
+    window: 5m
+    # sync_status values: 1=ok, 0=warning, -1=critical
+    target_threshold_value: 0       # must be >= 0 (not critical)
+    compliance_target: 0.995
+
+# ── Synthetic probe definitions ──────────────────────────────────────────────
+# Probes that can be run from CI or synthetic monitoring systems.
+# The slo-probe binary reads these definitions to execute health checks.
+
+probes:
+  # Probe 1: Smoke test for the quote endpoint with a common pair
+  - name: quote_smoke_test
+    description: "Basic smoke test of the /api/v1/quote/XLM/USDC endpoint"
+    interval: 5m
+    endpoint: /api/v1/quote/{base}/{quote}
+    method: GET
+    query_params:
+      amount: "100.0"
+    test_cases:
+      - base: XLM
+        quote: USDC
+      - base: USDC
+        quote: XLM
+      - base: XLM
+        quote: EURC
+    thresholds:
+      max_latency_ms: 2000
+      max_error_rate: 0.0           # smoke tests must always succeed
+      expected_status: 200
+
+  # Probe 2: Load test simulating realistic traffic
+  - name: quote_load_probe
+    description: "Multi-pair probe under realistic load to validate P95 latency SLO"
+    interval: 15m
+    endpoint: /api/v1/quote/{base}/{quote}
+    method: GET
+    query_params:
+      amount: "1000.0"
+    test_cases:
+      - base: XLM
+        quote: USDC
+      - base: USDC
+        quote: XLM
+      - base: XLM
+        quote: EURC
+      - base: EURC
+        quote: USDC
+    concurrency: 10
+    samples: 50
+    thresholds:
+      max_latency_p50_ms: 200
+      max_latency_p95_ms: 500
+      max_latency_p99_ms: 2000
+      max_error_rate: 0.01
+
+  # Probe 3: Route endpoint smoke test
+  - name: route_smoke_test
+    description: "Basic smoke test of the /api/v1/route/XLM/USDC endpoint"
+    interval: 5m
+    endpoint: /api/v1/route/{base}/{quote}
+    method: GET
+    query_params:
+      amount: "100.0"
+    test_cases:
+      - base: XLM
+        quote: USDC
+    thresholds:
+      max_latency_ms: 5000
+      max_error_rate: 0.0
+      expected_status: 200

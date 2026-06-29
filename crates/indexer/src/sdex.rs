@@ -23,21 +23,46 @@ pub struct SdexIndexer {
     horizon: HorizonClient,
     db: Database,
     mode: IndexingMode,
+    partition_manager: crate::partition::PartitionManager,
+}
+
+fn pair_key(selling: &Asset, buying: &Asset) -> String {
+    fn asset_label(asset: &Asset) -> String {
+        let (asset_type, code, _) = asset.key();
+        code.unwrap_or(asset_type)
+    }
+
+    format!("{}/{}", asset_label(selling), asset_label(buying))
 }
 
 impl SdexIndexer {
     /// Create a new SDEX indexer with polling mode
-    pub fn new(horizon: HorizonClient, db: Database) -> Self {
+    pub fn new(
+        horizon: HorizonClient,
+        db: Database,
+        partition_manager: crate::partition::PartitionManager,
+    ) -> Self {
         Self {
             horizon,
             db,
             mode: IndexingMode::Polling,
+            partition_manager,
         }
     }
 
     /// Create a new SDEX indexer with specified mode
-    pub fn with_mode(horizon: HorizonClient, db: Database, mode: IndexingMode) -> Self {
-        Self { horizon, db, mode }
+    pub fn with_mode(
+        horizon: HorizonClient,
+        db: Database,
+        mode: IndexingMode,
+        partition_manager: crate::partition::PartitionManager,
+    ) -> Self {
+        Self {
+            horizon,
+            db,
+            mode,
+            partition_manager,
+        }
     }
 
     /// Start indexing offers from Horizon
@@ -115,6 +140,16 @@ impl SdexIndexer {
                                 // Convert to our Offer model
                                 match Offer::try_from(horizon_offer) {
                                     Ok(offer) => {
+                                        // Determine market pair identifier for partitioning
+                                        let pair_key = pair_key(&offer.selling, &offer.buying);
+                                        if !self.partition_manager.should_process(&pair_key) {
+                                            debug!(
+                                                "Skipping pair {} on partition {}",
+                                                pair_key, self.partition_manager.partition_id
+                                            );
+                                            continue;
+                                        }
+
                                         // Index the offer
                                         let pool = self.db.pool();
                                         if let Err(e) =
@@ -199,6 +234,16 @@ impl SdexIndexer {
                     continue;
                 }
             };
+
+            // Determine market pair identifier for partitioning
+            let pair_key = pair_key(&offer.selling, &offer.buying);
+            if !self.partition_manager.should_process(&pair_key) {
+                debug!(
+                    "Skipping pair {} on partition {}",
+                    pair_key, self.partition_manager.partition_id
+                );
+                continue;
+            }
 
             // Extract and upsert assets
             if let Err(e) = self.upsert_asset(pool, &offer.selling).await {

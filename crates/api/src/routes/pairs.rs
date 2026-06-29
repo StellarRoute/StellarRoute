@@ -102,7 +102,7 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
 
         // Build AssetInfo helpers so we can derive both display names and
         // canonical identifiers from a single source of truth.
-        let base_info = if selling_type == "native" {
+        let selling_info = if selling_type == "native" {
             AssetInfo::native()
         } else {
             AssetInfo::credit(
@@ -112,7 +112,7 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
             )
         };
 
-        let counter_info = if buying_type == "native" {
+        let buying_info = if buying_type == "native" {
             AssetInfo::native()
         } else {
             AssetInfo::credit(
@@ -121,6 +121,17 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
                 row.get("buying_issuer"),
             )
         };
+
+        let selling_canonical = selling_info.to_canonical();
+        let buying_canonical = buying_info.to_canonical();
+
+        // Normalize pair ordering so base/counter consistently reflect
+        // canonical ordering regardless of how the DB stores the direction.
+        let (base_info, counter_info) =
+            match stellarroute_routing::normalize_pair(&selling_canonical, &buying_canonical) {
+                (b, _) if *b == selling_canonical => (selling_info.clone(), buying_info.clone()),
+                _ => (buying_info.clone(), selling_info.clone()),
+            };
 
         let offer_count: i64 = row.get("offer_count");
         let last_updated: Option<chrono::DateTime<chrono::Utc>> = row.get("last_updated");
@@ -134,6 +145,13 @@ pub async fn list_pairs(State(state): State<Arc<AppState>>) -> Result<Json<Pairs
             last_updated: last_updated.map(|dt| dt.to_rfc3339()),
         });
     }
+
+    // Sort by canonical pair ordering for deterministic, consistent output.
+    pairs.sort_by(|a, b| {
+        a.base_asset
+            .cmp(&b.base_asset)
+            .then(a.counter_asset.cmp(&b.counter_asset))
+    });
 
     debug!("Found {} trading pairs", pairs.len());
 

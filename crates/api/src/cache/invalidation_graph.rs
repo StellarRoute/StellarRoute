@@ -10,9 +10,8 @@
  *     and parent pairs that use (A,B) as intermediate
  *   - Fallback: if graph insertion fails, fall back to full cache clear
  */
-
 use dashmap::DashMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Represents a trading pair (asset_a, asset_b)
@@ -60,10 +59,7 @@ pub enum CacheKey {
         route_hash: String,
     },
     /// Orderbook cache key: pair
-    Orderbook {
-        base: String,
-        quote: String,
-    },
+    Orderbook { base: String, quote: String },
 }
 
 impl CacheKey {
@@ -77,7 +73,11 @@ impl CacheKey {
 
     pub fn to_string(&self) -> String {
         match self {
-            CacheKey::Quote { base, quote, amount } => {
+            CacheKey::Quote {
+                base,
+                quote,
+                amount,
+            } => {
                 format!("quote:{}:{}:{}", base, quote, amount)
             }
             CacheKey::Route {
@@ -233,16 +233,8 @@ impl PairInvalidationGraph {
         GraphSize {
             pair_quote_entries: self.pair_to_quotes.len(),
             pair_route_entries: self.pair_to_routes.len(),
-            total_quote_keys: self
-                .pair_to_quotes
-                .iter()
-                .map(|r| r.value().len())
-                .sum(),
-            total_route_keys: self
-                .pair_to_routes
-                .iter()
-                .map(|r| r.value().len())
-                .sum(),
+            total_quote_keys: self.pair_to_quotes.iter().map(|r| r.value().len()).sum(),
+            total_route_keys: self.pair_to_routes.iter().map(|r| r.value().len()).sum(),
             dependency_edges: self.pair_to_children.len(),
         }
     }

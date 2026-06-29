@@ -5,6 +5,7 @@ import { PathStep } from '@/types';
 import { ChevronDown, ChevronUp, Info, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { AssetIcon } from '@/components/shared/AssetIcon';
 import { VenueTypeBadge } from '@/components/shared/VenueTypeBadge';
 import { cn } from '@/lib/utils';

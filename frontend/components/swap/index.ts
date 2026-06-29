@@ -4,6 +4,9 @@ export { SwapWithPairSelector } from "./SwapWithPairSelector";
 export { TokenPairSelector } from "./TokenPairSelector";
 export type { TokenPairSelectorProps } from "./TokenPairSelector";
 
+export { SwapPresetTemplates } from "./SwapPresetTemplates";
+export type { SwapPresetTemplatesProps } from "./SwapPresetTemplates";
+
 export { QuoteStreamStatusIndicator } from "./QuoteStreamStatusIndicator";
 export type { QuoteStreamStatusIndicatorProps } from "./QuoteStreamStatusIndicator";
 

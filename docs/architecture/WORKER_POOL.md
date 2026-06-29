@@ -305,6 +305,6 @@ Use `RUST_LOG=stellarroute_api=debug` for detailed logging.
 
 ## References
 
-- [StellarRoute Architecture](./architecture.md)
+- [StellarRoute Architecture](./README.md)
 - [Database Schema](./database-schema.md)
-- [API Reference](./api.md)
+- [API Reference](../api/README.md)

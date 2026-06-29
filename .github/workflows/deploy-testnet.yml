@@ -1,17 +1,59 @@
 name: Deploy to Testnet
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      contract_id:
+        description: "Optional router contract id. Defaults to repository variable SOROBAN_CONTRACT_ID."
+        required: false
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  STELLAR_NETWORK: testnet
 
 jobs:
-  skipped:
-    name: Deployment Skipped
+  smoke-test:
+    name: Testnet Contract Smoke Tests
     runs-on: ubuntu-latest
     steps:
-      - name: Notice
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-soroban-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-soroban-
+
+      - name: Install Soroban CLI
+        run: cargo install --locked soroban-cli || true
+
+      - name: Set up deployer identity
+        env:
+          SOROBAN_DEPLOYER_SECRET: ${{ secrets.SOROBAN_DEPLOYER_SECRET }}
         run: |
-          echo "## Deployment Skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "Automatic deployments are disabled on push." >> "$GITHUB_STEP_SUMMARY"
+          soroban network add testnet \
+            --rpc-url "https://soroban-testnet.stellar.org:443" \
+            --network-passphrase "Test SDF Network ; September 2015" || true
+          echo "${SOROBAN_DEPLOYER_SECRET}" | soroban keys add deployer --secret-key stdin --global || true
+
+      - name: Register pools
+        env:
+          STELLARROUTE_TESTNET_ROUTER_ID: ${{ inputs.contract_id || vars.SOROBAN_CONTRACT_ID }}
+        run: ./scripts/register-pools.sh --network testnet
+
+      - name: Run smoke tests
+        env:
+          STELLARROUTE_TESTNET_ROUTER_ID: ${{ inputs.contract_id || vars.SOROBAN_CONTRACT_ID }}
+          STELLARROUTE_SMOKE_ROUTE: ${{ vars.STELLARROUTE_SMOKE_ROUTE }}
+          STELLARROUTE_SMOKE_AMOUNT_IN: ${{ vars.STELLARROUTE_SMOKE_AMOUNT_IN }}
+        run: ./scripts/smoke-test-testnet.sh --network testnet

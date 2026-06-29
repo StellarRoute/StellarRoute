@@ -159,17 +159,71 @@ extend_ttl() {
 
 # ── Alerting ──────────────────────────────────────────────────────────
 
+redact_secrets() {
+    local text="$1"
+    # Redact any potential secrets (private keys, API keys, etc.)
+    echo "${text}" | sed -E 's/(secret|key|token|password)=[[:alnum:]_-]+/\1=REDACTED/gI'
+}
+
 alert_failure() {
     local error_msg="$1"
+    local timestamp
+    timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local contract_id
+    contract_id="$(get_contract_id)"
+    local redacted_error
+    redacted_error="$(redact_secrets "${error_msg}")"
+
     log_error "ALERT: TTL extension failed! Contract storage may be at risk."
-    log_error "Error: ${error_msg}"
+    log_error "Error: ${redacted_error}"
     log_error "Action required: manually extend TTLs or investigate."
 
-    # Placeholder: integrate with your alerting system
-    # Examples:
-    #   curl -X POST "https://hooks.slack.com/..." -d "{\"text\": \"TTL extension failed: ${error_msg}\"}"
-    #   aws sns publish --topic-arn "..." --message "TTL extension failed"
-    #   echo "${error_msg}" | mail -s "StellarRoute TTL Alert" ops@example.com
+    # Send webhook alert if configured
+    if [[ -n "${TTL_ALERT_WEBHOOK_URL:-}" ]]; then
+        log_info "Sending failure alert to webhook..."
+        
+        # Slack-compatible JSON payload
+        local payload
+        payload=$(cat <<EOF
+{
+  "text": "⚠️ StellarRoute TTL Extension Failed",
+  "attachments": [
+    {
+      "color": "danger",
+      "title": "TTL Extension Failure",
+      "fields": [
+        {
+          "title": "Network",
+          "value": "${NETWORK}",
+          "short": true
+        },
+        {
+          "title": "Contract ID",
+          "value": "${contract_id}",
+          "short": true
+        },
+        {
+          "title": "Timestamp",
+          "value": "${timestamp}",
+          "short": true
+        }
+      ],
+      "text": "Error: ${redacted_error}",
+      "footer": "StellarRoute TTL Bot"
+    }
+  ]
+}
+EOF
+)
+
+        if command -v curl &>/dev/null; then
+            curl -X POST "${TTL_ALERT_WEBHOOK_URL}" \
+                -H "Content-Type: application/json" \
+                -d "${payload}" 2>/dev/null || log_warn "Failed to send webhook alert"
+        else
+            log_warn "curl not available, cannot send webhook alert"
+        fi
+    fi
 }
 
 # ── Main Logic ────────────────────────────────────────────────────────

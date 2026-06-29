@@ -144,7 +144,12 @@ impl TieredAmmFallback {
 
         if !live.is_empty() {
             let dropped = candidates.len() - live.len();
-            tracing::debug!(tier = "live_amm", kept = live.len(), dropped, "fallback resolved");
+            tracing::debug!(
+                tier = "live_amm",
+                kept = live.len(),
+                dropped,
+                "fallback resolved"
+            );
             return Ok(FallbackResult {
                 tier: AmmFallbackTier::LiveAmm,
                 edges: live,
@@ -156,9 +161,7 @@ impl TieredAmmFallback {
         // Tier 1 – cached AMM (AMM edges beyond live threshold but within max_cache_age)
         let cached: Vec<LiquidityEdge> = candidates
             .iter()
-            .filter(|c| {
-                c.edge.venue_type == "amm" && c.data_age < self.config.max_cache_age
-            })
+            .filter(|c| c.edge.venue_type == "amm" && c.data_age < self.config.max_cache_age)
             .map(|c| c.edge.clone())
             .collect();
 
@@ -204,7 +207,10 @@ impl TieredAmmFallback {
         }
 
         // Tier 3 – nothing viable
-        tracing::error!(tier = "empty", "all fallback tiers exhausted; no viable edges");
+        tracing::error!(
+            tier = "empty",
+            "all fallback tiers exhausted; no viable edges"
+        );
         Err(FallbackError::NoViableEdges)
     }
 }
@@ -224,8 +230,6 @@ mod tests {
             liquidity: 1_000_000_000,
             price: 1.0,
             fee_bps: 30,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }
     }
 
@@ -238,8 +242,6 @@ mod tests {
             liquidity: 500_000_000,
             price: 1.0,
             fee_bps: 10,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }
     }
 
@@ -300,7 +302,10 @@ mod tests {
             data_age: Duration::from_secs(9999),
         }];
         // SDEX-only fallback won't help since there are no SDEX edges.
-        assert!(matches!(strategy.resolve(&candidates), Err(FallbackError::NoViableEdges)));
+        assert!(matches!(
+            strategy.resolve(&candidates),
+            Err(FallbackError::NoViableEdges)
+        ));
     }
 
     #[test]
@@ -320,7 +325,10 @@ mod tests {
                 data_age: Duration::from_secs(5),
             },
         ];
-        assert!(matches!(strategy.resolve(&candidates), Err(FallbackError::NoViableEdges)));
+        assert!(matches!(
+            strategy.resolve(&candidates),
+            Err(FallbackError::NoViableEdges)
+        ));
     }
 
     #[test]
@@ -366,6 +374,9 @@ mod tests {
     #[test]
     fn test_empty_candidates_returns_error() {
         let strategy = default_strategy();
-        assert!(matches!(strategy.resolve(&[]), Err(FallbackError::NoViableEdges)));
+        assert!(matches!(
+            strategy.resolve(&[]),
+            Err(FallbackError::NoViableEdges)
+        ));
     }
 }

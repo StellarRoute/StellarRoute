@@ -100,7 +100,10 @@ fn budget_tracker_aggregates_multiple_stages() {
     let summary = tracker.finish();
 
     assert_eq!(summary.stage_results.len(), 3);
-    assert!(!summary.has_overruns(), "All stages should be within budget");
+    assert!(
+        !summary.has_overruns(),
+        "All stages should be within budget"
+    );
 }
 
 #[test]
@@ -125,7 +128,9 @@ fn budget_tracker_detects_overruns() {
 
     assert!(summary.has_overruns(), "Should detect overruns");
     assert!(
-        summary.overbudget_stages.contains(&PipelineStage::FetchCandidates),
+        summary
+            .overbudget_stages
+            .contains(&PipelineStage::FetchCandidates),
         "FetchCandidates should be over budget"
     );
 }

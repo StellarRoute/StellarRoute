@@ -1,20 +1,21 @@
+"use client";
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowRight, Trash2, Download } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { ArrowRight, Trash2, Download } from "lucide-react"
 
-import { AssetIcon } from "@/components/shared/AssetIcon"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton"
 import { CopyButton } from "@/components/shared/CopyButton"
 import { ExplorerLink } from "@/components/shared/ExplorerLink"
 import { RelativeTime } from "@/components/shared/RelativeTime"
+import { AssetIcon } from "@/components/shared/AssetIcon"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
-import type { TransactionRecord } from "@/types/transaction"
-import { TransactionStatusBadge } from "@/components/shared/TransactionStatusBadge"
+import { TransactionRecord } from "@/types/transaction"
 import {
   Table,
   TableBody,
@@ -38,7 +39,7 @@ import {
   triggerCSVDownload,
 } from "@/lib/transaction-csv-export"
 
-// Hardcode mock wallet to match DemoSwap
+// Hardcode mock wallet used by the local swap demo data
 const MOCK_WALLET = "GBSU...XYZ9"
 const ACTIVITY_VIRTUALIZATION_THRESHOLD = 24
 const ACTIVITY_ROW_HEIGHT = 80
@@ -127,6 +128,23 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
   const visibleTxs = shouldVirtualize
     ? sortedTxs.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     : sortedTxs
+
+  const getStatusBadge = (status: TransactionRecord["status"]) => {
+    switch (status) {
+      case "confirmed":
+        return <Badge className="bg-success" aria-label="Status: confirmed">Confirmed</Badge>
+      case "failed":
+        return <Badge variant="destructive" aria-label="Status: failed">Failed</Badge>
+      case "pending":
+        return <Badge variant="secondary" aria-label="Status: pending">Pending</Badge>
+      case "submitted":
+        return <Badge variant="secondary" aria-label="Status: submitted">Submitted</Badge>
+      case "dropped":
+        return <Badge variant="outline" aria-label="Status: dropped">Dropped</Badge>
+      default:
+        return <Badge variant="outline" aria-label={`Status: ${status}`}>{status}</Badge>
+    }
+  }
 
   return (
     <Card className="flex flex-col h-[calc(100vh-140px)] m-4 shadow-sm border-primary/10">
@@ -282,7 +300,7 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
                       1 {tx.fromAsset} = {tx.exchangeRate} {tx.toAsset}
                     </TableCell>
                     <TableCell>
-                      <TransactionStatusBadge status={tx.status} size={16} />
+                      {getStatusBadge(tx.status)}
                       {tx.errorMessage && (
                         <div
                           className="text-[10px] text-destructive mt-1 max-w-[150px] truncate"

@@ -1,13 +1,17 @@
 //! API middleware
 
+pub mod admin;
 pub mod api_versioning;
+pub mod auth;
 pub mod deprecation;
 pub mod rate_limit;
 pub mod request_id;
 pub mod tracing;
 pub mod validation;
 
+pub use admin::AdminAuth;
 pub use api_versioning::api_versioning_layer;
+pub use auth::{AuthConfig, AuthLayer};
 pub use deprecation::{legacy_route_deprecation, LEGACY_ROUTE_SUNSET, VERSIONING_GUIDE_URL};
 pub use rate_limit::{EndpointConfig, RateLimitConfig, RateLimitLayer};
 pub use request_id::{request_id_layer, RequestId, REQUEST_ID_HEADER};

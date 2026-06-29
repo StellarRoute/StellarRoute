@@ -29,12 +29,16 @@ fn sample_quote_response() -> QuoteResponse {
                 to_asset: eurc.clone(),
                 price: "0.9991000".to_string(),
                 source: "sdex".to_string(),
+                liquidity_depth: None,
+                fee_bps: None,
             },
             PathStep {
                 from_asset: eurc,
                 to_asset: usdc.clone(),
                 price: "0.9996420".to_string(),
                 source: "amm:pool-eurc-usdc".to_string(),
+                liquidity_depth: None,
+                fee_bps: None,
             },
         ],
         timestamp: 1_712_345_678_901,
@@ -77,6 +81,8 @@ fn sample_quote_response() -> QuoteResponse {
             stale_count: 1,
             max_staleness_secs: 27,
         }),
+        midpoint: None,
+        spread_bps: None,
     }
 }
 

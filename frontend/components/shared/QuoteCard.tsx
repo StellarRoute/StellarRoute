@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { PathStep } from '@/types';
+import { useViewState } from '@/components/shared/ViewState';
+import type { PathStep } from '@/types';
 
 export interface QuoteCardProps {
   fromAmount?: string;
@@ -13,29 +14,18 @@ export interface QuoteCardProps {
 }
 
 export function QuoteCard({ fromAmount, toAmount, price, slippage, path, isLoading, error }: QuoteCardProps) {
-  if (isLoading) {
-    return (
-      <Card className="p-4" role="status" aria-busy="true">
-        <div className="text-sm text-muted-foreground">Loading quote…</div>
-      </Card>
-    );
-  }
+  const view = useViewState(
+    fromAmount && toAmount && price ? { fromAmount, toAmount, price } : null,
+    isLoading ?? false,
+    error,
+    {
+      loadingMessage: "Loading quote…",
+      emptyMessage: "No quote data",
+      emptyDescription: "Enter an amount to see a quote.",
+    },
+  );
 
-  if (error) {
-    return (
-      <Card className="p-4 border-destructive">
-        <div className="text-sm text-destructive">Quote error: {error}</div>
-      </Card>
-    );
-  }
-
-  if (!fromAmount || !toAmount || !price) {
-    return (
-      <Card className="p-4">
-        <div className="text-sm text-muted-foreground">No quote data</div>
-      </Card>
-    );
-  }
+  if (view.state !== "ready") return view.component;
 
   return (
     <Card className="p-4">

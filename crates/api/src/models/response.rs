@@ -73,6 +73,18 @@ pub struct CacheMetricsResponse {
     pub stale_inputs_excluded: u64,
 }
 
+/// Cache flush response for admin cache invalidation operations
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CacheFlushResponse {
+    pub base: String,
+    pub quote: String,
+    pub quote_pattern: String,
+    pub orderbook_pattern: String,
+    pub deleted_quote_keys: u64,
+    pub deleted_orderbook_keys: u64,
+    pub total_deleted: u64,
+}
+
 /// Trading pair information — matches GET /api/v1/pairs spec
 ///
 /// `base` / `counter` are human-readable codes (e.g. "XLM", "USDC").
@@ -164,6 +176,7 @@ pub struct OrderbookResponse {
     pub quote_asset: AssetInfo,
     pub bids: Vec<OrderbookLevel>,
     pub asks: Vec<OrderbookLevel>,
+    pub summary: OrderbookSummary,
     pub timestamp: i64,
 }
 
@@ -173,6 +186,19 @@ pub struct OrderbookLevel {
     pub price: String,
     pub amount: String,
     pub total: String,
+}
+
+/// Summary information for an orderbook snapshot
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct OrderbookSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midpoint: Option<String>,
 }
 
 /// Freshness metadata about the data sources used to compute a quote
@@ -346,29 +372,6 @@ pub struct BatchQuoteItemResult {
     pub status: String,
 }
 
-/// Registration status for quote-expiration webhook delivery.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct QuoteExpirationWebhookRegistrationResponse {
-    pub consumer_id: String,
-    pub webhook_url: String,
-    pub enabled: bool,
-    /// Present only when the server generated a secret during registration.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub generated_signing_secret: Option<String>,
-}
-
-/// Payload sent to integrator webhook endpoints when a quote expires or is invalidated.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct QuoteExpirationWebhookPayload {
-    pub event_id: String,
-    pub consumer_id: String,
-    pub quote_id: String,
-    pub pair: String,
-    pub reason: String,
-    /// Unix timestamp in milliseconds representing event time.
-    pub expired_at: i64,
-}
-
 impl BatchQuoteItemResult {
     pub fn ok(index: usize, quote: QuoteResponse) -> Self {
         Self {
@@ -383,6 +386,54 @@ impl BatchQuoteItemResult {
         Self {
             index,
             quote: None,
+            error: Some(error),
+            status: "error".to_string(),
+        }
+    }
+}
+
+/// Response for a batch orderbook request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchOrderbookResponse {
+    /// Results in the same order as the request items.
+    pub results: Vec<BatchOrderbookItemResult>,
+    /// Number of items that succeeded.
+    pub items_succeeded: usize,
+    /// Number of items that failed (per-item errors, not a batch-level failure).
+    pub items_failed: usize,
+    /// Total items in the batch.
+    pub total: usize,
+}
+
+/// Result for a single item in a batch orderbook response.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchOrderbookItemResult {
+    /// Zero-based index of this item in the original request.
+    pub index: usize,
+    /// The orderbook, present when `status == "ok"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orderbook: Option<OrderbookResponse>,
+    /// Per-item error, present when `status == "error"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<BatchItemError>,
+    /// `"ok"` or `"error"`.
+    pub status: String,
+}
+
+impl BatchOrderbookItemResult {
+    pub fn ok(index: usize, orderbook: OrderbookResponse) -> Self {
+        Self {
+            index,
+            orderbook: Some(orderbook),
+            error: None,
+            status: "ok".to_string(),
+        }
+    }
+
+    pub fn err(index: usize, error: BatchItemError) -> Self {
+        Self {
+            index,
+            orderbook: None,
             error: Some(error),
             status: "error".to_string(),
         }
@@ -744,6 +795,8 @@ mod tests {
                 to_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),
                 price: "1.0000000".to_string(),
                 source: "sdex".to_string(),
+                liquidity_depth: None,
+                fee_bps: None,
             }],
             timestamp: 1_700_000_000_000,
             expires_at: Some(1_700_000_003_000),
@@ -757,6 +810,8 @@ mod tests {
                 stale_count: 0,
                 max_staleness_secs: 0,
             }),
+            midpoint: None,
+            spread_bps: None,
         };
 
         let expected = serde_json::to_vec(&quote).expect("serialize expected");
@@ -775,4 +830,32 @@ mod tests {
         assert_eq!(restored.amount, "1.0000000");
         assert_eq!(restored.quote_type, "sell");
     }
+}
+
+// ── Webhook Response Models ───────────────────────────────────────────────────
+
+/// Webhook registration response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct QuoteExpirationWebhookRegistrationResponse {
+    pub consumer_id: String,
+    pub webhook_url: String,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_signing_secret: Option<String>,
+}
+
+/// Quote expiration webhook payload
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct QuoteExpirationWebhookPayload {
+    pub event_id: String,
+    pub consumer_id: String,
+    pub pair: String,
+    pub reason: String,
+    pub expired_at: i64,
+    pub event: String,
+    pub timestamp: i64,
+    pub quote_id: String,
+    pub base_asset: String,
+    pub quote_asset: String,
+    pub amount_in: String,
 }

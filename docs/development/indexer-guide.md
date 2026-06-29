@@ -229,6 +229,19 @@ curl http://localhost:3000/health
 
 ## 9. Operational Notes
 
-- Migrations are run automatically by the indexer binary on startup.
+- Migrations are run automatically by the indexer binary on startup. Applied in order:
+  - `0001_init.sql` — base schema (assets, sdex_offers)
+  - `0002_performance_indexes.sql` — query indexes
+  - `0003_trading_pairs_and_snapshots.sql` — trading pairs + orderbook snapshots
+  - `0004_normalized_liquidity.sql` — unified liquidity view
+  - `0005_venue_health_scores.sql` — venue health tracking
+  - `0006_maintenance_policies.sql` — retention/archival policies
+  - `0007_backfill_and_normalized_storage.sql` — backfill + materialized storage
+  - `0008_soroban_discovery_cursors.sql` — Soroban event cursors
+  - `0009_finalize_unified_liquidity.sql` — unified liquidity finalization
+  - `0010_asset_metadata.sql` — asset metadata fields
+  - `0011_trace_context_provenance.sql` — trace context + provenance columns
+  - `0012_contract_swap_activity.sql` — on-chain swap activity log
+  - `0013_amm_pools.sql` — AMM pool registry table
 - The indexer can continue running through transient ingestion errors; investigate sustained staleness rather than brief blips.
 - For architecture-level data quality strategy and SQL diagnostics, use [RECONCILIATION.md](../architecture/RECONCILIATION.md) as the source of truth.

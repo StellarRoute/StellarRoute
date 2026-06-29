@@ -156,17 +156,17 @@ impl SnapshotIsolationValidator {
     ///
     /// Returns `Err(SnapshotIsolationError::MixedSnapshots)` if any hop
     /// deviates from the snapshot of the first hop.
-    pub fn validate_hops(
-        &self,
-        hops: &[ValidatedHop],
-    ) -> Result<(), SnapshotIsolationError> {
+    pub fn validate_hops(&self, hops: &[ValidatedHop]) -> Result<(), SnapshotIsolationError> {
         self.metrics
             .inner
             .total_validations
             .fetch_add(1, Ordering::Relaxed);
 
         if hops.is_empty() {
-            self.metrics.inner.empty_paths.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .inner
+                .empty_paths
+                .fetch_add(1, Ordering::Relaxed);
             if self.config.strict {
                 return Err(SnapshotIsolationError::EmptyPath);
             }
@@ -176,7 +176,10 @@ impl SnapshotIsolationValidator {
         let baseline = hops[0].snapshot_id;
         for (idx, hop) in hops.iter().enumerate().skip(1) {
             if hop.snapshot_id != baseline {
-                self.metrics.inner.violations.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .inner
+                    .violations
+                    .fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(
                     hop_index = idx,
                     expected = %baseline,
@@ -332,7 +335,11 @@ mod tests {
             venue_ref: "pool_z".to_string(),
         };
         let json = serde_json::to_string(&err).expect("should serialize");
-        assert!(json.contains("mixed_snapshots") || json.contains("MixedSnapshots") || json.contains("hop_index"));
+        assert!(
+            json.contains("mixed_snapshots")
+                || json.contains("MixedSnapshots")
+                || json.contains("hop_index")
+        );
     }
 
     #[test]
@@ -354,6 +361,9 @@ mod tests {
                 destination_asset: "BTC".into(),
             },
         ];
-        assert!(v.validate_hops(&hops).is_err(), "concurrent-update mixed snapshot must be rejected");
+        assert!(
+            v.validate_hops(&hops).is_err(),
+            "concurrent-update mixed snapshot must be rejected"
+        );
     }
 }

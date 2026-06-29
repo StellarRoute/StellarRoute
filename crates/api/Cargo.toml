@@ -46,6 +46,8 @@ rand.workspace = true
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+flate2 = "1"
+brotli = "8"
 
 # Internal dependencies
 stellarroute-indexer = { path = "../indexer" }

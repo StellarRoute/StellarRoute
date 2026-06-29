@@ -2,7 +2,7 @@
 
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
-use stellarroute_api::{state::DatabasePools, telemetry, Server, ServerConfig};
+use stellarroute_api::{state::DatabasePools, telemetry, PurgerConfig, Server, ServerConfig};
 use tracing::{error, info};
 
 fn parse_bool_env(name: &str) -> bool {
@@ -222,11 +222,34 @@ async fn main() {
             .unwrap_or(3000),
         enable_cors: true,
         enable_compression: true,
+        admin_auth_token: std::env::var("ADMIN_AUTH_TOKEN").ok(),
         redis_url,
         quote_cache_ttl_seconds: std::env::var("QUOTE_CACHE_TTL_SECONDS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(2),
+    };
+
+    // Load purger configuration
+    let purger_config = PurgerConfig::from_env();
+    info!(
+        enabled = purger_config.enabled,
+        interval_secs = purger_config.interval_secs,
+        replay_retention_days = purger_config.replay_artifacts_retention_days,
+        audit_log_retention_days = purger_config.audit_log_retention_days,
+        "Quote purger configuration loaded"
+    );
+
+    // Clone pool for purger task
+    let purger_pool = pool.clone();
+
+    // Spawn purger background task
+    let _purger_handle = if purger_config.enabled {
+        Some(tokio::spawn(async move {
+            stellarroute_api::purger::run_purger_task(purger_pool, purger_config).await;
+        }))
+    } else {
+        None
     };
 
     // Create and start server

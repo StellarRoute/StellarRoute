@@ -53,14 +53,12 @@ export interface UseSystemMessagesResult {
 
 export function useSystemMessages(): UseSystemMessagesResult {
   const [allMessages, setAllMessages] = useState<SystemMessage[]>([]);
-  const [state, setState] = useState<MessageState>({ read: [], dismissed: [] });
+  const [state, setState] = useState<MessageState>(() => {
+    if (typeof window === "undefined") return { read: [], dismissed: [] };
+    return loadState();
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-
-  // Load persisted read/dismissed state once on mount
-  useEffect(() => {
-    setState(loadState());
-  }, []);
 
   const fetchMessages = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -79,6 +77,7 @@ export function useSystemMessages(): UseSystemMessagesResult {
   }, []);
 
   // Initial fetch + polling
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const controller = new AbortController();
     fetchMessages(controller.signal);

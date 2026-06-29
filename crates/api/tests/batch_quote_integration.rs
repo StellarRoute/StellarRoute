@@ -326,6 +326,8 @@ fn batch_item_result_ok_shape() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let result = BatchQuoteItemResult::ok(0, quote);
@@ -387,6 +389,8 @@ fn batch_response_counters_are_correct() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let results = vec![

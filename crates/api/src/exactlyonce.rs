@@ -17,10 +17,19 @@ pub struct RequestIdentity {
 }
 
 impl RequestIdentity {
+    /// Produce a deterministic deduplication key.
+    ///
+    /// Normalizes individual asset identifiers via the shared
+    /// [`stellarroute_routing::normalize_asset`] so that equivalent forms
+    /// (e.g. `"XLM"` vs `"xlm"` vs `"native"`) map to the same key.  The
+    /// base/quote *order* is preserved because it carries trade-direction
+    /// semantics together with `quote_type`.
     pub fn canonical_key(&self) -> String {
+        let base = stellarroute_routing::normalize_asset(&self.base_asset);
+        let quote = stellarroute_routing::normalize_asset(&self.quote_asset);
         format!(
             "{}/{}:{}:{}:{}",
-            self.base_asset, self.quote_asset, self.amount, self.slippage_bps, self.quote_type
+            base, quote, self.amount, self.slippage_bps, self.quote_type
         )
     }
 }
@@ -199,5 +208,54 @@ mod tests {
         };
 
         assert_eq!(id1.canonical_key(), id2.canonical_key());
+    }
+
+    #[test]
+    fn test_canonical_key_asset_normalization() {
+        // Same pair, different asset casing — must produce identical key
+        let id1 = RequestIdentity {
+            base_asset: "XLM".to_string(),
+            quote_asset: "usdc".to_string(),
+            amount: "100.0000000".to_string(),
+            slippage_bps: 50,
+            quote_type: "sell".to_string(),
+        };
+
+        let id2 = RequestIdentity {
+            base_asset: "xlm".to_string(),
+            quote_asset: "USDC".to_string(),
+            amount: "100.0000000".to_string(),
+            slippage_bps: 50,
+            quote_type: "sell".to_string(),
+        };
+
+        assert_eq!(id1.canonical_key(), id2.canonical_key());
+        // The normalized key uses "native" for XLM/xlm
+        assert_eq!(id1.canonical_key(), "native/USDC:100.0000000:50:sell");
+    }
+
+    #[test]
+    fn test_canonical_key_preserves_base_quote_order() {
+        // Base/quote order is NOT swapped — it carries trade-direction semantics
+        let id_ab = RequestIdentity {
+            base_asset: "USDC".to_string(),
+            quote_asset: "native".to_string(),
+            amount: "1.0000000".to_string(),
+            slippage_bps: 0,
+            quote_type: "sell".to_string(),
+        };
+
+        let id_ba = RequestIdentity {
+            base_asset: "native".to_string(),
+            quote_asset: "USDC".to_string(),
+            amount: "1.0000000".to_string(),
+            slippage_bps: 0,
+            quote_type: "sell".to_string(),
+        };
+
+        // Different trades → different keys
+        assert_ne!(id_ab.canonical_key(), id_ba.canonical_key());
+        assert_eq!(id_ab.canonical_key(), "USDC/native:1.0000000:0:sell");
+        assert_eq!(id_ba.canonical_key(), "native/USDC:1.0000000:0:sell");
     }
 }

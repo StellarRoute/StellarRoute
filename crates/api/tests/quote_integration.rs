@@ -19,6 +19,8 @@ fn quote_response_includes_rationale_metadata() {
             to_asset: AssetInfo::credit("USDC".to_string(), None),
             price: "1.0000000".to_string(),
             source: "sdex".to_string(),
+            liquidity_depth: None,
+            fee_bps: None,
         }],
         timestamp: 1_700_000_000,
         expires_at: Some(1_700_000_030_000),
@@ -45,6 +47,8 @@ fn quote_response_includes_rationale_metadata() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let json = serde_json::to_value(&response).expect("serialization failed");
@@ -143,6 +147,8 @@ fn quote_response_serializes_degraded_flag() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let json = serde_json::to_value(&response).expect("serialization failed");

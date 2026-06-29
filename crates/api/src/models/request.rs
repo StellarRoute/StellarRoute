@@ -107,6 +107,41 @@ pub struct BatchQuoteRequest {
     pub quotes: Vec<QuoteRequestItem>,
 }
 
+/// Request item for batch orderbooks
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct OrderbookRequestItem {
+    /// Base asset identifier ("native", "CODE", or "CODE:ISSUER")
+    pub base: String,
+    /// Quote asset identifier ("native", "CODE", or "CODE:ISSUER")
+    pub quote: String,
+}
+
+impl OrderbookRequestItem {
+    /// Validate this item and return a descriptive error string on failure.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.base.is_empty() {
+            return Err("base asset cannot be empty".to_string());
+        }
+        if self.quote.is_empty() {
+            return Err("quote asset cannot be empty".to_string());
+        }
+        if self.base == self.quote {
+            return Err(format!(
+                "base and quote assets must differ (got '{}')",
+                self.base
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Batch orderbook request — up to 25 pairs in one call.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct BatchOrderbookRequest {
+    /// Orderbook items to evaluate (1–25).
+    pub requests: Vec<OrderbookRequestItem>,
+}
+
 /// Register or update quote-expiration webhook settings for an API consumer.
 #[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct QuoteExpirationWebhookRegistrationRequest {
@@ -217,7 +252,7 @@ pub enum QuoteType {
 }
 
 /// Asset identifier in path parameters
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct AssetPath {
     /// Asset code (e.g., "XLM", "USDC", or "native" for XLM)
     pub asset_code: String,

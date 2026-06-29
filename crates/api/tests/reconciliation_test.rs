@@ -10,7 +10,10 @@ use stellarroute_api::reconciliation::{
 #[test]
 fn calculate_drift_handles_equal_prices() {
     let drift = calculate_drift(100.0, 100.0);
-    assert!((drift - 0.0).abs() < 0.001, "Equal prices should have zero drift");
+    assert!(
+        (drift - 0.0).abs() < 0.001,
+        "Equal prices should have zero drift"
+    );
 }
 
 #[test]
@@ -40,7 +43,10 @@ fn calculate_drift_handles_both_zero() {
 #[test]
 fn calculate_drift_handles_negative_drift() {
     let drift = calculate_drift(100.0, 99.0);
-    assert!((drift - 1.0).abs() < 0.001, "Should calculate 1% drift for price decrease");
+    assert!(
+        (drift - 1.0).abs() < 0.001,
+        "Should calculate 1% drift for price decrease"
+    );
 }
 
 #[test]
@@ -93,7 +99,10 @@ fn reconciliation_action_equality() {
         ReconciliationAction::CacheInvalidated,
         ReconciliationAction::CacheInvalidated
     );
-    assert_ne!(ReconciliationAction::None, ReconciliationAction::AlertTriggered);
+    assert_ne!(
+        ReconciliationAction::None,
+        ReconciliationAction::AlertTriggered
+    );
 }
 
 #[test]

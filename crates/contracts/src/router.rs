@@ -69,6 +69,11 @@ impl StellarRoute {
         e.storage().instance().set(&StorageKey::FeeTo, &fee_to);
         e.storage().instance().set(&StorageKey::Paused, &false);
 
+        upgrade::set_initial_version(
+            &e,
+            _initial_wasm_hash.unwrap_or_else(|| BytesN::from_array(&e, &[0u8; 32])),
+        );
+
         storage::set_last_ttl_extension(&e, e.ledger().sequence());
 
         events::initialized(&e, admin, fee_rate);
@@ -251,22 +256,22 @@ impl StellarRoute {
         Ok(())
     }
 
-    pub fn pause(e: Env) -> Result<(), ContractError> {
+    pub fn pause(e: Env, caller: Address) -> Result<(), ContractError> {
         if storage::is_multisig(&e) {
             return Err(ContractError::UseGovernance);
         }
-        storage::get_admin(&e).require_auth();
+        Self::require_admin(&e, &caller)?;
         e.storage().instance().set(&StorageKey::Paused, &true);
         events::paused(&e);
         extend_instance_ttl(&e);
         Ok(())
     }
 
-    pub fn unpause(e: Env) -> Result<(), ContractError> {
+    pub fn unpause(e: Env, caller: Address) -> Result<(), ContractError> {
         if storage::is_multisig(&e) {
             return Err(ContractError::UseGovernance);
         }
-        storage::get_admin(&e).require_auth();
+        Self::require_admin(&e, &caller)?;
         e.storage().instance().set(&StorageKey::Paused, &false);
         events::unpaused(&e);
         extend_instance_ttl(&e);
@@ -339,8 +344,8 @@ impl StellarRoute {
     }
 
     /// Execute a pending upgrade after the time-lock has elapsed.
-    pub fn execute_upgrade(e: Env) -> Result<(), ContractError> {
-        upgrade::execute_upgrade(&e)
+    pub fn execute_upgrade(e: Env, admin: Address) -> Result<(), ContractError> {
+        upgrade::execute_upgrade(&e, admin)
     }
 
     /// Cancel a pending upgrade (proposer only).
@@ -602,6 +607,14 @@ impl StellarRoute {
         if paused {
             return Err(ContractError::Paused);
         }
+        Ok(())
+    }
+
+    fn require_admin(e: &Env, caller: &Address) -> Result<(), ContractError> {
+        if storage::get_admin(e) != *caller {
+            return Err(ContractError::Unauthorized);
+        }
+        caller.require_auth();
         Ok(())
     }
 

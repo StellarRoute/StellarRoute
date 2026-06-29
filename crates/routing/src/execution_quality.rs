@@ -37,7 +37,10 @@ pub struct WeightBounds {
 
 impl Default for WeightBounds {
     fn default() -> Self {
-        Self { min: 0.1, max: 0.95 }
+        Self {
+            min: 0.1,
+            max: 0.95,
+        }
     }
 }
 
@@ -139,20 +142,23 @@ impl ExecutionQualityTracker {
         let alpha = self.config.ema_alpha;
 
         let mut guard = self.state.write().expect("weight state lock poisoned");
-        let entry = guard.entry(obs.source.clone()).or_insert_with(|| SourceState {
-            source: obs.source.clone(),
-            quality_ema: self.config.default_weight,
-            error_rate_ema: 0.0,
-            weight: self.config.default_weight,
-            observation_count: 0,
-        });
+        let entry = guard
+            .entry(obs.source.clone())
+            .or_insert_with(|| SourceState {
+                source: obs.source.clone(),
+                quality_ema: self.config.default_weight,
+                error_rate_ema: 0.0,
+                weight: self.config.default_weight,
+                observation_count: 0,
+            });
 
         let prev_weight = entry.weight;
         entry.quality_ema = alpha * quality_score + (1.0 - alpha) * entry.quality_ema;
         entry.error_rate_ema = alpha * error_signal + (1.0 - alpha) * entry.error_rate_ema;
         entry.observation_count += 1;
 
-        let raw_weight = entry.quality_ema * (1.0 - self.config.error_penalty * entry.error_rate_ema);
+        let raw_weight =
+            entry.quality_ema * (1.0 - self.config.error_penalty * entry.error_rate_ema);
         entry.weight = raw_weight.clamp(self.config.bounds.min, self.config.bounds.max);
 
         info!(
@@ -217,7 +223,10 @@ mod tests {
         ExecutionQualityTracker::new(QualityTrackerConfig {
             ema_alpha: 0.5,
             default_weight: 0.5,
-            bounds: WeightBounds { min: 0.1, max: 0.95 },
+            bounds: WeightBounds {
+                min: 0.1,
+                max: 0.95,
+            },
             error_penalty: 0.5,
         })
     }
@@ -239,7 +248,10 @@ mod tests {
             });
         }
         let w = tracker.weight_for("amm");
-        assert!(w > 0.5, "weight should increase with consistent high quality; got {w}");
+        assert!(
+            w > 0.5,
+            "weight should increase with consistent high quality; got {w}"
+        );
         assert!(w <= 0.95, "weight must not exceed max bound; got {w}");
     }
 
@@ -265,7 +277,10 @@ mod tests {
             });
         }
         let w_after = tracker.weight_for("sdex");
-        assert!(w_after < w_before, "errors should reduce weight; before={w_before}, after={w_after}");
+        assert!(
+            w_after < w_before,
+            "errors should reduce weight; before={w_before}, after={w_after}"
+        );
     }
 
     #[test]
@@ -367,7 +382,13 @@ mod tests {
         let dynamic_sdex = tracker.weight_for("sdex");
 
         // Dynamic weights should diverge from static
-        assert!(dynamic_amm > static_amm, "dynamic amm weight should exceed static after good performance");
-        assert!(dynamic_sdex < static_sdex, "dynamic sdex weight should fall below static after poor performance");
+        assert!(
+            dynamic_amm > static_amm,
+            "dynamic amm weight should exceed static after good performance"
+        );
+        assert!(
+            dynamic_sdex < static_sdex,
+            "dynamic sdex weight should fall below static after poor performance"
+        );
     }
 }

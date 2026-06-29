@@ -102,6 +102,7 @@ impl IndexerError {
         match self {
             Self::NetworkTimeout { .. }
             | Self::NetworkConnection(_)
+            | Self::RateLimitExceeded { .. }
             | Self::JsonParse { .. }
             | Self::HttpRequest { .. } => true,
             // 5xx server errors are transient and worth retrying;

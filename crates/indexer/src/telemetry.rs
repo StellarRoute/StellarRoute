@@ -20,6 +20,7 @@
 //! RUST_LOG=info LOG_FORMAT=json OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 ./stellarroute-indexer
 //! ```
 
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry::{global, KeyValue};
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry_otlp::WithExportConfig;

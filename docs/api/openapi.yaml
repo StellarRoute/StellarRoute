@@ -401,6 +401,11 @@ paths:
                   - price: "0.1060000"
                     amount: "300.0000000"
                     total: "31.8000000"
+                summary:
+                  bid: "0.1050000"
+                  ask: "0.1060000"
+                  spread_bps: 95
+                  midpoint: "0.1055000"
                 timestamp: 1740312000
         "400":
           description: Invalid asset identifier
@@ -444,6 +449,64 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /api/v1/price-history/{base}/{quote}:
+    get:
+      operationId: get_price_history
+      summary: Get 24h price history
+      description: |
+        Returns a lightweight 24h sparkline series for the selected trading pair.
+
+        The backend derives the series from `orderbook_snapshots.mid_price`
+        using hourly aggregation buckets. If no snapshots are available in the
+        trailing 24h window, the endpoint returns an empty `points` array.
+      tags:
+        - trading
+      parameters:
+        - $ref: "#/components/parameters/BaseAsset"
+        - $ref: "#/components/parameters/QuoteAsset"
+      responses:
+        "200":
+          description: 24h price history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceHistoryResponse"
+              example:
+                base_asset:
+                  asset_type: native
+                  asset_code: null
+                  asset_issuer: null
+                quote_asset:
+                  asset_type: credit_alphanum4
+                  asset_code: USDC
+                  asset_issuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                window: "24h"
+                source: orderbook_snapshots.mid_price
+                generated_at: 1740312000000
+                points:
+                  - timestamp: 1740225600000
+                    price: "0.1051000"
+                  - timestamp: 1740229200000
+                    price: "0.1054000"
+        "400":
+          description: Invalid asset identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trading pair not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/quote/{base}/{quote}:
     get:
       operationId: get_quote
@@ -456,7 +519,10 @@ paths:
         The router evaluates both SDEX offers and Soroban AMM pools to find
         the optimal execution path.
 
-        Results are cached for **5 seconds**.
+        Results are cached for **5 seconds**. Large responses honor
+        `Accept-Encoding: br` or `Accept-Encoding: gzip`; smaller responses
+        remain uncompressed. Prometheus metrics track original versus wire
+        response bytes.
       tags:
         - trading
       parameters:
@@ -489,12 +555,27 @@ paths:
             type: string
             enum: [sell, buy]
             default: sell
+        - name: Accept-Encoding
+          in: header
+          description: Optional response compression negotiation. Large quote responses support `br` and `gzip`; smaller responses remain uncompressed.
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Best available price quote
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestIdHeader"
+            Vary:
+              schema:
+                type: string
+              description: Includes `Accept-Encoding` when quote response compression is negotiated.
+            Content-Encoding:
+              schema:
+                type: string
+                enum: [br, gzip]
+              description: Present when the quote response is compressed.
           content:
             application/json:
               schema:
@@ -990,6 +1071,48 @@ components:
           format: int64
           description: Unix timestamp of the snapshot
           example: 1740312000
+
+    PriceHistoryPoint:
+      type: object
+      required: [timestamp, price]
+      description: Aggregated mid-price sample for a 24h sparkline
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds for the sampling bucket
+          example: 1740225600000
+        price:
+          type: string
+          description: Average mid-price for the bucket
+          example: "0.1051000"
+
+    PriceHistoryResponse:
+      type: object
+      required: [base_asset, quote_asset, window, source, generated_at, points]
+      description: Historical price series derived from orderbook snapshots
+      properties:
+        base_asset:
+          $ref: "#/components/schemas/AssetInfo"
+        quote_asset:
+          $ref: "#/components/schemas/AssetInfo"
+        window:
+          type: string
+          description: Fixed time window for the series
+          example: "24h"
+        source:
+          type: string
+          description: Backend data source contract
+          example: orderbook_snapshots.mid_price
+        generated_at:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds when the series was generated
+          example: 1740312000000
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceHistoryPoint"
 
     PathStep:
       type: object

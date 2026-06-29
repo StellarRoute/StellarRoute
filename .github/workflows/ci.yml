@@ -49,8 +49,12 @@ jobs:
           CI: "true"
 
   frontend-tests:
-    name: Frontend Unit Tests
+    name: Frontend Unit Tests (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -62,9 +66,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix frontend
       - name: Run frontend tests
-        run: npm --prefix frontend run test
+        run: npm --prefix frontend run test -- --shard=${{ matrix.shard }}/4
         env:
-          NODE_OPTIONS: --max-old-space-size=12288
+          NODE_OPTIONS: --max-old-space-size=6144
           CI: "true"
 
   frontend-storybook:

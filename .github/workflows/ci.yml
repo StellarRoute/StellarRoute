@@ -51,12 +51,24 @@ jobs:
           CI: "true"
 
   frontend-tests:
-    name: Frontend Unit Tests (${{ matrix.suite }})
+    name: Frontend Unit Tests (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        suite: [components, hooks, lib, app]
+        include:
+          - label: hooks
+            suite: hooks
+          - label: lib
+            suite: lib
+          - label: app
+            suite: app
+          - label: components (1/2)
+            suite: components
+            shard: 1/2
+          - label: components (2/2)
+            suite: components
+            shard: 2/2
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -70,7 +82,7 @@ jobs:
       - name: Run frontend tests
         run: |
           if [ "${{ matrix.suite }}" = "components" ]; then
-            npm --prefix frontend run test -- components --pool=forks --maxWorkers=2
+            npm --prefix frontend run test -- components --pool=forks --maxWorkers=1 --shard=${{ matrix.shard }}
           else
             npm --prefix frontend run test -- ${{ matrix.suite }}
           fi

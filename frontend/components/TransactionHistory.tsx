@@ -1,5 +1,4 @@
 "use client";
-"use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowRight, Trash2, Download, Wallet } from "lucide-react"
@@ -52,6 +51,8 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
     error: walletError,
     connect,
     walletNetwork,
+    network,
+    setNetwork,
   } = useWallet()
   const { transactions, clearHistory } = useTransactionHistory(address)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
@@ -384,7 +385,9 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
         isLoading={walletLoading}
         error={walletError?.message ?? null}
         onConnect={connect}
+        appNetwork={network}
         walletNetwork={walletNetwork}
+        onNetworkSelection={setNetwork}
       />
     </Card>
   )

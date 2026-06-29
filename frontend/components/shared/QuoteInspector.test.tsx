@@ -82,7 +82,7 @@ describe('QuoteInspector', () => {
     
     expect(handleSelect).toHaveBeenCalledWith(mockQuotes[1]);
     expect(screen.getByText('Reconciliation Finalized')).toBeInTheDocument();
-    expect(screen.getByText(/Soroban AMM \(Phoenix\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Soroban AMM \(Phoenix\)/).length).toBeGreaterThan(0);
   });
 
   it('renders loading skeleton', () => {

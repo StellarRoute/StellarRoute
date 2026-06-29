@@ -98,6 +98,20 @@ STELLAR_HORIZON_URL=https://horizon.stellar.org
 SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
 ```
 
+### Frontend Configuration (Profiles)
+
+For the frontend web application, configuration is managed via environment variables defined in the `frontend/` directory (e.g., in `.env.local` or `.env.production`).
+
+To point the frontend to a hosted testnet API and target the Stellar Testnet:
+1. Copy the testnet environment example:
+   ```bash
+   cp frontend/.env.testnet.example frontend/.env.local
+   ```
+2. Configure the following environment variables:
+   - `NEXT_PUBLIC_API_URL`: Points to the hosted backend API (e.g., `https://api.testnet.stellarroute.com/api/v1`).
+   - `NEXT_PUBLIC_STELLAR_NETWORK`: Defines the target network (`testnet` or `mainnet`). This drives default wallet connections, header/footer network badges, and network validation rules.
+   - `NEXT_PUBLIC_STELLAR_HORIZON_URL`: Configures a custom Stellar Horizon endpoint (e.g., `https://horizon-testnet.stellar.org`).
+
 ## Next Steps
 
 - See [Architecture Documentation](../architecture/README.md) for system design

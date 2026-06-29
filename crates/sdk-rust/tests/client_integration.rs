@@ -7,6 +7,7 @@
 //! Run with:
 //!   cargo test -p stellarroute-sdk
 
+use std::time::Duration;
 use stellarroute_sdk::{ApiErrorCode, ClientBuilder, QuoteRequest, QuoteType, SdkError};
 use wiremock::{
     matchers::{method, path, query_param},
@@ -21,6 +22,17 @@ async fn mock_server() -> MockServer {
 
 fn client(server: &MockServer) -> stellarroute_sdk::StellarRouteClient {
     ClientBuilder::new(server.uri()).build().unwrap()
+}
+
+fn client_with_retries(
+    server: &MockServer,
+    max_retries: u32,
+) -> stellarroute_sdk::StellarRouteClient {
+    ClientBuilder::new(server.uri())
+        .max_retries(max_retries)
+        .base_backoff(Duration::from_millis(10))
+        .build()
+        .unwrap()
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
@@ -112,6 +124,7 @@ async fn orderbook_returns_bids_and_asks() {
             },
             "bids": [{ "price": "0.1050000", "amount": "500.0000000", "total": "52.5000000" }],
             "asks": [{ "price": "0.1060000", "amount": "300.0000000", "total": "31.8000000" }],
+            "summary": { "bid": "0.1050000", "ask": "0.1060000", "spread_bps": 9, "midpoint": "0.1055000" },
             "timestamp": 1740312000
         })))
         .mount(&server)
@@ -416,4 +429,149 @@ fn quote_type_display() {
     assert_eq!(QuoteType::Sell.as_str(), "sell");
     assert_eq!(QuoteType::Buy.as_str(), "buy");
     assert_eq!(QuoteType::Sell.to_string(), "sell");
+}
+
+// ── Retry behavior ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn retries_on_429_then_succeeds() {
+    let server = mock_server().await;
+
+    // First response: 429 with Retry-After
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second response: success
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [],
+            "total": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client_with_retries(&server, 2).pairs().await.unwrap();
+    assert_eq!(resp.total, 0);
+}
+
+#[tokio::test]
+async fn retries_on_5xx_then_succeeds() {
+    let server = mock_server().await;
+
+    // First response: 500
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": "internal_error",
+            "message": "Server error"
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second response: success
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": "healthy",
+            "timestamp": "2026-03-25T12:00:00Z",
+            "version": "0.1.0",
+            "components": {}
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client_with_retries(&server, 2).health().await.unwrap();
+    assert!(resp.is_healthy());
+}
+
+#[tokio::test]
+async fn retries_exhausted_returns_error() {
+    let server = mock_server().await;
+
+    // All responses are 429
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .mount(&server)
+        .await;
+
+    let err = client_with_retries(&server, 1).pairs().await.unwrap_err();
+    assert!(err.is_rate_limited());
+    assert_eq!(err.status_code(), Some(429));
+}
+
+#[tokio::test]
+async fn default_no_retries_returns_error_immediately() {
+    let server = mock_server().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(serde_json::json!({
+            "error": "rate_limit_exceeded",
+            "message": "Too many requests"
+        })))
+        .mount(&server)
+        .await;
+
+    // Default client has max_retries = 0
+    let err = client(&server).pairs().await.unwrap_err();
+    assert!(err.is_rate_limited());
+}
+
+#[tokio::test]
+async fn retries_respect_retry_after_header() {
+    let server = mock_server().await;
+
+    // First: 429 with Retry-After: 1
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second: success
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [],
+            "total": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let start = std::time::Instant::now();
+    let resp = client_with_retries(&server, 2).pairs().await.unwrap();
+    let elapsed = start.elapsed();
+
+    assert_eq!(resp.total, 0);
+    // Should have waited at least ~1 second due to Retry-After: 1
+    assert!(elapsed >= Duration::from_millis(900));
 }

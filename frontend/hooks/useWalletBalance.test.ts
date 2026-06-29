@@ -1,7 +1,19 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useWalletBalance } from './useWalletBalance';
+import { XLM_FEE_RESERVE } from '@/lib/stellar-reserves';
+
+const TEST_ADDRESS = 'GABCDEFGHIJKLMNOPWXYZ';
+
+function mockHorizonAccount(balances: Array<{ balance: string; asset_type: string; asset_code?: string; asset_issuer?: string }>) {
+  return vi.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ balances }),
+    } as Response)
+  );
+}
 
 describe('useWalletBalance', () => {
   beforeEach(() => {

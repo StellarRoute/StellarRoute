@@ -5,6 +5,8 @@ import * as freighter from '@stellar/freighter-api';
 import { WalletProvider, useWallet } from './wallet-provider';
 import * as walletLib from '@/lib/wallet';
 
+vi.unmock('@/components/providers/wallet-provider');
+
 // Mock the wallet library
 vi.mock('@/lib/wallet', () => ({
   getAvailableWallets: vi.fn(),

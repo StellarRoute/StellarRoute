@@ -73,7 +73,8 @@ export function PriceInfoPanel({
           className={prefersReducedMotion ? 'hidden' : ''}
         />
       )}
-      
+
+      {/* Existing UI */}
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
           <span>{t("swap.quote.rate")}</span>

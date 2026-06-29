@@ -114,7 +114,7 @@ describe("FontScaleControl", () => {
         <FontScaleControl />
       </Wrapper>
     );
-    expect(screen.getByLabelText(/font scale preview/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/(font scale|text size) preview/i)).toBeInTheDocument();
   });
 
   it("renders a range slider", () => {

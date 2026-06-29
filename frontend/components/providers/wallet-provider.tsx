@@ -17,6 +17,7 @@ import type {
   AccountSwitchState,
   Capabilities,
 } from '@/lib/wallet/types';
+import { STELLAR_NETWORK } from '@/lib/constants';
 
 interface WalletContextValue {
   address: string | null;
@@ -58,7 +59,7 @@ interface WalletProviderProps {
 
 export function WalletProvider({
   children,
-  defaultNetwork = 'testnet',
+  defaultNetwork = STELLAR_NETWORK,
 }: WalletProviderProps) {
   const [address, setAddress] = React.useState<string | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
@@ -274,6 +275,65 @@ export function WalletProvider({
     };
   }, [autoReconnectPreferred, isConnected, isLoading, reconnect]);
 
+  const addressRef = React.useRef(address);
+  const walletIdRef = React.useRef(walletId);
+
+  React.useEffect(() => {
+    addressRef.current = address;
+  }, [address]);
+
+  React.useEffect(() => {
+    walletIdRef.current = walletId;
+  }, [walletId]);
+
+  // Persist wallet state to localStorage
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (address) {
+      window.localStorage.setItem('stellarroute.wallet.address', address);
+    } else {
+      window.localStorage.removeItem('stellarroute.wallet.address');
+    }
+  }, [address]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (walletId) {
+      window.localStorage.setItem('stellarroute.wallet.walletId', walletId);
+    } else {
+      window.localStorage.removeItem('stellarroute.wallet.walletId');
+    }
+  }, [walletId]);
+
+  // Listen for storage events from other tabs
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (
+        e.key === 'stellarroute.wallet.address' ||
+        e.key === 'stellarroute.wallet.walletId'
+      ) {
+        const storedAddress = window.localStorage.getItem('stellarroute.wallet.address');
+        const storedWalletId = window.localStorage.getItem('stellarroute.wallet.walletId') as SupportedWallet | null;
+
+        const currentAddress = addressRef.current;
+        const currentWalletId = walletIdRef.current;
+
+        if (storedAddress !== currentAddress || storedWalletId !== currentWalletId) {
+          setSyncMismatch(true);
+        } else {
+          setSyncMismatch(false);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
   const networkMismatch = isConnected && walletNetwork !== null && walletNetwork !== network;
 
   const refreshCapabilities = React.useCallback(async () => {
@@ -282,9 +342,23 @@ export function WalletProvider({
   }, []);
 
   const resyncWallet = React.useCallback(async () => {
+    if (typeof window === 'undefined') return;
+
+    if (isTransactionPending) {
+      setError({ message: 'Cannot resync wallet during a pending transaction' });
+      return;
+    }
+
+    const storedAddress = window.localStorage.getItem('stellarroute.wallet.address');
+    const storedWalletId = window.localStorage.getItem('stellarroute.wallet.walletId') as SupportedWallet | null;
+
+    if (storedWalletId && storedAddress) {
+      await connect(storedWalletId);
+    } else {
+      disconnect();
+    }
     setSyncMismatch(false);
-    await refreshAccount();
-  }, [refreshAccount]);
+  }, [connect, disconnect, isTransactionPending]);
 
   const dismissSyncMismatch = React.useCallback(() => {
     setSyncMismatch(false);

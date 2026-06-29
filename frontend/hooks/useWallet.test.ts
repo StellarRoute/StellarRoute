@@ -3,6 +3,9 @@ import { renderHook, act } from "@testing-library/react";
 import { useWallet } from "./useWallet";
 import { WalletProvider } from "@/components/providers/wallet-provider";
 
+vi.unmock("@/components/providers/wallet-provider");
+
+
 // The @stellar/freighter-api mock is wired via vitest.config.ts alias
 import * as freighter from "@stellar/freighter-api";
 

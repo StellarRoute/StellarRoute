@@ -1,11 +1,18 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RouteDisplay } from "./RouteDisplay";
 
+const DEFAULT_PROPS = {
+  amountOut: "50.0",
+};
+
 describe("RouteDisplay", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+  });
 
   it("should render loading skeleton when isLoading is true", () => {
     render(<RouteDisplay amountOut="50.0" isLoading={true} />);
@@ -119,14 +126,97 @@ describe("RouteDisplay", () => {
     expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
   });
 
-  it("instantly transitions from skeleton to content", () => {
-    const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
 
-    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+      expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
 
-    rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
+      rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
 
-    expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
-    expect(screen.getByText("Best Route")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
+      expect(screen.getByText("Best Route")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Telemetry tests
+// ---------------------------------------------------------------------------
+
+describe('RouteDisplay — telemetry', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('emits telemetry event on alternative route selection', async () => {
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).toHaveBeenCalledTimes(1);
+      const event = telemetryListener.mock.calls[0][0] as CustomEvent;
+      expect(event.detail).toEqual({
+        venue: 'AQUA Pool',
+        hopCount: 1,
+      });
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+    }
+  });
+
+  it('does not emit telemetry event when NEXT_PUBLIC_TELEMETRY_ENABLED is false', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TELEMETRY_ENABLED', 'false');
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+      vi.unstubAllEnvs();
+    }
+  });
+});
+

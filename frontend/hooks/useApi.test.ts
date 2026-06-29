@@ -30,13 +30,16 @@ vi.mock('@/lib/api/client', () => {
     }
   }
 
+  const apiClient = {
+    getPriceHistory: getPriceHistoryMock,
+    getRoutes: getRoutesMock,
+  };
+
   return {
     StellarRouteApiError,
     STATUS_PAGE_REFRESH_MS: 30_000,
-    stellarRouteClient: {
-      getPriceHistory: getPriceHistoryMock,
-      getRoutes: getRoutesMock,
-    },
+    stellarRouteClient: apiClient,
+    createStellarRouteClient: vi.fn(() => apiClient),
   };
 });
 

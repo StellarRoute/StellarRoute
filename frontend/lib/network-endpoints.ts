@@ -23,6 +23,10 @@ export function getHorizonUrl(network: WalletNetwork | null): string {
 }
 
 export function getNetworkPassphrase(network: WalletNetwork | null): string {
+  const rawKey = network ? String(network).trim().toLowerCase() : null;
+  if (rawKey && NETWORK_PASSPHRASES[rawKey]) {
+    return NETWORK_PASSPHRASES[rawKey];
+  }
   const key = resolveAppNetworkKey(network);
   return NETWORK_PASSPHRASES[key] ?? NETWORK_PASSPHRASES.testnet;
 }

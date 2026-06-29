@@ -93,7 +93,7 @@ jobs:
             npm --prefix frontend run test -- ${{ matrix.suite }}
           fi
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
           CI: "true"
 
   frontend-storybook:

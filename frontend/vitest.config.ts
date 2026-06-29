@@ -20,7 +20,9 @@ export default defineConfig({
       "**/account-switcher.test.tsx",
     ],
     setupFiles: ["./vitest.setup.ts"],
-    maxWorkers: 2,
+    pool: process.env.CI ? "forks" : "threads",
+    maxWorkers: process.env.CI ? 1 : 2,
+    fileParallelism: !process.env.CI,
   },
   resolve: {
     alias: {

@@ -32,7 +32,7 @@ use crate::routes::price_history::{PriceHistoryPoint, PriceHistoryResponse};
         crate::routes::quote::get_route,
         crate::routes::admin::flush_cache,
         crate::routes::quote::get_batch_quotes,
-        // crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
+        crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
         crate::routes::kill_switch::get_kill_switch,
         crate::routes::kill_switch::update_kill_switch,
     ),

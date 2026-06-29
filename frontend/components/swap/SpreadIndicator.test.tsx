@@ -3,9 +3,10 @@ import { render, screen } from "@testing-library/react";
 import { SpreadIndicator } from "./SpreadIndicator";
 
 describe("SpreadIndicator", () => {
-  it("renders nothing when data is missing", () => {
-    const { container } = render(<SpreadIndicator />);
-    expect(container.firstChild).toBeNull();
+  it("renders em dash when data is missing", () => {
+    render(<SpreadIndicator />);
+    expect(screen.getByTestId("spread-indicator-empty")).toBeDefined();
+    expect(screen.getByText("—")).toBeDefined();
   });
 
   it("renders loading state", () => {

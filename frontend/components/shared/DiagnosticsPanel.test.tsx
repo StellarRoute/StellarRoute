@@ -29,7 +29,7 @@ const mockQuote: PriceQuote = {
       source: 'sdex',
     },
   ],
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp: Date.now(),
 };
 
 describe('DiagnosticsPanel', () => {
@@ -51,12 +51,14 @@ describe('DiagnosticsPanel', () => {
     render(
       <DiagnosticsPanel
         quote={mockQuote}
+        requestId="server-req-123"
+        lastQuotedAtMs={Date.now() - 1_000}
         isOpen={true}
         onOpenChange={vi.fn()}
       />,
     );
 
-    expect(screen.getByText(/Request ID:/)).toBeTruthy();
+    expect(screen.getByText('server-req-123')).toBeTruthy();
     expect(screen.getByText(/Quote Age:/)).toBeTruthy();
     expect(screen.getByText(/Route:/)).toBeTruthy();
   });
@@ -71,21 +73,7 @@ describe('DiagnosticsPanel', () => {
     );
 
     expect(screen.getByText('Copy')).toBeTruthy();
-    expect(screen.getByText(/Show|Hide/)).toBeTruthy();
     expect(screen.getByText('Export')).toBeTruthy();
-  });
-
-  it('displays sensitive field toggle button', () => {
-    render(
-      <DiagnosticsPanel
-        quote={mockQuote}
-        isOpen={true}
-        onOpenChange={vi.fn()}
-      />,
-    );
-
-    const sensitiveToggle = screen.getByText(/Show/);
-    expect(sensitiveToggle).toBeTruthy();
   });
 
   it('calls onOpenChange when dialog closes', () => {
@@ -118,5 +106,19 @@ describe('DiagnosticsPanel', () => {
 
     const selector = screen.getByRole('combobox', { hidden: true });
     expect(selector).toBeTruthy();
+  });
+
+  it('does not display raw issuer addresses in diagnostics text', () => {
+    render(
+      <DiagnosticsPanel
+        quote={mockQuote}
+        isOpen={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByText(/GA5ZSEJYB37JRC5AVCIA5MOP4IHTZMAB5KYXOM5KBVG7GBJINW7JCXU/),
+    ).toBeNull();
   });
 });

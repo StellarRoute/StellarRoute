@@ -15,7 +15,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PriceQuote } from '@/types';
-import { StellarRouteApiError, stellarRouteClient } from '@/lib/api/client';
+import { StellarRouteApiError, stellarRouteClient, type QuoteFetchResult } from '@/lib/api/client';
 import { useQuoteRefresh } from '@/hooks/useQuoteRefresh';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
@@ -41,7 +41,12 @@ const mockQuote = (): PriceQuote => ({
   total: '99.5',
   quote_type: 'sell',
   path: [],
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp: Date.now(),
+});
+
+const mockQuoteResult = (): QuoteFetchResult => ({
+  quote: mockQuote(),
+  requestId: 'test-req-id',
 });
 
 afterEach(() => {
@@ -61,7 +66,7 @@ describe('Resilience: packet loss (aborted requests)', () => {
     getQuoteMock.mockImplementation(async () => {
       calls += 1;
       if (calls <= 2) throw new Error('Failed to fetch'); // simulates abort
-      return mockQuote();
+      return mockQuoteResult();
     });
 
     const { result } = renderHook(() =>
@@ -107,7 +112,7 @@ describe('Resilience: packet loss (aborted requests)', () => {
 describe('Resilience: extreme latency', () => {
   it('does not fetch when going offline mid-session', async () => {
     const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
-    getQuoteMock.mockResolvedValue(mockQuote());
+    getQuoteMock.mockResolvedValue(mockQuoteResult());
 
     const { result } = renderHook(() => useOnlineStatus());
 
@@ -160,7 +165,7 @@ describe('Resilience: server errors (504/5xx)', () => {
       if (calls === 1) {
         throw new StellarRouteApiError(504, 'unknown_error', 'Gateway Timeout');
       }
-      return mockQuote();
+      return mockQuoteResult();
     });
 
     const { result } = renderHook(() =>
@@ -211,7 +216,7 @@ describe('Resilience: manual recovery', () => {
     // First call fails (network down)
     getQuoteMock.mockRejectedValueOnce(new Error('Failed to fetch'));
     // After manual refresh → success
-    getQuoteMock.mockResolvedValueOnce(mockQuote());
+    getQuoteMock.mockResolvedValueOnce(mockQuoteResult());
 
     const { result } = renderHook(() =>
       useQuoteRefresh('native', 'USDC:GABC', 100, 'sell', {

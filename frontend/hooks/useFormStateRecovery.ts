@@ -15,7 +15,6 @@ interface QuoteCheckpoint {
   ttl?: number;
 }
 
-const FORM_STATE_KEY = 'stellar_form_state';
 const QUOTE_STATE_KEY = 'stellar_quote_state';
 const FORM_STATE_TTL = 5 * 60 * 1000; // 5 minutes
 const QUOTE_STATE_TTL = 2 * 60 * 1000; // 2 minutes
@@ -27,19 +26,28 @@ export function useFormStateRecovery() {
     if (stateRef.current) return stateRef.current;
 
     try {
-      const stored = sessionStorage.getItem(FORM_STATE_KEY);
+      const stored = localStorage.getItem('stellar-route-trade-form');
       if (!stored) return null;
 
-      const parsed = JSON.parse(stored) as FormCheckpoint;
-      const isExpired = Date.now() - parsed.timestamp > FORM_STATE_TTL;
+      const parsed = JSON.parse(stored);
+      if (!parsed) return null;
+
+      const checkpoint: FormCheckpoint = {
+        baseAsset: parsed.fromToken,
+        quoteAsset: parsed.toToken,
+        amount: parsed.amount,
+        timestamp: parsed.savedAt || parsed.timestamp || Date.now(),
+      };
+
+      const isExpired = Date.now() - checkpoint.timestamp > FORM_STATE_TTL;
 
       if (isExpired) {
-        sessionStorage.removeItem(FORM_STATE_KEY);
+        localStorage.removeItem('stellar-route-trade-form');
         return null;
       }
 
-      stateRef.current = parsed;
-      return parsed;
+      stateRef.current = checkpoint;
+      return checkpoint;
     } catch {
       return null;
     }
@@ -47,19 +55,29 @@ export function useFormStateRecovery() {
 
   const saveFormState = useCallback(
     (state: Omit<FormCheckpoint, 'timestamp'>) => {
-      const checkpoint: FormCheckpoint = {
-        ...state,
-        timestamp: Date.now(),
+      const checkpoint = {
+        fromToken: state.baseAsset,
+        toToken: state.quoteAsset,
+        amount: state.amount,
+        savedAt: Date.now(),
+        slippage: 0.5,
+        deadline: 30,
+        side: 'sell',
       };
-      stateRef.current = checkpoint;
-      sessionStorage.setItem(FORM_STATE_KEY, JSON.stringify(checkpoint));
+      stateRef.current = {
+        baseAsset: state.baseAsset,
+        quoteAsset: state.quoteAsset,
+        amount: state.amount,
+        timestamp: checkpoint.savedAt,
+      };
+      localStorage.setItem('stellar-route-trade-form', JSON.stringify(checkpoint));
     },
     []
   );
 
   const clearFormState = useCallback(() => {
     stateRef.current = null;
-    sessionStorage.removeItem(FORM_STATE_KEY);
+    localStorage.removeItem('stellar-route-trade-form');
   }, []);
 
   const isFormStateValid = useCallback(() => {

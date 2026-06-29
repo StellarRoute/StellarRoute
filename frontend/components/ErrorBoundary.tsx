@@ -64,7 +64,7 @@ class ErrorBoundary extends Component<Props, State> {
                 </h1>
                 
                 <p className="text-slate-400 mb-8 leading-relaxed">
-                  We've encountered an unexpected error. Don't worry, our team has been notified. 
+                  We&apos;ve encountered an unexpected error. Don&apos;t worry, our team has been notified. 
                   Try refreshing the page or going back to the dashboard.
                 </p>
 

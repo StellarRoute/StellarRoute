@@ -1,0 +1,8 @@
+{
+  "error": "validation_error",
+  "message": "Amount must be greater than zero",
+  "details": {
+    "parameter": "amount",
+    "min": 0
+  }
+}

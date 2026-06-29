@@ -112,3 +112,10 @@ CI expectations for frontend contributions:
 - Tests should pass (`vitest`, and where relevant, e2e/storybook checks)
 
 For full contribution workflow, see `CONTRIBUTING.md`.
+
+## Feature documentation
+
+Frontend feature specs live in [`frontend/docs/`](../frontend/docs/). Start with the [docs hub](../README.md#frontend-documentation) for the full index. Notable entries:
+
+- [Price history sparkline](../frontend/docs/price-history.md) — 24h sparkline API, `usePriceHistory` hook, and SwapCard/orderbook wiring
+- [Orderbook highlighting](../frontend/docs/orderbook-highlighting-feature.md) — swap ↔ orderbook pair sync via `TradingPairContext`

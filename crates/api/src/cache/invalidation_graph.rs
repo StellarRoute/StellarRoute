@@ -11,7 +11,7 @@
  *   - Fallback: if graph insertion fails, fall back to full cache clear
  */
 use dashmap::DashMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Represents a trading pair (asset_a, asset_b)

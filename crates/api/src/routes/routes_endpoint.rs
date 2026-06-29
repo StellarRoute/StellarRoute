@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tracing::debug;
 
 use stellarroute_routing::health::policy::ExclusionPolicy;
-use stellarroute_routing::health::scorer::VenueType;
 use stellarroute_routing::optimizer::HybridOptimizer;
 use stellarroute_routing::policy::RoutingPolicy;
 

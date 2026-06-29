@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collectQuoteDiagnostics,
+  computeQuoteAgeMs,
   exportDiagnosticsAsCsv,
   exportDiagnosticsAsJson,
   formatDiagnosticsForDisplay,
   generateRequestId,
+  redactDiagnosticsObject,
   redactSensitiveFields,
 } from '@/lib/diagnostics';
 import type { PriceQuote } from '@/types';
@@ -35,7 +37,7 @@ const mockQuote: PriceQuote = {
       source: 'sdex',
     },
   ],
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp: Date.now(),
 };
 
 describe('diagnostics utilities', () => {
@@ -70,6 +72,15 @@ describe('diagnostics utilities', () => {
     });
   });
 
+  describe('computeQuoteAgeMs', () => {
+    it('uses lastQuotedAtMs when provided', () => {
+      const lastQuotedAtMs = Date.now() - 5_000;
+      const age = computeQuoteAgeMs(mockQuote, lastQuotedAtMs);
+      expect(age).toBeGreaterThanOrEqual(4_900);
+      expect(age).toBeLessThan(6_000);
+    });
+  });
+
   describe('collectQuoteDiagnostics', () => {
     it('collects diagnostics from quote response', () => {
       const requestId = 'req_test_123';
@@ -87,9 +98,12 @@ describe('diagnostics utilities', () => {
 
     it('calculates quote age correctly', () => {
       const requestId = 'req_test_456';
-      const diag = collectQuoteDiagnostics(mockQuote, requestId);
+      const lastQuotedAtMs = Date.now() - 2_000;
+      const diag = collectQuoteDiagnostics(mockQuote, requestId, {
+        lastQuotedAtMs,
+      });
 
-      expect(diag.quoteAge).toBeGreaterThanOrEqual(0);
+      expect(diag.quoteAge).toBeGreaterThanOrEqual(1_900);
       expect(typeof diag.quoteAge).toBe('number');
     });
 
@@ -113,6 +127,48 @@ describe('diagnostics utilities', () => {
       const diag = collectQuoteDiagnostics(quoteWithAmm, 'req_amm_test');
       expect(diag.sources).toContain('AMM');
     });
+
+    it('extracts route diagnostics from quote metadata', () => {
+      const quoteWithDiagnostics: PriceQuote = {
+        ...mockQuote,
+        degraded: true,
+        rationale: {
+          strategy: 'single_hop_direct_venue_comparison',
+          selected_source: 'sdex:offer-1',
+          compared_venues: [
+            {
+              source: 'sdex:offer-1',
+              price: '0.105',
+              available_amount: '1000',
+              executable: true,
+            },
+          ],
+        },
+        exclusion_diagnostics: {
+          excluded_venues: [
+            {
+              venue_ref: 'amm:pool-1',
+              reason: { type: 'stale_data' },
+            },
+          ],
+        },
+        data_freshness: {
+          fresh_count: 2,
+          stale_count: 1,
+          max_staleness_secs: 45,
+        },
+      };
+
+      const diag = collectQuoteDiagnostics(quoteWithDiagnostics, 'req_route_test');
+      expect(diag.degraded).toBe(true);
+      expect(diag.routeDiagnostics?.strategy).toBe(
+        'single_hop_direct_venue_comparison',
+      );
+      expect(diag.routeDiagnostics?.selectedSource).toBe('sdex:offer-1');
+      expect(diag.routeDiagnostics?.comparedVenuesCount).toBe(1);
+      expect(diag.routeDiagnostics?.excludedVenues).toHaveLength(1);
+      expect(diag.routeDiagnostics?.dataFreshness?.freshCount).toBe(2);
+    });
   });
 
   describe('formatDiagnosticsForDisplay', () => {
@@ -131,10 +187,28 @@ describe('diagnostics utilities', () => {
 
     it('formats quote age in seconds', () => {
       const requestId = 'req_age_test';
-      const diag = collectQuoteDiagnostics(mockQuote, requestId);
+      const diag = collectQuoteDiagnostics(mockQuote, requestId, {
+        lastQuotedAtMs: Date.now() - 1_500,
+      });
       const formatted = formatDiagnosticsForDisplay(diag);
 
       expect(formatted).toMatch(/Quote Age: \d+\.\d{2}s/);
+    });
+
+    it('includes route diagnostics section when present', () => {
+      const quoteWithDiagnostics: PriceQuote = {
+        ...mockQuote,
+        rationale: {
+          strategy: 'single_hop_direct_venue_comparison',
+          selected_source: 'sdex:offer-1',
+          compared_venues: [],
+        },
+      };
+      const diag = collectQuoteDiagnostics(quoteWithDiagnostics, 'req_route_fmt');
+      const formatted = formatDiagnosticsForDisplay(diag);
+
+      expect(formatted).toContain('Route Diagnostics:');
+      expect(formatted).toContain('Strategy:');
     });
   });
 
@@ -149,6 +223,23 @@ describe('diagnostics utilities', () => {
       expect(parsed.requestId).toEqual(requestId);
       expect(parsed.amount).toEqual('100.00');
     });
+
+    it('redacts sensitive fields in JSON export', () => {
+      const quoteWithIssuer: PriceQuote = {
+        ...mockQuote,
+        rationale: {
+          strategy: 'test',
+          selected_source:
+            'sdex:GA5ZSEJYB37JRC5AVCIA5MOP4IHTZMAB5KYXOM5KBVG7GBJINW7JCXU',
+          compared_venues: [],
+        },
+      };
+      const diag = collectQuoteDiagnostics(quoteWithIssuer, 'req_redact_json');
+      const json = exportDiagnosticsAsJson(diag);
+
+      expect(json).not.toContain('GA5ZSEJYB37JRC5AVCIA5MOP4IHTZMAB5KYXOM5KBVG7GBJINW7JCXU');
+      expect(json).toContain('[REDACTED');
+    });
   });
 
   describe('exportDiagnosticsAsCsv', () => {
@@ -162,15 +253,25 @@ describe('diagnostics utilities', () => {
       expect(lines[0]).toContain('requestId');
       expect(lines[1]).toContain(requestId);
     });
+  });
 
-    it('properly escapes quoted fields in CSV', () => {
-      const requestId = 'req_csv_escape_test';
-      const diag = collectQuoteDiagnostics(mockQuote, requestId);
-      const csv = exportDiagnosticsAsCsv(diag);
+  describe('redactDiagnosticsObject', () => {
+    it('redacts nested route diagnostics fields', () => {
+      const diag = collectQuoteDiagnostics(
+        {
+          ...mockQuote,
+          rationale: {
+            strategy: 'test',
+            selected_source:
+              'sdex:GA5ZSEJYB37JRC5AVCIA5MOP4IHTZMAB5KYXOM5KBVG7GBJINW7JCXU',
+            compared_venues: [],
+          },
+        },
+        'req_obj_redact',
+      );
 
-      expect(csv).toBeTruthy();
-      const lines = csv.split('\n');
-      expect(lines.length).toBeGreaterThan(0);
+      const redacted = redactDiagnosticsObject(diag);
+      expect(redacted.routeDiagnostics?.selectedSource).toContain('[REDACTED');
     });
   });
 });

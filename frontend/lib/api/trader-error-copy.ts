@@ -124,7 +124,26 @@ function inferNetworkError(errorMessage: string): TraderErrorCopy | null {
 
 export function getTraderErrorCopy(error: unknown): TraderErrorCopy {
   if (error instanceof StellarRouteApiError) {
+    if (error.code && error.code !== 'unknown_error' && API_ERROR_COPY[error.code]) {
+      return API_ERROR_COPY[error.code];
+    }
+    
+    if (error.status === 400) return API_ERROR_COPY.bad_request;
+    if (error.status === 401) return API_ERROR_COPY.unauthorized;
+    if (error.status === 404) return API_ERROR_COPY.not_found;
+    if (error.status === 429) return API_ERROR_COPY.rate_limit_exceeded;
+    if (error.status >= 500) return API_ERROR_COPY.internal_error;
+
     return API_ERROR_COPY[error.code] ?? DEFAULT_COPY;
+  }
+
+  if (error && typeof error === 'object' && 'status' in error && typeof (error as any).status === 'number') {
+    const status = (error as any).status;
+    if (status === 400) return API_ERROR_COPY.bad_request;
+    if (status === 401) return API_ERROR_COPY.unauthorized;
+    if (status === 404) return API_ERROR_COPY.not_found;
+    if (status === 429) return API_ERROR_COPY.rate_limit_exceeded;
+    if (status >= 500) return API_ERROR_COPY.internal_error;
   }
 
   if (error instanceof Error) {

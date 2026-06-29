@@ -13,6 +13,13 @@ create table if not exists backfill_checkpoints (
 
 -- 2. Create a table for normalized liquidity storage (replaces/complements the view)
 -- This table stores pre-calculated price_e7 and amount_e7 for the routing engine.
+do $$
+begin
+    if exists (select 1 from pg_views where viewname = 'normalized_liquidity') then
+        execute 'alter view normalized_liquidity rename to normalized_liquidity_legacy_view';
+    end if;
+end $$;
+
 create table if not exists normalized_liquidity (
   venue_type text not null, -- 'sdex' | 'amm'
   venue_ref text not null,  -- offer_id | pool_address

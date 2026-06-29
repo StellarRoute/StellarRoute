@@ -8,6 +8,7 @@ import { AmountInput } from './AmountInput';
 import { TokenSelector } from './TokenSelector';
 import { PriceInfoPanel } from './PriceInfoPanel';
 import type { AlternativeRoute } from './RouteDisplay';
+import RouteDisplay from './RoutePanelAsync';
 import { MobileRouteBottomSheet } from './MobileRouteBottomSheet';
 import { BatchSwapPreview, type BatchSwapLeg } from './BatchSwapPreview';
 import { SwapButton, SwapButtonState } from './SwapButton';
@@ -42,7 +43,6 @@ import { useWallet } from '@/components/providers/wallet-provider';
 import { signTransactionWithWallet } from '@/lib/wallet';
 import { submitToHorizon, getNetworkPassphrase, getHorizonUrl } from '@/lib/wallet/submit';
 import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
@@ -58,17 +58,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IconographyLegend } from '@/components/shared/IconographyLegend';
 import {
   getSwapCardStoryPresentation,
   type SwapCardStoryFixture,
 } from './swapCardStory';
 
 export interface SwapCardProps {
+  /** Shows alternative route picker when routes beta is enabled. */
+  showRoutePicker?: boolean;
   /** Ladle story fixture — drives deterministic UI states for visual review. */
   storyFixture?: SwapCardStoryFixture;
 }
 
-export function SwapCard({ storyFixture }: SwapCardProps = {}) {
+export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProps = {}) {
   const storyPresentation = storyFixture
     ? getSwapCardStoryPresentation(storyFixture)
     : null;
@@ -202,6 +205,10 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
 
     return list;
   }, [quote.data, routesState.data]);
+
+  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
+    null
+  );
 
   const handleRouteSelect = useCallback((route: AlternativeRoute) => {
     setSelectedRoute(route);
@@ -341,9 +348,6 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
   }, [memoValue, memoType]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
-    null
-  );
   const [wakeSnapshot, setWakeSnapshot] = useState<TradeFormSnapshot | null>(
     null
   );
@@ -464,6 +468,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
     isRecovering: quote.isRecovering,
     error: quote.error,
     isOnline,
+    wsConnected: quote.wsConnected,
   });
 
   const optimistic = useOptimisticSwap({
@@ -1055,8 +1060,20 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
               <MobileRouteBottomSheet
                 quote={quote.data ?? null}
                 amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
-                isLoading={displayQuoteLoading}
+                isLoading={isRoutesLoading}
               />
+              {showRoutePicker && (
+                <RouteDisplay
+                  quote={quote.data ?? null}
+                  amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
+                  isLoading={isRoutesLoading}
+                  alternativeRoutes={mergedAlternativeRoutes}
+                  selectedRouteId={selectedRoute?.id ?? null}
+                  onSelect={handleRouteSelect}
+                  fromAssetCode={fromSymbol}
+                  toAssetCode={toSymbol}
+                />
+              )}
               {batchSwapsEnabled && (
                 <BatchSwapPreview
                   legs={batchLegs}
@@ -1302,7 +1319,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
       </p>
 
       <Dialog open={shortcutHelpOpen} onOpenChange={handleShortcutOpenChange}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('swap.shortcuts.title')}</DialogTitle>
           </DialogHeader>
@@ -1328,6 +1345,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
               <kbd className="font-mono">Alt+2</kbd>
             </li>
           </ul>
+          <IconographyLegend embedded className="mt-4" />
         </DialogContent>
       </Dialog>
     </div>

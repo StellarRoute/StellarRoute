@@ -259,6 +259,22 @@ The script reads the pool list from:
 ./scripts/upgrade.sh --network testnet
 ```
 
+## Smoke testing with pause/unpause coverage
+
+The default `smoke-test-testnet.sh` runs core functionality only. To include pause/unpause operator smoke coverage:
+
+```bash
+STELLARROUTE_SMOKE_PAUSE=1 ./scripts/smoke-test-testnet.sh --network testnet
+```
+
+This will:
+1. Check current pause status
+2. If unpaused, call `pause` and verify the contract is paused
+3. Call `unpause` and verify the contract is unpaused
+4. Leaves the contract in the same state as it started
+
+The test uses the deployer identity (default: `deployer`), which must be the admin of the router contract.
+
 For operator-managed registration that should persist across restarts and serve as bootstrap fallback for the indexer, use the DB helper script:
 
 ```bash

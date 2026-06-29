@@ -127,6 +127,7 @@ fn bench_execute_swap_1_hop() {
     let _ = client.execute_swap(&sender, &params);
 
     let cpu_cost = env.budget().cpu_instruction_cost();
+    println!("execute_swap_1_hop_cpu_cost: {}", cpu_cost);
     assert!(
         cpu_cost < 20_000_000,
         "execute_swap (1 hop) CPU cost: {}",
@@ -160,6 +161,7 @@ fn bench_execute_swap_4_hops() {
     let _ = client.execute_swap(&sender, &params);
 
     let cpu_cost = env.budget().cpu_instruction_cost();
+    println!("execute_swap_4_hops_cpu_cost: {}", cpu_cost);
     assert!(
         cpu_cost < 80_000_000,
         "execute_swap (4 hops) CPU cost: {}",

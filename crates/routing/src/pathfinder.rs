@@ -28,8 +28,14 @@ pub struct LiquidityEdge {
     pub venue_type: String,
     pub venue_ref: String,
     pub liquidity: i128,
+    #[serde(default)]
     pub price: f64,
+    #[serde(default = "default_fee_bps")]
     pub fee_bps: u32,
+}
+
+fn default_fee_bps() -> u32 {
+    30
 }
 
 /// Represents a path through liquidity sources

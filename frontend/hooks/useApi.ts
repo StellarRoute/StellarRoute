@@ -29,6 +29,8 @@ import type {
   QuoteType,
   RoutesResponse,
   TradingPair,
+  CacheMetricsResponse,
+  PoolStatsResponse,
 } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -342,21 +344,92 @@ export function useHealthDeps(
 }
 
 // ---------------------------------------------------------------------------
+// useCacheMetrics / usePoolStats — platform metrics for analytics dashboard
+// ---------------------------------------------------------------------------
+
+export function useCacheMetrics(
+  refreshIntervalMs = 30_000,
+  skip = false,
+): UseApiState<CacheMetricsResponse> & { refresh: () => void } {
+  return useFetch(
+    (signal) => stellarRouteClient.getCacheMetrics({ signal }),
+    [],
+    { refreshIntervalMs, skip },
+  );
+}
+
+export function usePoolStats(
+  refreshIntervalMs = 30_000,
+  skip = false,
+): UseApiState<PoolStatsResponse> & { refresh: () => void } {
+  return useFetch(
+    (signal) => stellarRouteClient.getPoolStats({ signal }),
+    [],
+    { refreshIntervalMs, skip },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // useQuoteStream — WebSocket subscription for quotes
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolves the WebSocket URL to use for the quote stream.
+ *
+ * Priority:
+ *  1. `NEXT_PUBLIC_API_WS_URL` — explicit ws/wss URL (e.g. "wss://api.stellarroute.io")
+ *  2. Derived from `NEXT_PUBLIC_API_URL` — protocol is converted to ws/wss automatically
+ *  3. Falls back to `ws://localhost:8080`
+ *
+ * Returns `null` when neither env var is set, which disables the WebSocket and
+ * keeps the app in polling mode.
+ */
+function resolveWsBaseUrl(): string | null {
+  const explicit = process.env.NEXT_PUBLIC_API_WS_URL;
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  const httpUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (httpUrl) {
+    const wsProtocol = httpUrl.startsWith('https') ? 'wss' : 'ws';
+    const host = httpUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    return `${wsProtocol}://${host}`;
+  }
+
+  // Neither env var set — WebSocket disabled; caller falls back to polling.
+  return null;
+}
+
+export interface UseQuoteStreamResult {
+  /** Latest quote pushed from the WebSocket, or undefined if none received yet. */
+  data: PriceQuote | undefined;
+  /** True while the socket handshake is complete and the subscription is active. */
+  isConnected: boolean;
+  /** Last connection or parse error, if any. */
+  error: Error | null;
+  /**
+   * True when WebSocket is configured (env var present).
+   * When false the caller should fall back to HTTP polling immediately.
+   */
+  wsAvailable: boolean;
+}
 
 export function useQuoteStream(
   base: string,
   quote: string,
-  amount: number | undefined
-) {
+  amount: number | undefined,
+): UseQuoteStreamResult {
   const [data, setData] = useState<PriceQuote | undefined>(undefined);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
 
+  // Resolve once at module-evaluation time (env vars are static in Next.js builds).
+  const wsBaseUrl = resolveWsBaseUrl();
+  const wsAvailable = wsBaseUrl !== null;
+
   useEffect(() => {
-    const skip = !base || !quote;
+    // Skip when WebSocket is not configured or inputs are incomplete.
+    const skip = !wsAvailable || !base || !quote;
     if (skip) {
       setData(undefined);
       setIsConnected(false);
@@ -373,11 +446,7 @@ export function useQuoteStream(
     const connect = () => {
       if (!isMounted) return;
 
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
-      const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
-      const host = baseUrl.replace(/^https?:\/\//, '');
-      const wsUrl = `${wsProtocol}://${host}/api/v1/ws`;
+      const wsUrl = `${wsBaseUrl}/api/v1/ws`;
 
       try {
         ws = new WebSocket(wsUrl);
@@ -406,13 +475,13 @@ export function useQuoteStream(
         ws.onmessage = (event) => {
           if (!isMounted) return;
           try {
-            const msg = JSON.parse(event.data);
+            const msg = JSON.parse(event.data as string);
             if (msg.type === 'subscription_confirmed') {
-              subscriptionId = msg.subscription_id;
+              subscriptionId = msg.subscription_id as string;
             } else if (msg.type === 'quote_update') {
-              setData(msg.quote);
+              setData(msg.quote as PriceQuote);
             } else if (msg.type === 'error') {
-              setError(new Error(msg.message || 'WebSocket Error'));
+              setError(new Error((msg.message as string) || 'WebSocket Error'));
             }
           } catch (err) {
             setError(err instanceof Error ? err : new Error('Parse error'));
@@ -424,14 +493,14 @@ export function useQuoteStream(
           setIsConnected(false);
           subscriptionId = null;
 
-          // Exponential backoff reconnect
-          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+          // Exponential backoff reconnect (capped at 30 s)
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 30_000);
           retryCount++;
           reconnectTimer = setTimeout(connect, delay);
         };
 
         ws.onerror = () => {
-          if (isMounted && !error) {
+          if (isMounted) {
             setError(new Error('WebSocket connection error'));
           }
         };
@@ -461,7 +530,9 @@ export function useQuoteStream(
         ws.close();
       }
     };
-  }, [base, quote, debouncedAmount]);
+  // wsBaseUrl is derived from static env vars — safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, quote, debouncedAmount, wsAvailable]);
 
-  return { data, isConnected, error };
+  return { data, isConnected, error, wsAvailable };
 }

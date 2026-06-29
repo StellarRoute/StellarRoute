@@ -19,6 +19,8 @@ import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
+import { useWalletBalance } from '@/hooks/useWalletBalance';
+import { useWallet } from '@/components/providers/wallet-provider';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
@@ -51,7 +53,7 @@ export function SwapCard() {
   const { isCompact, toggleCompact } = useCompactMode();
   const prefersReducedMotion = useReducedMotion();
   const tradingPairContext = useOptionalTradingPair();
-  
+
   // Wrap useSearchParams in try-catch for SSR
   let parseParams: ReturnType<typeof useShareableQuote>['parseParams'] | null =
     null;
@@ -90,12 +92,14 @@ export function SwapCard() {
     hasRecoverableState,
     snapshotCurrent,
     reset,
+    side,
+    setSide,
   } = useSwapState();
 
   // Initialize from URL parameters on mount
   useEffect(() => {
     if (!parseParams) return;
-    
+
     const urlParams = parseParams();
     if (!urlParams) return;
 
@@ -141,7 +145,8 @@ export function SwapCard() {
     disableNotifications: onDisableNotifications,
   } = useBrowserNotifications();
 
-  const [isConnected, setIsConnected] = useState(false);
+  const { isConnected, connect } = useWallet();
+  const { getBalance, refresh: refreshBalances } = useWalletBalance();
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
@@ -235,10 +240,16 @@ export function SwapCard() {
     }
   }, [optimistic.status, optimistic.errorMessage, bypassConfirmation, isModalOpen, reset, setSelectedRoute]);
 
-  // Mock balance
-  const fromBalance = '100.00';
   const fromSymbol = fromToken === 'native' ? 'XLM' : fromToken.split(':')[0];
   const toSymbol = toToken === 'native' ? 'XLM' : toToken.split(':')[0];
+  const fromBalance = getBalance(fromToken) || '0.00';
+
+  // Refresh balances when the sell token changes
+  useEffect(() => {
+    if (isConnected) {
+      refreshBalances();
+    }
+  }, [isConnected, fromToken, refreshBalances]);
 
   const buttonState = useMemo<SwapButtonState>(() => {
     if (optimistic.submitLock) return 'executing';
@@ -402,8 +413,8 @@ export function SwapCard() {
       const target = event.target as HTMLElement | null;
       const isEditable = target
         ? target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
         : false;
 
       if (event.key === '?' && !isEditable) {
@@ -731,7 +742,7 @@ export function SwapCard() {
                 onExportJson={() => handleExport('json')}
                 onExportCsv={() => handleExport('csv')}
               />
-              
+
               <QuoteCountdownTimer
                 expiresAtMs={quote.expiresAtMs}
                 ttlSeconds={quote.ttlSeconds}
@@ -782,11 +793,11 @@ export function SwapCard() {
               <span className="text-xs text-blue-500 font-medium">
                 {quote.hasPendingRetry
                   ? t('swap.card.recoveringQuoteCountdown', {
-                      seconds: Math.max(
-                        1,
-                        Math.ceil(quote.pendingRetryRemainingMs / 1000)
-                      ),
-                    })
+                    seconds: Math.max(
+                      1,
+                      Math.ceil(quote.pendingRetryRemainingMs / 1000)
+                    ),
+                  })
                   : t('swap.card.recoveringQuote')}
               </span>
               {quote.hasPendingRetry && (
@@ -817,7 +828,7 @@ export function SwapCard() {
             <SwapButton
               state={buttonState}
               onSwap={handleSwap}
-              onConnectWallet={() => setIsConnected(true)}
+              onConnectWallet={() => connect('freighter')}
               isLoading={quote.loading}
             />
           </div>
@@ -856,7 +867,7 @@ export function SwapCard() {
           txHash={optimistic.txHash}
           errorMessage={optimistic.errorMessage}
           tradeParams={optimistic.tradeParams}
-          onConfirm={() => {}}
+          onConfirm={() => { }}
           onCancel={() => {
             optimistic.cancel();
             setIsModalOpen(false);

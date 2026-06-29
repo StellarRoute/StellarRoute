@@ -140,9 +140,7 @@ async fn fetch_metadata(
     };
 
     Ok(row.map(|r| AssetMetadataResponse {
-        code: r
-            .get::<Option<String>, _>("asset_code")
-            .unwrap_or_else(|| code.to_string()),
+        code: r.get::<Option<String>, _>("asset_code").unwrap_or_else(|| code.to_string()),
         issuer: r.get("asset_issuer"),
         decimals: r.get::<Option<i16>, _>("decimals").unwrap_or(7),
         asset_type: r.get("asset_type"),

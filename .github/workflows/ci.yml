@@ -80,5 +80,7 @@ jobs:
         run: cd sdk-js && npm ci --legacy-peer-deps
       - name: Build
         run: cd sdk-js && npm run build
+      - name: Typecheck
+        run: cd sdk-js && npm run typecheck
       - name: Run tests
         run: cd sdk-js && npm test

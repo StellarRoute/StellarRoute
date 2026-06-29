@@ -186,8 +186,6 @@ pub async fn get_quote(
         )
         .await
         {
-            Ok((prepared_quote_resp, cache_hit)) => {
-                let quote_resp = prepared_quote_resp.into_quote()?;
             Ok((prepared_quote, cache_hit)) => {
                 let quote_resp = prepared_quote.into_quote()?;
                 let error_class = "none";
@@ -512,15 +510,6 @@ pub async fn get_batch_quotes(
                             let (code, message) = batch_error_from_api_error(&e);
                             BatchQuoteItemResult::err(i, BatchItemError { code, message })
                         }
-                    Ok((quote, _cache_hit)) => match quote.into_quote() {
-                        Ok(inner) => BatchQuoteItemResult::ok(i, inner),
-                        Err(e) => BatchQuoteItemResult::err(
-                            i,
-                            BatchItemError {
-                                code: "internal".to_string(),
-                                message: e.to_string(),
-                            },
-                        ),
                     },
                     Err(e) => {
                         let (code, message) = batch_error_from_api_error(&e);
@@ -837,15 +826,6 @@ pub(crate) async fn compute_quote_response(
     }
 
     Ok(response)
-}
-
-pub(crate) async fn get_quote_for_pair_dry_run(
-    state: Arc<AppState>,
-    base_asset: AssetPath,
-    quote_asset: AssetPath,
-    params: QuoteParams,
-) -> Result<QuoteResponse> {
-    compute_quote_response(state, base_asset, quote_asset, params, false).await
 }
 
 /// Get routing path for a trading pair
@@ -1565,6 +1545,16 @@ pub(crate) fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
     } else {
         AssetInfo::credit(asset.asset_code.clone(), asset.asset_issuer.clone())
     }
+}
+
+pub(crate) async fn get_quote_for_pair_dry_run(
+    state: Arc<AppState>,
+    base_asset: AssetPath,
+    quote_asset: AssetPath,
+    params: QuoteParams,
+) -> Result<QuoteResponse> {
+    let (prepared, _) = get_quote_inner(state, base_asset, quote_asset, params, false).await?;
+    prepared.into_quote()
 }
 
 /// Build an [`AuditSelected`] from a successful [`QuoteResponse`].

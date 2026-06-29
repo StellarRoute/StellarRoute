@@ -1,10 +1,22 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Clock } from 'lucide-react';
+import {
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Clock,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHealth, useHealthDeps } from '@/hooks/useApi';
 import { getTraderErrorCopy } from '@/lib/api/trader-error-copy';
@@ -55,25 +67,38 @@ function getStatusKey(status: string): keyof typeof STATUS_ICONS {
   return 'unknown';
 }
 
-function ComponentStatusItem({ name, status }: { name: string; status: string }) {
+function ComponentStatusItem({
+  name,
+  status,
+}: {
+  name: string;
+  status: string;
+}) {
   const statusKey = getStatusKey(status);
   const Icon = STATUS_ICONS[statusKey];
   const colorClass = STATUS_COLORS[statusKey];
   const bgClass = STATUS_BG[statusKey];
 
   return (
-    <div className={cn('flex items-center justify-between p-4 rounded-lg border', bgClass)}>
+    <div
+      className={cn(
+        'flex items-center justify-between p-4 rounded-lg border',
+        bgClass
+      )}
+    >
       <div className="flex items-center gap-3">
         <Icon className={cn('h-5 w-5', colorClass)} />
         <div>
-          <p className="font-medium capitalize">
-            {name.replace(/_/g, ' ')}
-          </p>
+          <p className="font-medium capitalize">{name.replace(/_/g, ' ')}</p>
           <p className="text-sm text-muted-foreground capitalize">{status}</p>
         </div>
       </div>
       <Badge
-        variant={statusKey === 'healthy' || statusKey === 'ok' ? 'default' : 'secondary'}
+        variant={
+          statusKey === 'healthy' || statusKey === 'ok'
+            ? 'default'
+            : 'secondary'
+        }
         className="capitalize"
       >
         {statusKey}
@@ -111,9 +136,7 @@ export function StatusDashboard() {
   }, [healthLoading, depsLoading, healthData, depsData]);
 
   const rawError = healthError ?? depsError ?? null;
-  const errorMessage = rawError
-    ? getTraderErrorCopy(rawError).headline
-    : null;
+  const errorMessage = rawError ? getTraderErrorCopy(rawError).headline : null;
 
   const handleRefresh = useCallback(() => {
     refreshHealth();
@@ -123,7 +146,10 @@ export function StatusDashboard() {
   if (loading && !healthData) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw data-testid="icon" className="h-8 w-8 animate-spin text-muted-foreground" />
+        <RefreshCw
+          data-testid="icon"
+          className="h-8 w-8 animate-spin text-muted-foreground"
+        />
       </div>
     );
   }
@@ -158,7 +184,9 @@ export function StatusDashboard() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <OverallIcon className={cn('h-8 w-8', STATUS_COLORS[overallStatusKey])} />
+              <OverallIcon
+                className={cn('h-8 w-8', STATUS_COLORS[overallStatusKey])}
+              />
               <div>
                 <CardTitle className="text-2xl">
                   {overallStatusKey === 'healthy' || overallStatusKey === 'ok'
@@ -182,8 +210,11 @@ export function StatusDashboard() {
                 size="sm"
                 onClick={handleRefresh}
                 disabled={loading}
+                aria-label="Refresh status"
               >
-                <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+                <RefreshCw
+                  className={cn('h-4 w-4', loading && 'animate-spin')}
+                />
               </Button>
               <Button
                 variant={autoRefresh ? 'default' : 'outline'}
@@ -236,10 +267,31 @@ export function StatusDashboard() {
               <strong>Status Indicators:</strong>
             </p>
             <ul className="list-disc list-inside space-y-1 ml-2">
-              <li><span className="text-emerald-600 dark:text-emerald-400 font-medium">Healthy/OK</span> - Service is fully operational</li>
-              <li><span className="text-amber-600 dark:text-amber-400 font-medium">Warning</span> - Service is operational but experiencing elevated latency or lag</li>
-              <li><span className="text-red-600 dark:text-red-400 font-medium">Unhealthy/Degraded</span> - Service is experiencing issues</li>
-              <li><span className="text-muted-foreground font-medium">Not Configured</span> - Optional service not enabled</li>
+              <li>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                  Healthy/OK
+                </span>{' '}
+                - Service is fully operational
+              </li>
+              <li>
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  Warning
+                </span>{' '}
+                - Service is operational but experiencing elevated latency or
+                lag
+              </li>
+              <li>
+                <span className="text-red-600 dark:text-red-400 font-medium">
+                  Unhealthy/Degraded
+                </span>{' '}
+                - Service is experiencing issues
+              </li>
+              <li>
+                <span className="text-muted-foreground font-medium">
+                  Not Configured
+                </span>{' '}
+                - Optional service not enabled
+              </li>
             </ul>
           </div>
         </CardContent>

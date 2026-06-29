@@ -1,5 +1,6 @@
 "use client";
 
+import { OnboardingChecklist } from "@/components/swap/OnboardingChecklist";
 import { SplitView } from "@/components/swap/SplitView";
 import { useSplitView } from "@/hooks/useSplitView";
 import { RoutesBetaGate } from "@/src/components/RoutesBetaGate";
@@ -58,15 +59,18 @@ function SwapRoutesBeta() {
           <RouteDisplay amountOut="0" />
         </div>
       }
-      className="w-full max-w-[960px] mx-auto"
+      className="w-full"
     />
   );
 }
 
 export function SwapPageClient() {
   return (
-    <RoutesBetaGate fallback={<SwapLegacyRoutes />}>
-      <SwapRoutesBeta />
-    </RoutesBetaGate>
+    <div className="w-full max-w-[960px] mx-auto space-y-4">
+      <OnboardingChecklist />
+      <RoutesBetaGate fallback={<SwapLegacyRoutes />}>
+        <SwapRoutesBeta />
+      </RoutesBetaGate>
+    </div>
   );
 }

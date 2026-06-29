@@ -210,6 +210,35 @@ cargo run -p stellarroute-sdk --bin stellarroute -- orderbook native USDC --leve
 cargo run -p stellarroute-sdk --bin stellarroute -- pairs --limit 30
 ```
 
+### Quote flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--amount <decimal>` | _(omit for indicative price)_ | Positive decimal amount of the base asset to trade, e.g. `100` or `0.5`. When omitted the server uses `1` unit. |
+| `--quote-type <sell\|buy>` | `sell` | `sell` — trade away the base asset; `buy` — acquire the base asset. Maps to `quote_type` on `GET /api/v1/quote`. |
+
+Slippage tolerance (`slippage_bps`) is enforced server-side and is not a CLI flag.
+
+### Copy-paste example against localhost
+
+```bash
+# Sell 100 XLM for USDC, human output (default)
+cargo run -p stellarroute-sdk --bin stellarroute -- \
+  --api-url http://127.0.0.1:3000 \
+  quote native USDC --amount 100 --quote-type sell
+
+# Buy 50 USDC worth of XLM, JSON output
+cargo run -p stellarroute-sdk --bin stellarroute -- \
+  --api-url http://127.0.0.1:3000 \
+  --output json \
+  quote native USDC --amount 50 --quote-type buy
+
+# Indicative price with no amount (server defaults to 1 unit)
+cargo run -p stellarroute-sdk --bin stellarroute -- \
+  --api-url http://127.0.0.1:3000 \
+  quote native USDC
+```
+
 ### Output formats
 
 - `human` — friendly terminal output

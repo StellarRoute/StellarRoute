@@ -13,6 +13,7 @@ vi.mock('@/lib/wallet', () => ({
   connectWallet: vi.fn(),
   disconnectWallet: vi.fn(),
   refreshWalletSession: vi.fn(),
+  checkWalletCapabilities: vi.fn(),
 }));
 
 const mockWalletLib = vi.mocked(walletLib);
@@ -44,6 +45,7 @@ function TestComponent() {
     isTransactionPending,
     setTransactionPending,
     refreshAccount,
+    capabilities,
   } = useWallet();
 
   return (
@@ -57,8 +59,16 @@ function TestComponent() {
       <span data-testid="mismatch">{String(networkMismatch)}</span>
       <span data-testid="autoReconnect">{String(autoReconnectPreferred)}</span>
       <span data-testid="transaction-pending">{isTransactionPending ? 'Pending' : 'Not pending'}</span>
+      <span data-testid="capabilities">
+        {capabilities
+          ? JSON.stringify(
+              capabilities.statuses.find((s) => s.capability === 'sign_transaction')
+            )
+          : 'none'}
+      </span>
       
       <button onClick={() => connect("freighter")}>Connect</button>
+      <button onClick={() => connect("xbull")}>Connect xBull</button>
       <button onClick={() => connect("freighter")}>Connect Freighter</button>
       <button onClick={reconnect}>Reconnect</button>
       <button onClick={disconnect}>Disconnect</button>
@@ -414,5 +424,106 @@ describe('WalletProvider Account Switching', () => {
       expect(screen.getByTestId("connected").textContent).toBe("Connected");
     });
     expect(screen.getByTestId("walletId").textContent).toBe("freighter");
+  });
+});
+
+describe('WalletProvider capabilities', () => {
+  const mockAddress =
+    'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWalletLib.getAvailableWallets.mockResolvedValue([
+      { id: 'xbull', label: 'xBull', installed: true },
+    ]);
+    mockWalletLib.disconnectWallet.mockReturnValue({
+      walletId: null,
+      address: null,
+      network: null,
+      isConnected: false,
+    });
+  });
+
+  it('populates capabilities after xBull connect', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'xbull',
+      address: mockAddress,
+      network: 'testnet',
+      isConnected: true,
+    });
+    mockWalletLib.checkWalletCapabilities.mockResolvedValue({
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'request_access', allowed: true },
+        { capability: 'view_address', allowed: true },
+        { capability: 'view_network', allowed: true },
+        { capability: 'sign_transaction', allowed: true },
+      ],
+    });
+
+    renderWithProvider();
+    fireEvent.click(screen.getByText('Connect xBull'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.checkWalletCapabilities).toHaveBeenCalledWith(
+        'xbull',
+        'testnet'
+      );
+    });
+
+    await waitFor(() => {
+      const capText = screen.getByTestId('capabilities').textContent;
+      expect(capText).toContain('"allowed":true');
+      expect(capText).toContain('sign_transaction');
+    });
+  });
+
+  it('clears capabilities on disconnect', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'xbull',
+      address: mockAddress,
+      network: 'testnet',
+      isConnected: true,
+    });
+    mockWalletLib.checkWalletCapabilities.mockResolvedValue({
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'sign_transaction', allowed: true },
+      ],
+    });
+
+    renderWithProvider();
+    fireEvent.click(screen.getByText('Connect xBull'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    fireEvent.click(screen.getByText('Disconnect'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('capabilities')).toHaveTextContent('none');
+    });
+  });
+
+  it('sets denied capabilities when capability check fails', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'xbull',
+      address: mockAddress,
+      network: 'testnet',
+      isConnected: true,
+    });
+    mockWalletLib.checkWalletCapabilities.mockRejectedValue(
+      new Error('Extension unavailable')
+    );
+
+    renderWithProvider();
+    fireEvent.click(screen.getByText('Connect xBull'));
+
+    await waitFor(() => {
+      const capText = screen.getByTestId('capabilities').textContent;
+      expect(capText).toContain('"allowed":false');
+      expect(capText).toContain('Extension unavailable');
+    });
   });
 });

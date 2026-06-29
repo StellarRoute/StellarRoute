@@ -4,14 +4,14 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::{error::Result, models::ErrorResponse, state::AppState};
+use crate::{error::Result, state::AppState};
 
 /// Contract version metadata
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -46,8 +46,7 @@ pub async fn list_contract_versions(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ContractVersionMetadata>>> {
     // Query from database or config
-    let contracts = sqlx::query_as!(
-        ContractVersionMetadata,
+    let rows = sqlx::query(
         r#"
         SELECT 
             contract_name,
@@ -59,11 +58,12 @@ pub async fn list_contract_versions(
             git_commit
         FROM contract_registry
         ORDER BY deployed_at DESC
-        "#
+        "#,
     )
-    .fetch_all(&state.db)
+    .fetch_all(state.db.read_pool())
     .await?;
 
+    let contracts = rows.into_iter().map(contract_from_row).collect();
     Ok(Json(contracts))
 }
 
@@ -85,8 +85,7 @@ pub async fn get_contract_version(
     State(state): State<Arc<AppState>>,
     Path(contract_name): Path<String>,
 ) -> Result<Json<ContractVersionMetadata>> {
-    let contract = sqlx::query_as!(
-        ContractVersionMetadata,
+    let row = sqlx::query(
         r#"
         SELECT 
             contract_name,
@@ -101,15 +100,15 @@ pub async fn get_contract_version(
         ORDER BY deployed_at DESC
         LIMIT 1
         "#,
-        contract_name
     )
-    .fetch_optional(&state.db)
+    .bind(&contract_name)
+    .fetch_optional(state.db.read_pool())
     .await?
     .ok_or_else(|| {
         crate::error::ApiError::NotFound(format!("Contract '{}' not found", contract_name))
     })?;
 
-    Ok(Json(contract))
+    Ok(Json(contract_from_row(row)))
 }
 
 /// Get contract version by network
@@ -131,8 +130,7 @@ pub async fn get_contract_version_by_network(
     State(state): State<Arc<AppState>>,
     Path((contract_name, network)): Path<(String, String)>,
 ) -> Result<Json<ContractVersionMetadata>> {
-    let contract = sqlx::query_as!(
-        ContractVersionMetadata,
+    let row = sqlx::query(
         r#"
         SELECT 
             contract_name,
@@ -147,10 +145,10 @@ pub async fn get_contract_version_by_network(
         ORDER BY deployed_at DESC
         LIMIT 1
         "#,
-        contract_name,
-        network
     )
-    .fetch_optional(&state.db)
+    .bind(&contract_name)
+    .bind(&network)
+    .fetch_optional(state.db.read_pool())
     .await?
     .ok_or_else(|| {
         crate::error::ApiError::NotFound(format!(
@@ -159,5 +157,17 @@ pub async fn get_contract_version_by_network(
         ))
     })?;
 
-    Ok(Json(contract))
+    Ok(Json(contract_from_row(row)))
+}
+
+fn contract_from_row(row: sqlx::postgres::PgRow) -> ContractVersionMetadata {
+    ContractVersionMetadata {
+        contract_name: row.get("contract_name"),
+        version: row.get("version"),
+        wasm_hash: row.get("wasm_hash"),
+        network: row.get("network"),
+        contract_address: row.get("contract_address"),
+        deployed_at: row.get("deployed_at"),
+        git_commit: row.get("git_commit"),
+    }
 }

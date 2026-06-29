@@ -3,6 +3,7 @@
 import { useOrderbook } from "@/hooks/useApi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ViewState } from "@/components/shared/ViewState";
+import { SpreadIndicator } from "./SpreadIndicator";
 import type { OrderbookEntry } from "@/types";
 
 interface OrderbookDepthPanelProps {
@@ -91,7 +92,7 @@ export function OrderbookDepthPanel({
   maxRows = 10,
   className,
 }: OrderbookDepthPanelProps) {
-  const { data, loading, error } = useOrderbook(base, quote);
+  const { data, loading, error, midpoint, spreadBps } = useOrderbook(base, quote);
 
   if (error) {
     return (
@@ -119,6 +120,12 @@ export function OrderbookDepthPanel({
           {base}/{quote}
         </span>
       </h2>
+      <SpreadIndicator
+        midpoint={midpoint}
+        spreadBps={spreadBps}
+        isLoading={loading}
+        className="mb-4 pb-2 border-b border-border/20"
+      />
       {/* Side-by-side on md+, stacked + horizontally scrollable on mobile */}
       <div className="flex flex-col gap-4 overflow-x-auto sm:flex-row">
         <SideTable label="Bids" entries={bids} side="bid" loading={loading} maxRows={maxRows} />

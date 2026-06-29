@@ -23,12 +23,14 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
             .as_ref()
             .ok_or_else(|| ApiError::Unauthorized("Admin auth is not configured".to_string()))?;
 
-        let token = extract_admin_token(parts.headers()).ok_or_else(|| {
+        let token = extract_admin_token(&parts.headers).ok_or_else(|| {
             ApiError::Unauthorized("Missing admin authorization header".to_string())
         })?;
 
         if token != *expected_token {
-            return Err(ApiError::Unauthorized("Invalid admin credentials".to_string()));
+            return Err(ApiError::Unauthorized(
+                "Invalid admin credentials".to_string(),
+            ));
         }
 
         Ok(AdminAuth)

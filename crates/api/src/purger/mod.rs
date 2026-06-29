@@ -36,8 +36,8 @@ impl PurgeResult {
     /// Check if this result indicates an alert condition
     pub fn should_alert(&self, config: &PurgerConfig) -> bool {
         let duration_secs = (self.duration_ms as f64) / 1000.0;
-        
-        (duration_secs > config.slow_purge_threshold_secs as f64) 
+
+        (duration_secs > config.slow_purge_threshold_secs as f64)
             || (self.deleted_count > config.alert_deletion_threshold)
             || self.was_rate_limited
     }
@@ -45,25 +45,25 @@ impl PurgeResult {
     /// Get alert reason if one applies
     pub fn alert_reason(&self, config: &PurgerConfig) -> Option<String> {
         let duration_secs = (self.duration_ms as f64) / 1000.0;
-        
+
         if self.was_rate_limited {
             return Some("Purge was rate-limited due to large volume".to_string());
         }
-        
+
         if duration_secs > config.slow_purge_threshold_secs as f64 {
             return Some(format!(
                 "Purge took {:.1}s (threshold: {}s)",
                 duration_secs, config.slow_purge_threshold_secs
             ));
         }
-        
+
         if self.deleted_count > config.alert_deletion_threshold {
             return Some(format!(
                 "Deleted {} rows (threshold: {})",
                 self.deleted_count, config.alert_deletion_threshold
             ));
         }
-        
+
         None
     }
 }
@@ -135,14 +135,28 @@ impl QuoteArtifactPurger {
             "Starting replay_artifacts purge"
         );
 
-        let result = sqlx::query_as::<_, (i64, i64, i64, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, bool, i32)>(
+        let result = sqlx::query_as::<
+            _,
+            (
+                i64,
+                i64,
+                i64,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                bool,
+                i32,
+            ),
+        >(
             r#"
             SELECT * FROM purge_replay_artifacts_older_than(
                 $1::INTEGER,
                 $2::INTEGER,
                 $3::INTEGER
             )
-            "#
+            "#,
         )
         .bind(self.config.replay_artifacts_retention_days)
         .bind(self.config.replay_artifacts_batch_size)
@@ -176,14 +190,28 @@ impl QuoteArtifactPurger {
             "Starting route_audit_log purge"
         );
 
-        let result = sqlx::query_as::<_, (i64, i64, i64, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, bool, i32)>(
+        let result = sqlx::query_as::<
+            _,
+            (
+                i64,
+                i64,
+                i64,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                bool,
+                i32,
+            ),
+        >(
             r#"
             SELECT * FROM purge_route_audit_log_older_than(
                 $1::INTEGER,
                 $2::INTEGER,
                 $3::INTEGER
             )
-            "#
+            "#,
         )
         .bind(self.config.audit_log_retention_days)
         .bind(self.config.audit_log_batch_size)
@@ -237,19 +265,33 @@ impl QuoteArtifactPurger {
 
     /// Get latest purge metrics for dashboarding
     pub async fn get_purge_status(&self) -> Result<Vec<(String, String)>> {
-        let rows = sqlx::query_as::<_, (String, Option<String>, Option<i64>, Option<i32>, i64, Option<f64>)>(
-            "SELECT * FROM get_quote_purge_status()"
-        )
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                Option<String>,
+                Option<i64>,
+                Option<i32>,
+                i64,
+                Option<f64>,
+            ),
+        >("SELECT * FROM get_quote_purge_status()")
         .fetch_all(&self.pool)
         .await?;
 
         let mut status = Vec::new();
         for (purge_type, last_purge_at, deleted, duration, retained, age_p99) in rows {
             let last_purge = last_purge_at.unwrap_or_else(|| "never".to_string());
-            let deleted_str = deleted.map(|d| d.to_string()).unwrap_or_else(|| "N/A".to_string());
-            let duration_str = duration.map(|d| format!("{}ms", d)).unwrap_or_else(|| "N/A".to_string());
-            let age_str = age_p99.map(|a| format!("{:.1}d", a)).unwrap_or_else(|| "N/A".to_string());
-            
+            let deleted_str = deleted
+                .map(|d| d.to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+            let duration_str = duration
+                .map(|d| format!("{}ms", d))
+                .unwrap_or_else(|| "N/A".to_string());
+            let age_str = age_p99
+                .map(|a| format!("{:.1}d", a))
+                .unwrap_or_else(|| "N/A".to_string());
+
             status.push((
                 purge_type.clone(),
                 format!(
@@ -341,7 +383,7 @@ mod tests {
             deleted_count: 100,
             scanned_count: 1000,
             rows_retained: 0,
-            duration_ms: 60_000,  // 60 seconds
+            duration_ms: 60_000, // 60 seconds
             age_min_days: Some(1.0),
             age_max_days: Some(30.0),
             age_p50_days: Some(15.0),

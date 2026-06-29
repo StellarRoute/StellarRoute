@@ -59,11 +59,21 @@ cd stellarroute
 
 ```bash
 docker-compose up -d
+./scripts/wait-for-services.sh
+./scripts/wait-for-dbs.sh
 ```
 
-This will start:
-- PostgreSQL on port 5432
-- Redis on port 6379
+This will start and verify the health of:
+- PostgreSQL on port 5432 (checked via `pg_isready`)
+- Redis on port 6379 (checked via `ping`)
+
+The `./scripts/wait-for-dbs.sh` script will block and verify both databases are fully initialized and healthy before you build or run the services.
+
+The wait script checks Postgres and Redis readiness before you run the API or indexer. If your machine needs more time to pull images or initialize volumes, extend the timeout:
+
+```bash
+TIMEOUT_SECONDS=120 ./scripts/wait-for-services.sh
+```
 
 ### 6. Build the Project
 
@@ -87,6 +97,20 @@ REDIS_URL=redis://localhost:6379
 STELLAR_HORIZON_URL=https://horizon.stellar.org
 SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
 ```
+
+### Frontend Configuration (Profiles)
+
+For the frontend web application, configuration is managed via environment variables defined in the `frontend/` directory (e.g., in `.env.local` or `.env.production`).
+
+To point the frontend to a hosted testnet API and target the Stellar Testnet:
+1. Copy the testnet environment example:
+   ```bash
+   cp frontend/.env.testnet.example frontend/.env.local
+   ```
+2. Configure the following environment variables:
+   - `NEXT_PUBLIC_API_URL`: Points to the hosted backend API (e.g., `https://api.testnet.stellarroute.com/api/v1`).
+   - `NEXT_PUBLIC_STELLAR_NETWORK`: Defines the target network (`testnet` or `mainnet`). This drives default wallet connections, header/footer network badges, and network validation rules.
+   - `NEXT_PUBLIC_STELLAR_HORIZON_URL`: Configures a custom Stellar Horizon endpoint (e.g., `https://horizon-testnet.stellar.org`).
 
 ## Next Steps
 
@@ -244,14 +268,17 @@ docker-compose down --volumes --remove-orphans
 docker-compose up -d
 ```
 
-#### PostgreSQL connection refused after `docker-compose up -d`
+#### PostgreSQL or Redis connection refused after `docker-compose up -d`
 
-The container may still be starting. Wait for the health check to pass:
+The containers may still be starting. You can use the wait script to block until both services are fully healthy:
 
 ```bash
+./scripts/wait-for-dbs.sh
+```
+
+Alternatively, check their statuses manually:
+```bash
 docker-compose ps   # STATUS should show "(healthy)"
-# or wait explicitly
-until docker-compose exec postgres pg_isready -U stellarroute; do sleep 1; done
 ```
 
 #### Database connection failures from the application

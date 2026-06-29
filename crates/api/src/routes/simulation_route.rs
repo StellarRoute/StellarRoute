@@ -1,14 +1,10 @@
-ckout //! Route dry-run simulation endpoint.
+//! Route dry-run simulation endpoint.
 //!
 //! This endpoint must be side-effect free: it performs no wallet signing and
 //! no on-chain execution. It only simulates route feasibility and produces
 //! diagnostics similar to `/api/v1/quote`.
 
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -19,8 +15,8 @@ use stellarroute_routing::policy::RoutingPolicy;
 use crate::{
     error::{ApiError, Result},
     models::{
-        request::{AssetPath},
-        response::{ApiResponse, ExclusionDiagnostics, QuoteResponse, RouteCandidate, RouteHop},
+        request::{AssetPath, DEFAULT_SLIPPAGE_BPS},
+        response::{ApiResponse, ExclusionDiagnostics, QuoteResponse},
     },
     state::AppState,
 };
@@ -116,9 +112,10 @@ pub async fn simulate_route_dry_run(
         return Err(ApiError::Validation("amount must be non-empty".to_string()));
     }
 
-    let amount: f64 = body.amount.parse().map_err(|_| {
-        ApiError::Validation("amount must be a valid number".to_string())
-    })?;
+    let amount: f64 = body
+        .amount
+        .parse()
+        .map_err(|_| ApiError::Validation("amount must be a valid number".to_string()))?;
     if !amount.is_finite() || amount <= 0.0 {
         return Err(ApiError::Validation(
             "amount must be greater than zero".to_string(),
@@ -145,13 +142,9 @@ pub async fn simulate_route_dry_run(
     }
 
     // ── 2) Apply slippage bounds (default + per-hop overrides) ───────────
-    // We don’t currently have a unified routing-engine API exposed here.
-    // So we keep the overrides in-band for per-hop diagnostics construction.
-    use std::collections::HashMap;
-    let mut override_map: HashMap<&str, u32> = HashMap::new();
-    for ov in &body.slippage_bps_overrides {
-        override_map.insert(ov.venue_ref.as_str(), ov.slippage_bps);
-    }
+    let default_slippage_bps = body.slippage_bps.unwrap_or(DEFAULT_SLIPPAGE_BPS);
+    let mut routing_policy = RoutingPolicy::default().with_default_slippage_bps(default_slippage_bps);
+    apply_slippage_overrides_to_policy(&mut routing_policy, &body.slippage_bps_overrides);
 
     // ── 3) Build per-hop QuoteResponse diagnostics (no execution) ───────
     // We simulate the chain as a sequence of single-hop quotes by calling
@@ -171,18 +164,11 @@ pub async fn simulate_route_dry_run(
     let mut path_steps = Vec::with_capacity(body.route.hops.len());
     let mut exclusion_diagnostics: Option<ExclusionDiagnostics> = None;
 
-    let mut base_asset = &body.route.hops[0].from_asset;
-    let mut last_to_asset = &body.route.hops[body.route.hops.len() - 1].to_asset;
-
-    // Default slippage
-    let default_slippage_bps = body.slippage_bps.unwrap_or(50);
+    let base_asset = &body.route.hops[0].from_asset;
+    let last_to_asset = &body.route.hops[body.route.hops.len() - 1].to_asset;
 
     for hop in &body.route.hops {
-        let hop_slippage = hop
-            .venue_ref
-            .as_deref()
-            .and_then(|vr| override_map.get(vr).copied())
-            .unwrap_or(default_slippage_bps);
+        let hop_slippage = routing_policy.slippage_bps_for_venue(hop.venue_ref.as_deref());
 
         // Reuse AssetPath + QuoteResponse shaping via per-pair quote computation.
         // We compute an effective price/total using the quote pipeline; this
@@ -210,9 +196,7 @@ pub async fn simulate_route_dry_run(
         // The quote pipeline returns `total` as amount_out (for sell).
         let hop_total: f64 = quote_resp.total.parse().unwrap_or(0.0);
         if hop_total <= 0.0 {
-            return Err(ApiError::NoRouteFound(
-                "no feasible hop output for provided hop chain".to_string(),
-            ));
+            return Err(ApiError::NoRouteFound);
         }
 
         current_amount = hop_total;
@@ -263,7 +247,6 @@ pub async fn simulate_route_dry_run(
     Ok(Json(envelope))
 }
 
-
 // Helper to convert request route into routing engine SwapPath.
 // The routing engine types do not currently exist in the API request model
 // (we keep this as a placeholder for upcoming implementation).
@@ -276,8 +259,55 @@ fn request_route_to_swap_path(_route: &RouteDryRunPath) -> Result<SwapPath> {
 
 #[allow(dead_code)]
 fn apply_slippage_overrides_to_policy(
-    _policy: &mut RoutingPolicy,
-    _overrides: &[SlippageOverride],
+    policy: &mut RoutingPolicy,
+    overrides: &[SlippageOverride],
 ) {
+    policy.apply_venue_slippage_overrides(
+        overrides
+            .iter()
+            .map(|ov| (ov.venue_ref.clone(), ov.slippage_bps)),
+    );
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_slippage_overrides_to_policy_merges_per_venue_bounds() {
+        let mut policy = RoutingPolicy::default().with_default_slippage_bps(50);
+        apply_slippage_overrides_to_policy(
+            &mut policy,
+            &[
+                SlippageOverride {
+                    venue_ref: "pool-a".to_string(),
+                    slippage_bps: 100,
+                },
+                SlippageOverride {
+                    venue_ref: "pool-b".to_string(),
+                    slippage_bps: 200,
+                },
+            ],
+        );
+
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-a")), 100);
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-b")), 200);
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-c")), 50);
+        assert_eq!(policy.slippage_bps_for_venue(None), 50);
+    }
+
+    #[test]
+    fn dry_run_slippage_resolution_prefers_override_then_default() {
+        let mut policy = RoutingPolicy::default().with_default_slippage_bps(75);
+        apply_slippage_overrides_to_policy(
+            &mut policy,
+            &[SlippageOverride {
+                venue_ref: "venue-1".to_string(),
+                slippage_bps: 125,
+            }],
+        );
+
+        assert_eq!(policy.slippage_bps_for_venue(Some("venue-1")), 125);
+        assert_eq!(policy.slippage_bps_for_venue(Some("venue-2")), 75);
+    }
+}

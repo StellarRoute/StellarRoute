@@ -74,6 +74,8 @@ export type UseQuoteRefreshState = UseApiState<PriceQuote> & {
   isStale: boolean;
   /** Wall-clock time of the last successful quote fetch, or null. */
   lastQuotedAtMs: number | null;
+  /** Server request ID from the last successful quote fetch, or null. */
+  requestId: string | null;
   /** True while transient online quote failures are being retried. */
   isRecovering: boolean;
   /** Current transient retry attempt count for the active request context. */
@@ -140,6 +142,7 @@ export function useQuoteRefresh(
   });
   const [manualCooldownUntil, setManualCooldownUntil] = useState(0);
   const [lastQuotedAtMs, setLastQuotedAtMs] = useState<number | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -189,6 +192,7 @@ export function useQuoteRefresh(
     setIsRecovering(false);
     setRateLimitUntilMs(0);
     setPendingRetry(null);
+    setRequestId(null);
   }, [base, quoteAsset, debouncedAmount, type]);
 
   const cancelRetry = useCallback(() => {
@@ -235,10 +239,11 @@ export function useQuoteRefresh(
       .getQuote(base, quoteAsset, debouncedAmount, type, {
         signal: controller.signal,
       })
-      .then((data) => {
+      .then((result) => {
         if (!controller.signal.aborted) {
           const t = Date.now();
           setLastQuotedAtMs(t);
+          setRequestId(result.requestId);
           if (retryAttempt > 0 && requestContext) {
             emitRetryEvent({
               stage: 'succeeded',
@@ -251,7 +256,7 @@ export function useQuoteRefresh(
           setIsRecovering(false);
           setRateLimitUntilMs(0);
           setPendingRetry(null);
-          setState({ data, loading: false, error: null });
+          setState({ data: result.quote, loading: false, error: null });
         }
       })
       .catch((err: unknown) => {
@@ -421,6 +426,7 @@ export function useQuoteRefresh(
     setAutoRefreshEnabled,
     isStale,
     lastQuotedAtMs,
+    requestId,
     isRecovering,
     retryAttempt,
     hasPendingRetry: pendingRetry !== null,

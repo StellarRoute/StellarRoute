@@ -65,6 +65,11 @@ impl Database {
         let migration_0007 =
             include_str!("../../migrations/0007_backfill_and_normalized_storage.sql");
         let migration_0008 = include_str!("../../migrations/0008_soroban_discovery_cursors.sql");
+        let migration_0009 = include_str!("../../migrations/0009_finalize_unified_liquidity.sql");
+        let migration_0010 = include_str!("../../migrations/0010_asset_metadata.sql");
+        let migration_0011 = include_str!("../../migrations/0011_trace_context_provenance.sql");
+        let migration_0012 = include_str!("../../migrations/0012_contract_swap_activity.sql");
+        let migration_0013 = include_str!("../../migrations/0013_amm_pools.sql");
 
         // Execute migrations in order
         info!("Running migration 0001_init.sql");
@@ -158,6 +163,63 @@ impl Database {
                     "Failed to run 0008_soroban_discovery_cursors.sql: {}",
                     e
                 ))
+            })?;
+
+        info!("Running migration 0009_finalize_unified_liquidity.sql");
+        sqlx::query(migration_0009)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Migration 0009 failed: {}", e);
+                IndexerError::DatabaseMigration(format!(
+                    "Failed to run 0009_finalize_unified_liquidity.sql: {}",
+                    e
+                ))
+            })?;
+
+        info!("Running migration 0010_asset_metadata.sql");
+        sqlx::query(migration_0010)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Migration 0010 failed: {}", e);
+                IndexerError::DatabaseMigration(format!(
+                    "Failed to run 0010_asset_metadata.sql: {}",
+                    e
+                ))
+            })?;
+
+        info!("Running migration 0011_trace_context_provenance.sql");
+        sqlx::query(migration_0011)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Migration 0011 failed: {}", e);
+                IndexerError::DatabaseMigration(format!(
+                    "Failed to run 0011_trace_context_provenance.sql: {}",
+                    e
+                ))
+            })?;
+
+        info!("Running migration 0012_contract_swap_activity.sql");
+        sqlx::query(migration_0012)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Migration 0012 failed: {}", e);
+                IndexerError::DatabaseMigration(format!(
+                    "Failed to run 0012_contract_swap_activity.sql: {}",
+                    e
+                ))
+            })?;
+
+        info!("Running migration 0013_amm_pools.sql");
+        sqlx::query(migration_0013)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Migration 0013 failed: {}", e);
+                IndexerError::DatabaseMigration(format!("Failed to run 0013_amm_pools.sql: {}", e))
             })?;
 
         info!("Database migrations completed");

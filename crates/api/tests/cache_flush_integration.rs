@@ -1,6 +1,9 @@
 //! Integration tests for the admin cache flush endpoint.
 
-use axum::{body::Body, http::{Request, StatusCode}};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use serde_json::Value;
 use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
@@ -19,7 +22,10 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     let cache = match CacheManager::new(&redis_url).await {
         Ok(cache) => cache,
         Err(err) => {
-            eprintln!("Skipping admin cache flush test because Redis is unavailable: {}", err);
+            eprintln!(
+                "Skipping admin cache flush test because Redis is unavailable: {}",
+                err
+            );
             return;
         }
     };
@@ -99,6 +105,9 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     assert_eq!(json["total_deleted"].as_u64(), Some(2));
 
     let mut cache_lock = state.cache.as_ref().unwrap().lock().await;
-    assert!(cache_lock.get::<OrderbookResponse>(&orderbook_key).await.is_none());
+    assert!(cache_lock
+        .get::<OrderbookResponse>(&orderbook_key)
+        .await
+        .is_none());
     assert!(cache_lock.get::<QuoteResponse>(&quote_key).await.is_none());
 }

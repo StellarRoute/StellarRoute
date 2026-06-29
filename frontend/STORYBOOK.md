@@ -3,6 +3,7 @@
 This repository uses Ladle to render component stories for core swap primitives.
 
 ## Available stories
+- `SwapCard` state matrix (`components/swap/SwapCard.stories.tsx`) — idle, quoting, stale, confirming, and error fixtures
 - `Swap primitives` (Core components in `components/swap/`)
 - `TokenSelector` (Shared component)
 - `QuoteCard` (Shared component)
@@ -17,7 +18,10 @@ This repository uses Ladle to render component stories for core swap primitives.
 ## CI command
 - `npm run storybook:ci`
 
-The CI workflow step is in `.github/workflows/ci.yml` under the `frontend` job.
+The CI workflow runs this in the `Frontend Ladle Storybook` job (`.github/workflows/ci.yml`).
+On success, the static `frontend/build/` output is uploaded as the `ladle-storybook` artifact
+and verified by `scripts/check-storybook-build.mjs` (index.html present, size under 2 MiB).
+Broken stories fail the Ladle build and block CI.
 
 ## Swap UI component review checklist
 

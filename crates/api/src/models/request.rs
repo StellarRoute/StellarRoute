@@ -252,7 +252,7 @@ pub enum QuoteType {
 }
 
 /// Asset identifier in path parameters
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct AssetPath {
     /// Asset code (e.g., "XLM", "USDC", or "native" for XLM)
     pub asset_code: String,

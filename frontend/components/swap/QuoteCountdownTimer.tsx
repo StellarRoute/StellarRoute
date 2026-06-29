@@ -26,6 +26,7 @@ export function QuoteCountdownTimer({
   isLoading,
   className,
 }: QuoteCountdownTimerProps) {
+  console.log('DEBUG: Progress is', Progress);
   const totalTtlMs = (ttlSeconds ?? 5.5) * 1000;
   const { remainingSeconds, isExpired, progress } = useQuoteCountdown(
     expiresAtMs,

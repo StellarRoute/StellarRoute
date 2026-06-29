@@ -12,23 +12,25 @@
 import { ACCENT_COLORS, AccentColor } from '@/types/settings';
 import { useSettings } from '@/components/providers/settings-provider';
 import { CheckIcon } from 'lucide-react';
+import { useSwapI18n } from '@/lib/swap-i18n';
 
 export function AccentColorPicker() {
   const { settings, updateAccentColor } = useSettings();
   const current = settings.accentColor;
+  const { t } = useSwapI18n();
 
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-sm font-medium">Accent Colour</p>
+        <p className="text-sm font-medium">{t('settings.accentColor.label')}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Applied to buttons, links, and other primary actions.
+          {t('settings.accentColor.description')}
         </p>
       </div>
 
       <div
         role="radiogroup"
-        aria-label="Accent colour"
+        aria-label={t('settings.accentColor.label')}
         className="flex flex-wrap gap-2"
       >
         {(Object.entries(ACCENT_COLORS) as [AccentColor, string][]).map(
@@ -38,7 +40,7 @@ export function AccentColorPicker() {
               type="button"
               role="radio"
               aria-checked={current === name}
-              aria-label={`${name} accent colour`}
+              aria-label={`${name} ${t('settings.accentColor.label')}`}
               onClick={() => updateAccentColor(name)}
               className={[
                 'relative h-8 w-8 rounded-full border-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
@@ -73,6 +75,7 @@ export function AccentColorPicker() {
  */
 function CustomHexInput({ current }: { current: AccentColor }) {
   const { settings, updateAccentColor } = useSettings();
+  const { t } = useSwapI18n();
 
   // Build the displayed hex value — preset or raw stored custom hex
   const currentHex = ACCENT_COLORS[current] ?? '#6366f1';
@@ -106,7 +109,7 @@ function CustomHexInput({ current }: { current: AccentColor }) {
         htmlFor="accent-color-custom"
         className="text-xs text-muted-foreground"
       >
-        Custom colour:
+        {t('settings.accentColor.custom')}
       </label>
       <input
         id="accent-color-custom"
@@ -114,7 +117,7 @@ function CustomHexInput({ current }: { current: AccentColor }) {
         defaultValue={currentHex}
         onChange={handleChange}
         className="h-7 w-14 cursor-pointer rounded border border-border bg-transparent p-0.5"
-        aria-label="Pick a custom accent colour"
+        aria-label={`Pick a custom ${t('settings.accentColor.label')}`}
       />
     </div>
   );

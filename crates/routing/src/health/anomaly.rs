@@ -53,7 +53,6 @@ impl Default for AnomalyConfig {
     }
 }
 
-
 /// Historical state for a venue to detect shifts
 #[derive(Debug, Clone)]
 pub struct VenueHistory {
@@ -88,11 +87,16 @@ impl LiquidityAnomalyDetector {
     fn thresholds_for(&self, venue_ref: &str) -> (f64, f64) {
         // returns (reserve_delta_threshold, alert_threshold)
         if let Some(pool) = self.config.per_pool.get(venue_ref) {
-            let reserve = pool.reserve_delta_threshold.unwrap_or(self.config.reserve_delta_threshold);
+            let reserve = pool
+                .reserve_delta_threshold
+                .unwrap_or(self.config.reserve_delta_threshold);
             let alert = pool.alert_threshold.unwrap_or(self.config.alert_threshold);
             (reserve, alert)
         } else {
-            (self.config.reserve_delta_threshold, self.config.alert_threshold)
+            (
+                self.config.reserve_delta_threshold,
+                self.config.alert_threshold,
+            )
         }
     }
 
@@ -106,8 +110,8 @@ impl LiquidityAnomalyDetector {
         current_depth: Option<i128>,
         reserve_updated_at: Option<DateTime<Utc>>,
     ) -> AnomalyResult {
-
         let now = Utc::now();
+        let (reserve_delta_threshold, _) = self.thresholds_for(venue_ref);
         let history = self
             .history
             .entry(venue_ref.to_string())
@@ -118,10 +122,8 @@ impl LiquidityAnomalyDetector {
                 last_updated_at: now,
             });
 
-        let mut score = 0.0;
+        let mut score: f64 = 0.0;
         let mut reasons = Vec::new();
-
-        let (reserve_delta_threshold, alert_threshold) = self.thresholds_for(venue_ref);
 
         // 0. Stale-read detection for AMM reserves
         // - If we can't determine age, optionally treat as anomaly.
@@ -136,7 +138,10 @@ impl LiquidityAnomalyDetector {
                     let age_secs = (now - ts).num_seconds().max(0) as u64;
                     if age_secs > self.config.max_reserve_age_secs {
                         score = score.max(0.9);
-                        reasons.push(format!("Stale read: reserve_updated_at age {}s > {}s", age_secs, self.config.max_reserve_age_secs));
+                        reasons.push(format!(
+                            "Stale read: reserve_updated_at age {}s > {}s",
+                            age_secs, self.config.max_reserve_age_secs
+                        ));
                     }
                 }
             }
@@ -174,7 +179,8 @@ impl LiquidityAnomalyDetector {
             if last_d > 0 {
                 let collapse = (last_d as f64 - curr_d as f64) / last_d as f64;
                 if collapse > self.config.depth_collapse_threshold {
-                    score = score.max((collapse / self.config.depth_collapse_threshold).min(1.0) * 0.9);
+                    score =
+                        score.max((collapse / self.config.depth_collapse_threshold).min(1.0) * 0.9);
                     reasons.push(format!(
                         "Significant depth collapse: {:.1}%",
                         collapse * 100.0
@@ -191,7 +197,7 @@ impl LiquidityAnomalyDetector {
         let score = score.clamp(0.0, 1.0);
         // If no specific reasons were triggered, ensure score doesn't accidentally carry over.
         // (We already start from 0.0, so this is mostly defensive.)
-        let mut reasons = reasons;
+        let reasons = reasons;
         if reasons.is_empty() {
             // Keep behavior: score should remain 0.0 if nothing is detected.
             // This also aligns with existing unit tests.
@@ -211,7 +217,6 @@ impl LiquidityAnomalyDetector {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,37 +229,25 @@ mod tests {
             stale_read_is_anomaly: false,
             ..Default::default()
         };
-        let mut detector = LiquidityAnomalyDetector::new(config);
+        let mut detector = LiquidityAnomalyDetector::new(config.clone());
 
         // Initial update
-        let _ = detector.update_and_detect(
-            "amm:1",
-            Some((1000, 1000)),
-            None,
-            Some(Utc::now()),
-        );
+        let _ = detector.update_and_detect("amm:1", Some((1000, 1000)), None, Some(Utc::now()));
 
         // Moderate delta (40%) - should not trigger
-        let res = detector.update_and_detect(
-            "amm:1",
-            Some((1400, 1400)),
-            None,
-            Some(Utc::now()),
-        );
+        let res = detector.update_and_detect("amm:1", Some((1400, 1400)), None, Some(Utc::now()));
         assert!(res.score < 0.7);
         assert!(res.reasons.is_empty());
 
         // Large delta (60%) - should trigger
-        let res = detector.update_and_detect(
-            "amm:1",
-            Some((400, 400)),
-            None,
-            Some(Utc::now()),
-        );
+        let res = detector.update_and_detect("amm:1", Some((400, 400)), None, Some(Utc::now()));
         assert!(res.score > 0.5);
         assert!(!res.reasons.is_empty());
         assert!(res.reasons[0].to_lowercase().contains("amm reserve"));
-        assert!(res.reasons[0].to_lowercase().contains("spike") || res.reasons[0].to_lowercase().contains("drain"));
+        assert!(
+            res.reasons[0].to_lowercase().contains("spike")
+                || res.reasons[0].to_lowercase().contains("drain")
+        );
     }
 
     #[test]
@@ -265,23 +258,13 @@ mod tests {
             stale_read_is_anomaly: false,
             ..Default::default()
         };
-        let mut detector = LiquidityAnomalyDetector::new(config);
+        let mut detector = LiquidityAnomalyDetector::new(config.clone());
 
         // Initial update
-        let _ = detector.update_and_detect(
-            "amm:drain",
-            Some((1000, 1000)),
-            None,
-            Some(Utc::now()),
-        );
+        let _ = detector.update_and_detect("amm:drain", Some((1000, 1000)), None, Some(Utc::now()));
 
         // Large negative delta (drain 60%) - should trigger
-        let res = detector.update_and_detect(
-            "amm:drain",
-            Some((400, 400)),
-            None,
-            Some(Utc::now()),
-        );
+        let res = detector.update_and_detect("amm:drain", Some((400, 400)), None, Some(Utc::now()));
         assert!(res.score >= config.alert_threshold);
         assert!(!res.reasons.is_empty());
         assert!(res.reasons[0].to_lowercase().contains("drain"));
@@ -295,7 +278,7 @@ mod tests {
             alert_threshold: 0.7,
             ..Default::default()
         };
-        let mut detector = LiquidityAnomalyDetector::new(config);
+        let mut detector = LiquidityAnomalyDetector::new(config.clone());
 
         // Initial update
         let _ = detector.update_and_detect(
@@ -306,12 +289,7 @@ mod tests {
         );
 
         // Missing reserve_updated_at should yield anomaly
-        let res = detector.update_and_detect(
-            "amm:stale_missing",
-            Some((900, 900)),
-            None,
-            None,
-        );
+        let res = detector.update_and_detect("amm:stale_missing", Some((900, 900)), None, None);
         assert!(res.score >= config.alert_threshold);
         assert!(res.reasons.iter().any(|r| r.contains("Stale read")));
     }
@@ -324,26 +302,15 @@ mod tests {
             stale_read_is_anomaly: false,
             ..Default::default()
         };
-        let mut detector = LiquidityAnomalyDetector::new(config);
+        let mut detector = LiquidityAnomalyDetector::new(config.clone());
 
         // Initial update
-        let _ = detector.update_and_detect(
-            "sdex:1",
-            None,
-            Some(1000),
-            Some(Utc::now()),
-        );
+        let _ = detector.update_and_detect("sdex:1", None, Some(1000), Some(Utc::now()));
 
         // 90% collapse
-        let res = detector.update_and_detect(
-            "sdex:1",
-            None,
-            Some(100),
-            Some(Utc::now()),
-        );
+        let res = detector.update_and_detect("sdex:1", None, Some(100), Some(Utc::now()));
         assert!(res.score > 0.8);
         assert!(!res.reasons.is_empty());
         assert!(res.reasons[0].to_lowercase().contains("depth collapse"));
     }
-
 }

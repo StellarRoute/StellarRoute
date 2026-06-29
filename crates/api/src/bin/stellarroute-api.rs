@@ -222,7 +222,6 @@ async fn main() {
             .unwrap_or(3000),
         enable_cors: true,
         enable_compression: true,
-        redis_url: std::env::var("REDIS_URL").ok(),
         admin_auth_token: std::env::var("ADMIN_AUTH_TOKEN").ok(),
         redis_url,
         quote_cache_ttl_seconds: std::env::var("QUOTE_CACHE_TTL_SECONDS")

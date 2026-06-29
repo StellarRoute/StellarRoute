@@ -136,7 +136,8 @@ async fn main() {
             stellarroute_indexer::sdex::IndexingMode::Streaming
         }
     };
-    let sdex_indexer = SdexIndexer::with_mode(horizon, db.clone(), sdex_mode);
+    let partition_manager = stellarroute_indexer::partition::PartitionManager::from_config(&config);
+    let sdex_indexer = SdexIndexer::with_mode(horizon, db.clone(), sdex_mode, partition_manager);
 
     // Create AMM aggregator
     let amm_config = AmmConfig {

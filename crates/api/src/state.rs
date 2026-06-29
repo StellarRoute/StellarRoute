@@ -20,6 +20,8 @@ use crate::audit::AuditWriter;
 use crate::cache::{PrewarmConfig, PrewarmJob};
 use crate::exactlyonce::DedupeLedger;
 use crate::indexer_lag::IndexerLagMonitor;
+use crate::liquidity_alerts::LiquidityThinnessAlerts;
+use crate::webhooks::QuoteExpirationWebhookService;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 
 /// Primary database pool for write operations plus an optional replica pool
@@ -168,6 +170,10 @@ pub struct AppState {
     pub idempotency_ledger: Arc<DedupeLedger>,
     /// External dependency probes and dedicated circuit breakers.
     pub external_dependency_health: Arc<ExternalDependencyHealth>,
+    /// Orderbook liquidity thinness alert dispatcher.
+    pub liquidity_thinness_alerts: Arc<LiquidityThinnessAlerts>,
+    /// Quote expiration webhook dispatcher.
+    pub quote_expiration_webhooks: Arc<QuoteExpirationWebhookService>,
 }
 
 impl AppState {
@@ -194,6 +200,9 @@ impl AppState {
             ledger
         };
         let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+        let liquidity_thinness_alerts = Arc::new(LiquidityThinnessAlerts::from_env());
+        let quote_expiration_webhooks =
+            Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
 
         Self {
             db,
@@ -222,6 +231,8 @@ impl AppState {
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
+            liquidity_thinness_alerts,
+            quote_expiration_webhooks,
         }
     }
 
@@ -262,6 +273,9 @@ impl AppState {
             ledger
         };
         let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+        let liquidity_thinness_alerts = Arc::new(LiquidityThinnessAlerts::from_env());
+        let quote_expiration_webhooks =
+            Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
 
         // Build the AppState value to return, then optionally start background jobs
         let app_state = Self {
@@ -291,6 +305,8 @@ impl AppState {
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
+            liquidity_thinness_alerts,
+            quote_expiration_webhooks,
         };
 
         // Start cache prewarm job if configured via env `PREWARM_PAIRS`.

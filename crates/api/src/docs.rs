@@ -3,16 +3,15 @@
 use utoipa::OpenApi;
 
 use crate::models::{
-    AssetInfo, CacheFlushResponse, CacheMetricsResponse, ErrorResponse, HealthResponse,
-    OrderbookLevel, OrderbookResponse, PairsResponse, PathStep, QuoteRationaleMetadata,
-    QuoteResponse, RouteResponse, TradingPair, VenueEvaluation,
     AssetInfo, AssetMetadataBulkResponse, AssetMetadataResponse, BatchItemError,
-    BatchQuoteItemResult, BatchQuoteResponse, CacheMetricsResponse, DataFreshness,
-    DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo, ExclusionDiagnostics,
-    ExclusionReason, HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, PathStep,
-    QuoteExpirationWebhookPayload, QuoteExpirationWebhookRegistrationResponse,
-    QuoteRationaleMetadata, QuoteResponse, RouteResponse, TradingPair, VenueEvaluation,
+    BatchQuoteItemResult, BatchQuoteResponse, CacheFlushResponse, CacheMetricsResponse,
+    DataFreshness, DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo,
+    ExclusionDiagnostics, ExclusionReason, HealthResponse, OrderbookLevel, OrderbookResponse,
+    PairsResponse, PathStep, QuoteExpirationWebhookPayload,
+    QuoteExpirationWebhookRegistrationResponse, QuoteRationaleMetadata, QuoteResponse,
+    RouteResponse, TradingPair, VenueEvaluation,
 };
+use crate::routes::price_history::{PriceHistoryPoint, PriceHistoryResponse};
 
 /// OpenAPI documentation
 #[derive(OpenApi)]
@@ -23,6 +22,7 @@ use crate::models::{
         crate::routes::metrics::cache_metrics,
         crate::routes::assets::get_asset_metadata,
         crate::routes::assets::list_assets_metadata,
+        crate::routes::activity::list_swap_activity,
         crate::routes::pairs::list_pairs,
         crate::routes::pairs::list_markets,
         crate::routes::orderbook::get_orderbook,
@@ -32,7 +32,7 @@ use crate::models::{
         crate::routes::quote::get_route,
         crate::routes::admin::flush_cache,
         crate::routes::quote::get_batch_quotes,
-        // crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
+        crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
         crate::routes::kill_switch::get_kill_switch,
         crate::routes::kill_switch::update_kill_switch,
     ),
@@ -43,6 +43,8 @@ use crate::models::{
         CacheFlushResponse,
         AssetMetadataResponse,
         AssetMetadataBulkResponse,
+        crate::routes::activity::SwapActivityItem,
+        crate::routes::activity::SwapActivityResponse,
         PairsResponse,
         TradingPair,
         AssetInfo,
@@ -74,11 +76,11 @@ use crate::models::{
         crate::models::response::BatchOrderbookItemResult,
         crate::models::request::QuoteType,
         crate::models::request::QuoteExpirationWebhookRegistrationRequest,
-        crate::kill_switch::KillSwitchState,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "assets", description = "Asset metadata endpoints"),
+        (name = "activity", description = "Indexed contract activity endpoints"),
         (name = "trading", description = "Trading and market data endpoints"),
         (name = "admin", description = "Administrative endpoints"),
         (name = "integrator", description = "Integrator configuration and webhook endpoints"),

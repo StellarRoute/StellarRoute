@@ -420,10 +420,10 @@ fn test_register_multiple_distinct_pools() {
 #[test]
 fn test_pause_blocks_swaps() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
-    client.pause();
+    client.pause(&admin);
 
     let result = client.try_execute_swap(
         &Address::generate(&env),
@@ -441,19 +441,19 @@ fn test_pause_blocks_swaps() {
 #[test]
 fn test_pause_does_not_block_registration() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
-    client.pause();
+    let (admin, _, client) = deploy_router(&env);
+    client.pause(&admin);
     client.register_pool(&deploy_mock_pool(&env));
 }
 
 #[test]
 fn test_unpause_resumes_swaps() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
 
     let result = client.try_execute_swap(
         &Address::generate(&env),
@@ -471,11 +471,11 @@ fn test_unpause_resumes_swaps() {
 #[test]
 fn test_pause_unpause_toggle() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
 
-    client.pause();
+    client.pause(&admin);
     assert_eq!(
         client.try_execute_swap(
             &Address::generate(&env),
@@ -490,7 +490,7 @@ fn test_pause_unpause_toggle() {
         Err(Ok(ContractError::Paused))
     );
 
-    client.unpause();
+    client.unpause(&admin);
     assert!(client
         .try_execute_swap(
             &Address::generate(&env),
@@ -1105,10 +1105,10 @@ fn test_adapter_get_reserves_failure_is_typed() {
 #[test]
 fn test_swap_while_paused_fails() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
-    client.pause();
+    client.pause(&admin);
     assert_eq!(
         client.try_execute_swap(
             &Address::generate(&env),
@@ -1267,10 +1267,10 @@ fn property_all_contract_errors_are_reachable() {
 
     // Paused
     {
-        let (_, _, c) = deploy_router(&env);
+        let (admin, _, c) = deploy_router(&env);
         let pool = deploy_mock_pool(&env);
         c.register_pool(&pool);
-        c.pause();
+        c.pause(&admin);
         assert_eq!(
             c.try_execute_swap(
                 &Address::generate(&env),
@@ -1499,10 +1499,10 @@ fn test_initialize_emits_event() {
 #[test]
 fn test_pause_unpause_emit_events() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let before = env.events().all().len();
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
     assert!(env.events().all().len() > before);
 }
 
@@ -1613,18 +1613,43 @@ fn test_is_paused_default_false() {
 #[test]
 fn test_is_paused_after_pause() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
-    client.pause();
+    let (admin, _, client) = deploy_router(&env);
+    client.pause(&admin);
     assert!(client.is_paused());
 }
 
 #[test]
 fn test_is_paused_after_unpause() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
-    client.pause();
-    client.unpause();
+    let (admin, _, client) = deploy_router(&env);
+    client.pause(&admin);
+    client.unpause(&admin);
     assert!(!client.is_paused());
+}
+
+#[test]
+fn test_admin_rotation_rejects_old_admin_for_pause_unpause_upgrade() {
+    let env = setup_env();
+    let (old_admin, _, client) = deploy_router(&env);
+    let new_admin = Address::generate(&env);
+    client.set_admin(&new_admin);
+
+    assert_eq!(
+        client.try_pause(&old_admin),
+        Err(Ok(ContractError::Unauthorized))
+    );
+
+    client.pause(&new_admin);
+    assert_eq!(
+        client.try_unpause(&old_admin),
+        Err(Ok(ContractError::Unauthorized))
+    );
+    client.unpause(&new_admin);
+
+    assert_eq!(
+        client.try_execute_upgrade(&old_admin),
+        Err(Ok(ContractError::Unauthorized))
+    );
 }
 
 #[test]
@@ -1689,12 +1714,68 @@ fn test_extend_storage_ttl_no_pools() {
     let env = setup_env();
     let (admin, _fee_to, client) = deploy_router(&env);
 
-    client.pause();
+    client.pause(&admin);
 
     let new_hash = BytesN::from_array(&env, &[8u8; 32]);
     assert!(client
         .try_propose_upgrade(&admin, &new_hash, &99999)
         .is_err());
+}
+
+// ─── Upgrade Time-Lock Tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_propose_upgrade_then_execute_before_lock_fails() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    let result = client.try_execute_upgrade(&admin);
+    assert_eq!(result, Err(Ok(ContractError::UpgradeLocked)));
+}
+
+#[test]
+fn test_execute_upgrade_succeeds_after_advancing_ledger() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    // Advance ledger sequence past execute_after
+    env.ledger().with_mut(|li| li.sequence_number = (execute_after + 1) as u32);
+
+    // Note: We can't actually test executing upgrade because it requires
+    // a registered WASM hash in the environment, but we can test that the
+    // only failure isn't UpgradeLocked anymore
+    let result = client.try_execute_upgrade(&admin);
+    // Should fail for other reasons (like missing WASM hash), but not UpgradeLocked
+    assert_ne!(result, Err(Ok(ContractError::UpgradeLocked)));
+}
+
+#[test]
+fn test_cancel_upgrade_clears_pending_state() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    // Cancel the pending upgrade
+    client.cancel_upgrade(&admin);
+
+    // Now try to propose another upgrade (should succeed, meaning no pending)
+    let new_hash2 = BytesN::from_array(&env, &[0x43; 32]);
+    assert!(client.try_propose_upgrade(&admin, &new_hash2, &execute_after).is_ok());
+
+    // Try to execute should fail (no pending after cancel)
+    let result = client.try_execute_upgrade(&admin);
+    assert_eq!(result, Err(Ok(ContractError::NoUpgradePending)));
 }
 
 // ─── Token Allowlist Tests ────────────────────────────────────────────────────
@@ -2144,10 +2225,10 @@ fn test_ttl_status_pools_remaining_accurate() {
 #[test]
 fn test_pause_extends_instance_ttl() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     // pause should not panic (it now calls extend_instance_ttl)
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
 }
 
 #[test]

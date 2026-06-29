@@ -275,7 +275,9 @@ pub async fn get_batch_orderbooks(
     request_id: crate::middleware::RequestId,
     Json(payload): Json<crate::models::request::BatchOrderbookRequest>,
 ) -> Result<Json<crate::models::ApiResponse<crate::models::response::BatchOrderbookResponse>>> {
-    use crate::models::response::{BatchItemError, BatchOrderbookItemResult, BatchOrderbookResponse};
+    use crate::models::response::{
+        BatchItemError, BatchOrderbookItemResult, BatchOrderbookResponse,
+    };
     use futures_util::future::join_all;
 
     // ── 1. Batch-level validation ─────────────────────────────────────────

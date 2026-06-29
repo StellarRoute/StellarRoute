@@ -840,11 +840,18 @@ pub struct QuoteExpirationWebhookRegistrationResponse {
     pub consumer_id: String,
     pub webhook_url: String,
     pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_signing_secret: Option<String>,
 }
 
 /// Quote expiration webhook payload
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteExpirationWebhookPayload {
+    pub event_id: String,
+    pub consumer_id: String,
+    pub pair: String,
+    pub reason: String,
+    pub expired_at: i64,
     pub event: String,
     pub timestamp: i64,
     pub quote_id: String,

@@ -58,7 +58,7 @@ pub fn json_response<T: Serialize>(
         ResponseEncoding::Identity => json,
     };
 
-    crate::metrics::record_quote_response_bytes(encoding.label(), original_len, body.len());
+    crate::metrics::record_quote_response_bytes(body.len());
 
     let mut builder = Response::builder()
         .header(CONTENT_TYPE, "application/json")

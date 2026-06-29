@@ -1059,13 +1059,18 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <MobileRouteBottomSheet
                 quote={quote.data ?? null}
                 amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
-                isLoading={displayQuoteLoading}
+                isLoading={isRoutesLoading}
               />
               {showRoutePicker && (
                 <RouteDisplay
+                  quote={quote.data ?? null}
                   amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
-                  isLoading={displayQuoteLoading}
-                  onSelect={setSelectedRoute}
+                  isLoading={isRoutesLoading}
+                  alternativeRoutes={mergedAlternativeRoutes}
+                  selectedRouteId={selectedRoute?.id ?? null}
+                  onSelect={handleRouteSelect}
+                  fromAssetCode={fromSymbol}
+                  toAssetCode={toSymbol}
                 />
               )}
               {batchSwapsEnabled && (

@@ -1,65 +1,90 @@
 'use client';
 
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { AlertCircle, AlertTriangle, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useSettings } from "@/components/providers/settings-provider";
-import { useSwapI18n } from "@/lib/swap-i18n";
+import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, AlertTriangle } from 'lucide-react';
 
-export function SlippageSettings() {
-  const { settings, selectProfile, updateProfile, addProfile, deleteProfile } = useSettings();
-  const value = settings.slippageTolerance;
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
+import { useSwapI18n } from '@/lib/swap-i18n';
+
+interface SlippageSettingsProps {
+  value: number;
+  onChange: (value: number) => void;
+}
+
+const PRESETS = [
+  { label: 'Safe', value: 0.1 },
+  { label: 'Balanced', value: 0.5 },
+  { label: 'Aggressive', value: 1 },
+];
+
+export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
   const { t } = useSwapI18n();
-  
-  const handleCustomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    if (!isNaN(val)) {
-      const clamped = Math.max(0.01, Math.min(50, val));
-      
-      const customProfile = settings.slippageProfiles.find(p => !p.isPreset);
-      if (customProfile) {
-        updateProfile(customProfile.id, { value: clamped });
-      } else {
-        addProfile({ name: t('settings.slippage.custom'), value: clamped });
-        // The newly added profile will need to be selected manually, 
-        // wait, we should select it right after adding. 
-        // Our addProfile doesn't return ID. Let's just update useSettings logic or find the newly created one.
-        // Actually, let's keep it simple: if there is no custom profile, add one.
-      }
-    }
-  };
-
-  const activeProfile = settings.slippageProfiles.find(p => p.id === settings.activeProfileId);
-  const customProfile = settings.slippageProfiles.find(p => !p.isPreset);
-
+  const [customValue, setCustomValue] = useState(
+    PRESETS.some((preset) => preset.value === value) ? '' : String(value)
+  );
+  const lastEmittedValue = useRef<number | null>(null);
   const isLow = value < 0.1;
   const isHigh = value > 5;
+
+  useEffect(() => {
+    if (lastEmittedValue.current === value) {
+      lastEmittedValue.current = null;
+      return;
+    }
+    setCustomValue(
+      PRESETS.some((preset) => preset.value === value) ? '' : String(value)
+    );
+  }, [value]);
+
+  const updateCustomValue = (rawValue: string) => {
+    setCustomValue(rawValue);
+    const parsed = Number.parseFloat(rawValue);
+    if (Number.isFinite(parsed)) {
+      const clamped = Math.max(0.01, Math.min(50, parsed));
+      lastEmittedValue.current = clamped;
+      onChange(clamped);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold tracking-tight">{t('swap.settings.slippageTolerance')}</span>
-        <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", 
-          isHigh ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
+        <span className="text-sm font-semibold tracking-tight">
+          {t('swap.settings.slippageTolerance')}
+        </span>
+        <span
+          className={cn(
+            'rounded-full px-2 py-0.5 text-xs font-bold',
+            isHigh
+              ? 'bg-destructive/10 text-destructive'
+              : 'bg-primary/10 text-primary'
+          )}
+        >
           {value}%
         </span>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {settings.slippageProfiles.filter(p => p.isPreset).map((preset) => (
+        {PRESETS.map((preset) => (
           <Button
-            key={preset.id}
-            variant={settings.activeProfileId === preset.id ? "default" : "outline"}
+            key={preset.label}
+            type="button"
+            variant={value === preset.value ? 'default' : 'outline'}
             size="sm"
-            onClick={() => selectProfile(preset.id)}
-            className="flex-1 h-10 font-bold"
+            onClick={() => {
+              setCustomValue('');
+              lastEmittedValue.current = preset.value;
+              onChange(preset.value);
+            }}
+            className="h-10 flex-1 font-bold"
           >
-            {preset.name}
+            {preset.label}
           </Button>
         ))}
-        
-        <div className="relative flex-[1.5] min-w-[120px] flex items-center gap-1">
+
+        <div className="relative min-w-[120px] flex-[1.5]">
           <Input
             type="number"
             step="0.01"
@@ -67,58 +92,29 @@ export function SlippageSettings() {
             max="50"
             aria-label={`Custom ${t('swap.settings.slippageTolerance')} percentage`}
             className={cn(
-              "h-10 pr-6 font-bold text-right",
-              !activeProfile?.isPreset && "border-primary ring-1 ring-primary/20"
+              'h-10 pr-8 text-right font-bold',
+              customValue && 'border-primary ring-1 ring-primary/20'
             )}
             placeholder={t('settings.slippage.custom')}
-            value={customProfile ? customProfile.value : ""}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val)) {
-                const clamped = Math.max(0.01, Math.min(50, val));
-                if (customProfile) {
-                  updateProfile(customProfile.id, { value: clamped });
-                  selectProfile(customProfile.id);
-                } else {
-                  addProfile({ name: t('settings.slippage.custom'), value: clamped });
-                  // In a real app we'd get the ID back and select it, 
-                  // but we can just let addProfile handle it or select the non-preset.
-                }
-              }
-            }}
-            onClick={() => {
-              if (customProfile) selectProfile(customProfile.id);
-            }}
+            value={customValue}
+            onChange={(event) => updateCustomValue(event.target.value)}
           />
-          <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
-          
-          {customProfile && (
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-10 w-10 text-muted-foreground hover:text-destructive shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                deleteProfile(customProfile.id);
-              }}
-              title={t('settings.slippage.deleteCustom')}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+            %
+          </span>
         </div>
       </div>
 
       {isLow && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-[11px] text-yellow-600 dark:text-yellow-400 font-medium">
-          <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+        <div className="flex items-center gap-2 rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-[11px] font-medium text-yellow-600 dark:text-yellow-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <p>{t('settings.slippage.lowWarning', { value })}</p>
         </div>
       )}
 
       {isHigh && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-[11px] text-destructive font-medium">
-          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+        <div className="flex items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-[11px] font-medium text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           <p>{t('settings.slippage.highWarning')}</p>
         </div>
       )}

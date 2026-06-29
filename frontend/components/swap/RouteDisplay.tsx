@@ -2,12 +2,14 @@ import { ArrowDown, ArrowRight, ChevronDown, Info } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { TradeRouteDisplay } from '@/components/shared/TradeRouteDisplay';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/utils';
 import { emitRouteEvent } from '@/lib/telemetry';
 import { useProgressiveLoadingTransition } from '@/hooks/useProgressiveLoadingTransition';
 import { useRouteSwitchTransition } from '@/hooks/useRouteSwitchTransition';
+import type { PriceQuote } from '@/types';
 import { RouteDisplaySkeleton } from './RouteDisplaySkeleton';
 
 import { ConfidenceIndicator } from './ConfidenceIndicator';
@@ -29,6 +31,8 @@ export interface AlternativeRoute {
 
 interface RouteDisplayProps {
   amountOut: string;
+  /** Live API quote. When present, render its real hop/split-route data. */
+  quote?: PriceQuote | null;
   /** Route confidence score (0-100) */
   confidenceScore?: number;
   /** Market volatility level */
@@ -133,6 +137,7 @@ function AlternativeRouteButton({
 
 export function RouteDisplay({
   amountOut,
+  quote,
   confidenceScore = 85,
   volatility = 'low',
   isLoading = false,
@@ -179,6 +184,16 @@ export function RouteDisplay({
 
   if (showSkeleton) {
     return <RouteDisplaySkeleton />;
+  }
+
+  if (quote !== undefined) {
+    return (
+      <TradeRouteDisplay
+        quote={quote}
+        isLoading={isLoading}
+        className={contentClassName}
+      />
+    );
   }
 
   return (

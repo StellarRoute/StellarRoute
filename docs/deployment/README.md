@@ -223,6 +223,11 @@ For planned upgrades, follow the testnet upgrade flow in [Upgrade Process](#upgr
 
 ### Manual Deploy (`deploy-testnet.yml`)
 - Trigger: GitHub Actions > "Deploy to Testnet" > Run workflow
+- Supports dry-run mode (build + hash only, no deploy)
+- Requires `SOROBAN_DEPLOYER_SECRET` secret and `DEPLOY_ENABLED=true` variable
+- Automatically registers pools from `config/pools-testnet.json` after deployment
+- Fails if all pools are placeholders (no real pool addresses)
+- Smoke tests verify at least one pool is registered and routable
 - Runs testnet contract smoke tests against `vars.SOROBAN_CONTRACT_ID`
 
 ### Gated Mainnet Deploy (`deploy-mainnet.yml`)

@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useState } from 'react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
   Sheet,
   SheetContent,
@@ -9,28 +9,30 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet";
-import { RouteDisplay } from "./RouteDisplay";
-import { Button } from "@/components/ui/button";
-import { Layers, ChevronUp, Maximize2, Minimize2 } from "lucide-react";
+} from '@/components/ui/sheet';
+import { RouteDisplay } from './RouteDisplay';
+import { Button } from '@/components/ui/button';
+import { ChevronUp, Layers, Maximize2, Minimize2 } from 'lucide-react';
+import type { PriceQuote } from '@/types';
 
 interface MobileRouteBottomSheetProps {
-  route: any;
+  quote: PriceQuote | null;
   amountOut: string;
   isLoading: boolean;
 }
 
-export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRouteBottomSheetProps) {
+export function MobileRouteBottomSheet({
+  quote,
+  amountOut,
+  isLoading,
+}: MobileRouteBottomSheetProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [snapPoint, setSnapPoint] = useState<"half" | "full">("half");
-  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const [snapPoint, setSnapPoint] = useState<'half' | 'full'>('half');
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   if (isDesktop) {
     return (
-      <RouteDisplay 
-        amountOut={amountOut} 
-        isLoading={isLoading} 
-      />
+      <RouteDisplay quote={quote} amountOut={amountOut} isLoading={isLoading} />
     );
   }
 
@@ -49,9 +51,13 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
               <Layers className="h-4 w-4" />
             </div>
             <div className="text-left">
-              <span className="text-xs text-muted-foreground block font-medium">Trade Routing Path</span>
+              <span className="text-xs text-muted-foreground block font-medium">
+                Trade Routing Path
+              </span>
               <span className="text-xs font-bold font-mono text-foreground">
-                {isLoading ? "Calculating best route..." : "Optimized Multi-Hop Available"}
+                {isLoading
+                  ? 'Calculating best route...'
+                  : 'Optimized Multi-Hop Available'}
               </span>
             </div>
           </div>
@@ -62,8 +68,8 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
       <SheetContent
         side="bottom"
         className={htmlCn(
-          "w-full rounded-t-[28px] border-t border-border/40 bg-background/95 backdrop-blur-xl p-6 transition-all duration-300 ease-in-out shadow-2xl focus:outline-none",
-          snapPoint === "half" ? "h-[50vh]" : "h-[94vh]"
+          'w-full rounded-t-[28px] border-t border-border/40 bg-background/95 backdrop-blur-xl p-6 transition-all duration-300 ease-in-out shadow-2xl focus:outline-none',
+          snapPoint === 'half' ? 'h-[50vh]' : 'h-[94vh]'
         )}
         data-testid="route-sheet-content"
       >
@@ -71,7 +77,9 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
 
         <SheetHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/10">
           <div>
-            <SheetTitle className="text-base font-bold tracking-tight">Select Order Route</SheetTitle>
+            <SheetTitle className="text-base font-bold tracking-tight">
+              Select Order Route
+            </SheetTitle>
             {/* Kept close to top header for styling but perfectly coupled to Radix dialog schema */}
             <SheetDescription className="text-xs text-muted-foreground mt-1">
               Optimize for pricing impact and liquidity pool density.
@@ -83,11 +91,15 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-lg hover:bg-muted/80 text-muted-foreground"
-            onClick={() => setSnapPoint(snapPoint === "half" ? "full" : "half")}
-            aria-label={snapPoint === "half" ? "Expand sheet to full height" : "Collapse sheet to half height"}
+            onClick={() => setSnapPoint(snapPoint === 'half' ? 'full' : 'half')}
+            aria-label={
+              snapPoint === 'half'
+                ? 'Expand sheet to full height'
+                : 'Collapse sheet to half height'
+            }
             data-testid="route-sheet-snap-toggle"
           >
-            {snapPoint === "half" ? (
+            {snapPoint === 'half' ? (
               <Maximize2 className="h-4 w-4" data-testid="icon-maximize" />
             ) : (
               <Minimize2 className="h-4 w-4" data-testid="icon-minimize" />
@@ -97,9 +109,10 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
 
         <div className="overflow-y-auto h-full pb-20 pt-4 space-y-4 pr-1">
           <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 shadow-inner">
-            <RouteDisplay 
-              amountOut={amountOut} 
-              isLoading={isLoading} 
+            <RouteDisplay
+              quote={quote}
+              amountOut={amountOut}
+              isLoading={isLoading}
             />
           </div>
 
@@ -115,10 +128,11 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
                 className="w-full text-left p-3.5 rounded-xl border border-border/40 bg-muted/10 hover:border-muted-foreground/30 hover:bg-muted/20 transition-all font-mono text-xs flex justify-between items-center"
               >
                 <span className="text-muted-foreground">
-                  Stellar Native Pool {idx === 1 ? "(Direct)" : "(Secondary Multi-Hop)"}
+                  Stellar Native Pool{' '}
+                  {idx === 1 ? '(Direct)' : '(Secondary Multi-Hop)'}
                 </span>
                 <span className="font-bold text-emerald-500">
-                  +{idx === 1 ? "0.02%" : "0.11%"} Slippage
+                  +{idx === 1 ? '0.02%' : '0.11%'} Slippage
                 </span>
               </button>
             ))}
@@ -129,6 +143,6 @@ export function MobileRouteBottomSheet({ route, amountOut, isLoading }: MobileRo
   );
 }
 
-function htmlCn(...classes: any[]) {
-  return classes.filter(Boolean).join(" ");
+function htmlCn(...classes: Array<string | false>) {
+  return classes.filter(Boolean).join(' ');
 }

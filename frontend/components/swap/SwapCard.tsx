@@ -210,10 +210,6 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     return list;
   }, [quote.data, routesState.data]);
 
-  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
-    null
-  );
-
   const handleRouteSelect = useCallback((route: AlternativeRoute) => {
     setSelectedRoute(route);
     // Trigger re-quote

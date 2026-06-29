@@ -200,6 +200,85 @@ pub struct BatchQuoteResponse {
     pub total: usize,
 }
 
+// ── Routes ───────────────────────────────────────────────────────────────────
+
+/// Request parameters for `GET /api/v1/routes/{base}/{quote}`.
+#[derive(Debug, Clone)]
+pub struct RoutesRequest<'a> {
+    /// Base asset identifier (path parameter).
+    pub base: &'a str,
+    /// Quote asset identifier (path parameter).
+    pub quote: &'a str,
+    /// Amount to route, expressed in the base asset's atomic units.
+    pub amount: u64,
+    /// Maximum acceptable slippage in basis points.
+    pub slippage_bps: Option<u16>,
+    /// Quote type filter.
+    pub quote_type: Option<QuoteType>,
+}
+
+/// Response from `GET /api/v1/routes/{base}/{quote}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoutesResponse {
+    /// Optional base asset metadata included by the API.
+    #[serde(default)]
+    pub base_asset: Option<AssetInfo>,
+    /// Optional quote asset metadata included by the API.
+    #[serde(default)]
+    pub quote_asset: Option<AssetInfo>,
+    /// Amount used to compute the route candidates.
+    #[serde(default)]
+    pub amount: String,
+    /// Ranked route candidates returned by the endpoint.
+    pub routes: Vec<Route>,
+    /// Unix timestamp when the route computation completed.
+    #[serde(default)]
+    pub timestamp: i64,
+}
+
+/// A single ranked route candidate returned by the routes endpoint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Route {
+    /// Estimated output amount for the full route.
+    #[serde(default)]
+    pub estimated_output: String,
+    /// Estimated price impact in basis points.
+    #[serde(default)]
+    pub impact_bps: u32,
+    /// Composite quality score for the route candidate.
+    #[serde(default)]
+    pub score: f64,
+    /// Optimizer policy used to produce the route.
+    #[serde(default)]
+    pub policy_used: String,
+    /// Ordered list of execution hops that make up the route.
+    #[serde(default)]
+    pub path: Vec<RouteHop>,
+}
+
+/// A single hop within a ranked route candidate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RouteHop {
+    /// Asset transferred from at this hop.
+    #[serde(default)]
+    pub from_asset: Option<AssetInfo>,
+    /// Asset transferred to at this hop.
+    #[serde(default)]
+    pub to_asset: Option<AssetInfo>,
+    /// Exchange rate for this hop.
+    #[serde(default)]
+    pub price: String,
+    /// Fee charged by the source for this hop, in basis points.
+    #[serde(default)]
+    pub fee_bps: Option<u32>,
+    /// Amount produced after this hop.
+    #[serde(default)]
+    pub amount_out_of_hop: String,
+    /// Liquidity source for this hop.
+    #[serde(default)]
+    pub source: String,
+}
+
 // ── Request types ─────────────────────────────────────────────────────────────
 
 /// Parameters for `GET /api/v1/quote/{base}/{quote}`.

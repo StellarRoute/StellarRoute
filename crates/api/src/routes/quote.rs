@@ -163,6 +163,7 @@ pub async fn get_quote(
         .unwrap_or(false);
     let explain = explain_header || params.explain.unwrap_or(false);
     let selected_fields = params.selected_fields();
+    let consumer_id = extract_consumer_id(&headers);
 
     let start_time = std::time::Instant::now();
 
@@ -228,6 +229,32 @@ pub async fn get_quote(
                     Some(audit_selected),
                     audit_exclusions,
                 );
+
+                // ── Spawn delayed webhook dispatch ──────────────────────
+                if let Some(consumer_id) = consumer_id.clone() {
+                    if let Some(expires_at) = quote_resp.expires_at {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let delay_ms = if expires_at > now {
+                            expires_at - now
+                        } else {
+                            0
+                        };
+                        let payload = build_quote_webhook_payload(
+                            consumer_id.clone(),
+                            &base,
+                            &quote,
+                            &quote_resp,
+                        );
+                        state
+                            .quote_expiration_webhooks
+                            .clone()
+                            .spawn_delayed_dispatch_for_consumer(
+                                consumer_id,
+                                payload,
+                                std::time::Duration::from_millis(delay_ms as u64),
+                            );
+                    }
+                }
 
                 let data = if let Some(fields) = &selected_fields {
                     build_sparse_quote_data(&quote_resp, fields)?

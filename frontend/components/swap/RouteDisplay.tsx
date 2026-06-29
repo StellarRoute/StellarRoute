@@ -2,12 +2,14 @@ import { ArrowDown, ArrowRight, ChevronDown, Info } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { TradeRouteDisplay } from '@/components/shared/TradeRouteDisplay';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/utils';
 import { emitRouteEvent } from '@/lib/telemetry';
 import { useProgressiveLoadingTransition } from '@/hooks/useProgressiveLoadingTransition';
 import { useRouteSwitchTransition } from '@/hooks/useRouteSwitchTransition';
+import type { PriceQuote } from '@/types';
 import { RouteDisplaySkeleton } from './RouteDisplaySkeleton';
 
 import { ConfidenceIndicator } from './ConfidenceIndicator';
@@ -29,6 +31,8 @@ export interface AlternativeRoute {
 
 interface RouteDisplayProps {
   amountOut: string;
+  /** Live API quote. When present, render its real hop/split-route data. */
+  quote?: PriceQuote | null;
   /** Route confidence score (0-100) */
   confidenceScore?: number;
   /** Market volatility level */
@@ -50,7 +54,12 @@ const ROUTE_VIRTUALIZATION_THRESHOLD = 8;
 const ROUTE_ROW_HEIGHT = 44;
 const ROUTE_OVERSCAN = 2;
 
-function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
+/**
+ * Generates synthetic demo routes for Storybook / local development only.
+ * This function must never be called in production — use live API data instead.
+ * @internal
+ */
+export function buildAlternativeRoutes(amountOut: string): AlternativeRoute[] {
   const venues = ['AQUA Pool', 'SDEX', 'Blend Pool', 'Phoenix AMM'];
   const baseAmount = Number.parseFloat(amountOut || '0');
 
@@ -133,6 +142,7 @@ function AlternativeRouteButton({
 
 export function RouteDisplay({
   amountOut,
+  quote,
   confidenceScore = 85,
   volatility = 'low',
   isLoading = false,
@@ -145,7 +155,14 @@ export function RouteDisplay({
 }: RouteDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [localSelectedRouteId, setLocalSelectedRouteId] = useState<string | null>(null);
-  const routes = alternativeRoutes ?? buildAlternativeRoutes(amountOut);
+  const routes: AlternativeRoute[] = (() => {
+    if (alternativeRoutes !== undefined) return alternativeRoutes;
+    // In production, render an empty list and wait for live API data.
+    // In dev/test, fall back to synthetic demo routes so the component
+    // remains useful without a running API (e.g. Storybook, local dev).
+    if (process.env.NODE_ENV === 'production') return [];
+    return buildAlternativeRoutes(amountOut);
+  })();
   
   const activeRouteId = selectedRouteIdProp !== undefined ? selectedRouteIdProp : localSelectedRouteId;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +196,16 @@ export function RouteDisplay({
 
   if (showSkeleton) {
     return <RouteDisplaySkeleton />;
+  }
+
+  if (quote !== undefined) {
+    return (
+      <TradeRouteDisplay
+        quote={quote}
+        isLoading={isLoading}
+        className={contentClassName}
+      />
+    );
   }
 
   return (

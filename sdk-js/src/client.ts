@@ -202,8 +202,6 @@ export class StellarRouteClient {
   /**
    * `POST /api/v1/batch/orderbook` — fetch multiple orderbooks in a single request.
    *
-   * @param requests Array of orderbook pair requests.
-   *
    * @throws {@link StellarRouteApiError} when the batch request fails.
    */
   async getOrderbooksBatch(
@@ -371,7 +369,7 @@ export class StellarRouteClient {
   }
 
   /**
-   * `GET /api/v1/price-history/{base}/{quote}` — fetch price history for charting/sparklines.
+   * `GET /api/v1/price-history/{base}/{quote}` ? fetch price history for charting/sparklines.
    *
    * @param base  Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
    * @param quote Quote asset identifier.

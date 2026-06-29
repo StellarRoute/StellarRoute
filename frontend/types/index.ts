@@ -205,4 +205,28 @@ export interface RoutesResponse {
   routes: RouteCandidate[];
 }
 
+/** GET /metrics/cache — quote cache hit/miss statistics */
+export interface CacheMetricsResponse {
+  quote_hits: number;
+  quote_misses: number;
+  hit_ratio: number;
+  stale_quote_rejections: number;
+  stale_inputs_excluded: number;
+}
+
+/** Per-pool database connection statistics from GET /metrics/pool */
+export interface PoolStats {
+  max_connections: number;
+  size: number;
+  idle: number;
+  in_use: number;
+  utilisation: number;
+}
+
+/** GET /metrics/pool — database pool statistics */
+export interface PoolStatsResponse {
+  primary: PoolStats;
+  replica?: PoolStats;
+}
+
 export * from './route';

@@ -240,7 +240,12 @@ export function useRoutes(
   maxHops = 3
 ): UseApiState<RoutesResponse> & { refresh: () => void } {
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
-  const skip = !base || !quote;
+  const skip =
+    !base ||
+    !quote ||
+    debouncedAmount === undefined ||
+    Number.isNaN(debouncedAmount) ||
+    debouncedAmount <= 0;
   return useFetch(
     (signal) =>
       stellarRouteClient.getRoutes(base, quote, debouncedAmount, limit, maxHops, {

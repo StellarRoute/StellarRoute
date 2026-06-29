@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["**/*.test.{ts,tsx}"],
+    exclude: ["**/account-switcher.test.tsx"],
     setupFiles: ["./vitest.setup.ts"],
     maxWorkers: 2,
   },

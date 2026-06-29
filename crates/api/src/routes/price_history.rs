@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use sqlx::Row;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tracing::{debug, warn};
 
 use serde::{Deserialize, Serialize};
@@ -89,7 +89,7 @@ pub async fn get_price_history(
     let quote_id = find_asset_id(&state, &quote_asset).await?;
     let trading_pair_id = find_trading_pair_id(&state, base_id, quote_id).await?;
 
-    let rows = sqlx::query(
+    let sdex_rows = sqlx::query(
         r#"
         select
             (extract(epoch from date_trunc('hour', snapshot_time)) * 1000)::bigint as timestamp_ms,
@@ -108,7 +108,27 @@ pub async fn get_price_history(
     .await
     .map_err(|e| ApiError::Database(Arc::new(e)))?;
 
-    let points = rows
+    let amm_rows = sqlx::query(
+        r#"
+        select
+            (extract(epoch from date_trunc('hour', updated_at)) * 1000)::bigint as timestamp_ms,
+            avg((reserve_buying / nullif(reserve_selling, 0)))::text as price
+        from amm_pool_reserves
+        where selling_asset_id = $1
+          and buying_asset_id = $2
+          and updated_at >= now() - interval '24 hours'
+        group by date_trunc('hour', updated_at)
+        order by date_trunc('hour', updated_at) asc
+        limit 24
+        "#,
+    )
+    .bind(base_id)
+    .bind(quote_id)
+    .fetch_all(state.db.read_pool())
+    .await
+    .map_err(|e| ApiError::Database(Arc::new(e)))?;
+
+    let sdex_points = sdex_rows
         .into_iter()
         .filter_map(|row| {
             let timestamp = row.get::<i64, _>("timestamp_ms");
@@ -117,11 +137,24 @@ pub async fn get_price_history(
         })
         .collect::<Vec<_>>();
 
+    let amm_points = amm_rows
+        .into_iter()
+        .filter_map(|row| {
+            let timestamp = row.get::<i64, _>("timestamp_ms");
+            let price = row.get::<Option<String>, _>("price");
+            price.map(|price| PriceHistoryPoint { timestamp, price })
+        })
+        .collect::<Vec<_>>();
+
+    let has_sdex = !sdex_points.is_empty();
+    let has_amm = !amm_points.is_empty();
+    let points = merge_price_history_points(sdex_points, amm_points);
+
     let response = PriceHistoryResponse {
         base_asset: asset_path_to_info(&base_asset),
         quote_asset: asset_path_to_info(&quote_asset),
         window: "24h".to_string(),
-        source: "orderbook_snapshots.mid_price".to_string(),
+        source: price_history_source(has_sdex, has_amm),
         generated_at: chrono::Utc::now().timestamp_millis(),
         points,
     };
@@ -220,5 +253,93 @@ fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
         AssetInfo::native()
     } else {
         AssetInfo::credit(asset.asset_code.clone(), asset.asset_issuer.clone())
+    }
+}
+
+fn merge_price_history_points(
+    sdex_points: Vec<PriceHistoryPoint>,
+    amm_points: Vec<PriceHistoryPoint>,
+) -> Vec<PriceHistoryPoint> {
+    let mut points_by_timestamp: HashMap<i64, (Option<String>, Option<String>)> = HashMap::new();
+
+    for point in sdex_points {
+        points_by_timestamp
+            .entry(point.timestamp)
+            .and_modify(|(sdex_price, _)| {
+                *sdex_price = Some(point.price.clone());
+            })
+            .or_insert((Some(point.price), None));
+    }
+
+    for point in amm_points {
+        points_by_timestamp
+            .entry(point.timestamp)
+            .and_modify(|(_, amm_price)| {
+                *amm_price = Some(point.price.clone());
+            })
+            .or_insert((None, Some(point.price)));
+    }
+
+    let mut points = points_by_timestamp
+        .into_iter()
+        .filter_map(|(timestamp, (sdex_price, amm_price))| {
+            let price = match (sdex_price, amm_price) {
+                (Some(_), Some(amm_price)) => Some(amm_price),
+                (Some(sdex_price), None) => Some(sdex_price),
+                (None, Some(amm_price)) => Some(amm_price),
+                (None, None) => None,
+            }?;
+
+            Some(PriceHistoryPoint { timestamp, price })
+        })
+        .collect::<Vec<_>>();
+
+    points.sort_by_key(|point| point.timestamp);
+    points
+}
+
+fn price_history_source(has_sdex: bool, has_amm: bool) -> String {
+    match (has_sdex, has_amm) {
+        (true, true) => {
+            "blended:orderbook_snapshots.mid_price+amm_pool_reserves.reserve_ratio".to_string()
+        }
+        (true, false) => "orderbook_snapshots.mid_price".to_string(),
+        (false, true) => "amm_pool_reserves.reserve_ratio".to_string(),
+        (false, false) => "none".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{merge_price_history_points, price_history_source, PriceHistoryPoint};
+
+    #[test]
+    fn merges_sdex_and_amm_points_for_the_same_hour() {
+        let sdex = vec![
+            PriceHistoryPoint {
+                timestamp: 1_700_000_000_000,
+                price: "10.0".to_string(),
+            },
+            PriceHistoryPoint {
+                timestamp: 1_700_000_360_000,
+                price: "11.0".to_string(),
+            },
+        ];
+        let amm = vec![PriceHistoryPoint {
+            timestamp: 1_700_000_000_000,
+            price: "12.0".to_string(),
+        }];
+
+        let points = merge_price_history_points(sdex, amm);
+
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].price, "12.0");
+        assert_eq!(points[1].price, "11.0");
+    }
+
+    #[test]
+    fn returns_blended_source_when_both_sources_contribute() {
+        let source = price_history_source(true, true);
+        assert!(source.contains("blended"));
     }
 }

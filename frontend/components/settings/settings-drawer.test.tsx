@@ -1,68 +1,75 @@
-import { vi } from 'vitest';
-
-// Mock ExpertSettings completely to isolate the undefined component error
-vi.mock('./ExpertSettings', () => ({
-  ExpertSettings: () => (
-    <div data-testid="mock-expert-settings">Mock Expert Settings</div>
-  ),
-}));
-
-import { render, screen, cleanup } from '@testing-library/react';
+import { useState } from 'react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, afterEach } from 'vitest';
-import { SettingsPanel } from './SettingsPanel';
-import { SettingsProvider } from '@/components/providers/settings-provider';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-function renderWithProviders(ui: React.ReactElement) {
-  return render(<SettingsProvider>{ui}</SettingsProvider>);
+import { SettingsPanel } from './SettingsPanel';
+
+function SettingsHarness() {
+  const [slippage, setSlippage] = useState(0.5);
+  const [deadline, setDeadline] = useState(30);
+  const [expertMode, setExpertMode] = useState(false);
+  const [bypassConfirmation, setBypassConfirmation] = useState(false);
+
+  return (
+    <SettingsPanel
+      slippage={slippage}
+      deadline={deadline}
+      expertMode={expertMode}
+      bypassConfirmation={bypassConfirmation}
+      extendedRouteDetails={false}
+      onSlippageChange={setSlippage}
+      onDeadlineChange={setDeadline}
+      onExpertModeChange={setExpertMode}
+      onBypassConfirmationChange={setBypassConfirmation}
+      onExtendedRouteDetailsChange={vi.fn()}
+      onReset={() => {
+        setSlippage(0.5);
+        setDeadline(30);
+        setExpertMode(false);
+        setBypassConfirmation(false);
+      }}
+    />
+  );
 }
 
-describe('SettingsPanel Drawer', () => {
-  afterEach(() => {
-    cleanup();
-    localStorage.clear();
-  });
+describe('SettingsPanel', () => {
+  afterEach(cleanup);
 
-  it('renders trigger button successfully', () => {
-    renderWithProviders(<SettingsPanel />);
-    const trigger = screen.getByRole('button', { name: /settings/i });
-    expect(trigger).toBeInTheDocument();
-  });
-
-  it('opens drawer when settings trigger is clicked', async () => {
+  it('opens with the live Advanced Settings title', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<SettingsPanel />);
+    render(<SettingsHarness />);
 
-    const trigger = screen.getByRole('button', { name: /settings/i });
-    await user.click(trigger);
+    await user.click(screen.getByRole('button', { name: /settings/i }));
 
-    // Verify title and content rendered
     expect(
-      screen.getByRole('heading', { name: 'Settings' })
+      screen.getByRole('heading', { name: 'Advanced Settings' })
     ).toBeInTheDocument();
     expect(screen.getByText('Slippage Tolerance')).toBeInTheDocument();
     expect(screen.getByText('Transaction Deadline')).toBeInTheDocument();
   });
 
-  it('resets settings to defaults when reset button is clicked', async () => {
+  it('updates controlled trade parameters and resets them', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<SettingsPanel />);
+    render(<SettingsHarness />);
+    await user.click(screen.getByRole('button', { name: /settings/i }));
 
-    const trigger = screen.getByRole('button', { name: /settings/i });
-    await user.click(trigger);
-
-    // Select the "Aggressive" preset (which sets slippage to 1.0%)
-    const aggressiveBtn = screen.getByRole('button', { name: /aggressive/i });
-    await user.click(aggressiveBtn);
-
-    // Verify slippage updated in the UI
+    await user.click(screen.getByRole('button', { name: /aggressive/i }));
+    await user.click(screen.getByRole('button', { name: /^1h$/i }));
     expect(screen.getByText('1%')).toBeInTheDocument();
+    expect(screen.getByText('60 min')).toBeInTheDocument();
 
-    // Click the Reset button
-    const resetBtn = screen.getByRole('button', { name: /reset/i });
-    await user.click(resetBtn);
-
-    // Verify slippage reset to default (0.5%)
+    await user.click(screen.getByRole('button', { name: /reset/i }));
     expect(screen.getByText('0.5%')).toBeInTheDocument();
+    expect(screen.getByText('30 min')).toBeInTheDocument();
+  });
+
+  it('exposes expert confirmation bypass controls', async () => {
+    const user = userEvent.setup();
+    render(<SettingsHarness />);
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('switch', { name: /expert mode/i }));
+
+    expect(screen.getByText('Bypass Confirmation Modal')).toBeInTheDocument();
   });
 });

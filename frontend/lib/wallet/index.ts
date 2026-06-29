@@ -78,7 +78,7 @@ export async function connectWallet(
     return {
       walletId,
       address: result.publicKey,
-      network: "testnet",
+      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
       isConnected: true,
     };
   }
@@ -186,14 +186,10 @@ export async function checkWalletCapabilities(
     statuses.push({
       capability: "view_network",
       allowed: true,
-      reason: network === "testnet" ? undefined : "xBull only supports testnet",
-      resolution: network !== "testnet" ? "Switch app to testnet" : undefined,
     });
     statuses.push({
       capability: "sign_transaction",
-      allowed: network === "testnet",
-      reason: network === "testnet" ? undefined : "xBull only supports testnet",
-      resolution: network !== "testnet" ? "Switch app to testnet" : undefined,
+      allowed: true,
     });
   }
 
@@ -212,10 +208,21 @@ export function disconnectWallet(): WalletSession {
   };
 }
 
+function isXbullUserCancelMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("cancel") ||
+    lower.includes("reject") ||
+    lower.includes("denied") ||
+    lower.includes("user declined")
+  );
+}
+
 export async function signTransactionWithWallet(
   xdr: string,
   walletId: SupportedWallet,
-  networkPassphrase?: string
+  networkPassphrase?: string,
+  publicKey?: string
 ): Promise<string> {
   if (walletId === "freighter") {
     const res = await signTransaction(xdr, { networkPassphrase });
@@ -240,10 +247,15 @@ export async function signTransactionWithWallet(
       : "public";
 
     try {
-      const signedXdr = await xbull.sign({ xdr, network });
+      const signedXdr = await xbull.sign({ xdr, network, publicKey });
       return signedXdr;
-    } catch (err: any) {
-      throw new Error(err?.message ?? "Transaction signing failed");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Transaction signing failed";
+      if (isXbullUserCancelMessage(message)) {
+        throw new Error("User declined transaction signing");
+      }
+      throw new Error(message);
     }
   }
 
@@ -320,7 +332,7 @@ export async function refreshWalletSession(
     return {
       walletId,
       address: result.publicKey,
-      network: "testnet",
+      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
       isConnected: true,
     };
   }

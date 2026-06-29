@@ -158,6 +158,54 @@ export interface BatchQuoteResponse {
 }
 
 /**
+ * A single request item for a batch orderbook lookup.
+ */
+export interface OrderbookRequestItem {
+  /** Base asset identifier: "native", "CODE", or "CODE:ISSUER". */
+  base: string;
+  /** Quote asset identifier. */
+  quote: string;
+}
+
+/**
+ * Per-item error returned inside a batch response.
+ */
+export interface BatchItemError {
+  /** Machine-readable error code. */
+  code: string;
+  /** Human-readable description. */
+  message: string;
+}
+
+/**
+ * Result for a single item in a batch orderbook response.
+ */
+export interface BatchOrderbookItemResult {
+  /** Zero-based index of this item in the original request. */
+  index: number;
+  /** The orderbook, present when `status === "ok"`. */
+  orderbook?: Orderbook;
+  /** Per-item error, present when `status === "error"`. */
+  error?: BatchItemError;
+  /** `"ok"` or `"error"`. */
+  status: string;
+}
+
+/**
+ * Response from a batch orderbook request.
+ */
+export interface BatchOrderbookResponse {
+  /** Results in the same order as the request items. */
+  results: BatchOrderbookItemResult[];
+  /** Number of items that succeeded. */
+  items_succeeded: number;
+  /** Number of items that failed (per-item errors, not a batch-level failure). */
+  items_failed: number;
+  /** Total items in the batch. */
+  total: number;
+}
+
+/**
  * Configuration for quote staleness detection
  */
 export interface QuoteStalenessConfig {
@@ -232,6 +280,163 @@ export interface RouteResponse {
   slippage_bps: number;
   /** Unix timestamp of the route calculation. */
   timestamp: number;
+}
+
+// ── Route simulation (dry-run) ───────────────────────────────────────────────
+
+/**
+ * A single hop in a route simulation dry-run request.
+ */
+export interface SimulationHop {
+  /** Source asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`. */
+  from_asset: string;
+  /** Destination asset identifier. */
+  to_asset: string;
+  /** Liquidity source: `"sdex"` or `"amm:<pool_address>"`. */
+  source: string;
+  /** Fee in basis points for this hop. */
+  fee_bps?: number;
+  /** Optional price hint for diagnostics. */
+  price?: string;
+  /** Venue reference for slippage override lookup. */
+  venue_ref?: string;
+}
+
+/**
+ * Per-hop slippage override for simulation.
+ */
+export interface SimulationSlippageOverride {
+  /** Which venue to apply the override to. */
+  venue_ref: string;
+  /** Slippage tolerance in basis points. */
+  slippage_bps: number;
+}
+
+/**
+ * Request body for `POST /api/v1/simulate/route`.
+ */
+export interface SimulateRouteRequest {
+  /** Route to simulate, containing execution-order hops. */
+  route: { hops: SimulationHop[] };
+  /** Input amount for the simulation. */
+  amount: string;
+  /** Default slippage tolerance in basis points (default: 50). */
+  slippage_bps?: number;
+  /** Per-hop slippage overrides applied by venue_ref. */
+  slippage_bps_overrides?: SimulationSlippageOverride[];
+}
+
+/**
+ * Reason a venue was excluded during simulation.
+ */
+export type ExclusionReason =
+  | 'policy_threshold'
+  | 'override'
+  | 'stale_data'
+  | 'circuit_breaker_open'
+  | 'liquidity_anomaly'
+  | (string & Record<never, never>);
+
+/**
+ * Information about an excluded venue.
+ */
+export interface ExcludedVenueInfo {
+  venue_ref: string;
+  reason: ExclusionReason;
+}
+
+/**
+ * Diagnostics about venues excluded during simulation.
+ */
+export interface ExclusionDiagnostics {
+  excluded_venues: ExcludedVenueInfo[];
+}
+
+/**
+ * Response from `POST /api/v1/simulate/route`.
+ */
+export interface SimulateRouteResponse {
+  /** The simulated quote with full path and pricing details. */
+  quote: PriceQuote;
+  /** Optional diagnostics about venues excluded during simulation. */
+  exclusion_diagnostics?: ExclusionDiagnostics;
+}
+
+/**
+ * A single hop within a ranked route candidate.
+ */
+export interface RankedRouteHop {
+  from_asset: Asset;
+  to_asset: Asset;
+  /** Exchange rate for this hop. */
+  price: string;
+  /** Amount received after this hop. */
+  amount_out_of_hop: string;
+  /** Fee in basis points for this hop. */
+  fee_bps: number;
+  /** Liquidity source: `"sdex"` or `"amm:<pool_address>"`. */
+  source: string;
+}
+
+/**
+ * A single ranked route candidate returned by `/api/v1/routes`.
+ */
+export interface RankedRouteCandidate {
+  /** Final output amount after all hops. */
+  estimated_output: string;
+  /** Price impact in basis points. */
+  impact_bps: number;
+  /** Composite ranking score — higher is better. */
+  score: number;
+  /** Optimizer policy used, e.g. `"production"`. */
+  policy_used: string;
+  /** Ordered list of hops for this route. */
+  path: RankedRouteHop[];
+}
+
+/**
+ * Response from `GET /api/v1/routes/{base}/{quote}`.
+ */
+export interface RankedRoutesResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  /** Input amount that was quoted. */
+  amount: string;
+  /** Ranked route candidates, ordered by composite score descending. */
+  routes: RankedRouteCandidate[];
+  /** Unix timestamp of the route calculation. */
+  timestamp: number;
+}
+
+/**
+ * Supported time windows for price history queries.
+ */
+export type PriceHistoryWindow = '1h' | '4h' | '24h' | '7d' | '30d';
+
+/**
+ * A single price history data point.
+ */
+export interface PriceHistoryPoint {
+  /** Unix timestamp (ms) of this data point (hour-truncated). */
+  timestamp: number;
+  /** Average mid-price for this interval. */
+  price: string;
+}
+
+/**
+ * Response from `GET /api/v1/price-history/{base}/{quote}`.
+ */
+export interface PriceHistoryResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  /** Time window of the returned data. */
+  window: string;
+  /** Data source identifier. */
+  source: string;
+  /** Unix timestamp (ms) when this response was generated. */
+  generated_at: number;
+  /** Ordered price history points (oldest first). */
+  points: PriceHistoryPoint[];
 }
 
 /**

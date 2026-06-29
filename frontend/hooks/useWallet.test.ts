@@ -1,24 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useWallet } from "./useWallet";
+import { WalletProvider } from "@/components/providers/wallet-provider";
+
+vi.unmock("@/components/providers/wallet-provider");
+
 
 // The @stellar/freighter-api mock is wired via vitest.config.ts alias
 import * as freighter from "@stellar/freighter-api";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
+
+function renderWalletHook() {
+  return renderHook(() => useWallet(), {
+    wrapper: WalletProvider,
+  });
+}
 
 describe("useWallet – initial state", () => {
   it("starts disconnected with no address", () => {
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
     expect(result.current.session.isConnected).toBe(false);
     expect(result.current.session.address).toBeNull();
     expect(result.current.session.walletId).toBeNull();
   });
 
   it("shortAddress is empty when not connected", () => {
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
     expect(result.current.shortAddress).toBe("");
   });
 });
@@ -33,7 +44,7 @@ describe("useWallet – connect (Freighter)", () => {
       networkPassphrase: "Test SDF Network ; September 2015",
     });
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
 
     await act(async () => {
       await result.current.connect("freighter");
@@ -54,7 +65,7 @@ describe("useWallet – connect (Freighter)", () => {
       networkPassphrase: "",
     });
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
 
     await act(async () => {
       await result.current.connect("freighter");
@@ -66,7 +77,7 @@ describe("useWallet – connect (Freighter)", () => {
   it("sets error message on rejected connection", async () => {
     vi.mocked(freighter.requestAccess).mockRejectedValueOnce(new Error("User rejected"));
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
 
     await act(async () => {
       await result.current.connect("freighter");
@@ -79,12 +90,13 @@ describe("useWallet – connect (Freighter)", () => {
   it("sets error when wallet is locked", async () => {
     vi.mocked(freighter.requestAccess).mockRejectedValueOnce(new Error("Wallet is locked"));
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
 
     await act(async () => {
       await result.current.connect("freighter");
     });
 
+    expect(result.current.session.isConnected).toBe(false);
     expect(result.current.error).toContain("locked");
   });
 });
@@ -99,7 +111,7 @@ describe("useWallet – disconnect", () => {
       networkPassphrase: "",
     });
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderWalletHook();
 
     await act(async () => {
       await result.current.connect("freighter");

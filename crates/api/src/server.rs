@@ -114,6 +114,8 @@ impl Server {
                         let mut state =
                             AppState::with_cache_and_policy(db, cache, cache_policy.clone());
                         state.admin_auth_token = config.admin_auth_token.clone();
+                        // Initialize WS subsystem on the AppState so handlers/broadcaster can start
+                        state.ws = Some(crate::routes::ws::WsState::from_env());
                         (Arc::new(state), rate_limit)
                     }
                 }
@@ -122,6 +124,7 @@ impl Server {
                     {
                         let mut state = AppState::new_with_policy(db, cache_policy.clone());
                         state.admin_auth_token = config.admin_auth_token.clone();
+                        state.ws = Some(crate::routes::ws::WsState::from_env());
                         (
                             Arc::new(state),
                             RateLimitLayer::in_memory(EndpointConfig::default()),
@@ -134,6 +137,7 @@ impl Server {
             {
                 let mut state = AppState::new_with_policy(db, cache_policy);
                 state.admin_auth_token = config.admin_auth_token.clone();
+                state.ws = Some(crate::routes::ws::WsState::from_env());
                 (
                     Arc::new(state),
                     RateLimitLayer::in_memory(EndpointConfig::default()),
@@ -144,7 +148,25 @@ impl Server {
         // Start the background health score recomputation scheduler.
         HealthScheduler::start(scheduler_pool, HealthSchedulerConfig::from_env());
 
-        let app = Self::build_app(state, &config, rate_limit_layer);
+        let app = Self::build_app(state.clone(), &config, rate_limit_layer);
+
+        // If WS is enabled on the AppState, spawn the long-lived broadcaster
+        // task so real-time quote updates are emitted even before the first
+        // client connects.
+        if let Some(ws_state) = state.ws.as_ref() {
+            let state_for_broadcaster = state.clone();
+            let registry = ws_state.registry.clone();
+            let poll_interval_ms = ws_state.poll_interval_ms;
+            tokio::spawn(async move {
+                crate::routes::ws::broadcaster::run_broadcaster(
+                    state_for_broadcaster,
+                    registry,
+                    poll_interval_ms,
+                )
+                .await;
+            });
+            info!("✅ WebSocket broadcaster started");
+        }
 
         Self { config, app }
     }
@@ -249,7 +271,14 @@ impl Server {
         );
 
         let shutdown_clone = shutdown.clone();
-        axum::serve(listener, self.app)
+
+        // Use `into_make_service_with_connect_info::<SocketAddr>()` so handlers
+        // that require the client's `SocketAddr` (via `ConnectInfo<SocketAddr>`) work.
+        let server = axum::Server::from_tcp(listener)
+            .expect("Failed to build TCP server")
+            .serve(self.app.into_make_service_with_connect_info::<SocketAddr>());
+
+        server
             .with_graceful_shutdown(async move {
                 shutdown_clone.wait_for_signal().await;
             })

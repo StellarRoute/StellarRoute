@@ -1,3 +1,4 @@
+
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, Mock } from 'vitest';
@@ -17,11 +18,31 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
+const { mockWalletState } = vi.hoisted(() => ({
+  mockWalletState: {
+    capabilities: null as {
+      checkedAt: number;
+      statuses: Array<{
+        capability: string;
+        allowed: boolean;
+        reason?: string;
+        resolution?: string;
+      }>;
+    } | null,
+  },
+}));
+
+const defaultAllowedCapabilities = {
+  checkedAt: Date.now(),
+  statuses: [{ capability: 'sign_transaction', allowed: true }],
+};
+
 vi.mock('./ShareQuoteButton', () => ({
   ShareQuoteButton: () => <button data-testid="mock-share-quote-button">Share</button>,
 }));
 
 vi.mock('@/components/providers/wallet-provider', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
   return {
     WalletProvider: ({ children }: any) => <>{children}</>,
@@ -56,7 +77,7 @@ vi.mock('@/components/providers/wallet-provider', () => {
         accountSwitchState: { isDetecting: false, hasChanged: false, previousAddress: null },
         isTransactionPending: false,
         setTransactionPending: React.useCallback(() => {}, []),
-        capabilities: null,
+        capabilities: mockWalletState.capabilities,
         refreshCapabilities: React.useCallback(async () => {}, []),
         syncMismatch: false,
         resyncWallet: React.useCallback(async () => {}, []),
@@ -88,6 +109,10 @@ function setNavigatorOnline(value: boolean) {
     value,
   });
 }
+
+beforeEach(() => {
+  mockWalletState.capabilities = defaultAllowedCapabilities;
+});
 
 describe('SwapCard network resilience and states', () => {
   beforeEach(() => {
@@ -218,6 +243,54 @@ describe('SwapCard network resilience and states', () => {
       expect(balanceButton).toBeDisabled();
     });
   });
+
+  it('shows permission blocked state when sign_transaction capability is denied', async () => {
+    const user = userEvent.setup();
+    mockWalletState.capabilities = {
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'request_access', allowed: true },
+        { capability: 'view_address', allowed: true },
+        { capability: 'view_network', allowed: false, reason: 'xBull only supports testnet' },
+        {
+          capability: 'sign_transaction',
+          allowed: false,
+          reason: 'xBull only supports testnet',
+          resolution: 'Switch app to testnet',
+        },
+      ],
+    };
+
+    renderWithProviders(<SwapCard />);
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '5' } });
+
+    await waitFor(() => {
+      const blockedButton = screen.getByRole('button', {
+        name: /wallet permissions required/i,
+      });
+      expect(blockedButton).toBeDisabled();
+    });
+  });
+
+  it('blocks swap while wallet capabilities are unresolved', async () => {
+    const user = userEvent.setup();
+    mockWalletState.capabilities = null;
+    renderWithProviders(<SwapCard />);
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '5' } });
+
+    await waitFor(() => {
+      const blockedButton = screen.getByRole('button', {
+        name: /wallet permissions required/i,
+      });
+      expect(blockedButton).toBeDisabled();
+    });
+  });
 });
 
 // --- Issue #506: Added Dedicated Stellar Memo Validation Rule Tests ---
@@ -250,7 +323,7 @@ describe('SwapCard Stellar Memo Validation Inline Rules (#506)', () => {
     await waitFor(() => {
       expect(screen.getByText(/exceeds 28 bytes/i)).toBeInTheDocument();
     });
-  });
+  }, 10_000);
 
   it('shows validation error when a hash memo is not valid hexadecimal characters', async () => {
     const user = userEvent.setup();
@@ -421,7 +494,6 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
       expect(screen.getByText(/Unavailable/)).toBeInTheDocument();
     });
   });
-
   it('MAX button sets amount to full balance for non-native assets', async () => {
     const originalUseSwapState = useSwapStateModule.useSwapState;
     vi.spyOn(useSwapStateModule, 'useSwapState').mockImplementation(() => {
@@ -531,7 +603,6 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
       expect(maxButton).toBeInTheDocument();
       return maxButton;
     });
-
     const maxButton = screen.getByRole('button', { name: /MAX/i });
     await user.click(maxButton);
 

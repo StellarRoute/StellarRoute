@@ -38,6 +38,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci --prefix frontend
+      - name: Lint frontend
+        run: npm --prefix frontend run lint
       - name: Build frontend
         run: npm --prefix frontend run build
       - name: Performance budget check
@@ -45,3 +47,26 @@ jobs:
         continue-on-error: false
         env:
           CI: "true"
+
+  frontend-storybook:
+    name: Frontend Ladle Storybook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --prefix frontend
+      - name: Build Ladle stories
+        run: npm --prefix frontend run storybook:ci
+      - name: Upload storybook build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ladle-storybook
+          path: frontend/build/
+          if-no-files-found: error
+          retention-days: 7

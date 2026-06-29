@@ -1,14 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "Quote Inspector | StellarRoute",
+  title: 'Quote Inspector | StellarRoute',
   description:
-    "Reconcile and compare quotes from multiple Stellar liquidity venues.",
+    'Reconcile and compare quotes from multiple Stellar liquidity venues.',
   openGraph: {
-    title: "Quote Inspector | StellarRoute",
+    title: 'Quote Inspector | StellarRoute',
     description:
-      "Analyze and reconcile quotes across SDEX and Soroban AMM pools.",
-    type: "website",
+      'Analyze and reconcile quotes across SDEX and Soroban AMM pools.',
+    type: 'website',
   },
 };
 

@@ -6,6 +6,7 @@ export interface ShareableQuoteParams {
   to?: string;
   amount?: string;
   slippage?: string;
+  side?: string;
 }
 
 const MAX_URL_LENGTH = 2048;
@@ -26,6 +27,7 @@ export function useShareableQuote() {
     const to = searchParams.get('to');
     const amount = searchParams.get('amount');
     const slippage = searchParams.get('slippage');
+    const side = searchParams.get('side') || searchParams.get('type');
     const timestamp = searchParams.get('ts');
 
     // Validate required params
@@ -52,6 +54,12 @@ export function useShareableQuote() {
       }
     }
 
+    // Validate side
+    let sanitizedSide: string | undefined;
+    if (side === 'buy' || side === 'sell') {
+      sanitizedSide = side;
+    }
+
     // Check staleness
     if (timestamp) {
       const ts = parseInt(timestamp, 10);
@@ -65,13 +73,14 @@ export function useShareableQuote() {
       to,
       amount: sanitizedAmount,
       slippage: sanitizedSlippage,
+      side: sanitizedSide,
     };
   }, [searchParams]);
 
   // Generate shareable URL
   const generateShareableUrl = useCallback(
     (params: ShareableQuoteParams): string | null => {
-      const { from, to, amount, slippage } = params;
+      const { from, to, amount, slippage, side } = params;
 
       if (!from || !to || !amount) {
         return null;
@@ -83,6 +92,9 @@ export function useShareableQuote() {
       urlParams.set('amount', amount);
       if (slippage) {
         urlParams.set('slippage', slippage);
+      }
+      if (side) {
+        urlParams.set('side', side);
       }
       urlParams.set('ts', Date.now().toString());
 
@@ -103,13 +115,14 @@ export function useShareableQuote() {
   // Apply params to current route
   const applyParams = useCallback(
     (params: ShareableQuoteParams) => {
-      const { from, to, amount, slippage } = params;
+      const { from, to, amount, slippage, side } = params;
       const urlParams = new URLSearchParams();
 
       if (from) urlParams.set('from', from);
       if (to) urlParams.set('to', to);
       if (amount) urlParams.set('amount', amount);
       if (slippage) urlParams.set('slippage', slippage);
+      if (side) urlParams.set('side', side);
       urlParams.set('ts', Date.now().toString());
 
       router.push(`/swap?${urlParams.toString()}`);

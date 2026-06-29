@@ -28,7 +28,8 @@ const HORIZON_URLS: Record<string, string> = {
 };
 
 function normalizeNetwork(network: WalletNetwork | null): string {
-  return String(network ?? 'testnet').toLowerCase();
+  const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+  return String(network ?? defaultNetwork).toLowerCase();
 }
 
 function findAssetBalance(
@@ -86,7 +87,10 @@ export function useWalletBalance({
       return;
     }
 
-    const horizonUrl = HORIZON_URLS[networkKey];
+    const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+    const horizonUrl = networkKey === defaultNetwork.toLowerCase() && process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL
+      ? process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL
+      : HORIZON_URLS[networkKey];
     if (!horizonUrl) {
       setState({
         balance: null,

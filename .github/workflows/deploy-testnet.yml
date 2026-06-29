@@ -37,6 +37,20 @@ jobs:
       - name: Install Soroban CLI
         run: cargo install --locked soroban-cli || true
 
+      - name: Set up deployer identity
+        env:
+          SOROBAN_DEPLOYER_SECRET: ${{ secrets.SOROBAN_DEPLOYER_SECRET }}
+        run: |
+          soroban network add testnet \
+            --rpc-url "https://soroban-testnet.stellar.org:443" \
+            --network-passphrase "Test SDF Network ; September 2015" || true
+          echo "${SOROBAN_DEPLOYER_SECRET}" | soroban keys add deployer --secret-key stdin --global || true
+
+      - name: Register pools
+        env:
+          STELLARROUTE_TESTNET_ROUTER_ID: ${{ inputs.contract_id || vars.SOROBAN_CONTRACT_ID }}
+        run: ./scripts/register-pools.sh --network testnet
+
       - name: Run smoke tests
         env:
           STELLARROUTE_TESTNET_ROUTER_ID: ${{ inputs.contract_id || vars.SOROBAN_CONTRACT_ID }}

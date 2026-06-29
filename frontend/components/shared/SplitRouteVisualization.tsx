@@ -8,7 +8,7 @@ import {
   ChevronUp,
   Info,
   ArrowRight,
-  Split,
+  Route,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -113,7 +113,10 @@ function PathVisualization({
                 </div>
               )}
 
-              <div className="flex flex-col items-center px-1 sm:px-2" aria-hidden="true">
+              <div
+                className="flex flex-col items-center px-1 sm:px-2"
+                aria-hidden="true"
+              >
                 <ArrowRight className="w-4 h-4 text-muted-foreground" />
                 <TooltipProvider>
                   <Tooltip>
@@ -136,19 +139,25 @@ function PathVisualization({
                         <p className="font-semibold">{venue} Details</p>
                         {depth && (
                           <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">Liquidity Depth:</span>
+                            <span className="text-muted-foreground">
+                              Liquidity Depth:
+                            </span>
                             <span className="font-medium">{depth}</span>
                           </div>
                         )}
                         {feeBps !== undefined && (
                           <div className="flex justify-between gap-4">
                             <span className="text-muted-foreground">Fee:</span>
-                            <span className="font-medium">{(feeBps / 100).toFixed(2)}%</span>
+                            <span className="font-medium">
+                              {(feeBps / 100).toFixed(2)}%
+                            </span>
                           </div>
                         )}
                         <div className="flex justify-between gap-4">
                           <span className="text-muted-foreground">Price:</span>
-                          <span className="font-medium">{parseFloat(step.price).toFixed(6)}</span>
+                          <span className="font-medium">
+                            {parseFloat(step.price).toFixed(6)}
+                          </span>
                         </div>
                       </div>
                     </TooltipContent>
@@ -289,7 +298,7 @@ export function SplitRouteVisualization({
             </h3>
             {isSplit && (
               <Badge variant="default" className="bg-blue-500 shrink-0">
-                <Split className="w-3 h-3 mr-1" aria-hidden="true" />
+                <Route className="w-3 h-3 mr-1" aria-hidden="true" />
                 Split Route
               </Badge>
             )}

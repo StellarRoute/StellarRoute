@@ -78,7 +78,7 @@ export async function connectWallet(
     return {
       walletId,
       address: result.publicKey,
-      network: "testnet",
+      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
       isConnected: true,
     };
   }
@@ -186,14 +186,10 @@ export async function checkWalletCapabilities(
     statuses.push({
       capability: "view_network",
       allowed: true,
-      reason: network === "testnet" ? undefined : "xBull only supports testnet",
-      resolution: network !== "testnet" ? "Switch app to testnet" : undefined,
     });
     statuses.push({
       capability: "sign_transaction",
-      allowed: network === "testnet",
-      reason: network === "testnet" ? undefined : "xBull only supports testnet",
-      resolution: network !== "testnet" ? "Switch app to testnet" : undefined,
+      allowed: true,
     });
   }
 
@@ -320,7 +316,7 @@ export async function refreshWalletSession(
     return {
       walletId,
       address: result.publicKey,
-      network: "testnet",
+      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
       isConnected: true,
     };
   }

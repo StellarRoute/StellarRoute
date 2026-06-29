@@ -18,13 +18,14 @@ All flags are **off by default**. You must explicitly enable them.
 
 ## Adding a new flag
 
-**1. Register the flag name** in `useFeatureFlag.ts`:
+**1. Register the flag name** in `hooks/useFeatureFlag.ts`:
 
 ```ts
 export type FlagName =
   | "routes_beta"
+  | "batch_swaps"
   | "swap_ui_v2"
-  | "your_new_flag";  // ← add here
+  | "your_new_flag";  // ← add here using snake_case
 ```
 
 **2. Enable via env** (local dev / Vercel preview):
@@ -40,6 +41,7 @@ Deploy or update your flags JSON file at `NEXT_PUBLIC_FLAGS_URL`:
 ```json
 {
   "routes_beta": true,
+  "batch_swaps": true,
   "your_new_flag": false
 }
 ```
@@ -76,20 +78,6 @@ export function SwapPage() {
 }
 ```
 
-**Gate wrapper component** (cleanest pattern for page-level gates):
-
-```tsx
-import { RoutesBetaGate } from "@/components/RoutesBetaGate";
-
-export default function SwapPage() {
-  return (
-    <RoutesBetaGate fallback={<LegacyRoutes />}>
-      <RoutesBeta />
-    </RoutesBetaGate>
-  );
-}
-```
-
 ---
 
 ## Environment variables
@@ -98,6 +86,7 @@ export default function SwapPage() {
 |---|---|
 | `NEXT_PUBLIC_FLAGS_URL` | URL to remote JSON flags config (optional) |
 | `NEXT_PUBLIC_FLAG_ROUTES_BETA` | Enable routes beta (`true`/`false`) |
+| `NEXT_PUBLIC_FLAG_BATCH_SWAPS` | Enable batch swaps (`true`/`false`) |
 | `NEXT_PUBLIC_FLAG_SWAP_UI_V2` | Enable swap UI v2 (`true`/`false`) |
 | `NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY` | Enable transaction history tab |
 | `NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE` | Enable advanced slippage controls |
@@ -108,7 +97,7 @@ export default function SwapPage() {
 
 Once a feature is stable and fully rolled out:
 
-1. Remove the `FlagName` entry from `useFeatureFlag.ts`
+1. Remove the `FlagName` entry from `hooks/useFeatureFlag.ts`
 2. Remove the `useFeatureFlag` call from the component
 3. Delete the gate wrapper if one was created
 4. Remove the env var from `.env` files and CI config

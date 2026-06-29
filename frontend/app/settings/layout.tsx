@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "Settings | StellarRoute",
+  title: 'Settings | StellarRoute',
   description:
-    "Customize your StellarRoute experience with theme, language, and notification settings.",
+    'Customize your StellarRoute experience with theme, language, and notification settings.',
   openGraph: {
-    title: "Settings | StellarRoute",
-    description: "Personalize your StellarRoute interface and preferences.",
-    type: "website",
+    title: 'Settings | StellarRoute',
+    description: 'Personalize your StellarRoute interface and preferences.',
+    type: 'website',
   },
 };
 

@@ -63,3 +63,80 @@ impl PoolAdapterTrait for ConstantProductAdapter {
         e.invoke_contract(&pool_address, &symbol_short!("get_rsrvs"), vec![&e])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ConstantProductAdapter;
+    use crate::adapters::PoolAdapterClient;
+    use crate::types::Asset;
+    use soroban_sdk::{contract, contractimpl, symbol_short, Env};
+
+    // Minimal pool stub whose reserves are configurable, so we can drive the
+    // constant-product adapter into its zero-reserve edge cases.
+    #[contract]
+    pub struct MockPool;
+
+    #[contractimpl]
+    impl MockPool {
+        pub fn set_rsrvs(e: Env, reserve_in: i128, reserve_out: i128) {
+            e.storage()
+                .instance()
+                .set(&symbol_short!("RIN"), &reserve_in);
+            e.storage()
+                .instance()
+                .set(&symbol_short!("ROUT"), &reserve_out);
+        }
+
+        pub fn get_rsrvs(e: Env) -> (i128, i128) {
+            let reserve_in = e.storage().instance().get(&symbol_short!("RIN")).unwrap_or(0);
+            let reserve_out = e
+                .storage()
+                .instance()
+                .get(&symbol_short!("ROUT"))
+                .unwrap_or(0);
+            (reserve_in, reserve_out)
+        }
+    }
+
+    // Wire a constant-product adapter to a mock pool seeded with the given
+    // reserves and return a client for issuing quotes against it.
+    fn setup(env: &Env, reserve_in: i128, reserve_out: i128) -> PoolAdapterClient {
+        let pool_id = env.register_contract(None, MockPool);
+        MockPoolClient::new(env, &pool_id).set_rsrvs(&reserve_in, &reserve_out);
+
+        let adapter_id = env.register_contract(None, ConstantProductAdapter);
+        env.as_contract(&adapter_id, || {
+            env.storage().instance().set(&symbol_short!("POOL"), &pool_id);
+        });
+
+        PoolAdapterClient::new(env, &adapter_id)
+    }
+
+    #[test]
+    fn adapter_quote_with_zero_output_reserve_returns_zero() {
+        let env = Env::default();
+        let adapter = setup(&env, 1_000, 0);
+        let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &100);
+        assert_eq!(quote, 0);
+    }
+
+    #[test]
+    fn adapter_quote_with_empty_reserves_returns_zero() {
+        let env = Env::default();
+        let adapter = setup(&env, 0, 0);
+        // A positive input against an empty pool keeps the denominator
+        // non-zero, so the quote resolves to zero rather than dividing by zero.
+        let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &100);
+        assert_eq!(quote, 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn adapter_quote_panics_on_empty_reserves_with_zero_amount() {
+        let env = Env::default();
+        let adapter = setup(&env, 0, 0);
+        // Empty reserves and a zero input collapse the denominator to zero,
+        // which the adapter rejects by panicking (documented behaviour).
+        adapter.adapter_quote(&Asset::Native, &Asset::Native, &0);
+    }
+}

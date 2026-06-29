@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { SupportedWallet, AvailableWallet } from '@/lib/wallet/types';
 import { AlertCircle, CheckCircle, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { STELLAR_NETWORK } from '@/lib/constants';
 
 export type OnboardingStep = 'welcome' | 'select-wallet' | 'connecting' | 'success' | 'error' | 'network-mismatch';
 
@@ -27,7 +28,7 @@ export interface WalletConnectionOnboardingProps {
 }
 
 const SUPPORTED_NETWORKS = ['testnet', 'mainnet'];
-const APP_NETWORK = 'testnet';
+const APP_NETWORK = STELLAR_NETWORK;
 
 export function WalletConnectionOnboarding({
   open,
@@ -118,7 +119,7 @@ export function WalletConnectionOnboarding({
             <div className="space-y-6 py-4">
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  To begin trading on StellarRoute, you'll need to connect your Stellar wallet.
+                  To begin trading on StellarRoute, you&apos;ll need to connect your Stellar wallet.
                   We support:
                 </p>
                 <ul className="space-y-2 text-sm">
@@ -172,7 +173,7 @@ export function WalletConnectionOnboarding({
             <DialogHeader>
               <DialogTitle>Select Your Wallet</DialogTitle>
               <DialogDescription>
-                Choose which Stellar wallet you'd like to connect
+                Choose which Stellar wallet you&apos;d like to connect
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -286,7 +287,7 @@ export function WalletConnectionOnboarding({
               <div className="text-center space-y-2">
                 <p className="font-medium text-green-700">Connection Successful</p>
                 <p className="text-sm text-muted-foreground">
-                  You're ready to start trading on StellarRoute
+                  You&apos;re ready to start trading on StellarRoute
                 </p>
               </div>
               <Button onClick={handleClose} className="w-full">
@@ -315,7 +316,7 @@ export function WalletConnectionOnboarding({
                 <ul className="space-y-1 text-muted-foreground list-inside list-disc">
                   <li>Ensure your wallet extension/app is enabled</li>
                   <li>Try refreshing the page</li>
-                  <li>Check that you're using the correct network</li>
+                  <li>Check that you&apos;re using the correct network</li>
                   <li>Clear your browser cache and try again</li>
                 </ul>
               </div>

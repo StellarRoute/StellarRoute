@@ -181,12 +181,61 @@ Before deploying an upgrade to mainnet:
 - [ ] Previous WASM binary archived
 - [ ] Deployment artifact backed up
 
+## Mainnet Deployment
+
+Mainnet deploys are manual-only and gated behind repository safeguards. Do not run until testnet verification and audit sign-off are complete.
+
+### Prerequisites
+
+- Funded mainnet deployer identity (separate from testnet)
+- Repository variable `DEPLOY_MAINNET_ENABLED=true`
+- Repository secret `SOROBAN_MAINNET_DEPLOYER_SECRET` (mainnet-only; never reuse testnet keys)
+
+### Deploy via GitHub Actions
+
+1. Open **Actions → Deploy to Mainnet → Run workflow**.
+2. Use **dry run** first to build WASM and validate the pipeline without submitting transactions.
+3. Re-run with dry run disabled after secrets and variables are confirmed.
+
+On success, the workflow uploads `config/deployment-mainnet.json` as a GitHub Actions artifact (90-day retention).
+
+### Deploy locally
+
+```bash
+./scripts/deploy.sh --network mainnet --dry-run
+./scripts/deploy.sh --network mainnet
+./scripts/verify.sh --network mainnet
+```
+
+### Mainnet rollback and upgrade
+
+Soroban does not support native rollback. To revert a bad upgrade:
+
+1. Stop routing traffic to the affected router contract.
+2. Archive the last known-good WASM binary from the deployment artifact.
+3. Run `./scripts/upgrade.sh --network mainnet` with the previous WASM version checked out, or deploy a fresh router if state is compromised.
+4. Re-register pools from `config/pools-mainnet.json` after the router is healthy.
+5. Run `./scripts/verify.sh --network mainnet` and `./scripts/monitor.sh --network mainnet` before restoring traffic.
+
+For planned upgrades, follow the testnet upgrade flow in [Upgrade Process](#upgrade-process) on mainnet only after testnet verification passes.
+
 ## CI/CD Workflows
 
 ### Manual Deploy (`deploy-testnet.yml`)
 - Trigger: GitHub Actions > "Deploy to Testnet" > Run workflow
 - Supports dry-run mode (build + hash only, no deploy)
 - Requires `SOROBAN_DEPLOYER_SECRET` secret and `DEPLOY_ENABLED=true` variable
+- Automatically registers pools from `config/pools-testnet.json` after deployment
+- Fails if all pools are placeholders (no real pool addresses)
+- Smoke tests verify at least one pool is registered and routable
+- Runs testnet contract smoke tests against `vars.SOROBAN_CONTRACT_ID`
+
+### Gated Mainnet Deploy (`deploy-mainnet.yml`)
+- Trigger: GitHub Actions > "Deploy to Mainnet" > Run workflow (manual only)
+- Requires `DEPLOY_MAINNET_ENABLED=true` repository variable
+- Requires `SOROBAN_MAINNET_DEPLOYER_SECRET` repository secret (separate from testnet)
+- Supports dry-run mode (build + simulate without on-chain deploy)
+- Uploads `config/deployment-mainnet.json` artifact after a successful deploy
 
 ### Nightly Verification (`verify-contracts.yml`)
 - Runs automatically at 03:00 UTC daily

@@ -234,10 +234,11 @@ async function main(argv) {
     console.log("[perf-budget] Bundle budget exceeded — generating contributor report...");
     try {
       // Re-run build with ANALYZE=true to get stats.json
-      execSync("ANALYZE=true npm run build", {
+      execSync("npm run build", {
         cwd: FRONTEND_DIR,
         stdio: "inherit",
         timeout: 120_000,
+        env: { ...process.env, ANALYZE: "true" },
       });
       const modules = parseStatsJson(STATS_PATH);
       const entries = generateContributorReport(modules, bundleSizeKb);

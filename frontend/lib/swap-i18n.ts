@@ -99,6 +99,16 @@ export type SwapTranslationKey =
   | "swap.shortcuts.focusPayAmount"
   | "swap.shortcuts.focusReceiveAmount"
   | "swap.shortcuts.refreshQuote"
+  | "swap.iconography.disclosure"
+  | "swap.iconography.eyebrow"
+  | "swap.iconography.title"
+  | "swap.iconography.description"
+  | "swap.iconography.venueTypes"
+  | "swap.iconography.venueTypes.sdex"
+  | "swap.iconography.venueTypes.hybrid"
+  | "swap.iconography.transactionStates"
+  | "swap.iconography.sizingNote"
+  | "swap.iconography.assetFallbackNote"
   | "swap.a11y.quoteRefreshed"
   | "swap.a11y.quoteRefreshedGeneric"
   | "swap.a11y.quoteRefreshFailed"
@@ -292,6 +302,21 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.shortcuts.focusPayAmount": "Focus pay amount",
     "swap.shortcuts.focusReceiveAmount": "Focus receive amount",
     "swap.shortcuts.refreshQuote": "Refresh quote",
+    "swap.iconography.disclosure": "Route and transaction icon legend",
+    "swap.iconography.eyebrow": "Iconography System",
+    "swap.iconography.title": "Route and Transaction Icons",
+    "swap.iconography.description":
+      "Consistent icons help users distinguish between venue types, hybrid routes, and transaction lifecycle states.",
+    "swap.iconography.venueTypes": "Venue Types",
+    "swap.iconography.venueTypes.sdex":
+      "SDEX represents order book trades. AMM indicates liquidity pool swaps.",
+    "swap.iconography.venueTypes.hybrid":
+      "Hybrid routes combine both venue types for optimal routing.",
+    "swap.iconography.transactionStates": "Transaction States",
+    "swap.iconography.sizingNote":
+      "Icons are sized for screen readability at 16/20/24px. Use light strokes for smaller badges and moderate stroke weight for larger route indicators.",
+    "swap.iconography.assetFallbackNote":
+      "Asset icons fall back to stable uppercase initials when a valid image source is unavailable.",
     "swap.a11y.quoteRefreshed": "Quote updated. {rate}",
     "swap.a11y.quoteRefreshedGeneric": "Quote updated.",
     "swap.a11y.quoteRefreshFailed": "Quote refresh failed. {message}",
@@ -471,6 +496,21 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.shortcuts.focusPayAmount": "Enfocar cantidad de pago",
     "swap.shortcuts.focusReceiveAmount": "Enfocar cantidad a recibir",
     "swap.shortcuts.refreshQuote": "Actualizar cotización",
+    "swap.iconography.disclosure": "Leyenda de iconos de ruta y transacción",
+    "swap.iconography.eyebrow": "Sistema de iconografía",
+    "swap.iconography.title": "Iconos de ruta y transacción",
+    "swap.iconography.description":
+      "Los iconos coherentes ayudan a distinguir tipos de venue, rutas híbridas y estados del ciclo de vida de la transacción.",
+    "swap.iconography.venueTypes": "Tipos de venue",
+    "swap.iconography.venueTypes.sdex":
+      "SDEX representa operaciones en el libro de órdenes. AMM indica intercambios en pools de liquidez.",
+    "swap.iconography.venueTypes.hybrid":
+      "Las rutas híbridas combinan ambos tipos de venue para un enrutamiento óptimo.",
+    "swap.iconography.transactionStates": "Estados de transacción",
+    "swap.iconography.sizingNote":
+      "Los iconos están dimensionados para legibilidad en pantalla a 16/20/24px. Usa trazos ligeros para insignias pequeñas y un grosor moderado para indicadores de ruta más grandes.",
+    "swap.iconography.assetFallbackNote":
+      "Los iconos de activos usan iniciales en mayúsculas cuando no hay una imagen válida disponible.",
     "swap.a11y.quoteRefreshed": "Quote updated. {rate}",
     "swap.a11y.quoteRefreshedGeneric": "Quote updated.",
     "swap.a11y.quoteRefreshFailed": "Quote refresh failed. {message}",
@@ -653,6 +693,21 @@ const SWAP_TRANSLATIONS: Record<SupportedSwapLocale, SwapTranslations> = {
     "swap.shortcuts.focusPayAmount": "聚焦支付数量",
     "swap.shortcuts.focusReceiveAmount": "聚焦接收数量",
     "swap.shortcuts.refreshQuote": "刷新报价",
+    "swap.iconography.disclosure": "路径与交易图标图例",
+    "swap.iconography.eyebrow": "图标系统",
+    "swap.iconography.title": "路径与交易图标",
+    "swap.iconography.description":
+      "一致的图标可帮助用户区分交易场所类型、混合路径和交易生命周期状态。",
+    "swap.iconography.venueTypes": "交易场所类型",
+    "swap.iconography.venueTypes.sdex":
+      "SDEX 表示订单簿交易，AMM 表示流动性池兑换。",
+    "swap.iconography.venueTypes.hybrid":
+      "混合路径会结合两种交易场所以实现更优路由。",
+    "swap.iconography.transactionStates": "交易状态",
+    "swap.iconography.sizingNote":
+      "图标按 16/20/24 像素优化可读性。较小徽章使用细描边，较大路径指示器使用中等描边粗细。",
+    "swap.iconography.assetFallbackNote":
+      "当有效图片源不可用时，资产图标会回退为稳定的大写首字母。",
     "swap.a11y.quoteRefreshed": "报价已更新。{rate}",
     "swap.a11y.quoteRefreshedGeneric": "报价已更新。",
     "swap.a11y.quoteRefreshFailed": "报价刷新失败。{message}",

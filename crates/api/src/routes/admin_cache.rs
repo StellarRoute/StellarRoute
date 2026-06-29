@@ -39,10 +39,7 @@ pub async fn flush_cache(
                 "*quote:*".to_string()
             };
 
-            match cache.delete_by_pattern(&pattern).await {
-                Ok(n) => n,
-                Err(_) => 0,
-            }
+            cache.delete_by_pattern(&pattern).await.unwrap_or_default()
         } else {
             0
         }

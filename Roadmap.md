@@ -102,10 +102,27 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 ---
 
 ### **M2: Soroban AMM Integration & Routing Engine**
-**Status:** 🔴 Not Started  
+**Status:** 🟡 Largely Complete (~80%)  
 **Duration:** ~8-10 weeks  
 **Priority:** Critical Core Feature  
 **Dependencies:** M1 completion
+
+> **Architecture references:** See [AGENTS.md](AGENTS.md) §"Big-picture architecture" and [docs/readiness/M2_GUIDE.md](docs/readiness/M2_GUIDE.md) for readiness checks and CI gate.
+
+#### What is shipped
+- ✅ `crates/indexer/src/amm.rs` — Soroban AMM pool state aggregator (pool discovery, reserve queries, event tracking)
+- ✅ `crates/routing/` — full routing crate: pathfinder (Dijkstra/multi-hop), optimizer, risk/policy, health/anomaly/freshness modules
+- ✅ `normalized_liquidity` database view — unified SDEX + AMM read model consumed by API quote pipeline
+- ✅ `GET /api/v1/routes/:base/:quote` — ranked multi-hop route candidates with composite scores
+- ✅ `POST /api/v1/simulate/route` — dry-run simulation endpoint (route validation, slippage, exclusion diagnostics)
+- ✅ Multi-hop pathfinding via `Pathfinder` (max_hops configurable, ≥2 verified by M2 readiness gate)
+- ✅ Price impact and slippage calculation across SDEX orderbook and AMM constant-product formula
+- ✅ `sdk-js` client methods: `simulateRoute`, `executeSwap` (stub), `getRankedRoutes`
+
+#### Remaining M2 gaps
+- ⬜ **Simulate/route endpoint production hardening** — `POST /api/v1/simulate/route` exists but has not been stress-tested against live AMM pool data; needs end-to-end integration test coverage
+- ⬜ **On-chain swap execution** — `executeSwap` in the SDK returns a documented `not_implemented` stub until the swap-build API endpoint ships (requires M3 Soroban contracts)
+- ⬜ **Multi-hop polish** — edge cases for very thin orderbooks and large swap amounts need additional integration testing (tracked in M2 readiness gate: `cargo run -p stellarroute-api --bin m2-readiness`)
 
 #### Objectives
 - Integrate Soroban AMM pool queries into indexing system
@@ -117,58 +134,58 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 #### Technical Tasks
 
 **Phase 2.1: Soroban Integration**
-- [ ] Set up Soroban development environment
-- [ ] Research Soroban AMM contract interfaces
-- [ ] Implement Soroban RPC client integration
-- [ ] Build AMM pool state aggregator
+- [x] Set up Soroban development environment
+- [x] Research Soroban AMM contract interfaces
+- [x] Implement Soroban RPC client integration
+- [x] Build AMM pool state aggregator
   - Query pool reserves
   - Track pool creation/destruction events
   - Monitor pool parameter changes (fees, reserves)
-- [ ] Design unified data model for SDEX + AMM liquidity
-- [ ] Implement normalization layer for different liquidity sources
+- [x] Design unified data model for SDEX + AMM liquidity
+- [x] Implement normalization layer for different liquidity sources
 
 **Phase 2.2: Routing Engine Architecture**
-- [ ] Design routing algorithm architecture
+- [x] Design routing algorithm architecture
   - Graph representation of liquidity sources
   - Path search algorithms (Dijkstra/A* with modifications)
-- [ ] Implement single-hop routing
+- [x] Implement single-hop routing
   - Direct SDEX orderbook swap
   - Direct AMM pool swap
   - Price comparison logic
-- [ ] Implement multi-hop routing
+- [x] Implement multi-hop routing
   - 2-hop paths (e.g., XLM → USDC → BTC)
   - N-hop path discovery (with max depth limits)
   - Intermediate asset selection heuristics
-- [ ] Add path caching for common routes
+- [x] Add path caching for common routes
 
 **Phase 2.3: Price Impact & Slippage Calculation**
-- [ ] Implement SDEX orderbook price impact calculation
+- [x] Implement SDEX orderbook price impact calculation
   - Calculate based on orderbook depth
   - Model market depth impact
-- [ ] Implement AMM price impact calculation
+- [x] Implement AMM price impact calculation
   - Constant product formula (x * y = k)
   - Handle variable fee structures
-- [ ] Add slippage tolerance validation
-- [ ] Implement price improvement scoring algorithm
+- [x] Add slippage tolerance validation
+- [x] Implement price improvement scoring algorithm
 
 **Phase 2.4: Unified Price Aggregation**
-- [ ] Build price aggregation service
+- [x] Build price aggregation service
   - Combine SDEX and AMM quotes
   - Rank routes by best price
   - Handle stale data and time-based validation
-- [ ] Implement quote expiration logic
-- [ ] Add quote caching with TTL
-- [ ] Create unified quote response format
+- [x] Implement quote expiration logic
+- [x] Add quote caching with TTL
+- [x] Create unified quote response format
 
 **Phase 2.5: Testing & Optimization**
-- [ ] Write unit tests for routing algorithms
-- [ ] Write integration tests with mock AMM pools
-- [ ] Performance testing of pathfinding (handle large graphs)
+- [x] Write unit tests for routing algorithms
+- [x] Write integration tests with mock AMM pools
+- [x] Performance testing of pathfinding (handle large graphs)
 - [ ] Test edge cases:
-  - Insufficient liquidity
-  - Very large swap amounts
+  - [ ] Insufficient liquidity (needs integration test coverage)
+  - [ ] Very large swap amounts (needs integration test coverage)
   - Extremely thin orderbooks
-- [ ] Optimize routing algorithm for speed
+- [x] Optimize routing algorithm for speed
 
 #### Deliverables
 - ✅ Soroban AMM pool integration
@@ -616,7 +633,7 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 
 ### Technology Stack
 
-- **Backend:** Rust (Actix-web/Axum, Postgres, Redis)
+- **Backend:** Rust (Axum, Postgres, Redis)
 - **Smart Contracts:** Soroban Rust SDK
 - **Frontend:** React/Next.js, TypeScript, Tailwind CSS
 - **Database:** PostgreSQL

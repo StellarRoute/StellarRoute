@@ -1,5 +1,5 @@
 use crate::admin_audit::{build_admin_audit_entry, emit_admin_audit};
-use crate::error::Result;
+use crate::error::{ApiError, Result};
 use crate::kill_switch::KillSwitchState;
 use crate::middleware::RequestId;
 use crate::state::AppState;
@@ -47,7 +47,11 @@ pub async fn update_kill_switch(
 ) -> Result<Json<serde_json::Value>> {
     info!("Admin updating kill switch state: {:?}", payload);
 
-    state.kill_switch.update_state(payload).await;
+    state
+        .kill_switch
+        .update_state(payload)
+        .await
+        .map_err(|e| ApiError::from(anyhow::anyhow!(e)))?;
 
     // Emit admin audit entry
     let entry = build_admin_audit_entry(

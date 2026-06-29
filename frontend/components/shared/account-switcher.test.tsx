@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { AccountSwitcher } from '../account-switcher';
+import { AccountSwitcher } from './account-switcher';
 import { WalletProvider } from '@/components/providers/wallet-provider';
 import * as walletLib from '@/lib/wallet';
 

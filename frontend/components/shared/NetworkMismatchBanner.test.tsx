@@ -102,6 +102,25 @@ describe('NetworkMismatchBanner', () => {
     expect(alert).toHaveAttribute('aria-live', 'assertive');
   });
 
+  it('calls setNetwork when use wallet network is clicked', async () => {
+    process.env.NEXT_PUBLIC_MAINNET_LIMITED = 'true';
+    const user = userEvent.setup();
+    const setNetwork = vi.fn();
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+      setNetwork,
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    await user.click(screen.getByRole('button', { name: /use wallet network/i }));
+    expect(setNetwork).toHaveBeenCalledWith('mainnet');
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
+  });
+
   it('handles xbull wallet docs link', () => {
     vi.mocked(WalletProvider.useWallet).mockReturnValue({
       networkMismatch: true,

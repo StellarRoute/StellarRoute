@@ -174,6 +174,10 @@ pub struct AppState {
     pub liquidity_thinness_alerts: Arc<LiquidityThinnessAlerts>,
     /// Quote expiration webhook dispatcher.
     pub quote_expiration_webhooks: Arc<QuoteExpirationWebhookService>,
+    /// Optional Soroban simulation client for dry-run validation
+    pub soroban_simulator: Option<Arc<crate::simulation::SorobanSimulator>>,
+    /// Whether to run simulations in realtime/latency-sensitive mode
+    pub soroban_simulation_enabled: bool,
 }
 
 impl AppState {
@@ -204,6 +208,17 @@ impl AppState {
         let quote_expiration_webhooks =
             Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
 
+        // Build optional Soroban simulator (if configured)
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
+            .ok()
+            .and_then(|url| {
+                let cfg = crate::simulation::SimulationConfig {
+                    rpc_url: url,
+                    ..Default::default()
+                };
+                crate::simulation::SorobanSimulator::new(cfg)
+            });
+
         Self {
             db,
             cache: None,
@@ -233,6 +248,11 @@ impl AppState {
             external_dependency_health,
             liquidity_thinness_alerts,
             quote_expiration_webhooks,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         }
     }
 
@@ -277,6 +297,16 @@ impl AppState {
         let quote_expiration_webhooks =
             Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
 
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
+            .ok()
+            .and_then(|url| {
+                let cfg = crate::simulation::SimulationConfig {
+                    rpc_url: url,
+                    ..Default::default()
+                };
+                crate::simulation::SorobanSimulator::new(cfg)
+            });
+
         // Build the AppState value to return, then optionally start background jobs
         let app_state = Self {
             db,
@@ -307,6 +337,11 @@ impl AppState {
             external_dependency_health,
             liquidity_thinness_alerts,
             quote_expiration_webhooks,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         };
 
         // Start cache prewarm job if configured via env `PREWARM_PAIRS`.
@@ -422,7 +457,7 @@ impl AppState {
         // Check Redis
         if let Some(cache) = &self.cache {
             if let Ok(mut guard) = cache.try_lock() {
-                if !guard.is_healthy().await {
+                if guard.health_status().await != crate::cache::CacheHealthStatus::Healthy {
                     score *= 0.8;
                 }
             }

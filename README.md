@@ -122,7 +122,7 @@ graph TB
 ### Backend
 
 - **Language**: Rust (for performance and safety)
-- **Framework**: Axum/Actix-web (API server)
+- **Framework**: Axum (API server)
 - **Database**: PostgreSQL (orderbook storage)
 - **Cache**: Redis (hot data caching)
 - **Blockchain**: Soroban (smart contracts)
@@ -225,12 +225,12 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
    - _Skills: PostgreSQL, SQL, Performance tuning_
 
 3. **API Development** 🔌
-   - Implement REST API server (Axum/Actix)
-   - Create `/api/v1/pairs` endpoint
+   - Implement REST API server (Axum)
+- Create `/api/v1/pairs` endpoint
    - Add `/api/v1/orderbook/{base}/{quote}` endpoint
    - Add `/api/v1/quote` endpoint
    - WebSocket support for real-time updates
-   - _Skills: Rust (Axum/Actix), REST APIs, WebSocket_
+   - _Skills: Rust (Axum), REST APIs, WebSocket_
 
 4. **Testing & Documentation** ✅
    - Unit tests for indexer, models, and database layer

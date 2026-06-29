@@ -1,5 +1,7 @@
 import type {
   ApiErrorCode,
+  ExecuteSwapParams,
+  ExecuteSwapResult,
   HealthStatus,
   Orderbook,
   PairsResponse,
@@ -369,7 +371,99 @@ export class StellarRouteClient {
   }
 
   /**
-   * `GET /api/v1/price-history/{base}/{quote}` ? fetch price history for charting/sparklines.
+   * `POST /api/v1/simulate/route` — dry-run a route to see expected output,
+   * price impact, and slippage before committing to an on-chain swap.
+   *
+   * @param params Route and simulation parameters.
+   *
+   * @throws {@link StellarRouteApiError} with `status === 404` when no
+   *   matching route exists.
+   * @throws {@link StellarRouteApiError} with `status === 400` for invalid
+   *   request params.
+   *
+   * @example
+   * ```ts
+   * const result = await client.simulateRoute({
+   *   route: { hops: [{ from_asset: 'native', to_asset: 'USDC:GA...', source: 'sdex' }] },
+   *   amount: '100',
+   *   slippage_bps: 50,
+   * });
+   * console.log(result.quote.price);
+   * ```
+   */
+  simulateRoute(
+    params: SimulateRouteRequest,
+    signal?: AbortSignal,
+  ): Promise<SimulateRouteResponse> {
+    return this.request<SimulateRouteResponse>(
+      '/api/v1/simulate/route',
+      signal,
+      this.retries,
+      'POST',
+      params,
+    );
+  }
+
+  /**
+   * Execute a swap via the StellarRoute API.
+   *
+   * When the API provides a swap-build endpoint, this method calls it and
+   * returns the Stellar XDR transaction envelope for the caller to sign and
+   * submit. Until that endpoint ships, the method calls `simulateRoute` first
+   * to validate the route, then throws `StellarRouteApiError` with code
+   * `"not_implemented"` so callers can detect the stub and fall back gracefully.
+   *
+   * **Usage pattern**
+   * ```ts
+   * try {
+   *   const result = await client.executeSwap({
+   *     route: { hops: [...] },
+   *     amount: '100',
+   *     sender: 'G...',
+   *     min_output: '98',
+   *     slippage_bps: 50,
+   *   });
+   *   // sign result.xdr_envelope and submit via Stellar SDK
+   * } catch (err) {
+   *   if (isStellarRouteApiError(err) && err.code === 'not_implemented') {
+   *     // Build and submit transaction via Stellar SDK directly
+   *   }
+   * }
+   * ```
+   *
+   * @param params Swap execution parameters including route, amount, sender, and slippage.
+   *
+   * @throws {@link StellarRouteApiError} with `code === "not_implemented"` until
+   *   the swap-build endpoint is deployed.
+   * @throws {@link StellarRouteApiError} for simulation failures (route not found,
+   *   validation errors, stale data, etc.).
+   */
+  async executeSwap(
+    params: ExecuteSwapParams,
+    signal?: AbortSignal,
+  ): Promise<ExecuteSwapResult> {
+    // Validate route is executable via dry-run before attempting swap.
+    await this.simulateRoute(
+      {
+        route: params.route,
+        amount: params.amount,
+        slippage_bps: params.slippage_bps,
+      },
+      signal,
+    );
+
+    // Swap-build endpoint not yet deployed. Throw a documented stub error so
+    // callers can detect and fall back to building the transaction themselves.
+    throw new StellarRouteApiError(
+      501,
+      'not_implemented',
+      'executeSwap: on-chain swap-build endpoint not yet available. ' +
+        'Simulate succeeded — build and sign the XDR transaction via the Stellar SDK.',
+    );
+  }
+
+  /**
+   * `GET /api/v1/price-history/{base}/{quote}` — fetch price history for charting/sparklines.
    *
    * @param base  Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
    * @param quote Quote asset identifier.

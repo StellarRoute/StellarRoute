@@ -208,14 +208,21 @@ export function disconnectWallet(): WalletSession {
   };
 }
 
-function isXbullUserCancelMessage(message: string): boolean {
+function normalizeWalletSignError(message: string): string {
   const lower = message.toLowerCase();
-  return (
+  if (
+    lower.includes("user declined") ||
+    lower.includes("declined access") ||
+    lower.includes("signing denied") ||
+    lower.includes("user rejected") ||
+    lower.includes("transaction was rejected") ||
     lower.includes("cancel") ||
     lower.includes("reject") ||
-    lower.includes("denied") ||
-    lower.includes("user declined")
-  );
+    lower.includes("denied")
+  ) {
+    return "User declined transaction signing";
+  }
+  return message;
 }
 
 export async function signTransactionWithWallet(
@@ -227,7 +234,9 @@ export async function signTransactionWithWallet(
   if (walletId === "freighter") {
     const res = await signTransaction(xdr, { networkPassphrase });
     if (res.error) {
-      throw new Error(res.error.message ?? "Transaction signing failed");
+      throw new Error(
+        normalizeWalletSignError(res.error.message ?? "Transaction signing failed")
+      );
     }
     return res.signedTxXdr;
   }
@@ -252,10 +261,7 @@ export async function signTransactionWithWallet(
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Transaction signing failed";
-      if (isXbullUserCancelMessage(message)) {
-        throw new Error("User declined transaction signing");
-      }
-      throw new Error(message);
+      throw new Error(normalizeWalletSignError(message));
     }
   }
 

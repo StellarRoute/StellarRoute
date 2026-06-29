@@ -312,8 +312,8 @@ impl FixtureBuilder {
                 liquidity,
                 price,
                 fee_bps: 0,
-                anomaly_score: 0.0,
-                anomaly_reasons: vec![],
+                anomaly_score: None,
+                anomaly_reasons: None,
             });
         }
 
@@ -340,8 +340,8 @@ impl FixtureBuilder {
                 liquidity: reserve_selling,
                 price: price_fwd,
                 fee_bps: pool.fee_bps,
-                anomaly_score: 0.0,
-                anomaly_reasons: vec![],
+                anomaly_score: None,
+                anomaly_reasons: None,
             });
 
             // Reverse direction (AMM pools are symmetric)
@@ -353,8 +353,8 @@ impl FixtureBuilder {
                 liquidity: reserve_buying,
                 price: price_rev,
                 fee_bps: pool.fee_bps,
-                anomaly_score: 0.0,
-                anomaly_reasons: vec![],
+                anomaly_score: None,
+                anomaly_reasons: None,
             });
         }
 

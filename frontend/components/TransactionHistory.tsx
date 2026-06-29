@@ -2,8 +2,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { formatDistanceToNow } from "date-fns"
-import { ArrowRight, Trash2, Download } from "lucide-react"
+import { ArrowRight, Trash2, Download, Wallet } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +14,8 @@ import { RelativeTime } from "@/components/shared/RelativeTime"
 import { AssetIcon } from "@/components/shared/AssetIcon"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
+import { useWallet } from "@/components/providers/wallet-provider"
+import { WalletConnectionOnboarding } from "@/components/modals/WalletConnectionOnboarding"
 import { TransactionRecord } from "@/types/transaction"
 import {
   Table,
@@ -39,16 +40,24 @@ import {
   triggerCSVDownload,
 } from "@/lib/transaction-csv-export"
 
-// Hardcode mock wallet used by the local swap demo data
-const MOCK_WALLET = "GBSU...XYZ9"
 const ACTIVITY_VIRTUALIZATION_THRESHOLD = 24
 const ACTIVITY_ROW_HEIGHT = 80
 
 export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionRecord) => void } = {}) {
-  const { transactions, clearHistory } = useTransactionHistory(MOCK_WALLET)
+  const {
+    address,
+    isConnected,
+    availableWallets,
+    isLoading: walletLoading,
+    error: walletError,
+    connect,
+    walletNetwork,
+  } = useWallet()
+  const { transactions, clearHistory } = useTransactionHistory(address)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
   const [sortKey, setSortKey] = useState<"date" | "amount">("date")
   const [isLoading, setIsLoading] = useState(true)
+  const [showConnectModal, setShowConnectModal] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const [selectedColumns, setSelectedColumns] = useState<string[]>(() => {
@@ -151,11 +160,15 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
       <div className="p-4 border-b flex flex-col sm:flex-row justify-between items-center gap-4 bg-muted/30">
         <div>
           <h2 className="text-2xl font-bold">Transaction History</h2>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-            Wallet:{" "}
-            <span className="font-mono text-foreground">{MOCK_WALLET}</span>
-            <CopyButton value={MOCK_WALLET} label="Copy wallet address" />
-          </p>
+          {isConnected && address ? (
+            <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+              Wallet:{" "}
+              <span className="font-mono text-foreground">{address}</span>
+              <CopyButton value={address} label="Copy wallet address" />
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-1">No wallet connected</p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -220,6 +233,17 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
       <div ref={scrollRef} data-testid="tx-history-scroll" className="flex-1 overflow-auto">
         {isLoading ? (
           <ActivityTableSkeleton />
+        ) : !isConnected ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center h-full" data-testid="wallet-disconnected-state">
+            <Wallet className="w-16 h-16 text-muted-foreground/50 mb-4" />
+            <h3 className="text-xl font-semibold mb-1">Connect Your Wallet</h3>
+            <p className="text-sm text-muted-foreground max-w-[250px] mb-4">
+              Connect your wallet to view your transaction history.
+            </p>
+            <Button onClick={() => setShowConnectModal(true)} data-testid="connect-wallet-cta">
+              Connect Wallet
+            </Button>
+          </div>
         ) : sortedTxs.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center h-full">
             <div className="text-muted-foreground w-16 h-16 mb-4 opacity-50 bg-muted rounded-full flex items-center justify-center">
@@ -352,6 +376,16 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
           </div>
         )}
       </div>
+
+      <WalletConnectionOnboarding
+        open={showConnectModal}
+        onOpenChange={setShowConnectModal}
+        availableWallets={availableWallets}
+        isLoading={walletLoading}
+        error={walletError?.message ?? null}
+        onConnect={connect}
+        walletNetwork={walletNetwork}
+      />
     </Card>
   )
 }

@@ -16,6 +16,11 @@ export interface UseOptimisticSwapOptions {
   rollbackTarget: RollbackTarget;
   /** Notification preference — passed through to useTransactionLifecycle */
   notificationPreference?: NotificationPreference;
+  /**
+   * Optional callback fired once the swap reaches the `confirmed` state.
+   * Use this to trigger balance refetches or any post-confirmation side effects.
+   */
+  onConfirmed?: () => void;
 }
 
 export interface UseOptimisticSwapResult {
@@ -33,7 +38,7 @@ export interface UseOptimisticSwapResult {
 }
 
 export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimisticSwapResult {
-  const { rollbackTarget, ...lifecycleOptions } = options;
+  const { rollbackTarget, onConfirmed, ...lifecycleOptions } = options;
 
   const lifecycle = useTransactionLifecycle(lifecycleOptions);
   const [submitLock, setSubmitLock] = useState(false);
@@ -43,6 +48,16 @@ export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimis
   // Keep rollbackTarget in a ref so the effect closure always has the latest version
   const rollbackTargetRef = useRef(rollbackTarget);
   const snapshotRef = useRef<PreSubmitSnapshot | null>(null);
+  // Keep onConfirmed in a ref so the effect closure always has the latest version
+  const onConfirmedRef = useRef(onConfirmed);
+
+  useEffect(() => {
+    rollbackTargetRef.current = rollbackTarget;
+  }, [rollbackTarget]);
+
+  useEffect(() => {
+    onConfirmedRef.current = onConfirmed;
+  }, [onConfirmed]);
 
   useEffect(() => {
     rollbackTargetRef.current = rollbackTarget;
@@ -64,6 +79,8 @@ export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimis
     if (lifecycle.status === 'confirmed') {
       setSubmitLock(false);
       lockRef.current = false;
+      // Fire post-confirmation callback (e.g. balance refetch)
+      onConfirmedRef.current?.();
     } else if (lifecycle.status === 'failed' || lifecycle.status === 'dropped') {
       const snap = snapshotRef.current;
       if (snap) {

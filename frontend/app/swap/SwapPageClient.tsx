@@ -2,6 +2,7 @@
 
 import { SplitView } from "@/components/swap/SplitView";
 import { useSplitView } from "@/hooks/useSplitView";
+import { RoutesBetaGate } from "@/src/components/RoutesBetaGate";
 import dynamic from "next/dynamic";
 
 const SwapCard = dynamic(
@@ -24,14 +25,33 @@ const RouteDisplay = dynamic(
   { ssr: false }
 );
 
-export function SwapPageClient() {
+/**
+ * Fallback when `routes_beta` is off (default).
+ * Standard swap card without split-view route panel or alternative-route picker.
+ */
+function SwapLegacyRoutes() {
+  return (
+    <div className="w-full max-w-[480px] mx-auto">
+      <SwapCard showRoutePicker={false} />
+    </div>
+  );
+}
+
+/**
+ * Routes beta UI when `routes_beta` is on.
+ * Split-view layout with dedicated route details panel and in-card route picker.
+ *
+ * Enable with `NEXT_PUBLIC_FLAG_ROUTES_BETA=true` or
+ * `window.__STELLAR_ROUTE_FLAGS__ = { routes_beta: true }`.
+ */
+function SwapRoutesBeta() {
   const { isSplit, toggleSplit } = useSplitView();
 
   return (
     <SplitView
       isSplit={isSplit}
       onToggle={toggleSplit}
-      primary={<SwapCard />}
+      primary={<SwapCard showRoutePicker />}
       secondary={
         <div className="rounded-xl border border-border/50 bg-card p-4">
           <h2 className="text-sm font-semibold mb-3">Route Details</h2>
@@ -40,5 +60,13 @@ export function SwapPageClient() {
       }
       className="w-full max-w-[960px] mx-auto"
     />
+  );
+}
+
+export function SwapPageClient() {
+  return (
+    <RoutesBetaGate fallback={<SwapLegacyRoutes />}>
+      <SwapRoutesBeta />
+    </RoutesBetaGate>
   );
 }

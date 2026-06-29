@@ -196,6 +196,11 @@ export function WalletConnectionOnboarding({
                           <p className="text-sm text-muted-foreground">
                             {wallet.installed ? 'Detected on your device' : 'Not installed'}
                           </p>
+                          {wallet.id === 'xbull' && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Transaction signing is supported on testnet only.
+                            </p>
+                          )}
                         </div>
                         {!wallet.installed && (
                           <ExternalLink className="h-4 w-4 text-muted-foreground" />

@@ -84,3 +84,20 @@ Failed deliveries are retried with exponential backoff:
 - attempt 4: 2000ms
 
 A delivery is considered successful for any HTTP 2xx response.
+
+## POST /api/v1/quote idempotency
+
+`POST /api/v1/quote` accepts an optional `Idempotency-Key` header for safe retries.
+
+- Header name: `Idempotency-Key` (case-insensitive)
+- Maximum key length: 128 characters (after trimming whitespace)
+- TTL: 5 minutes by default (`IDEMPOTENCY_TTL_SECS` env override)
+- Scoped storage key prefix: `post_quote:` (prevents collision with other endpoints)
+
+Behavior:
+
+- Duplicate requests with the same normalized key within the TTL return the same quote payload in `data` without re-running the quote pipeline.
+- The outer response envelope (`request_id`, `timestamp`) may differ between the original request and replays.
+- If the header is omitted, each request is processed normally (no deduplication).
+
+Integration coverage lives in `crates/api/tests/idempotent_quote_integration.rs`.

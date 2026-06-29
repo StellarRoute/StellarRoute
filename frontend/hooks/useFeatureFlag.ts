@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 
 export type FlagName =
   | "routes_beta"
@@ -8,7 +8,8 @@ export type FlagName =
   | "swap_ui_v2"
   | "transaction_history"
   | "advanced_slippage"
-  | "real_xdr";
+  | "real_xdr"
+  | "analytics";
 
 export type FlagMap = Partial<Record<FlagName, boolean>>;
 
@@ -22,10 +23,24 @@ export function invalidateFlagCache(): void {
 }
 
 function readEnvFlag(flag: FlagName): boolean | undefined {
-  const key = `NEXT_PUBLIC_FLAG_${flag.toUpperCase()}`;
-  const val = process.env[key];
+  // Static property access is required for Next.js to expose public env values
+  // in the browser bundle.
+  const val =
+    flag === 'routes_beta'
+      ? process.env.NEXT_PUBLIC_FLAG_ROUTES_BETA
+      : flag === 'batch_swaps'
+        ? process.env.NEXT_PUBLIC_FLAG_BATCH_SWAPS
+        : flag === 'swap_ui_v2'
+          ? process.env.NEXT_PUBLIC_FLAG_SWAP_UI_V2
+          : flag === 'transaction_history'
+            ? process.env.NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY
+            : flag === 'real_xdr'
+              ? process.env.NEXT_PUBLIC_FLAG_REAL_XDR
+              : flag === 'analytics'
+                ? process.env.NEXT_PUBLIC_FEATURE_ANALYTICS
+                : process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
   if (val === undefined) return undefined;
-  return val === "true" || val === "1";
+  return val === 'true' || val === '1';
 }
 
 async function fetchRemoteFlags(): Promise<FlagMap> {
@@ -86,7 +101,11 @@ export function useFeatureFlag(flag: FlagName): {
 
 export function useFeatureFlags(flags: FlagName[]): Record<FlagName, boolean> {
   const [resolved, setResolved] = useState<Record<FlagName, boolean>>(
-    () => Object.fromEntries(flags.map((f) => [f, false])) as Record<FlagName, boolean>
+    () =>
+      Object.fromEntries(flags.map((f) => [f, false])) as Record<
+        FlagName,
+        boolean
+      >
   );
 
   useEffect(() => {
@@ -106,7 +125,7 @@ export function useFeatureFlags(flags: FlagName[]): Record<FlagName, boolean> {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flags.join(",")]);
+  }, [flags.join(',')]);
 
   return resolved;
 }

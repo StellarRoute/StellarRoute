@@ -7,6 +7,7 @@ import { WalletProvider } from '@/components/providers/wallet-provider';
 import { getDefaultNetwork } from '@/lib/network-policy';
 import { SettingsProvider } from '@/components/providers/settings-provider';
 import { SessionRecoveryProvider } from '@/components/providers/session-recovery-provider';
+import { GlobalToastListener } from '@/components/providers/GlobalToastListener';
 import { TradingPairProvider } from '@/contexts/TradingPairContext';
 
 interface ProvidersProps {
@@ -25,7 +26,10 @@ export function Providers({ children, defaultTheme = 'dark' }: ProvidersProps) {
       <SessionRecoveryProvider>
         <SettingsProvider>
           <WalletProvider defaultNetwork={getDefaultNetwork()}>
-            <TradingPairProvider>{children}</TradingPairProvider>
+            <TradingPairProvider>
+              <GlobalToastListener />
+              {children}
+            </TradingPairProvider>
           </WalletProvider>
         </SettingsProvider>
       </SessionRecoveryProvider>

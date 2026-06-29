@@ -1405,6 +1405,165 @@ fn test_full_lifecycle() {
     assert_eq!(result.amount_out, quote.expected_output);
 }
 
+// ── Migration Edge Case Tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_admin_functions_blocked_before_migration() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+
+    // Try proposing a governance action before migration
+    let result = client.try_propose(
+        &admin,
+        &ProposalAction::Pause,
+    );
+    // Should return NotMultiSig
+    assert_eq!(result, Err(Ok(ContractError::NotMultiSig)));
+}
+
+#[test]
+fn test_threshold_boundary_conditions() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let s3 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1);
+    signers.push_back(s2);
+    signers.push_back(s3);
+
+    // Test threshold 1 (valid minimum)
+    client.migrate_to_multisig(
+        &admin,
+        &signers,
+        &1_u32,
+        &10000_u64,
+        &None,
+    );
+
+    // Now reset and test threshold 3 (valid maximum)
+    let (admin2, _, client2) = deploy_router(&env);
+    client2.migrate_to_multisig(
+        &admin2,
+        &signers,
+        &3_u32,
+        &10000_u64,
+        &None,
+    );
+
+    // Test threshold 0 (invalid)
+    let (admin3, _, client3) = deploy_router(&env);
+    let result = client3.try_migrate_to_multisig(
+        &admin3,
+        &signers,
+        &0_u32,
+        &10000_u64,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
+
+    // Test threshold 4 (invalid, exceeds signer count)
+    let (admin4, _, client4) = deploy_router(&env);
+    let result2 = client4.try_migrate_to_multisig(
+        &admin4,
+        &signers,
+        &4_u32,
+        &10000_u64,
+        &None,
+    );
+    assert_eq!(result2, Err(Ok(ContractError::InvalidAmount)));
+}
+
+#[test]
+fn test_duplicate_signers_in_migration() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let s1 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1.clone());
+    signers.push_back(s1); // duplicate
+
+    let result = client.try_migrate_to_multisig(
+        &admin,
+        &signers,
+        &1_u32,
+        &10000_u64,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
+}
+
+#[test]
+fn test_empty_signers_list() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let signers = Vec::new(&env); // empty
+
+    let result = client.try_migrate_to_multisig(
+        &admin,
+        &signers,
+        &1_u32,
+        &10000_u64,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
+}
+
+#[test]
+fn test_migration_called_by_non_admin() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1);
+    signers.push_back(s2);
+
+    let not_admin = Address::generate(&env);
+    let result = client.try_migrate_to_multisig(
+        &not_admin,
+        &signers,
+        &2_u32,
+        &10000_u64,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+#[test]
+fn test_double_migration_rejected() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_multisig_router(&env);
+
+    let s1 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1);
+
+    let result = client.try_migrate_to_multisig(
+        &admin,
+        &signers,
+        &1_u32,
+        &10000_u64,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
+}
+
+#[test]
+fn test_governance_action_by_non_signer_post_migration() {
+    let env = setup_env();
+    let (s1, s2, s3, _, client) = deploy_multisig_router(&env);
+    let non_signer = Address::generate(&env);
+
+    // Non-signer tries to propose
+    let result = client.try_propose(
+        &non_signer,
+        &ProposalAction::Pause,
+    );
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
 #[cfg(test)]
 mod property_fuzz_tests {
     use super::*;

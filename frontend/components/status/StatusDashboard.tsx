@@ -237,7 +237,7 @@ export function StatusDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(healthData.components).map(([name, status]) => (
+            {Object.entries(healthData.components ?? {}).map(([name, status]) => (
               <ComponentStatusItem key={name} name={name} status={status} />
             ))}
           </CardContent>
@@ -253,7 +253,7 @@ export function StatusDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(depsData.components).map(([name, status]) => (
+            {Object.entries(depsData.components ?? {}).map(([name, status]) => (
               <ComponentStatusItem key={name} name={name} status={status} />
             ))}
           </CardContent>

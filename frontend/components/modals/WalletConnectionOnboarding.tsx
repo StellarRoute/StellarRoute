@@ -18,7 +18,6 @@ import {
   type AppNetwork,
 } from '@/lib/network-policy';
 import { AlertCircle, CheckCircle, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
-import { STELLAR_NETWORK } from '@/lib/constants';
 
 export type OnboardingStep =
   | 'welcome'

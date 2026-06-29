@@ -10,6 +10,18 @@ import { StellarRouteApiError } from "@/lib/api/client";
  */
 export function GlobalToastListener() {
   useEffect(() => {
+    const recentlyShown = new Map<string, number>();
+    const DEDUPE_WINDOW_MS = 4000;
+    const shouldShowToast = (key: string) => {
+      const now = Date.now();
+      const lastShown = recentlyShown.get(key) ?? 0;
+      if (now - lastShown < DEDUPE_WINDOW_MS) {
+        return false;
+      }
+      recentlyShown.set(key, now);
+      return true;
+    };
+
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const error = event.reason;
       
@@ -21,11 +33,17 @@ export function GlobalToastListener() {
       console.error("Unhandled Promise Rejection:", error);
 
       if (error instanceof StellarRouteApiError) {
+        if (!shouldShowToast(`api:${error.code}`)) {
+          return;
+        }
         toast.error("API Error", {
           description: error.message,
           duration: 5000,
         });
       } else if (error instanceof Error) {
+        if (!shouldShowToast(`error:${error.message}`)) {
+          return;
+        }
         toast.error("An unexpected error occurred", {
           description: error.message,
           duration: 5000,
@@ -45,7 +63,14 @@ export function GlobalToastListener() {
       }
 
       console.error("Global Window Error:", event.error);
-      
+
+      const dedupeKey = event.error instanceof StellarRouteApiError
+        ? `api:${event.error.code}`
+        : `runtime:${event.message}`;
+      if (!shouldShowToast(dedupeKey)) {
+        return;
+      }
+
       toast.error("Runtime Error", {
         description: event.message || "A runtime error occurred in the browser.",
         duration: 5000,

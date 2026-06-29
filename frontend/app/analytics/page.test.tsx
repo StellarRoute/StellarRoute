@@ -44,7 +44,7 @@ describe("AnalyticsPageClient", () => {
   });
 
   it("shows placeholder when analytics feature flag is disabled", () => {
-    vi.mocked(useFeatureFlag).mockReturnValue(false);
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: false, loading: false });
 
     render(<AnalyticsPageClient />);
 
@@ -53,7 +53,7 @@ describe("AnalyticsPageClient", () => {
   });
 
   it("renders live metrics when analytics feature flag is enabled", () => {
-    vi.mocked(useFeatureFlag).mockReturnValue(true);
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: true, loading: false });
     vi.mocked(useApiHooks.useCacheMetrics).mockReturnValue({
       data: mockCacheMetrics,
       loading: false,

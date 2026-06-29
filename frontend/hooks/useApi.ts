@@ -227,7 +227,12 @@ export function useRoutes(
 ): UseApiState<RoutesResponse> & { refresh: () => void } {
   const client = useStellarRouteClient();
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
-  const skip = !base || !quote;
+  const skip =
+    !base ||
+    !quote ||
+    debouncedAmount === undefined ||
+    Number.isNaN(debouncedAmount) ||
+    debouncedAmount <= 0;
   return useFetch(
     (signal) =>
       client.getRoutes(base, quote, debouncedAmount, limit, maxHops, {

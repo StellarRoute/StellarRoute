@@ -4,7 +4,8 @@ import { useSettings } from '@/components/providers/settings-provider';
 import { SUPPORTED_LOCALES, Locale } from '@/lib/formatting';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useSwapI18n, type SwapTranslationKey } from '@/lib/swap-i18n';
+import { useSwapI18n } from '@/lib/swap-i18n';
+import type { SwapTranslationKey } from '@/lib/swap-i18n';
 
 export function LocaleSelector() {
   const { settings, updateLocale } = useSettings();
@@ -44,7 +45,10 @@ export function LocaleSelector() {
 
 function formatExample(
   locale: Locale,
-  t: (key: SwapTranslationKey, vars?: Record<string, string | number>) => string,
+  t: (
+    key: SwapTranslationKey,
+    vars?: Record<string, string | number>,
+  ) => string,
 ): string {
   try {
     const amount = new Intl.NumberFormat(locale, {

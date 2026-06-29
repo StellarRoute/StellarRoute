@@ -127,12 +127,29 @@ The status page is fully responsive:
 
 ### Configuration
 
-The dashboard reads the API base URL from environment variables:
+URL resolution is handled by `lib/constants.ts`, which exports two helpers:
+
 ```typescript
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+// Returns the bare API origin — no /api/v1 suffix.
+// Use for: /health, /health/deps
+getApiRoot()  // e.g. "http://localhost:8080"
+
+// The versioned base — /api/v1 suffix included.
+// Use for: /api/v1/pairs, /api/v1/quote, etc.
+API_VERSIONED_BASE  // e.g. "http://localhost:8080/api/v1"
 ```
 
-For production, set `NEXT_PUBLIC_API_URL` to your API endpoint.
+`getApiRoot()` handles all three deployment environments automatically:
+
+| Environment | `NEXT_PUBLIC_API_URL` value | `getApiRoot()` result |
+|---|---|---|
+| Local | _(unset)_ | `http://localhost:8080` |
+| Local (explicit) | `http://localhost:8080/api/v1` | `http://localhost:8080` |
+| Preview | `https://preview.stellarroute.xyz` | `https://preview.stellarroute.xyz` |
+| Production | `https://api.stellarroute.xyz` | `https://api.stellarroute.xyz` |
+| Proxy mode | _(any)_ | `""` (same-origin relative) |
+
+For production, set `NEXT_PUBLIC_API_URL` to your API origin (without `/api/v1` suffix).
 
 ### Future Enhancements
 
@@ -157,6 +174,10 @@ Potential improvements:
 
 #### Modified:
 - `frontend/components/layout/footer.tsx` - Added Status link
+- `frontend/lib/constants.ts` - Added `getApiRoot()` helper and `API_VERSIONED_BASE`
+- `frontend/lib/api/client.ts` - Added `getDepsHealth()`, `DepsHealthStatus`, `STATUS_PAGE_REFRESH_MS`
+- `frontend/lib/api/client.test.ts` - URL builder tests for `getApiRoot` and client URL construction
+- `frontend/hooks/useApi.ts` - Added `useHealthDeps` hook
 
 ### Accessibility Compliance
 

@@ -10,12 +10,11 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, info_span, warn, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;

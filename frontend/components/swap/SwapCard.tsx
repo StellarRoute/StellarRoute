@@ -7,8 +7,10 @@ import { ArrowUpDown, RefreshCw, Stethoscope } from 'lucide-react';
 import { AmountInput } from './AmountInput';
 import { TokenSelector } from './TokenSelector';
 import { PriceInfoPanel } from './PriceInfoPanel';
-import RouteDisplay from './RoutePanelAsync';
 import type { AlternativeRoute } from './RouteDisplay';
+import RouteDisplay from './RoutePanelAsync';
+import { MobileRouteBottomSheet } from './MobileRouteBottomSheet';
+import { BatchSwapPreview, type BatchSwapLeg } from './BatchSwapPreview';
 import { SwapButton, SwapButtonState } from './SwapButton';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
@@ -22,9 +24,14 @@ import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
 import { useWalletBalance } from '@/hooks/useWalletBalance';
 import {
+  DEFAULT_DEADLINE,
+  DEFAULT_SLIPPAGE,
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
 } from '@/hooks/useTradeFormStorage';
+import { useBatchQuote } from '@/hooks/useApi';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import type { QuoteRequestItem } from '@/lib/api/client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { useCompactMode } from '@/hooks/useCompactMode';
@@ -34,11 +41,16 @@ import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner
 import { DiagnosticsPanel } from '@/components/shared/DiagnosticsPanel';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { signTransactionWithWallet } from '@/lib/wallet';
-import { submitToHorizon, getNetworkPassphrase } from '@/lib/wallet/submit';
+import { submitToHorizon, getNetworkPassphrase, getHorizonUrl } from '@/lib/wallet/submit';
+import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
+import { useRoutes } from '@/hooks/useApi';
+import { emitRouteEvent } from '@/lib/telemetry';
+import { SwapWarningCenter, type SwapWarning } from './SwapWarningCenter';
 import { quoteExportToCsv, type QuoteExportPayload } from '@/lib/quote-export';
+import { getTraderErrorCopy, toTraderErrorLine } from '@/lib/api/trader-error-copy';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import {
   Dialog,
@@ -47,11 +59,26 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { IconographyLegend } from '@/components/shared/IconographyLegend';
+import {
+  getSwapCardStoryPresentation,
+  type SwapCardStoryFixture,
+} from './swapCardStory';
 
-export function SwapCard() {
+export interface SwapCardProps {
+  /** Shows alternative route picker when routes beta is enabled. */
+  showRoutePicker?: boolean;
+  /** Ladle story fixture — drives deterministic UI states for visual review. */
+  storyFixture?: SwapCardStoryFixture;
+}
+
+export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProps = {}) {
+  const storyPresentation = storyFixture
+    ? getSwapCardStoryPresentation(storyFixture)
+    : null;
   const { t } = useSwapI18n();
   const { isCompact, toggleCompact } = useCompactMode();
   const tradingPairContext = useOptionalTradingPair();
+  const { enabled: realXdrEnabled } = useFeatureFlag('real_xdr');
 
   // Wrap useSearchParams in try-catch for SSR
   let parseParams: ReturnType<typeof useShareableQuote>['parseParams'] | null =
@@ -66,7 +93,7 @@ export function SwapCard() {
     parseParams = shareableQuote.parseParams;
     isSharedQuoteStale = shareableQuote.isStale;
     refreshSharedQuote = shareableQuote.refreshQuote;
-  } catch (e) {
+  } catch {
     // SSR or missing searchParams context
   }
 
@@ -78,6 +105,8 @@ export function SwapCard() {
     fromAmount,
     setFromAmount,
     toAmount,
+    side,
+    setSide,
     slippage,
     setSlippage,
     deadline,
@@ -92,6 +121,105 @@ export function SwapCard() {
     snapshotCurrent,
     reset,
   } = useSwapState();
+
+  // Fetch ranked routes from /api/v1/routes
+  const routesState = useRoutes(
+    fromToken,
+    toToken,
+    parseFloat(fromAmount) || undefined
+  );
+
+  // Merge quote alternatives and routes endpoint candidates
+  const mergedAlternativeRoutes = useMemo(() => {
+    const list: AlternativeRoute[] = [];
+
+    // 1. Add any alternative routes embedded in the quote
+    if (quote.data?.alternativeRoutes) {
+      quote.data.alternativeRoutes.forEach((alt) => {
+        list.push({
+          id: alt.id,
+          venue: alt.venue,
+          expectedAmount: alt.expectedAmount.startsWith('≈') ? alt.expectedAmount : `≈ ${alt.expectedAmount}`,
+          hops: [],
+        });
+      });
+    }
+
+    // 2. Add routes from the /api/v1/routes endpoint
+    if (routesState.data?.routes) {
+      routesState.data.routes.forEach((candidate, index) => {
+        const hopVenues = candidate.path.map((hop) => {
+          const source = hop.source;
+          if (source === 'sdex') return 'SDEX';
+          if (source.startsWith('amm:')) {
+            const name = source.substring(4);
+            if (name.toLowerCase() === 'aqua') return 'AQUA Pool';
+            if (name.toLowerCase() === 'phoenix') return 'Phoenix AMM';
+            if (name.toLowerCase() === 'blend') return 'Blend Pool';
+            return name.charAt(0).toUpperCase() + name.slice(1);
+          }
+          return source;
+        });
+        const uniqueHopVenues = hopVenues.filter((v, i) => i === 0 || v !== hopVenues[i - 1]);
+        const venueName = uniqueHopVenues.join(' + ');
+
+        const hops = candidate.path.map((hop, hopIndex) => {
+          const fromSymbol = hop.from_asset.asset_type === 'native' ? 'XLM' : (hop.from_asset.asset_code || 'UNK');
+          const toSymbol = hop.to_asset.asset_type === 'native' ? 'XLM' : (hop.to_asset.asset_code || 'UNK');
+          
+          let sourceName = hop.source;
+          if (sourceName === 'sdex') sourceName = 'SDEX';
+          else if (sourceName.startsWith('amm:')) {
+            const name = sourceName.substring(4);
+            if (name.toLowerCase() === 'aqua') sourceName = 'AQUA Pool';
+            else if (name.toLowerCase() === 'phoenix') sourceName = 'Phoenix AMM';
+            else if (name.toLowerCase() === 'blend') sourceName = 'Blend Pool';
+            else sourceName = name.charAt(0).toUpperCase() + sourceName.slice(1);
+          }
+
+          const feeXLM = ((hop.fee_bps || 30) / 100000).toFixed(5) + ' XLM';
+
+          return {
+            id: `candidate-${index}-hop-${hopIndex}`,
+            fromAsset: fromSymbol,
+            toAsset: toSymbol,
+            venue: sourceName,
+            fee: feeXLM,
+          };
+        });
+
+        // Avoid adding duplicates of the same venue name
+        const isDuplicate = list.some((item) => item.venue === venueName);
+        if (!isDuplicate) {
+          list.push({
+            id: `route-api-${index}`,
+            venue: venueName,
+            expectedAmount: `≈ ${parseFloat(candidate.estimated_output).toFixed(4)}`,
+            hops,
+            rawPath: candidate.path,
+            priceImpact: candidate.impact_bps / 100,
+          });
+        }
+      });
+    }
+
+    return list;
+  }, [quote.data, routesState.data]);
+
+  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
+    null
+  );
+
+  const handleRouteSelect = useCallback((route: AlternativeRoute) => {
+    setSelectedRoute(route);
+    // Trigger re-quote
+    quote.refresh();
+    
+    const hopCount = route.rawPath ? route.rawPath.length : (quote.data?.path.length ?? 1);
+    emitRouteEvent(route.venue, hopCount);
+  }, [quote]);
+
+  const isRoutesLoading = quote.loading || routesState.loading;
 
   // Initialize from URL parameters on mount
   useEffect(() => {
@@ -130,6 +258,56 @@ export function SwapCard() {
     updateBypassConfirmation,
     updateExtendedRouteDetails,
   } = useExpertSettings();
+  const { enabled: batchSwapsEnabled } = useFeatureFlag('batch_swaps');
+  const batchRequests = useMemo<QuoteRequestItem[]>(() => {
+    const amount = Number.parseFloat(fromAmount);
+    if (
+      !batchSwapsEnabled ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !fromToken ||
+      !toToken ||
+      fromToken === toToken
+    ) {
+      return [];
+    }
+
+    const firstLegAmount = Number((amount / 2).toFixed(7));
+    const secondLegAmount = Number((amount - firstLegAmount).toFixed(7));
+    return [firstLegAmount, secondLegAmount]
+      .filter((legAmount) => legAmount > 0)
+      .map((legAmount) => ({
+        base: fromToken,
+        quote: toToken,
+        amount: legAmount,
+        quote_type: 'sell',
+      }));
+  }, [batchSwapsEnabled, fromAmount, fromToken, toToken]);
+  const batchQuote = useBatchQuote(
+    batchRequests,
+    !batchSwapsEnabled || batchRequests.length === 0
+  );
+  const batchLegs = useMemo<BatchSwapLeg[]>(
+    () =>
+      batchQuote.data?.quotes.map((legQuote, index) => ({
+        id: `batch-leg-${index}`,
+        fromAsset:
+          legQuote.base_asset.asset_code ??
+          (legQuote.base_asset.asset_type === 'native'
+            ? 'XLM'
+            : fromToken.split(':')[0]),
+        toAsset:
+          legQuote.quote_asset.asset_code ??
+          (legQuote.quote_asset.asset_type === 'native'
+            ? 'XLM'
+            : toToken.split(':')[0]),
+        fromAmount: legQuote.amount,
+        toAmount: legQuote.total,
+        price: legQuote.price,
+        priceImpact: legQuote.price_impact ?? legQuote.priceImpact,
+      })) ?? [],
+    [batchQuote.data, fromToken, toToken]
+  );
 
   const {
     address: walletAddress,
@@ -170,9 +348,6 @@ export function SwapCard() {
   }, [memoValue, memoType]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
-    null
-  );
   const [wakeSnapshot, setWakeSnapshot] = useState<TradeFormSnapshot | null>(
     null
   );
@@ -191,7 +366,101 @@ export function SwapCard() {
       ? 'refresh'
       : null;
   const requiresFreshQuote =
-    recoveryRequestedAt !== null && (quote.loading || quote.isStale);
+    recoveryRequestedAt !== null &&
+    (quote.lastQuotedAtMs === null ||
+      quote.lastQuotedAtMs < recoveryRequestedAt ||
+      quote.loading ||
+      quote.isStale);
+
+  // --- Issue #745: Swap Warning Center Logic ---
+  const [warnings, setWarnings] = useState<SwapWarning[]>([]);
+  const [dismissedWarningIds, setDismissedWarningIds] = useState<Set<string>>(
+    new Set()
+  );
+
+  const handleRemoveWarning = useCallback((id: string) => {
+    setDismissedWarningIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const checkWarnings = () => {
+      const list: SwapWarning[] = [];
+
+      // 1. Low slippage (<0.5%) warn (warning level, dismissible)
+      if (slippage > 0 && slippage < 0.5) {
+        const id = 'low_slippage';
+        if (!dismissedWarningIds.has(id)) {
+          list.push({
+            id,
+            type: 'warning',
+            title: 'Low Slippage Tolerance',
+            message: `Your transaction may fail if the price moves unfavorably by more than the set limit of ${slippage}%.`,
+            timestamp: Date.now(),
+            dismissible: true,
+          });
+        }
+      }
+
+      // 2. High slippage (>5.0%) warn (error level, not dismissible)
+      if (slippage > 5.0) {
+        const id = 'high_slippage';
+        list.push({
+          id,
+          type: 'error',
+          title: 'High Slippage Risk',
+          message:
+            'High slippage increases the risk of frontrunning and getting a significantly worse price.',
+          timestamp: Date.now(),
+          dismissible: false,
+        });
+      }
+
+      // 3. Stale quote warning when timestamp exceeds 60s
+      if (quote.lastQuotedAtMs && Date.now() - quote.lastQuotedAtMs > 60000) {
+        const id = 'stale_quote';
+        list.push({
+          id,
+          type: 'warning',
+          title: 'Stale Quote',
+          message:
+            'This quote is more than 60 seconds old. Please refresh for accurate pricing.',
+          timestamp: Date.now(),
+          dismissible: false,
+        });
+      }
+
+      // 4. Quote error response from API
+      if (quote.error) {
+        const copy = getTraderErrorCopy(quote.error);
+        const id = `quote_error_${quote.error.message || 'unknown'}`;
+        if (!dismissedWarningIds.has(id)) {
+          list.push({
+            id,
+            type: 'error',
+            title: copy.headline,
+            message: `${copy.explanation} ${copy.recoveryAction}`,
+            timestamp: Date.now(),
+            dismissible: true,
+          });
+        }
+      }
+
+      setWarnings((prev) => {
+        const prevIds = prev.map((w) => w.id).join(',');
+        const currIds = list.map((w) => w.id).join(',');
+        if (prevIds === currIds) return prev;
+        return list;
+      });
+    };
+
+    checkWarnings();
+    const interval = setInterval(checkWarnings, 1000);
+    return () => clearInterval(interval);
+  }, [slippage, quote.lastQuotedAtMs, quote.error, dismissedWarningIds]);
 
   // Connection status indicator
   const { isOnline } = useOnlineStatus();
@@ -212,6 +481,21 @@ export function SwapCard() {
       : undefined,
     submitTransaction: (signedXdr) =>
       submitToHorizon(signedXdr, walletAppNetwork),
+    // Build real Stellar path-payment XDR when the integration flag is enabled.
+    // Falls back to "mock_xdr" stub when flag is off (default during development).
+    buildXdr: realXdrEnabled && walletAddress
+      ? (params) =>
+          buildPathPaymentXdr({
+            walletAddress: params.walletAddress || walletAddress,
+            fromAsset: params.fromAsset,
+            fromAmount: params.fromAmount,
+            toAsset: params.toAsset,
+            minReceived: params.minReceived,
+            routePath: params.routePath,
+            networkPassphrase: getNetworkPassphrase(walletAppNetwork),
+            horizonUrl: getHorizonUrl(walletAppNetwork),
+          })
+      : undefined,
     rollbackTarget: {
       setFromToken,
       setToToken,
@@ -239,7 +523,9 @@ export function SwapCard() {
       reset();
       setSelectedRoute(null);
     } else if (optimistic.status === 'failed') {
-      toast.error(optimistic.errorMessage || 'Swap failed. Please try again.', {
+      const errorObj = optimistic.errorMessage ? new Error(optimistic.errorMessage) : new Error('Unknown error');
+      const copy = getTraderErrorCopy(errorObj);
+      toast.error(toTraderErrorLine(copy), {
         id: 'swap-toast',
       });
       setIsModalOpen(false);
@@ -288,6 +574,26 @@ export function SwapCard() {
     requiresFreshQuote,
     memoError,
   ]);
+
+  const displayButtonState = storyPresentation?.buttonState ?? buttonState;
+  const displayQuoteLoading = storyPresentation?.quoteLoading ?? quote.loading;
+  const displayQuoteStale = storyPresentation?.quoteStale ?? quote.isStale;
+  const displayQuoteError = storyPresentation?.quoteError ?? quote.error;
+  const displayQuotePriceImpact =
+    storyPresentation?.quotePriceImpact ?? quote.priceImpact;
+  const displayToAmount = storyPresentation?.toAmount ?? toAmount;
+  const displayFormattedRate =
+    storyPresentation?.formattedRate ?? formattedRate;
+  const displayIsModalOpen = storyPresentation?.confirmModalOpen ?? isModalOpen;
+  const displayOptimisticStatus =
+    storyPresentation?.optimisticStatus ?? optimistic.status;
+  const displayTradeParams =
+    storyPresentation?.tradeParams ?? optimistic.tradeParams;
+
+  useEffect(() => {
+    if (!storyPresentation?.seedFromAmount) return;
+    setFromAmount(storyPresentation.seedFromAmount);
+  }, [storyPresentation?.seedFromAmount, setFromAmount]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -372,16 +678,19 @@ export function SwapCard() {
       selectedRouteId: selectedRoute?.id ?? null,
     };
     setIsModalOpen(true);
+    const finalToAmount = selectedRoute?.expectedAmount
+      ? selectedRoute.expectedAmount.replace('≈ ', '')
+      : toAmount;
     optimistic.initiateSwap({
       fromAsset: fromToken,
       fromAmount,
       toAsset: toToken,
-      toAmount: selectedRoute?.expectedAmount ?? toAmount,
+      toAmount: finalToAmount,
       exchangeRate: formattedRate,
       priceImpact: quote.priceImpact.toString(),
-      minReceived: `${(parseFloat(toAmount || '0') * (1 - slippage / 100)).toFixed(4)} ${toSymbol}`,
+      minReceived: `${(parseFloat(finalToAmount || '0') * (1 - slippage / 100)).toFixed(4)} ${toSymbol}`,
       networkFee: quote.fee ? `${quote.fee.toFixed(5)} XLM` : '0.00001 XLM',
-      routePath: [],
+      routePath: selectedRoute?.rawPath ?? (quote.data?.path || []),
       walletAddress: walletAddress ?? '',
       snapshot: snap,
     });
@@ -396,15 +705,22 @@ export function SwapCard() {
     quote,
     toSymbol,
     optimistic,
+    walletAddress,
   ]);
 
   const handleSwap = useCallback(() => {
-    if (quote.priceImpact > 5) {
+    if (!bypassConfirmation && quote.priceImpact > 5) {
       setIsConfirmModalOpen(true);
       return;
     }
     handleConfirm();
-  }, [quote.priceImpact, handleConfirm]);
+  }, [bypassConfirmation, quote.priceImpact, handleConfirm]);
+
+  const handleSettingsReset = useCallback(() => {
+    setSlippage(DEFAULT_SLIPPAGE);
+    setDeadline(DEFAULT_DEADLINE);
+    updateExpertMode(false);
+  }, [setDeadline, setSlippage, updateExpertMode]);
 
   const handleMax = useCallback(() => {
     // Use spendableBalance for XLM (accounts for base reserve)
@@ -612,7 +928,19 @@ export function SwapCard() {
                   <Minimize2 className="h-4.5 w-4.5 text-muted-foreground" />
                 )}
               </Button>
-              <SettingsPanel />
+              <SettingsPanel
+                slippage={slippage}
+                deadline={deadline}
+                expertMode={expertMode}
+                bypassConfirmation={bypassConfirmation}
+                extendedRouteDetails={extendedRouteDetails}
+                onSlippageChange={setSlippage}
+                onDeadlineChange={setDeadline}
+                onExpertModeChange={updateExpertMode}
+                onBypassConfirmationChange={updateBypassConfirmation}
+                onExtendedRouteDetailsChange={updateExtendedRouteDetails}
+                onReset={handleSettingsReset}
+              />
               <Button
                 variant="ghost"
                 size="icon"
@@ -626,14 +954,14 @@ export function SwapCard() {
                 variant="ghost"
                 size="icon"
                 onClick={() => quote.refresh()}
-                disabled={quote.loading}
+                disabled={displayQuoteLoading}
                 aria-label={t('swap.card.refreshQuote')}
                 className="h-9 w-9 rounded-xl hover:bg-muted/80"
               >
                 <RefreshCw
                   className={cn(
                     'h-4.5 w-4.5 text-muted-foreground',
-                    quote.loading && 'animate-spin'
+                    displayQuoteLoading && 'animate-spin'
                   )}
                 />
               </Button>
@@ -693,7 +1021,7 @@ export function SwapCard() {
               <div className="flex justify-between items-start mb-1">
                 <AmountInput
                   label={t('swap.pair.youReceive')}
-                  value={selectedRoute?.expectedAmount ?? toAmount}
+                  value={selectedRoute?.expectedAmount ?? displayToAmount}
                   readOnly
                   placeholder="0.00"
                   className="flex-1"
@@ -709,7 +1037,8 @@ export function SwapCard() {
           </div>
 
           {/* Info Panels (Conditional) */}
-          {parseFloat(fromAmount) > 0 && (
+          {(parseFloat(fromAmount) > 0 ||
+            storyPresentation?.seedFromAmount) && (
             <div
               className={cn(
                 'space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500',
@@ -717,21 +1046,36 @@ export function SwapCard() {
               )}
             >
               <PriceInfoPanel
-                rate={formattedRate}
-                priceImpact={quote.priceImpact}
-                minReceived={`${(parseFloat(toAmount || '0') * (1 - slippage / 100)).toFixed(4)} ${toSymbol}`}
+                rate={displayFormattedRate}
+                priceImpact={displayQuotePriceImpact}
+                minReceived={`${(parseFloat(displayToAmount || '0') * (1 - slippage / 100)).toFixed(4)} ${toSymbol}`}
                 networkFee={
                   quote.fee ? `${quote.fee.toFixed(5)} XLM` : '0.00001 XLM'
                 }
-                isLoading={quote.loading}
+                isLoading={displayQuoteLoading}
                 onExportJson={() => handleExport('json')}
                 onExportCsv={() => handleExport('csv')}
               />
-              <RouteDisplay
-                amountOut={selectedRoute?.expectedAmount ?? toAmount}
-                isLoading={quote.loading}
-                onSelect={setSelectedRoute}
+              <MobileRouteBottomSheet
+                quote={quote.data ?? null}
+                amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
+                isLoading={displayQuoteLoading}
               />
+              {showRoutePicker && (
+                <RouteDisplay
+                  amountOut={selectedRoute?.expectedAmount ?? displayToAmount}
+                  isLoading={displayQuoteLoading}
+                  onSelect={setSelectedRoute}
+                />
+              )}
+              {batchSwapsEnabled && (
+                <BatchSwapPreview
+                  legs={batchLegs}
+                  isLoading={batchQuote.loading}
+                  error={batchQuote.error?.message}
+                  onRetry={batchQuote.refresh}
+                />
+              )}
               {/* Share Quote Button */}
               <div className="flex justify-end">
                 <ShareQuoteButton
@@ -748,7 +1092,7 @@ export function SwapCard() {
           )}
 
           {/* Stale Indicator */}
-          {quote.isStale && (
+          {displayQuoteStale && (
             <span
               data-testid="stale-indicator"
               className="text-xs text-amber-500 font-medium"
@@ -800,11 +1144,13 @@ export function SwapCard() {
               type="button"
               onClick={() => {
                 setShowMemoField(!showMemoField);
-                if (!showMemoField) setMemoValue(''); 
+                if (!showMemoField) setMemoValue('');
               }}
               className="text-xs font-semibold text-primary/80 hover:text-primary transition-colors flex items-center gap-1.5 focus:outline-none"
             >
-              <span>{showMemoField ? "✕ Remove Memo" : "+ Add Optional Memo"}</span>
+              <span>
+                {showMemoField ? '✕ Remove Memo' : '+ Add Optional Memo'}
+              </span>
             </button>
 
             {showMemoField && (
@@ -815,7 +1161,10 @@ export function SwapCard() {
                     variant={memoType === 'text' ? 'default' : 'outline'}
                     size="sm"
                     className="h-7 text-xs rounded-lg flex-1"
-                    onClick={() => { setMemoType('text'); setMemoValue(''); }}
+                    onClick={() => {
+                      setMemoType('text');
+                      setMemoValue('');
+                    }}
                   >
                     Text Memo
                   </Button>
@@ -824,7 +1173,10 @@ export function SwapCard() {
                     variant={memoType === 'hash' ? 'default' : 'outline'}
                     size="sm"
                     className="h-7 text-xs rounded-lg flex-1"
-                    onClick={() => { setMemoType('hash'); setMemoValue(''); }}
+                    onClick={() => {
+                      setMemoType('hash');
+                      setMemoValue('');
+                    }}
                   >
                     Hash Memo
                   </Button>
@@ -835,10 +1187,16 @@ export function SwapCard() {
                     type="text"
                     value={memoValue}
                     onChange={(e) => setMemoValue(e.target.value)}
-                    placeholder={memoType === 'text' ? "Enter text reference (max 28 bytes)" : "Enter 64-char hex string"}
+                    placeholder={
+                      memoType === 'text'
+                        ? 'Enter text reference (max 28 bytes)'
+                        : 'Enter 64-char hex string'
+                    }
                     className={cn(
-                      "w-full bg-background/50 border rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/20",
-                      memoError ? "border-destructive focus:ring-destructive/20" : "border-border/60 focus:border-primary/40"
+                      'w-full bg-background/50 border rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/20',
+                      memoError
+                        ? 'border-destructive focus:ring-destructive/20'
+                        : 'border-border/60 focus:border-primary/40'
                     )}
                   />
                   {memoError && (
@@ -851,20 +1209,35 @@ export function SwapCard() {
             )}
           </div>
 
+          {/* Warnings Panel */}
+          <SwapWarningCenter
+            warnings={warnings}
+            onRemoveWarning={handleRemoveWarning}
+            className="mb-2"
+          />
+
+          {/* Assistive Screen Reader Region */}
+          <div className="sr-only" aria-live="assertive" role="status">
+            {warnings
+              .filter((w) => w.type === 'error')
+              .map((w) => `${w.title}: ${w.message}`)
+              .join('. ')}
+          </div>
+
           {/* Action Button */}
           <div className="pt-2">
             <SwapButton
-              state={buttonState}
+              state={displayButtonState}
               onSwap={handleSwap}
               onConnectWallet={() => connect('freighter')} // Connection managed by WalletProvider
-              isLoading={quote.loading}
+              isLoading={displayQuoteLoading}
             />
           </div>
 
           {/* Status/Error Messages */}
-          {quote.error && (
+          {displayQuoteError && (
             <p className="text-center text-xs font-medium text-destructive animate-pulse">
-              {quote.error.message}
+              {toTraderErrorLine(getTraderErrorCopy(displayQuoteError))}
             </p>
           )}
         </CardContent>
@@ -887,11 +1260,11 @@ export function SwapCard() {
 
       {!bypassConfirmation && (
         <TransactionConfirmationModal
-          isOpen={isModalOpen}
-          status={optimistic.status}
+          isOpen={displayIsModalOpen}
+          status={displayOptimisticStatus}
           txHash={optimistic.txHash}
           errorMessage={optimistic.errorMessage}
-          tradeParams={optimistic.tradeParams}
+          tradeParams={displayTradeParams}
           onConfirm={() => {}}
           onCancel={() => {
             optimistic.cancel();

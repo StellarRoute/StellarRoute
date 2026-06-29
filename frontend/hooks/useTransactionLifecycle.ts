@@ -8,6 +8,7 @@ import {
   dispatchTransactionNotification,
   type NotificationPreference,
 } from "@/lib/notifications";
+import { XdrBuildError } from "@/lib/wallet/xdr-builder";
 
 export interface TradeParams {
   fromAsset: string;
@@ -49,6 +50,12 @@ interface UseTransactionLifecycleOptions {
    */
   submitTransaction?: (signedXdr: string) => Promise<{ hash: string }>;
   /**
+   * Optional XDR builder — when provided, builds a real Stellar path-payment
+   * transaction from TradeParams before calling signTransaction.
+   * When absent the lifecycle falls back to passing "mock_xdr" (stub behaviour).
+   */
+  buildXdr?: (params: TradeParams) => Promise<string>;
+  /**
    * Notification preference — injected to keep the hook testable without a real settings store.
    * Defaults to { enabled: false } so notifications are opt-in.
    */
@@ -85,6 +92,7 @@ export function useTransactionLifecycle(
     deadlineMs = 60_000,
     signTransaction = defaultSignTransaction,
     submitTransaction = defaultSubmitTransaction,
+    buildXdr,
     notificationPreference = { enabled: false },
   } = options;
 
@@ -145,10 +153,42 @@ export function useTransactionLifecycle(
         walletAddress: params.walletAddress,
       });
 
-      // Step 1: Sign
+      // Step 1: Build XDR (validate quote shape, then construct envelope)
+      let xdrToSign: string;
+      if (buildXdr) {
+        try {
+          xdrToSign = await buildXdr(params);
+        } catch (err: unknown) {
+          if (cancelledRef.current) return;
+          const msg = err instanceof XdrBuildError
+            ? `Transaction build failed (${err.code}): ${err.message}`
+            : err instanceof Error ? err.message : 'Failed to build transaction';
+          setErrorMessage(msg);
+          setStatus("failed");
+          updateTransactionStatus(tempId, "failed", { errorMessage: msg });
+          dispatchTransactionNotification(
+            {
+              status: "failed",
+              fromAsset: params.fromAsset,
+              fromAmount: params.fromAmount,
+              toAsset: params.toAsset,
+              toAmount: params.toAmount,
+              txId: tempId,
+            },
+            notificationPreference,
+          );
+          return;
+        }
+      } else {
+        xdrToSign = "mock_xdr";
+      }
+
+      if (cancelledRef.current) return;
+
+      // Step 2: Sign
       let signedXdr: string;
       try {
-        signedXdr = await signTransaction("mock_xdr");
+        signedXdr = await signTransaction(xdrToSign);
       } catch (err: unknown) {
         if (cancelledRef.current) return;
         const msg =

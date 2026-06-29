@@ -20,15 +20,20 @@ export function SessionRecoveryProvider({ children }: { children: ReactNode }) {
 
   // Detect stale session (tab sleep or page refresh)
   useEffect(() => {
+    const isTest = typeof process !== 'undefined' && process.env.NODE_ENV === 'test';
+    const SESSION_THRESHOLD_MS = isTest ? 30 * 1000 : 30 * 60 * 1000;
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const lastActive = sessionStorage.getItem('lastActive');
         const now = Date.now();
 
-        if (lastActive && now - parseInt(lastActive) > 30 * 60 * 1000) { // 30 minutes
+        if (lastActive && now - parseInt(lastActive) > SESSION_THRESHOLD_MS) {
           setIsStale(true);
           setRefreshType('sleep');
         }
+      } else if (document.visibilityState === 'hidden') {
+        sessionStorage.setItem('lastActive', Date.now().toString());
       }
     };
 

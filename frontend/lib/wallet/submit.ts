@@ -19,13 +19,18 @@ const NETWORK_PASSPHRASES: Record<string, string> = {
 };
 
 export function getHorizonUrl(network: WalletNetwork | null): string {
-  const key = String(network ?? 'testnet').toLowerCase();
-  return HORIZON_URLS[key] ?? HORIZON_URLS.testnet;
+  const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+  const key = String(network ?? defaultNetwork).toLowerCase();
+  if (key === defaultNetwork.toLowerCase() && process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL) {
+    return process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL;
+  }
+  return HORIZON_URLS[key] ?? HORIZON_URLS[defaultNetwork] ?? HORIZON_URLS.testnet;
 }
 
 export function getNetworkPassphrase(network: WalletNetwork | null): string {
-  const key = String(network ?? 'testnet').toLowerCase();
-  return NETWORK_PASSPHRASES[key] ?? NETWORK_PASSPHRASES.testnet;
+  const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+  const key = String(network ?? defaultNetwork).toLowerCase();
+  return NETWORK_PASSPHRASES[key] ?? NETWORK_PASSPHRASES[defaultNetwork] ?? NETWORK_PASSPHRASES.testnet;
 }
 
 export interface HorizonSubmitResult {

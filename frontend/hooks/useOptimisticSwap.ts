@@ -11,6 +11,8 @@ export interface UseOptimisticSwapOptions {
   deadlineMs?: number;
   signTransaction?: (xdr: string) => Promise<string>;
   submitTransaction?: (signedXdr: string) => Promise<{ hash: string }>;
+  /** Optional XDR builder — see useTransactionLifecycle for full docs */
+  buildXdr?: (params: TradeParams) => Promise<string>;
   rollbackTarget: RollbackTarget;
   /** Notification preference — passed through to useTransactionLifecycle */
   notificationPreference?: NotificationPreference;

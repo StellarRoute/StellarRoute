@@ -95,7 +95,7 @@ export function MobileNav({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Theme</span>
-            <ThemeToggle />
+            <ThemeToggle data-testid="mobile-theme-toggle" />
           </div>
           <div className="pt-2">
            {/* <WalletButton /> */}

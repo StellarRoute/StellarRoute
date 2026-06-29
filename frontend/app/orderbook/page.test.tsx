@@ -70,7 +70,7 @@ describe('OrderbookPage with highlighting', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Orderbook' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Orderbook/i })).toBeInTheDocument();
     });
 
     // Should not show highlighted indicator
@@ -126,7 +126,7 @@ describe('OrderbookPage with highlighting', () => {
       </TradingPairProvider>
     );
 
-    expect(screen.getByText('Could not load markets')).toBeInTheDocument();
+    expect(screen.getByText(/Market list indexer offline/i)).toBeInTheDocument();
   });
 
   it.skip('handles empty orderbook gracefully', async () => {

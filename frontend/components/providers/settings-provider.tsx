@@ -88,6 +88,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings.fontScale]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (settings.highContrast) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+  }, [settings.highContrast]);
+
+  // ── Updaters ───────────────────────────────────────────────────────────────
   // Apply high-contrast class on change
   useEffect(() => {
     if (typeof document !== 'undefined') {

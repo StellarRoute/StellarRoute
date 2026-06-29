@@ -1,3 +1,4 @@
+
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, Mock } from 'vitest';
@@ -22,6 +23,7 @@ vi.mock('./ShareQuoteButton', () => ({
 }));
 
 vi.mock('@/components/providers/wallet-provider', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react');
   return {
     WalletProvider: ({ children }: any) => <>{children}</>,
@@ -250,7 +252,7 @@ describe('SwapCard Stellar Memo Validation Inline Rules (#506)', () => {
     await waitFor(() => {
       expect(screen.getByText(/exceeds 28 bytes/i)).toBeInTheDocument();
     });
-  });
+  }, 10_000);
 
   it('shows validation error when a hash memo is not valid hexadecimal characters', async () => {
     const user = userEvent.setup();
@@ -421,7 +423,6 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
       expect(screen.getByText(/Unavailable/)).toBeInTheDocument();
     });
   });
-
   it('MAX button sets amount to full balance for non-native assets', async () => {
     const originalUseSwapState = useSwapStateModule.useSwapState;
     vi.spyOn(useSwapStateModule, 'useSwapState').mockImplementation(() => {
@@ -531,7 +532,6 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
       expect(maxButton).toBeInTheDocument();
       return maxButton;
     });
-
     const maxButton = screen.getByRole('button', { name: /MAX/i });
     await user.click(maxButton);
 

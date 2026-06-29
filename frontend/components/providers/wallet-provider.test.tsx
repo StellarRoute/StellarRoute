@@ -5,6 +5,8 @@ import * as freighter from '@stellar/freighter-api';
 import { WalletProvider, useWallet } from './wallet-provider';
 import * as walletLib from '@/lib/wallet';
 
+vi.unmock('@/components/providers/wallet-provider');
+
 // Mock the wallet library
 vi.mock('@/lib/wallet', () => ({
   getAvailableWallets: vi.fn(),
@@ -34,7 +36,6 @@ function TestComponent() {
     error,
     isLoading,
     networkMismatch,
-    stubSpendableBalance,
     autoReconnectPreferred,
     connect,
     reconnect,
@@ -54,7 +55,6 @@ function TestComponent() {
       <span data-testid="error">{error?.message ?? "none"}</span>
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="mismatch">{String(networkMismatch)}</span>
-      <span data-testid="balance">{stubSpendableBalance ?? "none"}</span>
       <span data-testid="autoReconnect">{String(autoReconnectPreferred)}</span>
       <span data-testid="transaction-pending">{isTransactionPending ? 'Pending' : 'Not pending'}</span>
       
@@ -368,16 +368,11 @@ describe('WalletProvider Account Switching', () => {
     window.localStorage.setItem("stellarroute.wallet.autoReconnect", "true");
     window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
 
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
       address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({
-      address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
+      network: 'testnet',
+      isConnected: true,
     });
 
     renderWithProvider();
@@ -403,16 +398,11 @@ describe('WalletProvider Account Switching', () => {
   it("recovers disconnected session when reconnect is triggered", async () => {
     window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
 
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
       address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({
-      address: "GABCDEFGHIJKLMNOPWXYZ",
-    });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
+      network: 'testnet',
+      isConnected: true,
     });
 
     const user = userEvent.setup();

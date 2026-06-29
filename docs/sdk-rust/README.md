@@ -42,6 +42,8 @@ use std::time::Duration;
 let client = ClientBuilder::new("http://127.0.0.1:3000")
     .timeout(Duration::from_secs(10))
     .user_agent("my-backend/1.0")
+    .max_retries(3)
+    .base_backoff(Duration::from_millis(500))
     .build()?;
 ```
 
@@ -50,6 +52,26 @@ Or the convenience constructor:
 ```rust
 let client = StellarRouteClient::new("http://127.0.0.1:3000")?;
 ```
+
+## Automatic retries
+
+By default (`max_retries = 0`), the client returns errors immediately. Set
+`max_retries` on the builder to enable automatic retries with exponential
+backoff on 429 (rate-limited) and 5xx (server error) responses.
+
+```rust
+let client = ClientBuilder::new("http://localhost:3000")
+    .max_retries(3)
+    .base_backoff(Duration::from_millis(500)) // default
+    .build()?;
+```
+
+Retry behavior:
+- **429 responses**: Honors the `Retry-After` header when present; otherwise
+  uses exponential backoff (`base_backoff × 2^attempt`).
+- **5xx responses**: Uses exponential backoff, capped at 30 seconds.
+- **Other errors** (4xx): Not retried — returned immediately.
+- When all retries are exhausted, the last error is returned.
 
 ## Async usage
 

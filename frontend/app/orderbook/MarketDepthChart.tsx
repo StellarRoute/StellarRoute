@@ -47,20 +47,20 @@ export function MarketDepthChart({ bids: initialBids, asks: initialAsks }: Marke
   // --- Process & Cumulative Liquidity Accumulation Loops ---
   const { processedBids, processedAsks, maxTotal, minPrice, maxPrice } = useMemo(() => {
     let bidTotal = 0;
-    const sortedBids = [...activeData.bids]
-      .sort((a, b) => b.price - a.price)
-      .map((b) => {
-        bidTotal += Number(b.amount);
-        return { price: Number(b.price), total: bidTotal };
-      });
+    const rawBids = [...activeData.bids].sort((a, b) => b.price - a.price);
+    const sortedBids = [];
+    for (const b of rawBids) {
+      bidTotal += Number(b.amount);
+      sortedBids.push({ price: Number(b.price), total: bidTotal });
+    }
 
     let askTotal = 0;
-    const sortedAsks = [...activeData.asks]
-      .sort((a, b) => a.price - b.price)
-      .map((a) => {
-        askTotal += Number(a.amount);
-        return { price: Number(a.price), total: askTotal };
-      });
+    const rawAsks = [...activeData.asks].sort((a, b) => a.price - b.price);
+    const sortedAsks = [];
+    for (const a of rawAsks) {
+      askTotal += Number(a.amount);
+      sortedAsks.push({ price: Number(a.price), total: askTotal });
+    }
 
     const maxTotal = Math.max(bidTotal, askTotal, 1);
     const allPrices = [...sortedBids, ...sortedAsks].map((p) => p.price);

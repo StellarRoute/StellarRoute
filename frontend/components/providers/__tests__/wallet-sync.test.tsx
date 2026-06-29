@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { WalletProvider, useWallet } from '../wallet-provider';
+
+vi.unmock('@/components/providers/wallet-provider');
 import { WalletSyncBanner } from '../../shared/WalletSyncBanner';
 import * as walletLib from '@/lib/wallet';
 

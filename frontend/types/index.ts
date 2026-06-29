@@ -48,10 +48,12 @@ export interface PriceHistoryPoint {
   price: string;
 }
 
+export type PriceHistoryWindow = '1h' | '4h' | '24h' | '7d' | '30d';
+
 export interface PriceHistoryResponse {
   base_asset: Asset;
   quote_asset: Asset;
-  window: "24h";
+  window: PriceHistoryWindow;
   source: string;
   /** Unix timestamp in milliseconds */
   generated_at: number;
@@ -59,6 +61,49 @@ export interface PriceHistoryResponse {
 }
 
 export type QuoteType = 'sell' | 'buy';
+
+/** Standard API response envelope from the backend */
+export interface ApiResponse<T> {
+  v: number;
+  timestamp: number;
+  request_id: string;
+  data: T;
+}
+
+export interface VenueEvaluation {
+  source: string;
+  price: string;
+  available_amount: string;
+  executable: boolean;
+}
+
+export interface QuoteRationaleMetadata {
+  strategy: string;
+  selected_source: string;
+  compared_venues: VenueEvaluation[];
+}
+
+export type ExclusionReason =
+  | { type: 'policy_threshold'; threshold: number }
+  | { type: 'override' }
+  | { type: 'stale_data' }
+  | { type: 'circuit_breaker_open' }
+  | { type: 'liquidity_anomaly' };
+
+export interface ExcludedVenueInfo {
+  venue_ref: string;
+  reason: ExclusionReason;
+}
+
+export interface ExclusionDiagnostics {
+  excluded_venues: ExcludedVenueInfo[];
+}
+
+export interface DataFreshness {
+  fresh_count: number;
+  stale_count: number;
+  max_staleness_secs: number;
+}
 
 export interface PathStep {
   from_asset: Asset;
@@ -89,7 +134,7 @@ export interface PriceQuote {
   /** Route breakdown */
   path: PathStep[];
   priceImpact?: string;
-  /** Unix timestamp (seconds) */
+  /** Unix timestamp (milliseconds) when this quote was generated */
   timestamp: number;
   /** Unix timestamp (ms) when this quote expires */
   expires_at?: number;
@@ -101,6 +146,12 @@ export interface PriceQuote {
   price_impact?: string;
   /** Optional alternative routes provided by the aggregator */
   alternativeRoutes?: { id: string; venue: string; expectedAmount: string }[];
+  /** Rationale for quote venue selection */
+  rationale?: QuoteRationaleMetadata;
+  /** Venues excluded from routing and the reason for each exclusion */
+  exclusion_diagnostics?: ExclusionDiagnostics;
+  /** Freshness metadata about the data sources used to compute this quote */
+  data_freshness?: DataFreshness;
 }
 
 export interface HealthStatus {
@@ -154,6 +205,30 @@ export interface RoutesResponse {
   amount: string;
   timestamp: number;
   routes: RouteCandidate[];
+}
+
+/** GET /metrics/cache — quote cache hit/miss statistics */
+export interface CacheMetricsResponse {
+  quote_hits: number;
+  quote_misses: number;
+  hit_ratio: number;
+  stale_quote_rejections: number;
+  stale_inputs_excluded: number;
+}
+
+/** Per-pool database connection statistics from GET /metrics/pool */
+export interface PoolStats {
+  max_connections: number;
+  size: number;
+  idle: number;
+  in_use: number;
+  utilisation: number;
+}
+
+/** GET /metrics/pool — database pool statistics */
+export interface PoolStatsResponse {
+  primary: PoolStats;
+  replica?: PoolStats;
 }
 
 export * from './route';

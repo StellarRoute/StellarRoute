@@ -6,6 +6,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![Soroban](https://img.shields.io/badge/soroban-enabled-purple.svg)](https://soroban.stellar.org)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Ladle Stories](https://img.shields.io/badge/stories-ladle-purple.svg)](frontend/STORYBOOK.md)
 
 > **🌟 Actively seeking contributors!** We're building critical infrastructure for the Stellar ecosystem and need help from developers of all skill levels. Check out our [open issues](../../issues) to get started.
 
@@ -297,6 +298,15 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
 5. **Run tests**
    ```bash
    cargo test
+   ```
+
+6. **Run routing benchmarks** (optional; also gated in CI on `crates/routing/` changes)
+   ```bash
+   # Criterion micro-benchmarks for pathfinding and optimizer tuning
+   cargo bench -p stellarroute-routing
+
+   # CI latency gate (initialization + single lookup on graph fixture, <100ms)
+   cargo test -p stellarroute-routing pathfinding_latency_gate --release -- --nocapture
    ```
 
 For detailed setup instructions, see the [Development Setup Guide](docs/development/SETUP.md).

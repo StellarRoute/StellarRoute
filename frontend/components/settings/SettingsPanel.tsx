@@ -1,55 +1,89 @@
 'use client';
 
-import { Settings2, RotateCcw } from "lucide-react";
+import { RotateCcw, Settings2 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { SlippageSettings } from "./SlippageSettings";
-import { DeadlineSettings } from "./DeadlineSettings";
-import { useTradeFormStorage } from "@/hooks/useTradeFormStorage";
-import { useSettings } from "@/components/providers/settings-provider";
+} from '@/components/ui/popover';
+import { useSwapI18n } from '@/lib/swap-i18n';
+import { DeadlineSettings } from './DeadlineSettings';
+import { ExpertSettings } from './ExpertSettings';
+import { SlippageSettings } from './SlippageSettings';
 
-export function SettingsPanel() {
-  const { deadline, setDeadline, reset: resetForm } = useTradeFormStorage();
-  const { resetSettings } = useSettings();
+export interface SettingsPanelProps {
+  slippage: number;
+  deadline: number;
+  expertMode: boolean;
+  bypassConfirmation: boolean;
+  extendedRouteDetails: boolean;
+  onSlippageChange: (value: number) => void;
+  onDeadlineChange: (value: number) => void;
+  onExpertModeChange: (value: boolean) => void;
+  onBypassConfirmationChange: (value: boolean) => void;
+  onExtendedRouteDetailsChange: (value: boolean) => void;
+  onReset: () => void;
+}
 
-  const handleReset = () => {
-    resetForm();
-    resetSettings();
-  };
-
+export function SettingsPanel({
+  slippage,
+  deadline,
+  expertMode,
+  bypassConfirmation,
+  extendedRouteDetails,
+  onSlippageChange,
+  onDeadlineChange,
+  onExpertModeChange,
+  onBypassConfirmationChange,
+  onExtendedRouteDetailsChange,
+  onReset,
+}: SettingsPanelProps) {
+  const { t } = useSwapI18n();
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-10 w-10 rounded-xl hover:bg-muted/80 hover:text-primary transition-colors"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 rounded-xl transition-colors hover:bg-muted/80 hover:text-primary"
         >
-          <Settings2 className="h-5 w-5 text-muted-foreground transition-transform hover:rotate-90 duration-300" />
-          <span className="sr-only">Settings</span>
+          <Settings2 className="h-5 w-5 text-muted-foreground transition-transform duration-300 hover:rotate-90" />
+          <span className="sr-only">{t('swap.settings.buttonLabel')}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" data-testid="settings-panel" className="w-[320px] p-6 rounded-[24px] shadow-2xl border-border/40 bg-background/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-bold tracking-tight">Settings</h3>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={handleReset}
-            className="h-8 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors gap-1.5 px-3 rounded-full"
+      <PopoverContent
+        align="end"
+        data-testid="settings-panel"
+        className="w-[min(360px,calc(100vw-2rem))] rounded-[24px] border-border/40 bg-background/95 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-lg font-bold tracking-tight">
+            Advanced Settings
+          </h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReset}
+            className="h-8 gap-1.5 rounded-full px-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-primary/5 hover:text-primary"
           >
             <RotateCcw className="h-3 w-3" />
-            Reset
+            {t('settings.panel.reset')}
           </Button>
         </div>
 
         <div className="space-y-6">
-          <SlippageSettings />
-          <DeadlineSettings value={deadline} onChange={setDeadline} />
+          <SlippageSettings value={slippage} onChange={onSlippageChange} />
+          <DeadlineSettings value={deadline} onChange={onDeadlineChange} />
+          <ExpertSettings
+            expertMode={expertMode}
+            bypassConfirmation={bypassConfirmation}
+            extendedRouteDetails={extendedRouteDetails}
+            onExpertModeChange={onExpertModeChange}
+            onBypassConfirmationChange={onBypassConfirmationChange}
+            onExtendedRouteDetailsChange={onExtendedRouteDetailsChange}
+          />
         </div>
       </PopoverContent>
     </Popover>

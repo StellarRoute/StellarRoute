@@ -1,11 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 import { SwapCard } from '../SwapCard';
+import { SettingsProvider } from '@/components/providers/settings-provider';
+import { WalletProvider } from '@/components/providers/wallet-provider';
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <SettingsProvider>
+      <WalletProvider>{ui}</WalletProvider>
+    </SettingsProvider>
+  );
+}
+
 
 vi.mock('@/hooks/useApi', () => ({
   usePairs: vi.fn(() => ({ data: [], loading: false, error: null })),
   useOrderbook: vi.fn(() => ({ data: null, loading: false, error: null })),
+  useRoutes: vi.fn(() => ({ data: null, loading: false, error: null, refresh: vi.fn() })),
   useQuote: vi.fn(() => ({
     data: null,
     loading: false,
@@ -151,14 +164,14 @@ describe('SwapCard keyboard shortcuts', () => {
   });
 
   it('opens shortcut help dialog when ? is pressed', async () => {
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     const user = userEvent.setup();
     await user.keyboard('?');
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
   });
 
   it('closes shortcut help dialog when Escape is pressed', async () => {
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     const user = userEvent.setup();
     await user.keyboard('?');
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
@@ -167,7 +180,7 @@ describe('SwapCard keyboard shortcuts', () => {
   });
 
   it('does not open shortcut help when focus is in an input', async () => {
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     const user = userEvent.setup();
     const inputs = screen.getAllByRole('textbox');
     if (inputs.length > 0) {
@@ -178,7 +191,7 @@ describe('SwapCard keyboard shortcuts', () => {
   });
 
   it('renders the swap card without crashing', () => {
-    render(<SwapCard />);
+    renderWithProviders(<SwapCard />);
     expect(screen.getByTestId('swap-card')).toBeInTheDocument();
   });
 });

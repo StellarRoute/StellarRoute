@@ -1,10 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { RouteVisualization } from './RouteVisualization';
 import { SplitRouteVisualization } from './SplitRouteVisualization';
-import { PathStep, PriceQuote } from '@/types';
-import { SplitRouteData, RouteMetrics } from '@/types/route';
+import type { PriceQuote } from '@/types';
+import type {
+  ApiSplitPath,
+  RouteMetrics,
+  SplitRouteData,
+  SplitRouteQuotePayload,
+} from '@/types/route';
 
 interface TradeRouteDisplayProps {
   quote: PriceQuote | null;
@@ -13,22 +18,70 @@ interface TradeRouteDisplayProps {
   className?: string;
 }
 
-function isSplitRoute(_path: PathStep[]): boolean {
-  // For now, we assume all routes are single-path
-  // In the future, the API might return split route information
-  return false;
+function getAllocation(path: ApiSplitPath): number | null {
+  if (typeof path.allocation_bps === 'number') {
+    return path.allocation_bps / 100;
+  }
+  if (typeof path.allocation_percent === 'number') {
+    return path.allocation_percent;
+  }
+  if (typeof path.percentage === 'number') {
+    return path.percentage;
+  }
+  if (typeof path.weight === 'number') {
+    return path.weight <= 1 ? path.weight * 100 : path.weight;
+  }
+  return null;
 }
 
-function convertToSplitRoute(path: PathStep[]): SplitRouteData {
-  // Placeholder conversion - actual implementation would parse API response
+/**
+ * Converts the split route section of a live API quote into visualization
+ * data. Invalid/empty paths are ignored and allocations are normalized to 100.
+ */
+export function parseSplitRoute(quote: PriceQuote): SplitRouteData | null {
+  const payload = quote as PriceQuote & SplitRouteQuotePayload;
+  const rawPaths =
+    payload.split_paths ?? payload.splitPaths ?? payload.routes ?? [];
+  const validPaths = rawPaths
+    .map((path) => ({
+      raw: path,
+      steps: path.steps ?? path.path ?? [],
+    }))
+    .filter(({ steps }) => steps.length > 0);
+
+  if (validPaths.length < 2) {
+    return null;
+  }
+
+  const suppliedAllocations = validPaths.map(({ raw }) => getAllocation(raw));
+  const suppliedTotal = suppliedAllocations.reduce<number>(
+    (total, allocation) => total + (allocation ?? 0),
+    0
+  );
+  const missingCount = suppliedAllocations.filter(
+    (allocation) => allocation === null
+  ).length;
+  const missingAllocation =
+    missingCount > 0 ? Math.max(0, 100 - suppliedTotal) / missingCount : 0;
+  const allocations = suppliedAllocations.map(
+    (allocation) => allocation ?? missingAllocation
+  );
+  const allocationTotal = allocations.reduce<number>(
+    (total, allocation) => total + allocation,
+    0
+  );
+
+  if (allocationTotal <= 0) {
+    return null;
+  }
+
   return {
-    paths: [
-      {
-        percentage: 100,
-        steps: path,
-      },
-    ],
-    totalOutput: '0',
+    paths: validPaths.map(({ raw, steps }, index) => ({
+      percentage: Math.round((allocations[index] / allocationTotal) * 100),
+      steps,
+      outputAmount: raw.output_amount ?? raw.outputAmount,
+    })),
+    totalOutput: quote.total,
   };
 }
 
@@ -36,9 +89,10 @@ function calculateMetrics(quote: PriceQuote): RouteMetrics {
   // Calculate metrics from quote data
   const hops = Math.max(quote.path.length, 1);
   const totalFees = `${(hops * 0.00001).toFixed(5)} XLM`;
-  const totalPriceImpact = quote.priceImpact != null
-    ? `${quote.priceImpact}${quote.priceImpact.includes('%') ? '' : '%'}`
-    : 'N/A';
+  const totalPriceImpact =
+    quote.priceImpact != null
+      ? `${quote.priceImpact}${quote.priceImpact.includes('%') ? '' : '%'}`
+      : 'N/A';
   const netOutput = quote.total;
   const averageRate = quote.price;
 
@@ -95,9 +149,8 @@ export function TradeRouteDisplay({
     return <RouteVisualization path={[]} className={className} />;
   }
 
-  // Check if split route
-  if (isSplitRoute(quote.path)) {
-    const splitRoute = convertToSplitRoute(quote.path);
+  const splitRoute = parseSplitRoute(quote);
+  if (splitRoute) {
     const metrics = calculateMetrics(quote);
     return (
       <SplitRouteVisualization

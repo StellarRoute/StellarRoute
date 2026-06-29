@@ -1,9 +1,9 @@
 // Minimal mock for lucide-react — used in vitest because the installed
 // package ships without a compiled CJS/ESM index entry.
-import * as React from "react";
+import * as React from 'react';
 
 const Icon = (props: React.SVGProps<SVGSVGElement>) =>
-  React.createElement("svg", { "data-testid": "icon", ...props });
+  React.createElement('svg', { 'data-testid': 'icon', ...props });
 
 // Icons used across the codebase
 export const ArrowDown = Icon;
@@ -24,8 +24,10 @@ export const Loader2 = Icon;
 export const Menu = Icon;
 export const Moon = Icon;
 export const RefreshCw = Icon;
+export const RefreshCcw = Icon;
 export const RotateCcw = Icon;
 export const Settings = Icon;
+export const Home = Icon;
 export const Sun = Icon;
 export const Trash2 = Icon;
 export const Wallet = Icon;
@@ -40,9 +42,11 @@ export const Check = Icon;
 export const Clock = Icon;
 export const Clock3 = Icon;
 export const Copy = Icon;
+export const Stethoscope = Icon;
 export const History = Icon;
 export const Search = Icon;
 export const Download = Icon;
+export const Droplet = Icon;
 
 export const AlertTriangle = Icon;
 export const DollarSign = Icon;
@@ -79,3 +83,18 @@ export const Minimize2 = Icon;
 export const Star = Icon;
 export const Columns2 = Icon;
 export const LayoutList = Icon;
+export const Bell = Icon;
+export const BellOff = Icon;
+export const Activity = Icon;
+export const Database = Icon;
+
+// Share icon
+export const Share2 = Icon;
+
+// Split icon
+export const Split = Icon;
+
+// QuoteInspector icons
+export const ShieldCheck = Icon;
+export const Diff = Icon;
+export const Scale = Icon;

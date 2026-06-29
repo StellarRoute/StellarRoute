@@ -8,6 +8,7 @@ pub mod canary;
 pub mod contract_registry;
 pub mod health;
 pub mod idempotent_quote;
+pub mod integrator_webhooks;
 pub mod kill_switch;
 pub mod metrics;
 pub mod orderbook;
@@ -45,6 +46,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/pairs", get(pairs::list_pairs))
         .route("/api/v1/markets", get(pairs::list_markets))
         .route(
+            "/api/v1/price-history/:base/:quote",
+            get(price_history::get_price_history),
+        )
+        .route(
             "/api/v1/orderbook/:base/:quote",
             get(orderbook::get_orderbook),
         )
@@ -62,6 +67,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/v1/batch/orderbook",
             axum::routing::post(orderbook::get_batch_orderbooks),
+        )
+        .route(
+            "/api/v1/integrator/webhooks/quote-expiration",
+            post(integrator_webhooks::upsert_quote_expiration_webhook),
         )
         // Replay routes
         .route("/api/v1/replay", get(replay::list_artifacts))

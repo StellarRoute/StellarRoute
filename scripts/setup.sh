@@ -39,6 +39,9 @@ if command -v docker-compose &> /dev/null || docker compose version &> /dev/null
     echo "🐳 Starting Docker services (Postgres & Redis)..."
     docker-compose up -d || docker compose up -d
     echo "✅ Docker services started"
+    
+    # Wait for databases to be ready
+    "$(dirname "$0")/wait-for-dbs.sh"
 else
     echo "⚠️  Docker Compose is not available. Skipping service startup."
 fi

@@ -12,6 +12,7 @@
 
 import { FONT_SCALE_OPTIONS, FontScale } from '@/types/settings';
 import { useSettings } from '@/components/providers/settings-provider';
+import { useSwapI18n } from '@/lib/swap-i18n';
 
 const LABELS: Record<string, string> = {
   '1': '100%',
@@ -28,20 +29,21 @@ function label(scale: FontScale): string {
 export function FontScaleControl() {
   const { settings, updateFontScale } = useSettings();
   const current = settings.fontScale;
+  const { t } = useSwapI18n();
 
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-sm font-medium">Text Size</p>
+        <p className="text-sm font-medium">{t('settings.textSize.label')}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Scale the interface font size up to 200 % without breaking the layout.
+          {t('settings.textSize.description')}
         </p>
       </div>
 
       {/* Segmented control */}
       <div
         role="radiogroup"
-        aria-label="Font scale"
+        aria-label={t('settings.textSize.label')}
         className="flex flex-wrap gap-1.5"
       >
         {FONT_SCALE_OPTIONS.map((scale) => (
@@ -76,7 +78,7 @@ export function FontScaleControl() {
           onChange={(e) =>
             updateFontScale(parseFloat(e.target.value) as FontScale)
           }
-          aria-label={`Font scale slider, current value ${label(current)}`}
+          aria-label={`${t('settings.textSize.label')} slider, current value ${label(current)}`}
           aria-valuemin={1}
           aria-valuemax={2}
           aria-valuenow={current}
@@ -94,15 +96,15 @@ export function FontScaleControl() {
 
       {/* Live preview */}
       <div
-        aria-label="Font scale preview"
+        aria-label={`${t('settings.textSize.label')} preview`}
         className="rounded-md border border-border p-3 bg-muted/40"
         style={{ fontSize: `${current}rem` }}
       >
         <p className="font-semibold" style={{ fontSize: '1em' }}>
-          Preview — StellarRoute
+          {t('settings.textSize.preview.title')}
         </p>
         <p className="text-muted-foreground" style={{ fontSize: '0.875em' }}>
-          Swap · Quote · Route · Settings
+          {t('settings.textSize.preview.subtitle')}
         </p>
       </div>
     </div>

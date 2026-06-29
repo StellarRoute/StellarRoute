@@ -150,7 +150,7 @@ fn parse_payload(event: &SorobanEvent) -> Result<ParsedPayload> {
     };
 
     let amount_in = values
-        .get(0)
+        .first()
         .and_then(parse_scval_integer)
         .ok_or_else(|| IndexerError::SorobanRpc("swap event missing amount_in".to_string()))?;
     let amount_out = values

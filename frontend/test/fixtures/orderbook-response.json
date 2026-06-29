@@ -1,0 +1,47 @@
+{
+  "base_asset": {
+    "asset_type": "native",
+    "asset_code": null,
+    "asset_issuer": null
+  },
+  "quote_asset": {
+    "asset_type": "credit_alphanum4",
+    "asset_code": "USDC",
+    "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+  },
+  "bids": [
+    {
+      "price": "0.1050000",
+      "amount": "500.0000000",
+      "total": "52.5000000"
+    },
+    {
+      "price": "0.1045000",
+      "amount": "1200.0000000",
+      "total": "125.4000000"
+    },
+    {
+      "price": "0.1040000",
+      "amount": "800.0000000",
+      "total": "83.2000000"
+    }
+  ],
+  "asks": [
+    {
+      "price": "0.1060000",
+      "amount": "300.0000000",
+      "total": "31.8000000"
+    },
+    {
+      "price": "0.1065000",
+      "amount": "650.0000000",
+      "total": "69.2250000"
+    },
+    {
+      "price": "0.1070000",
+      "amount": "1000.0000000",
+      "total": "107.0000000"
+    }
+  ],
+  "timestamp": 1740312000
+}

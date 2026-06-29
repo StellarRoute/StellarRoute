@@ -3,6 +3,7 @@
 import { Bell, BellOff } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useSwapI18n } from '@/lib/swap-i18n';
 
 export interface BrowserNotificationSettingsProps {
   browserNotifications: boolean;
@@ -19,6 +20,7 @@ export function BrowserNotificationSettings({
   onEnable,
   onDisable,
 }: BrowserNotificationSettingsProps) {
+  const { t } = useSwapI18n();
   const handleToggle = () => {
     if (isDisabled) return;
     if (browserNotifications) {
@@ -31,15 +33,13 @@ export function BrowserNotificationSettings({
   // Derive accessible label based on state
   let ariaLabel: string;
   if (isDisabled && permissionState === 'denied') {
-    ariaLabel =
-      'Browser notifications: blocked by browser. Change this in your browser settings.';
+    ariaLabel = t('settings.notifications.blockedAria');
   } else if (isDisabled && permissionState === 'unsupported') {
-    ariaLabel =
-      'Browser notifications: not supported in this browser.';
+    ariaLabel = t('settings.notifications.unsupportedAria');
   } else if (browserNotifications) {
-    ariaLabel = 'Browser notifications: enabled. Click to disable.';
+    ariaLabel = t('settings.notifications.enabledAria');
   } else {
-    ariaLabel = 'Browser notifications: disabled. Click to enable.';
+    ariaLabel = t('settings.notifications.disabledAria');
   }
 
   const Icon = browserNotifications && !isDisabled ? Bell : BellOff;
@@ -57,7 +57,7 @@ export function BrowserNotificationSettings({
             )}
           />
           <span className="text-sm font-semibold tracking-tight">
-            Transaction Notifications
+            {t('settings.notifications.transactionLabel')}
           </span>
         </div>
 
@@ -93,8 +93,8 @@ export function BrowserNotificationSettings({
       {isDisabled && (
         <p className="text-[10px] text-muted-foreground leading-normal pl-6">
           {permissionState === 'denied'
-            ? 'Notifications are blocked by your browser. Enable them in your browser settings to use this feature.'
-            : 'Your browser does not support desktop notifications.'}
+            ? t('settings.notifications.blocked')
+            : t('settings.notifications.unsupported')}
         </p>
       )}
     </div>

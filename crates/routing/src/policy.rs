@@ -8,7 +8,10 @@
 //! Includes route-level exclusion evaluation and diagnostics.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+
+/// Default slippage tolerance in basis points (0.50%).
+pub const DEFAULT_SLIPPAGE_BPS: u32 = 50;
 
 /// Diagnostic information for excluded routes
 #[derive(Clone, Debug)]
@@ -27,6 +30,18 @@ pub struct RoutingPolicy {
 
     /// Assets that should never appear in a route
     pub asset_denylist: Vec<String>,
+
+    /// Default slippage tolerance in basis points for route simulation.
+    #[serde(default = "default_slippage_bps")]
+    pub default_slippage_bps: u32,
+
+    /// Per-venue slippage overrides keyed by `venue_ref`.
+    #[serde(default)]
+    pub venue_slippage_overrides: HashMap<String, u32>,
+}
+
+fn default_slippage_bps() -> u32 {
+    DEFAULT_SLIPPAGE_BPS
 }
 
 impl Default for RoutingPolicy {
@@ -36,6 +51,8 @@ impl Default for RoutingPolicy {
             venue_allowlist: Vec::new(),
             venue_denylist: Vec::new(),
             asset_denylist: Vec::new(),
+            default_slippage_bps: DEFAULT_SLIPPAGE_BPS,
+            venue_slippage_overrides: HashMap::new(),
         }
     }
 }
@@ -67,6 +84,31 @@ impl RoutingPolicy {
     pub fn with_asset_denylist(mut self, denylist: Vec<String>) -> Self {
         self.asset_denylist = denylist;
         self
+    }
+
+    pub fn with_default_slippage_bps(mut self, slippage_bps: u32) -> Self {
+        self.default_slippage_bps = slippage_bps;
+        self
+    }
+
+    /// Merge per-venue slippage overrides into this policy.
+    pub fn apply_venue_slippage_overrides(
+        &mut self,
+        overrides: impl IntoIterator<Item = (String, u32)>,
+    ) {
+        for (venue_ref, slippage_bps) in overrides {
+            self.venue_slippage_overrides.insert(venue_ref, slippage_bps);
+        }
+    }
+
+    /// Resolve slippage tolerance for a hop, falling back to the policy default.
+    pub fn slippage_bps_for_venue(&self, venue_ref: Option<&str>) -> u32 {
+        if let Some(venue_ref) = venue_ref {
+            if let Some(&slippage_bps) = self.venue_slippage_overrides.get(venue_ref) {
+                return slippage_bps;
+            }
+        }
+        self.default_slippage_bps
     }
 
     pub fn is_venue_allowed(&self, venue_type: &str) -> bool {
@@ -133,6 +175,8 @@ impl RoutingPolicy {
             venue_allowlist,
             venue_denylist,
             asset_denylist,
+            default_slippage_bps: DEFAULT_SLIPPAGE_BPS,
+            venue_slippage_overrides: HashMap::new(),
         }
     }
 
@@ -173,4 +217,37 @@ fn parse_comma_list(input: &str) -> Vec<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slippage_bps_for_venue_uses_default_when_no_override() {
+        let policy = RoutingPolicy::default().with_default_slippage_bps(75);
+        assert_eq!(policy.slippage_bps_for_venue(None), 75);
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-a")), 75);
+    }
+
+    #[test]
+    fn slippage_bps_for_venue_uses_override_when_present() {
+        let mut policy = RoutingPolicy::default().with_default_slippage_bps(50);
+        policy.apply_venue_slippage_overrides(vec![("pool-a".to_string(), 200)]);
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-a")), 200);
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-b")), 50);
+    }
+
+    #[test]
+    fn apply_venue_slippage_overrides_merges_entries() {
+        let mut policy = RoutingPolicy::default();
+        policy.apply_venue_slippage_overrides(vec![
+            ("pool-a".to_string(), 100),
+            ("pool-b".to_string(), 150),
+        ]);
+        policy.apply_venue_slippage_overrides(vec![("pool-a".to_string(), 125)]);
+
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-a")), 125);
+        assert_eq!(policy.slippage_bps_for_venue(Some("pool-b")), 150);
+    }
 }

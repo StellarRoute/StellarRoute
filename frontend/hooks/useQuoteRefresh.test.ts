@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PriceQuote } from "@/types";
-import { StellarRouteApiError, stellarRouteClient } from "@/lib/api/client";
+import { StellarRouteApiError, stellarRouteClient, type QuoteFetchResult } from "@/lib/api/client";
 import { QUOTE_RETRY_EVENT_NAME } from "@/lib/quote-retry";
 import { useQuoteRefresh } from "./useQuoteRefresh";
 
@@ -27,7 +27,14 @@ function buildQuote(total: string): PriceQuote {
     total,
     quote_type: "sell",
     path: [],
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp: Date.now(),
+  };
+}
+
+function buildQuoteResult(total: string, requestId = "test-req-id"): QuoteFetchResult {
+  return {
+    quote: buildQuote(total),
+    requestId,
   };
 }
 
@@ -46,7 +53,7 @@ describe("useQuoteRefresh retries", () => {
       if (callCount === 1) {
         throw new Error("Failed to fetch");
       }
-      return buildQuote("98.0");
+      return buildQuoteResult("98.0");
     });
 
     const { result } = renderHook(() =>
@@ -103,7 +110,7 @@ describe("useQuoteRefresh retries", () => {
           50,
         ),
       )
-      .mockResolvedValueOnce(buildQuote("98.0"));
+      .mockResolvedValueOnce(buildQuoteResult("98.0"));
 
     const { result } = renderHook(() =>
       useQuoteRefresh("native", "USDC:G...", 100, "sell", {
@@ -205,7 +212,7 @@ describe("useQuoteRefresh retries", () => {
       if (callCount === 1) {
         throw new Error("Failed to fetch");
       }
-      return buildQuote("101.0");
+      return buildQuoteResult("101.0");
     });
 
     const telemetryListener = vi.fn();
@@ -245,8 +252,8 @@ describe("useQuoteRefresh retries", () => {
 
     const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
     getQuoteMock
-      .mockResolvedValueOnce(buildQuote("98.0"))
-      .mockResolvedValueOnce(buildQuote("99.0"));
+      .mockResolvedValueOnce(buildQuoteResult("98.0"))
+      .mockResolvedValueOnce(buildQuoteResult("99.0"));
 
     const { result } = renderHook(() =>
       useQuoteRefresh("native", "USDC:G...", 100, "sell", {

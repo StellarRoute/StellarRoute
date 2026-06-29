@@ -26,21 +26,47 @@ const quote = await client.getQuote(
 console.log(quote.price, quote.total);
 ```
 
-### Get route steps
+### Get ranked routes
 
 ```ts
 import { StellarRouteClient } from '@stellarroute/sdk-js';
 
 const client = new StellarRouteClient('http://localhost:8080');
-const routes = await client.getRoutes(
+const result = await client.getRankedRoutes(
   'native',
   'USDC:GDUKMGUGDZQK6YH...',
   100,
+  5, // limit
 );
 
-routes.forEach((step) => {
-  console.log(step.source, step.price);
+result.routes.forEach((route) => {
+  console.log(`score=${route.score} output=${route.estimated_output}`);
+  route.path.forEach((hop) => console.log(`  ${hop.source}: ${hop.price}`));
 });
+```
+
+### Simulate a route (dry-run)
+
+```ts
+import { StellarRouteClient } from '@stellarroute/sdk-js';
+
+const client = new StellarRouteClient('http://localhost:8080');
+const result = await client.simulateRoute({
+  route: {
+    hops: [
+      { from_asset: 'native', to_asset: 'USDC:GDUKMGUGDZQK6YH...', source: 'sdex' },
+    ],
+  },
+  amount: '100',
+  slippage_bps: 50,
+});
+
+console.log(result.quote.total);
+if (result.exclusion_diagnostics) {
+  result.exclusion_diagnostics.excluded_venues.forEach((v) => {
+    console.log(`excluded ${v.venue_ref}: ${v.reason}`);
+  });
+}
 ```
 
 Additional runnable quickstart files are in `sdk-js/examples/`.

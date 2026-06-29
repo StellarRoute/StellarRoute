@@ -89,14 +89,13 @@ cargo test
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root. Copy the template and adjust values for your environment:
 
-```env
-DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
-REDIS_URL=redis://localhost:6379
-STELLAR_HORIZON_URL=https://horizon.stellar.org
-SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
+```bash
+cp .env.example .env
 ```
+
+See the [Environment Variables Reference](./environment-variables.md) for the full catalog (database pool tuning, WebSocket limits, rate limits, tracing, indexer maintenance, frontend flags, and more). The example file only includes the minimum needed for local development.
 
 ### Frontend Configuration (Profiles)
 
@@ -334,27 +333,7 @@ cargo build
 
 #### Build succeeds but binary panics at startup — missing env vars
 
-Make sure `.env` exists in the project root with all required variables:
-
-```env
-DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
-REDIS_URL=redis://localhost:6379
-STELLAR_HORIZON_URL=https://horizon.stellar.org
-SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
-```
-
----
-
-### Environment Variable Configuration
-
-The project reads environment variables at runtime. If you omit a required variable the service will refuse to start with a descriptive error.
-
-| Variable | Default | Notes |
-|---|---|---|
-| `DATABASE_URL` | — | Required. Full PostgreSQL connection string. |
-| `REDIS_URL` | — | Required. Redis connection string. |
-| `STELLAR_HORIZON_URL` | `https://horizon.stellar.org` | Stellar public Horizon API |
-| `SOROBAN_RPC_URL` | `https://soroban-rpc.testnet.stellar.org` | Soroban RPC endpoint |
+Make sure `.env` exists in the project root (see `.env.example`). The API requires `DATABASE_URL`; the indexer additionally requires `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, and `ROUTER_CONTRACT_ADDRESS`. See the [Environment Variables Reference](./environment-variables.md) for required vs optional settings per service.
 
 ---
 

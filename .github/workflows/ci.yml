@@ -63,12 +63,18 @@ jobs:
             suite: lib
           - label: app
             suite: app
-          - label: components (1/2)
+          - label: components (1/4)
             suite: components
-            shard: 1/2
-          - label: components (2/2)
+            shard: 1/4
+          - label: components (2/4)
             suite: components
-            shard: 2/2
+            shard: 2/4
+          - label: components (3/4)
+            suite: components
+            shard: 3/4
+          - label: components (4/4)
+            suite: components
+            shard: 4/4
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -87,7 +93,7 @@ jobs:
             npm --prefix frontend run test -- ${{ matrix.suite }}
           fi
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
           CI: "true"
 
   frontend-storybook:

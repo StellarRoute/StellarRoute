@@ -501,36 +501,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   }, [walletReady, walletId, walletAddress, walletAppNetwork]);
 
   const optimistic = useOptimisticSwap({
-<<<<<<< HEAD
     ...(productionSwapDeps ?? {}),
-=======
-    signTransaction: walletId
-      ? (xdr) =>
-          signTransactionWithWallet(
-            xdr,
-            walletId,
-            getNetworkPassphrase(walletAppNetwork),
-            walletAddress ?? undefined
-          )
-      : undefined,
-    submitTransaction: (signedXdr) =>
-      submitToHorizon(signedXdr, walletAppNetwork),
-    // Build real Stellar path-payment XDR when the integration flag is enabled.
-    // Falls back to "mock_xdr" stub when flag is off (default during development).
-    buildXdr: realXdrEnabled && walletAddress
-      ? (params) =>
-          buildPathPaymentXdr({
-            walletAddress: params.walletAddress || walletAddress,
-            fromAsset: params.fromAsset,
-            fromAmount: params.fromAmount,
-            toAsset: params.toAsset,
-            minReceived: params.minReceived,
-            routePath: params.routePath,
-            networkPassphrase: getNetworkPassphrase(walletAppNetwork),
-            horizonUrl: getHorizonUrl(walletAppNetwork),
-          })
-      : undefined,
->>>>>>> origin/main
     rollbackTarget: {
       setFromToken,
       setToToken,

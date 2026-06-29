@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:optimistic-swap": "playwright test optimistic-swap-pipeline --project=optimistic-swap",
     "test:visual": "playwright test e2e/visual-baseline.spec.ts",
     "test:visual:update": "playwright test e2e/visual-baseline.spec.ts --update-snapshots",
     "storybook": "ladle dev",

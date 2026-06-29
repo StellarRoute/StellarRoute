@@ -1,15 +1,16 @@
-"use client";
+'use client';
 
-import { MarketDepthChart } from "./MarketDepthChart";
-import { useEffect, useMemo, useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ViewState } from "@/components/shared/ViewState";
-import { useOrderbook, usePairs } from "@/hooks/useApi";
-import { useOptionalTradingPair } from "@/contexts/TradingPairContext";
-import { useVirtualWindow } from "@/hooks/useVirtualWindow";
-import type { OrderbookEntry, TradingPair } from "@/types";
-import { cn } from "@/lib/utils";
+import { MarketDepthChart } from './MarketDepthChart';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { ViewState } from '@/components/shared/ViewState';
+import { useOrderbook, usePairs } from '@/hooks/useApi';
+import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
+import { useVirtualWindow } from '@/hooks/useVirtualWindow';
+import { useSwapI18n } from '@/lib/swap-i18n';
+import type { OrderbookEntry, TradingPair } from '@/types';
+import { cn } from '@/lib/utils';
 
 const ROW_HEIGHT = 36;
 const OVERSCAN = 5;
@@ -25,11 +26,12 @@ function VirtualizedOrderSide({
   highlighted,
 }: {
   entries: OrderbookEntry[];
-  side: "bid" | "ask";
+  side: 'bid' | 'ask';
   highlighted: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isBid = side === "bid";
+  const isBid = side === 'bid';
+  const { t } = useSwapI18n();
 
   const virtualWindow = useVirtualWindow({
     containerRef: scrollRef,
@@ -42,7 +44,7 @@ function VirtualizedOrderSide({
   if (entries.length === 0) {
     return (
       <p className="text-xs text-muted-foreground py-4 text-center">
-        No {side}s available
+        {t(isBid ? 'orderbook.noBids' : 'orderbook.noAsks')}
       </p>
     );
   }
@@ -54,20 +56,22 @@ function VirtualizedOrderSide({
   return (
     <div className="space-y-1 text-sm">
       <div className="sticky top-0 z-10 bg-card grid grid-cols-3 text-xs text-muted-foreground font-medium pb-2 border-b">
-        <span>Price</span>
-        <span>Amount</span>
-        <span>Total</span>
+        <span>{t('orderbook.header.price')}</span>
+        <span>{t('orderbook.header.amount')}</span>
+        <span>{t('orderbook.header.total')}</span>
       </div>
       <div
         ref={scrollRef}
         className="overflow-auto"
-        style={{ height: `${Math.min(entries.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT}px` }}
+        style={{
+          height: `${Math.min(entries.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT}px`,
+        }}
         data-testid={`${side}-virtual-list`}
       >
         <div
           style={{
             height: `${virtualWindow.totalHeight}px`,
-            position: "relative",
+            position: 'relative',
           }}
         >
           {virtualWindow.topSpacerHeight > 0 && (
@@ -80,24 +84,31 @@ function VirtualizedOrderSide({
             return (
               <div
                 key={`${entry.price}-${absoluteIndex}`}
+                role="row"
+                aria-label={t(
+                  isBid ? 'orderbook.row.bid.aria' : 'orderbook.row.ask.aria',
+                  {
+                    price: entry.price,
+                    amount: entry.amount,
+                    total: entry.total,
+                  }
+                )}
                 data-testid={
-                  highlighted
-                    ? `highlighted-${side}-row`
-                    : `${side}-row`
+                  highlighted ? `highlighted-${side}-row` : `${side}-row`
                 }
                 className={cn(
-                  "grid grid-cols-3 py-1.5 px-2 rounded",
+                  'grid grid-cols-3 py-1.5 px-2 rounded',
                   isBid
-                    ? "hover:bg-emerald-500/10 cursor-pointer"
-                    : "hover:bg-red-500/10 cursor-pointer",
-                  highlighted && (isBid ? "bg-emerald-500/5" : "bg-red-500/5")
+                    ? 'hover:bg-emerald-500/10 cursor-pointer'
+                    : 'hover:bg-red-500/10 cursor-pointer',
+                  highlighted && (isBid ? 'bg-emerald-500/5' : 'bg-red-500/5')
                 )}
                 style={{ height: `${ROW_HEIGHT}px` }}
               >
                 <span
                   className={cn(
-                    "font-medium",
-                    isBid ? "text-emerald-600" : "text-red-500"
+                    'font-medium',
+                    isBid ? 'text-emerald-600' : 'text-red-500'
                   )}
                 >
                   {entry.price}
@@ -122,7 +133,7 @@ function VirtualizedOrderSide({
 
 export function OrderbookPageClient() {
   const { data: pairs, loading: pairsLoading, error: pairsError } = usePairs();
-  const [selectedPairKey, setSelectedPairKey] = useState<string>("");
+  const [selectedPairKey, setSelectedPairKey] = useState<string>('');
   const tradingPairContext = useOptionalTradingPair();
 
   useEffect(() => {
@@ -137,11 +148,15 @@ export function OrderbookPageClient() {
 
   const selectedPair = useMemo(
     () => pairs?.find((pair) => pairKey(pair) === selectedPairKey),
-    [pairs, selectedPairKey],
+    [pairs, selectedPairKey]
   );
 
   const isHighlightedPair = useMemo(() => {
-    if (!tradingPairContext?.fromAsset || !tradingPairContext?.toAsset || !selectedPair) {
+    if (
+      !tradingPairContext?.fromAsset ||
+      !tradingPairContext?.toAsset ||
+      !selectedPair
+    ) {
       return false;
     }
     const matchesForward =
@@ -156,43 +171,54 @@ export function OrderbookPageClient() {
   const {
     data: orderbook,
     loading: orderbookLoading,
-    error: orderbookError,
     refresh,
   } = useOrderbook(
-    selectedPair?.base_asset ?? "",
-    selectedPair?.counter_asset ?? "",
-    10_000,
+    selectedPair?.base_asset ?? '',
+    selectedPair?.counter_asset ?? '',
+    10_000
   );
+
+  const { t } = useSwapI18n();
 
   return (
     <div className="w-full px-4 py-8 sm:px-6 lg:px-8 space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Orderbook</h1>
-          <p className="text-muted-foreground">
-            Live bids and asks from the selected trading pair.
-          </p>
+          <h1 className="text-3xl font-bold">{t('orderbook.title')}</h1>
+          <p className="text-muted-foreground">{t('orderbook.description')}</p>
         </div>
         <Button type="button" variant="outline" onClick={refresh}>
-          Refresh
+          {t('orderbook.button.refresh')}
         </Button>
       </div>
 
       {/* --- Issue #328: Real-Time Adaptive Graph Panel Mounted Globally --- */}
-      <MarketDepthChart 
-        bids={orderbook?.bids?.map(b => ({ price: Number(b.price), amount: Number(b.amount), total: Number(b.total) })) ?? []} 
-        asks={orderbook?.asks?.map(a => ({ price: Number(a.price), amount: Number(a.amount), total: Number(a.total) })) ?? []} 
+      <MarketDepthChart
+        bids={
+          orderbook?.bids?.map((b) => ({
+            price: Number(b.price),
+            amount: Number(b.amount),
+            total: Number(b.total),
+          })) ?? []
+        }
+        asks={
+          orderbook?.asks?.map((a) => ({
+            price: Number(a.price),
+            amount: Number(a.amount),
+            total: Number(a.total),
+          })) ?? []
+        }
       />
 
       {pairsLoading ? (
         <ViewState
           variant="loading"
-          title="Loading markets"
-          description="Fetching available trading pairs."
+          title={t('orderbook.pairs.loading.title')}
+          description={t('orderbook.pairs.loading.description')}
         />
       ) : pairsError ? (
         <div className="text-center p-6 border border-dashed rounded-xl bg-muted/10 text-muted-foreground text-sm">
-          ⚠️ Market list indexer offline. Displaying local adaptive chart profiling tools.
+          {t('orderbook.pairs.error')}
         </div>
       ) : (
         <>
@@ -204,7 +230,7 @@ export function OrderbookPageClient() {
                 <Button
                   key={key}
                   type="button"
-                  variant={isActive ? "default" : "outline"}
+                  variant={isActive ? 'default' : 'outline'}
                   onClick={() => setSelectedPairKey(key)}
                 >
                   {pair.base}/{pair.counter}
@@ -214,10 +240,14 @@ export function OrderbookPageClient() {
           </div>
 
           {orderbookLoading ? (
-            <ViewState variant="loading" title="Syncing order book grid..." description="" />
+            <ViewState
+              variant="loading"
+              title={t('orderbook.loading')}
+              description=""
+            />
           ) : !orderbook ? (
             <div className="text-center p-4 text-xs text-muted-foreground font-mono">
-              Data feed standby mode active.
+              {t('orderbook.standby')}
             </div>
           ) : (
             <>
@@ -228,7 +258,7 @@ export function OrderbookPageClient() {
                 >
                   <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                   <span className="text-sm font-medium text-primary">
-                    This pair is currently selected in the swap panel
+                    {t('orderbook.highlightedPair')}
                   </span>
                 </div>
               )}
@@ -236,12 +266,16 @@ export function OrderbookPageClient() {
               <div className="grid gap-4 md:grid-cols-2">
                 <Card
                   className={cn(
-                    "p-4 space-y-3 transition-all duration-300",
+                    'p-4 space-y-3 transition-all duration-300',
                     isHighlightedPair &&
-                      "ring-2 ring-primary/30 shadow-lg shadow-primary/10"
+                      'ring-2 ring-primary/30 shadow-lg shadow-primary/10'
                   )}
                 >
-                  <h2 className="font-semibold">Bids ({orderbook.bids.length})</h2>
+                  <h2 className="font-semibold">
+                    {t('orderbook.bids.title', {
+                      count: orderbook.bids.length,
+                    })}
+                  </h2>
                   <VirtualizedOrderSide
                     entries={orderbook.bids}
                     side="bid"
@@ -251,13 +285,15 @@ export function OrderbookPageClient() {
 
                 <Card
                   className={cn(
-                    "p-4 space-y-3 transition-all duration-300",
+                    'p-4 space-y-3 transition-all duration-300',
                     isHighlightedPair &&
-                      "ring-2 ring-primary/30 shadow-lg shadow-primary/10"
+                      'ring-2 ring-primary/30 shadow-lg shadow-primary/10'
                   )}
                 >
                   <h2 className="font-semibold">
-                    Asks ({orderbook.asks.length})
+                    {t('orderbook.asks.title', {
+                      count: orderbook.asks.length,
+                    })}
                   </h2>
                   <VirtualizedOrderSide
                     entries={orderbook.asks}

@@ -1567,6 +1567,16 @@ pub(crate) fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
     }
 }
 
+pub(crate) async fn get_quote_for_pair_dry_run(
+    state: Arc<AppState>,
+    base_asset: AssetPath,
+    quote_asset: AssetPath,
+    params: QuoteParams,
+) -> Result<QuoteResponse> {
+    let (prepared, _) = get_quote_inner(state, base_asset, quote_asset, params, false).await?;
+    prepared.into_quote()
+}
+
 /// Build an [`AuditSelected`] from a successful [`QuoteResponse`].
 fn build_audit_selected(quote: &QuoteResponse) -> AuditSelected {
     let (venue_type, venue_ref) = quote

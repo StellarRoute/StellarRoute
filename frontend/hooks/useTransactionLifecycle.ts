@@ -52,7 +52,7 @@ interface UseTransactionLifecycleOptions {
   /**
    * Optional XDR builder — when provided, builds a real Stellar path-payment
    * transaction from TradeParams before calling signTransaction.
-   * When absent the lifecycle falls back to passing "mock_xdr" (stub behaviour).
+   * When absent and walletAddress is set, the lifecycle fails fast instead of using mock XDR.
    */
   buildXdr?: (params: TradeParams) => Promise<string>;
   /**
@@ -63,17 +63,29 @@ interface UseTransactionLifecycleOptions {
 }
 
 /** Default stub: simulates a successful wallet signature */
-async function defaultSignTransaction(xdr: string): Promise<string> {
+export async function defaultSignTransaction(xdr: string): Promise<string> {
   await new Promise((resolve) => setTimeout(resolve, 1500));
   return `signed_${xdr}`;
 }
 
 /** Default stub: simulates a successful Horizon submission */
-async function defaultSubmitTransaction(
+export async function defaultSubmitTransaction(
   _signedXdr: string
 ): Promise<{ hash: string }> {
   await new Promise((resolve) => setTimeout(resolve, 2000));
   return { hash: "mock_tx_" + Math.random().toString(36).substring(7) };
+}
+
+export function isDefaultSignTransaction(
+  fn: (xdr: string) => Promise<string>
+): boolean {
+  return fn === defaultSignTransaction;
+}
+
+export function isDefaultSubmitTransaction(
+  fn: (signedXdr: string) => Promise<{ hash: string }>
+): boolean {
+  return fn === defaultSubmitTransaction;
 }
 
 function isRejectionError(message: string): boolean {
@@ -133,6 +145,26 @@ export function useTransactionLifecycle(
       setTradeParams(params);
       setTxHash(undefined);
       setErrorMessage(undefined);
+
+      if (params.walletAddress) {
+        if (!buildXdr) {
+          setErrorMessage(
+            "Transaction could not be built. Please refresh and try again."
+          );
+          setStatus("failed");
+          return;
+        }
+        if (isDefaultSignTransaction(signTransaction)) {
+          setErrorMessage("Wallet not ready for signing.");
+          setStatus("failed");
+          return;
+        }
+        if (isDefaultSubmitTransaction(submitTransaction)) {
+          setErrorMessage("Transaction submission is not configured.");
+          setStatus("failed");
+          return;
+        }
+      }
 
       // Generate a temporary id for the pending record
       const tempId = "pending_" + Date.now();
@@ -292,6 +324,7 @@ export function useTransactionLifecycle(
     [
       signTransaction,
       submitTransaction,
+      buildXdr,
       deadlineMs,
       notificationPreference,
       addTransaction,

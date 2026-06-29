@@ -1,4 +1,4 @@
-/**
+﻿/**
  * StellarRoute API client
  *
  * Single source of truth for all frontend-to-backend communication.
@@ -485,7 +485,7 @@ export class StellarRouteClient {
   getPriceHistory(
     base: string,
     quote: string,
-    opts?: FetchOptions,
+    opts?: FetchOptions & { window?: string },
   ): Promise<PriceHistoryResponse> {
     const params = new URLSearchParams();
     if (opts?.window) params.set('window', opts.window);

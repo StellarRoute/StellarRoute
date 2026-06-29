@@ -68,7 +68,12 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix frontend
       - name: Run frontend tests
-        run: npm --prefix frontend run test -- ${{ matrix.suite }}
+        run: |
+          if [ "${{ matrix.suite }}" = "components" ]; then
+            npm --prefix frontend run test -- components --pool=forks --maxWorkers=2
+          else
+            npm --prefix frontend run test -- ${{ matrix.suite }}
+          fi
         env:
           NODE_OPTIONS: --max-old-space-size=6144
           CI: "true"

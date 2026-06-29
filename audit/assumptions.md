@@ -16,7 +16,7 @@
 
 6. **Pool vetting**: Only vetted, audited liquidity pool contracts are registered. The router trusts registered pools to return honest swap outputs.
 
-7. **TTL maintenance**: Operational scripts or automated processes will extend storage TTLs before expiry. If TTLs expire, contract state is lost and redeployment is required.
+7. **TTL maintenance**: Operational scripts or automated processes will extend storage TTLs before expiry. If TTLs expire, contract state is lost and redeployment is required. Operators should configure alerting for TTL failures (for example via `TTL_ALERT_WEBHOOK_URL`) and escalate if the extension job fails twice in a row.
 
 8. **Network availability**: The Stellar network and Soroban RPC endpoints are available for contract interactions.
 

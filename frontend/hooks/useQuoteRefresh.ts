@@ -3,7 +3,7 @@
 /**
  * Quote fetching with manual refresh (cooldown), optional auto-refresh, and stale detection.
  *
- * Uses `stellarRouteClient.getQuote` as the only HTTP path for quotes (same as `useQuote`).
+ * Uses a network-aware StellarRoute client for quotes (same base URL policy as `useApi`).
  *
  * Extension point — real-time updates: when the API exposes WebSocket (or SSE) quote streams,
  * subscribe here alongside or instead of the auto-refresh interval; update `data` and reset
@@ -12,10 +12,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import {
-  StellarRouteApiError,
-  stellarRouteClient,
-} from '@/lib/api/client';
+import { StellarRouteApiError } from '@/lib/api/client';
+import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
 import {
   calculateQuoteRetryDelayMs,
   emitQuoteRetryTelemetry,
@@ -131,6 +129,7 @@ export function useQuoteRefresh(
   const retryJitterRatio = options?.retryJitterRatio ?? 0.2;
   const retryRandom = options?.retryRandom;
   const onRetryEvent = options?.onRetryEvent;
+  const client = useStellarRouteClient();
 
   const debouncedAmount = useDebounced(amount, debounceMs);
   const [tick, setTick] = useState(0);
@@ -235,7 +234,7 @@ export function useQuoteRefresh(
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional loading transition before async getQuote
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    stellarRouteClient
+    client
       .getQuote(base, quoteAsset, debouncedAmount, type, {
         signal: controller.signal,
       })
@@ -342,6 +341,7 @@ export function useQuoteRefresh(
     quoteAsset,
     debouncedAmount,
     type,
+    client,
     tick,
     canRequest,
     isOnline,

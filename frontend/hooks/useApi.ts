@@ -9,16 +9,18 @@
  *  - Debounced parameters for useQuote
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { toast } from 'sonner';
 
+import { useWallet } from '@/components/providers/wallet-provider';
 import {
   StellarRouteApiError,
-  stellarRouteClient,
   STATUS_PAGE_REFRESH_MS,
 } from '@/lib/api/client';
 import type { DepsHealthStatus } from '@/lib/api/client';
+import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
+import { getApiBaseUrl } from '@/lib/network-endpoints';
 import { QUOTE_AMOUNT_DEBOUNCE_MS } from '@/lib/quote-stale';
 import type {
   HealthStatus,
@@ -68,7 +70,6 @@ function useFetch<T>(
     error: null,
   });
 
-  // Stable ref so the interval callback always sees the latest fetcher
   const fetcherRef = useRef(fetcher);
 
   useEffect(() => {
@@ -122,7 +123,6 @@ function useFetch<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, skip, showToastOnError, ...deps]);
 
-  // Auto-refresh
   useEffect(() => {
     if (!refreshIntervalMs || skip) return;
     const id = setInterval(() => setTick((n) => n + 1), refreshIntervalMs);
@@ -131,10 +131,6 @@ function useFetch<T>(
 
   return { ...state, refresh };
 }
-
-// ---------------------------------------------------------------------------
-// Internal: simple debounce hook
-// ---------------------------------------------------------------------------
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -145,27 +141,19 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-// ---------------------------------------------------------------------------
-// usePairs — fetch and cache trading pairs
-// ---------------------------------------------------------------------------
-
 export function usePairs(): UseApiState<TradingPair[]> & {
   refresh: () => void;
 } {
-  const result = useFetch(
+  const client = useStellarRouteClient();
+  return useFetch(
     (signal) =>
-      stellarRouteClient
+      client
         .getPairs({ signal })
         .then((res: PairsResponse) => res.pairs),
-    [],
+    [client],
     { showToastOnError: true }
   );
-  return result;
 }
-
-// ---------------------------------------------------------------------------
-// useOrderbook — fetch orderbook with auto-refresh every 10 s
-// ---------------------------------------------------------------------------
 
 export function useOrderbook(
   base: string,
@@ -176,9 +164,10 @@ export function useOrderbook(
   midpoint?: string;
   spreadBps?: number;
 } {
+  const client = useStellarRouteClient();
   const result = useFetch(
-    (signal) => stellarRouteClient.getOrderbook(base, quote, { signal }),
-    [base, quote],
+    (signal) => client.getOrderbook(base, quote, { signal }),
+    [client, base, quote],
     { refreshIntervalMs }
   );
 
@@ -221,16 +210,13 @@ export function usePriceHistory(
   refreshIntervalMs = 60_000,
   skip = false
 ): UseApiState<PriceHistoryResponse> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   return useFetch(
-    (signal) => stellarRouteClient.getPriceHistory(base, quote, { signal }),
-    [base, quote],
+    (signal) => client.getPriceHistory(base, quote, { signal }),
+    [client, base, quote],
     { refreshIntervalMs, skip: skip || !base || !quote }
   );
 }
-
-// ---------------------------------------------------------------------------
-// useRoutes — fetch ranked route candidates
-// ---------------------------------------------------------------------------
 
 export function useRoutes(
   base: string,
@@ -239,30 +225,32 @@ export function useRoutes(
   limit = 5,
   maxHops = 3
 ): UseApiState<RoutesResponse> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
-  const skip = !base || !quote;
+  const skip =
+    !base ||
+    !quote ||
+    debouncedAmount === undefined ||
+    Number.isNaN(debouncedAmount) ||
+    debouncedAmount <= 0;
   return useFetch(
     (signal) =>
-      stellarRouteClient.getRoutes(base, quote, debouncedAmount, limit, maxHops, {
+      client.getRoutes(base, quote, debouncedAmount, limit, maxHops, {
         signal,
       }),
-    [base, quote, debouncedAmount, limit, maxHops],
-    { skip },
+    [client, base, quote, debouncedAmount, limit, maxHops],
+    { skip }
   );
 }
-
-// ---------------------------------------------------------------------------
-// useQuote — debounced amount; no request while input is invalid / empty
-// ---------------------------------------------------------------------------
 
 export function useQuote(
   base: string,
   quote: string,
   amount: number | undefined,
   type: QuoteType = 'sell',
-  /** Optional polling interval. Prefer `useQuoteRefresh` for manual/auto refresh UX. */
   refreshIntervalMs?: number
 ): UseApiState<PriceQuote> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
 
   const skip =
@@ -274,19 +262,15 @@ export function useQuote(
 
   return useFetch(
     (signal) =>
-      stellarRouteClient
+      client
         .getQuote(base, quote, debouncedAmount, type, {
           signal,
         })
         .then((result) => result.quote),
-    [base, quote, debouncedAmount, type],
+    [client, base, quote, debouncedAmount, type],
     { refreshIntervalMs, skip }
   );
 }
-
-// ---------------------------------------------------------------------------
-// useBatchQuote — fetch multiple quotes at once
-// ---------------------------------------------------------------------------
 
 import type { QuoteRequestItem, BatchQuoteResponse } from '@/lib/api/client';
 
@@ -295,6 +279,7 @@ export function useBatchQuote(
   skip = false,
   refreshIntervalMs?: number
 ): UseApiState<BatchQuoteResponse> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   const hasValidRequests =
     requests.length > 0 &&
     requests.every(
@@ -311,50 +296,41 @@ export function useBatchQuote(
     );
 
   return useFetch(
-    (signal) => stellarRouteClient.getQuotesBatch(requests, { signal }),
-    [JSON.stringify(requests)],
+    (signal) => client.getQuotesBatch(requests, { signal }),
+    [client, JSON.stringify(requests)],
     { refreshIntervalMs, skip: skip || !hasValidRequests }
   );
 }
 
-// ---------------------------------------------------------------------------
-// useHealth — API health status
-// ---------------------------------------------------------------------------
-
 export function useHealth(
   refreshIntervalMs = STATUS_PAGE_REFRESH_MS,
 ): UseApiState<HealthStatus> & { refresh: () => void } {
-  return useFetch((signal) => stellarRouteClient.getHealth({ signal }), [], {
+  const client = useStellarRouteClient();
+  return useFetch((signal) => client.getHealth({ signal }), [client], {
     refreshIntervalMs,
   });
 }
 
-// ---------------------------------------------------------------------------
-// useHealthDeps — external dependency health status
-// ---------------------------------------------------------------------------
-
 export function useHealthDeps(
   refreshIntervalMs = STATUS_PAGE_REFRESH_MS,
 ): UseApiState<DepsHealthStatus> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   return useFetch(
-    (signal) => stellarRouteClient.getDepsHealth({ signal }),
-    [],
-    { refreshIntervalMs },
+    (signal) => client.getDepsHealth({ signal }),
+    [client],
+    { refreshIntervalMs }
   );
 }
-
-// ---------------------------------------------------------------------------
-// useCacheMetrics / usePoolStats — platform metrics for analytics dashboard
-// ---------------------------------------------------------------------------
 
 export function useCacheMetrics(
   refreshIntervalMs = 30_000,
   skip = false,
 ): UseApiState<CacheMetricsResponse> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   return useFetch(
-    (signal) => stellarRouteClient.getCacheMetrics({ signal }),
-    [],
-    { refreshIntervalMs, skip },
+    (signal) => client.getCacheMetrics({ signal }),
+    [client],
+    { refreshIntervalMs, skip }
   );
 }
 
@@ -362,54 +338,18 @@ export function usePoolStats(
   refreshIntervalMs = 30_000,
   skip = false,
 ): UseApiState<PoolStatsResponse> & { refresh: () => void } {
+  const client = useStellarRouteClient();
   return useFetch(
-    (signal) => stellarRouteClient.getPoolStats({ signal }),
-    [],
-    { refreshIntervalMs, skip },
+    (signal) => client.getPoolStats({ signal }),
+    [client],
+    { refreshIntervalMs, skip }
   );
 }
 
-// ---------------------------------------------------------------------------
-// useQuoteStream — WebSocket subscription for quotes
-// ---------------------------------------------------------------------------
-
-/**
- * Resolves the WebSocket URL to use for the quote stream.
- *
- * Priority:
- *  1. `NEXT_PUBLIC_API_WS_URL` — explicit ws/wss URL (e.g. "wss://api.stellarroute.io")
- *  2. Derived from `NEXT_PUBLIC_API_URL` — protocol is converted to ws/wss automatically
- *  3. Falls back to `ws://localhost:8080`
- *
- * Returns `null` when neither env var is set, which disables the WebSocket and
- * keeps the app in polling mode.
- */
-function resolveWsBaseUrl(): string | null {
-  const explicit = process.env.NEXT_PUBLIC_API_WS_URL;
-  if (explicit) return explicit.replace(/\/$/, '');
-
-  const httpUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (httpUrl) {
-    const wsProtocol = httpUrl.startsWith('https') ? 'wss' : 'ws';
-    const host = httpUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    return `${wsProtocol}://${host}`;
-  }
-
-  // Neither env var set — WebSocket disabled; caller falls back to polling.
-  return null;
-}
-
 export interface UseQuoteStreamResult {
-  /** Latest quote pushed from the WebSocket, or undefined if none received yet. */
   data: PriceQuote | undefined;
-  /** True while the socket handshake is complete and the subscription is active. */
   isConnected: boolean;
-  /** Last connection or parse error, if any. */
   error: Error | null;
-  /**
-   * True when WebSocket is configured (env var present).
-   * When false the caller should fall back to HTTP polling immediately.
-   */
   wsAvailable: boolean;
 }
 
@@ -418,17 +358,15 @@ export function useQuoteStream(
   quote: string,
   amount: number | undefined,
 ): UseQuoteStreamResult {
+  const { network } = useWallet();
   const [data, setData] = useState<PriceQuote | undefined>(undefined);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
-
-  // Resolve once at module-evaluation time (env vars are static in Next.js builds).
-  const wsBaseUrl = resolveWsBaseUrl();
-  const wsAvailable = wsBaseUrl !== null;
+  const apiBaseUrl = useMemo(() => getApiBaseUrl(network), [network]);
+  const wsAvailable = Boolean(apiBaseUrl);
 
   useEffect(() => {
-    // Skip when WebSocket is not configured or inputs are incomplete.
     const skip = !wsAvailable || !base || !quote;
     if (skip) {
       setData(undefined);
@@ -446,7 +384,9 @@ export function useQuoteStream(
     const connect = () => {
       if (!isMounted) return;
 
-      const wsUrl = `${wsBaseUrl}/api/v1/ws`;
+      const wsProtocol = apiBaseUrl.startsWith('https') ? 'wss' : 'ws';
+      const host = apiBaseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const wsUrl = `${wsProtocol}://${host}/api/v1/ws`;
 
       try {
         ws = new WebSocket(wsUrl);
@@ -457,7 +397,6 @@ export function useQuoteStream(
           setError(null);
           retryCount = 0;
 
-          // Send subscribe message
           const subscribeMsg = {
             action: 'subscribe',
             subscription: {
@@ -493,7 +432,6 @@ export function useQuoteStream(
           setIsConnected(false);
           subscriptionId = null;
 
-          // Exponential backoff reconnect (capped at 30 s)
           const delay = Math.min(1000 * Math.pow(2, retryCount), 30_000);
           retryCount++;
           reconnectTimer = setTimeout(connect, delay);
@@ -530,9 +468,7 @@ export function useQuoteStream(
         ws.close();
       }
     };
-  // wsBaseUrl is derived from static env vars — safe to omit from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, quote, debouncedAmount, wsAvailable]);
+  }, [base, quote, debouncedAmount, apiBaseUrl, wsAvailable]);
 
   return { data, isConnected, error, wsAvailable };
 }

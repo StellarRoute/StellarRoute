@@ -100,6 +100,7 @@ mod tests {
                 available_amount: "100.0000000".to_string(),
                 fee_bps: None,
             }],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -128,6 +129,7 @@ mod tests {
                     }
                 ]
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 
@@ -143,6 +145,7 @@ mod tests {
             slippage_bps: 50,
             quote_type: "sell".to_string(),
             liquidity_snapshot: vec![],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -155,6 +158,7 @@ mod tests {
                 "quote_asset": { "asset_type": "native" },
                 "price": "1.0000000"
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 

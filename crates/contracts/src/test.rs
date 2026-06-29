@@ -1584,8 +1584,10 @@ mod property_fuzz_tests {
 
             if (1..=4).contains(&hops) {
                 prop_assert!(result.is_ok());
+            } else if hops == 0 {
+                prop_assert_eq!(result, Err(Ok(ContractError::EmptyRoute)));
             } else {
-                prop_assert_eq!(result, Err(Ok(ContractError::InvalidRoute)));
+                prop_assert_eq!(result, Err(Ok(ContractError::TooManyHops)));
             }
         }
 

@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { stellarRouteClient } from '@/lib/api/client';
+import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
 import type { PriceQuote } from '@/types';
 
 interface PriceImpactHeatmapSliderProps {
@@ -33,6 +33,7 @@ export function PriceImpactHeatmapSlider({
   const [quotes, setQuotes] = useState<PriceQuote[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const client = useStellarRouteClient();
 
   const fromSymbol = useMemo(() => {
     if (!fromToken) return '';
@@ -69,7 +70,7 @@ export function PriceImpactHeatmapSlider({
           };
         });
 
-        const response = await stellarRouteClient.getQuotesBatch(requests);
+        const response = await client.getQuotesBatch(requests);
         if (active) {
           setQuotes(response.quotes || []);
         }
@@ -90,7 +91,7 @@ export function PriceImpactHeatmapSlider({
     return () => {
       active = false;
     };
-  }, [fromToken, toToken, balance, decimals]);
+  }, [fromToken, toToken, balance, decimals, client]);
 
   // Calculate current percentage based on balance and currentAmount
   const currentPercentage = useMemo(() => {

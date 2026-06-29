@@ -16,7 +16,7 @@ create table if not exists backfill_checkpoints (
 do $$
 begin
     if exists (select 1 from pg_views where viewname = 'normalized_liquidity') then
-        execute 'alter view normalized_liquidity rename to normalized_liquidity_legacy_view';
+        execute 'drop view normalized_liquidity';
     end if;
 end $$;
 

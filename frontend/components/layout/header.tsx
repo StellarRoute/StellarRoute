@@ -11,6 +11,7 @@ import { NetworkBadge } from '@/components/shared/network-badge';
 import { MobileNav } from './mobile-nav';
 import { getNavItems } from './nav-items';
 import { cn } from '@/lib/utils';
+import { ROUTES } from '@/lib/constants';
 import { ThemeToggle } from '../ThemeToggle';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
@@ -43,7 +44,7 @@ export function Header() {
         {/* Logo and Navigation */}
         <div className="flex items-center gap-6 md:gap-8">
           <Link
-            href="/swap"
+            href={ROUTES.SWAP}
             className="flex items-center gap-2 font-semibold text-xl hover:opacity-80 transition-opacity"
             aria-label="StellarRoute Swap"
           >

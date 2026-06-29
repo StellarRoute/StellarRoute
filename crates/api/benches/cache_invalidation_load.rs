@@ -47,7 +47,7 @@ impl SimpleCacheStore {
 }
 
 // Strategy 1: Full cache clear (naive baseline)
-fn invalidate_full_clear(cache: &mut SimpleCacheStore, _updated_pair: &str, cache_size: usize) {
+fn invalidate_full_clear(cache: &mut SimpleCacheStore, _updated_pair: &str, _cache_size: usize) {
     cache.delete_all();
 }
 

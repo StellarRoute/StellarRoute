@@ -1,47 +1,36 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useWalletOnboarding } from '@/hooks/useWalletOnboarding';
 import { WalletConnectionOnboarding } from '@/components/modals/WalletConnectionOnboarding';
 import { AccountSwitcher } from './account-switcher';
+import type { SupportedWallet, WalletNetwork } from '@/lib/wallet/types';
 import { Button } from '@/components/ui/button';
 
-const APP_NETWORK = 'TESTNET';
+function formatShortAddress(address: string): string {
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 4)}…${address.slice(-4)}`;
+}
 
 export function WalletButton() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
-  const [walletNetworkForOnboarding, setWalletNetworkForOnboarding] = useState<
-    string | null
-  >(null);
 
   const {
     address,
     isConnected,
     network,
     walletNetwork,
+    networkMismatch,
     availableWallets,
     isLoading,
     error,
     connect,
     disconnect,
+    setNetwork,
   } = useWallet();
-
-  const shortAddress = address
-    ? `${address.slice(0, 4)}...${address.slice(-4)}`
-    : '';
-
-  const copyAddress = async () => {
-    if (address) {
-      try {
-        await navigator.clipboard.writeText(address);
-      } catch (err) {
-        console.error('Failed to copy address:', err);
-      }
-    }
-  };
 
   const {
     showOnboarding,
@@ -52,11 +41,6 @@ export function WalletButton() {
     isConnected,
   });
 
-  const mismatch =
-    walletNetwork &&
-    walletNetwork.toUpperCase() !== APP_NETWORK.toUpperCase();
-
-  // Auto-open onboarding for first-time users
   useEffect(() => {
     if (showOnboarding && isFirstConnection && !showOnboardingModal) {
       setShowOnboardingModal(true);
@@ -69,14 +53,27 @@ export function WalletButton() {
     markOnboardingAsSeenAndOpened,
   ]);
 
-  const handleOnboardingConnect = async (walletId: any) => {
+  const handleOnboardingConnect = async (walletId: SupportedWallet) => {
     try {
       await connect(walletId);
-      setWalletNetworkForOnboarding(walletNetwork ?? null);
       markOnboardingAsCompleted();
     } catch (err) {
-      // Error will be shown in onboarding modal
       throw err;
+    }
+  };
+
+  const handleNetworkSelection = (nextNetwork: WalletNetwork) => {
+    setNetwork(nextNetwork);
+  };
+
+  const copyAddress = async () => {
+    if (!address) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(address);
+    } catch (err) {
+      console.error('Failed to copy address:', err);
     }
   };
 
@@ -98,7 +95,9 @@ export function WalletButton() {
           isLoading={isLoading}
           error={error?.message ?? null}
           onConnect={handleOnboardingConnect}
-          walletNetwork={walletNetworkForOnboarding}
+          appNetwork={network}
+          walletNetwork={walletNetwork}
+          onNetworkSelection={handleNetworkSelection}
         />
       </>
     );
@@ -107,18 +106,21 @@ export function WalletButton() {
   return (
     <div className="flex flex-col gap-2">
       <AccountSwitcher
-        onAccountChange={(newAddress) => {
-          console.log('Account changed to:', newAddress);
+        onAccountChange={() => {
           setShowQrCode(false);
         }}
       />
 
       <div className="flex items-center gap-2">
-        <span className="rounded-md border px-3 py-2 text-sm font-mono bg-muted/20">
-          {shortAddress}
+        <span
+          className="rounded-md border px-3 py-2 text-sm font-mono bg-muted/20"
+          title={address ?? undefined}
+        >
+          {address ? formatShortAddress(address) : 'Connected'}
         </span>
 
         <button
+          type="button"
           onClick={() => setShowQrCode(!showQrCode)}
           className={`rounded-md border px-3 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
             showQrCode
@@ -132,6 +134,7 @@ export function WalletButton() {
         </button>
 
         <button
+          type="button"
           onClick={copyAddress}
           className="rounded-md border px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground bg-background transition-colors cursor-pointer"
         >
@@ -139,6 +142,7 @@ export function WalletButton() {
         </button>
 
         <button
+          type="button"
           onClick={disconnect}
           className="rounded-md border px-3 py-2 text-sm hover:bg-destructive hover:text-destructive-foreground bg-background transition-colors cursor-pointer"
         >
@@ -171,9 +175,9 @@ export function WalletButton() {
         Wallet network: {walletNetwork ?? network ?? 'Unknown'}
       </div>
 
-      {mismatch && (
+      {networkMismatch && (
         <div className="text-sm text-yellow-600 font-medium">
-          Network mismatch: app is {APP_NETWORK}, wallet is {walletNetwork}
+          Network mismatch: app is {network}, wallet is {walletNetwork}
         </div>
       )}
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletNetwork } from '@/lib/wallet/types';
+import { getHorizonUrl } from '@/lib/network-endpoints';
 import { XLM_FEE_RESERVE } from '@/lib/stellar-reserves';
 
 interface HorizonBalanceLine {
@@ -23,17 +24,7 @@ interface WalletBalanceState {
   refetch: () => void;
 }
 
-const HORIZON_URLS: Record<string, string> = {
-  testnet: 'https://horizon-testnet.stellar.org',
-  mainnet: 'https://horizon.stellar.org',
-};
-
 const REFETCH_DEBOUNCE_MS = 1_500;
-
-function normalizeNetwork(network: WalletNetwork | null): string {
-  const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
-  return String(network ?? defaultNetwork).toLowerCase();
-}
 
 function findAssetBalance(
   balances: HorizonBalanceLine[],
@@ -86,8 +77,6 @@ export function useWalletBalance({
     setFetchTick((n) => n + 1);
   }, []);
 
-  const networkKey = normalizeNetwork(network);
-
   useEffect(() => {
     if (!isConnected || !address) {
       setState({
@@ -99,19 +88,7 @@ export function useWalletBalance({
       return;
     }
 
-    const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
-    const horizonUrl = networkKey === defaultNetwork.toLowerCase() && process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL
-      ? process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL
-      : HORIZON_URLS[networkKey];
-    if (!horizonUrl) {
-      setState({
-        balance: null,
-        spendableBalance: null,
-        loading: false,
-        error: new Error(`Unsupported network: ${network}`),
-      });
-      return;
-    }
+    const horizonUrl = getHorizonUrl(network);
 
     const controller = new AbortController();
     lastFetchAt.current = Date.now();
@@ -148,7 +125,7 @@ export function useWalletBalance({
       });
 
     return () => controller.abort();
-  }, [address, asset, isConnected, network, networkKey, fetchTick]);
+  }, [address, asset, isConnected, network, fetchTick]);
 
   return useMemo(() => ({ ...state, refetch }), [state, refetch]);
 }

@@ -378,6 +378,85 @@ pub fn record_health_score_failure() {
     HEALTH_SCORE_JOB_FAILURES.with_label_values(&[]).inc();
 }
 
+// ── Webhook metrics ───────────────────────────────────────────────────────────
+
+lazy_static! {
+    /// Webhook delivery success counter
+    pub static ref WEBHOOK_DELIVERY_SUCCESS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_webhook_delivery_success_total",
+        "Total number of successful webhook deliveries",
+        &["integrator_id"]
+    ).expect("Can't create WEBHOOK_DELIVERY_SUCCESS counter");
+
+    /// Webhook delivery failure counter
+    pub static ref WEBHOOK_DELIVERY_FAILURE: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_webhook_delivery_failure_total",
+        "Total number of failed webhook deliveries",
+        &["integrator_id", "failure_reason"]
+    ).expect("Can't create WEBHOOK_DELIVERY_FAILURE counter");
+
+    /// Webhook delivery attempt counter
+    pub static ref WEBHOOK_DELIVERY_ATTEMPT: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_webhook_delivery_attempt_total",
+        "Total number of webhook delivery attempts",
+        &["integrator_id", "attempt"]
+    ).expect("Can't create WEBHOOK_DELIVERY_ATTEMPT counter");
+
+    /// Webhook delivery duration histogram
+    pub static ref WEBHOOK_DELIVERY_DURATION: HistogramVec = register_histogram_vec!(
+        "stellarroute_webhook_delivery_duration_seconds",
+        "Duration of webhook deliveries",
+        &["integrator_id", "success"],
+        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+    ).expect("Can't create WEBHOOK_DELIVERY_DURATION histogram");
+
+    /// Webhook poll cycle duration histogram
+    pub static ref WEBHOOK_POLL_CYCLE_DURATION: HistogramVec = register_histogram_vec!(
+        "stellarroute_webhook_poll_cycle_duration_seconds",
+        "Duration of webhook poll cycles",
+        &[]
+    ).expect("Can't create WEBHOOK_POLL_CYCLE_DURATION histogram");
+
+    /// Webhook pending quotes gauge
+    pub static ref WEBHOOK_PENDING_QUOTES: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_webhook_pending_quotes_total",
+        "Number of quotes pending webhook delivery",
+        &[]
+    ).expect("Can't create WEBHOOK_PENDING_QUOTES gauge");
+}
+
+pub fn record_webhook_delivery_success(integrator_id: &str, duration: Duration) {
+    WEBHOOK_DELIVERY_SUCCESS.with_label_values(&[integrator_id]).inc();
+    WEBHOOK_DELIVERY_DURATION
+        .with_label_values(&[integrator_id, "true"])
+        .observe(duration.as_secs_f64());
+}
+
+pub fn record_webhook_delivery_failure(integrator_id: &str, failure_reason: &str, duration: Duration) {
+    WEBHOOK_DELIVERY_FAILURE
+        .with_label_values(&[integrator_id, failure_reason])
+        .inc();
+    WEBHOOK_DELIVERY_DURATION
+        .with_label_values(&[integrator_id, "false"])
+        .observe(duration.as_secs_f64());
+}
+
+pub fn record_webhook_delivery_attempt(integrator_id: &str, attempt: u32) {
+    WEBHOOK_DELIVERY_ATTEMPT
+        .with_label_values(&[integrator_id, &attempt.to_string()])
+        .inc();
+}
+
+pub fn update_webhook_pending_quotes(count: i64) {
+    WEBHOOK_PENDING_QUOTES.with_label_values(&[]).set(count);
+}
+
+pub fn record_webhook_poll_cycle_duration(duration: Duration) {
+    WEBHOOK_POLL_CYCLE_DURATION
+        .with_label_values(&[])
+        .observe(duration.as_secs_f64());
+}
+
 /// Get cache hit ratio for a given cache type
 pub fn get_cache_hit_ratio(cache_type: &str) -> f64 {
     let hits = CACHE_HITS.with_label_values(&[cache_type]).get() as f64;

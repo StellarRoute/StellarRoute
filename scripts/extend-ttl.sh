@@ -14,6 +14,10 @@
 #   - A funded deployer identity configured
 #   - Contract deployed (deployment artifact exists)
 #
+# Optional environment variables:
+#   - TTL_ALERT_WEBHOOK_URL: HTTPS webhook URL for posting TTL alerts
+#     (for example, a Slack incoming webhook)
+#
 # Cost Analysis:
 #   - extend_storage_ttl cost depends on number of registered pools.
 #   - Each pool TTL extension costs ~100 stroops (0.00001 XLM).
@@ -223,6 +227,8 @@ EOF
         else
             log_warn "curl not available, cannot send webhook alert"
         fi
+    else
+        log_warn "TTL_ALERT_WEBHOOK_URL is not set; skipping webhook alert"
     fi
 }
 

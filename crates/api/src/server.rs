@@ -274,16 +274,16 @@ impl Server {
 
         // Use `into_make_service_with_connect_info::<SocketAddr>()` so handlers
         // that require the client's `SocketAddr` (via `ConnectInfo<SocketAddr>`) work.
-        let server = axum::Server::from_tcp(listener)
-            .expect("Failed to build TCP server")
-            .serve(self.app.into_make_service_with_connect_info::<SocketAddr>());
-
-        server
-            .with_graceful_shutdown(async move {
-                shutdown_clone.wait_for_signal().await;
-            })
-            .await
-            .expect("Server error");
+        axum::serve(
+            listener,
+            self.app
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            shutdown_clone.wait_for_signal().await;
+        })
+        .await
+        .expect("Server error");
 
         Ok(())
     }

@@ -126,6 +126,7 @@ pub async fn get_quote(
         .unwrap_or(false);
     let explain = explain_header || params.explain.unwrap_or(false);
     let selected_fields = params.selected_fields();
+    let consumer_id = extract_consumer_id(&headers);
 
     let start_time = std::time::Instant::now();
 
@@ -149,8 +150,6 @@ pub async fn get_quote(
         )
         .await
         {
-            Ok((prepared_quote_resp, cache_hit)) => {
-                let quote_resp = prepared_quote_resp.into_quote()?;
             Ok((prepared_quote, cache_hit)) => {
                 let quote_resp = prepared_quote.into_quote()?;
                 let error_class = "none";
@@ -193,6 +192,32 @@ pub async fn get_quote(
                     Some(audit_selected),
                     audit_exclusions,
                 );
+
+                // ── Spawn delayed webhook dispatch ──────────────────────
+                if let Some(consumer_id) = consumer_id.clone() {
+                    if let Some(expires_at) = quote_resp.expires_at {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let delay_ms = if expires_at > now {
+                            expires_at - now
+                        } else {
+                            0
+                        };
+                        let payload = build_quote_webhook_payload(
+                            consumer_id.clone(),
+                            &base,
+                            &quote,
+                            &quote_resp,
+                        );
+                        state
+                            .quote_expiration_webhooks
+                            .clone()
+                            .spawn_delayed_dispatch_for_consumer(
+                                consumer_id,
+                                payload,
+                                std::time::Duration::from_millis(delay_ms as u64),
+                            );
+                    }
+                }
 
                 let data = if let Some(fields) = &selected_fields {
                     build_sparse_quote_data(&quote_resp, fields)?
@@ -475,15 +500,6 @@ pub async fn get_batch_quotes(
                             let (code, message) = batch_error_from_api_error(&e);
                             BatchQuoteItemResult::err(i, BatchItemError { code, message })
                         }
-                    Ok((quote, _cache_hit)) => match quote.into_quote() {
-                        Ok(inner) => BatchQuoteItemResult::ok(i, inner),
-                        Err(e) => BatchQuoteItemResult::err(
-                            i,
-                            BatchItemError {
-                                code: "internal".to_string(),
-                                message: e.to_string(),
-                            },
-                        ),
                     },
                     Err(e) => {
                         let (code, message) = batch_error_from_api_error(&e);
@@ -812,15 +828,6 @@ pub(crate) async fn compute_quote_response(
     }
 
     Ok(response)
-}
-
-pub(crate) async fn get_quote_for_pair_dry_run(
-    state: Arc<AppState>,
-    base_asset: AssetPath,
-    quote_asset: AssetPath,
-    params: QuoteParams,
-) -> Result<QuoteResponse> {
-    compute_quote_response(state, base_asset, quote_asset, params, false).await
 }
 
 /// Get routing path for a trading pair
@@ -1252,6 +1259,28 @@ async fn find_best_price(
         fee_bps: Some(selected.fee_bps),
     }];
 
+    // Optional Soroban simulation step for AMM venues. If configured and enabled,
+    // run a dry-run and convert explicit simulation failures into a NotExecutable error.
+    if selected.venue_type == "amm" {
+        if state.soroban_simulation_enabled {
+            if let Some(sim) = &state.soroban_simulator {
+                // Build a lightweight simulation payload. The real transaction XDR
+                // builder lives elsewhere; for dry-run validation we encode key
+                // route identifiers so tests/mocks can inspect the request.
+                let tx_xdr = format!("simulate:amm:{}:{}:{}",
+                    selected.venue_ref, amount, selected.price);
+
+                let sim_res = sim.simulate(&tx_xdr).await;
+
+                if sim_res.simulated && !sim_res.success {
+                    let reason = sim_res
+                        .failure_reason
+                        .unwrap_or_else(|| "simulation_failure".to_string());
+                    return Err(ApiError::NotExecutable(reason));
+                }
+            }
+        }
+    }
     Ok((
         selected.price,
         path,
@@ -1543,6 +1572,16 @@ pub(crate) fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
     } else {
         AssetInfo::credit(asset.asset_code.clone(), asset.asset_issuer.clone())
     }
+}
+
+pub(crate) async fn get_quote_for_pair_dry_run(
+    state: Arc<AppState>,
+    base_asset: AssetPath,
+    quote_asset: AssetPath,
+    params: QuoteParams,
+) -> Result<QuoteResponse> {
+    let (prepared, _) = get_quote_inner(state, base_asset, quote_asset, params, false).await?;
+    prepared.into_quote()
 }
 
 /// Build an [`AuditSelected`] from a successful [`QuoteResponse`].

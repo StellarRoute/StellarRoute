@@ -16,8 +16,9 @@
 
 ## TransactionConfirmationModal i18n coverage
 
-All 31 `swap.confirm.*` keys are defined for **en-US**, **zh-CN**, and **es-ES**.
-Other locales fall back to `en-US` via `SWAP_LOCALE_ALIASES`.
+All 31 `swap.confirm.*` keys are defined for **en-US**, **zh-CN**, **es-ES**,
+**de-DE**, **fr-FR**, and **ja-JP**.
+Missing key lookups now emit a development warning and fall back to `en-US`.
 
 | Namespace | Keys |
 |---|---|

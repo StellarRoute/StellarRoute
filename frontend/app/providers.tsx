@@ -6,6 +6,7 @@ import { ThemeProvider as NextThemesProvider } from 'next-themes';
 import { WalletProvider } from '@/components/providers/wallet-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
 import { SessionRecoveryProvider } from '@/components/providers/session-recovery-provider';
+import { GlobalToastListener } from '@/components/providers/GlobalToastListener';
 import { TradingPairProvider } from '@/contexts/TradingPairContext';
 
 interface ProvidersProps {
@@ -24,7 +25,10 @@ export function Providers({ children, defaultTheme = 'dark' }: ProvidersProps) {
       <SessionRecoveryProvider>
         <SettingsProvider>
           <WalletProvider defaultNetwork="testnet">
-            <TradingPairProvider>{children}</TradingPairProvider>
+            <TradingPairProvider>
+              <GlobalToastListener />
+              {children}
+            </TradingPairProvider>
           </WalletProvider>
         </SettingsProvider>
       </SessionRecoveryProvider>

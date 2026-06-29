@@ -258,6 +258,29 @@ pub struct QuoteResponse {
     pub spread_bps: Option<u32>,
 }
 
+/// Single historical price sample for a trading pair.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceHistoryPoint {
+    /// Unix timestamp in milliseconds for the aggregated price bucket.
+    pub timestamp: i64,
+    /// Average mid-market price for the bucket, encoded as a decimal string.
+    pub price: String,
+}
+
+/// Historical price series for charting a selected trading pair.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceHistoryResponse {
+    pub base_asset: AssetInfo,
+    pub quote_asset: AssetInfo,
+    /// Time window covered by the series, such as "24h".
+    pub window: String,
+    /// Source table/column used to build the series.
+    pub source: String,
+    /// Unix timestamp in milliseconds when the response was generated.
+    pub generated_at: i64,
+    pub points: Vec<PriceHistoryPoint>,
+}
+
 /// Asset metadata response — matches GET /api/v1/assets/:code spec
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssetMetadataResponse {
@@ -627,6 +650,8 @@ pub enum ApiErrorCode {
     InvalidAssetFormat,
     /// No executable trading route found
     NoRoute,
+    /// Route would fail execution on-chain (simulation detected failure)
+    NotExecutable,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
 }
@@ -646,6 +671,7 @@ impl ApiErrorCode {
             Self::InvalidSlippage => "invalid_slippage",
             Self::InvalidAssetFormat => "invalid_asset_format",
             Self::NoRoute => "no_route",
+            Self::NotExecutable => "not_executable",
             Self::StaleMarketData => "stale_market_data",
         }
     }

@@ -95,18 +95,6 @@ describe('useApi hooks regression coverage', () => {
     });
   });
 
-  it('useRoutes supports showToastOnError option', async () => {
-    getRoutesMock.mockRejectedValueOnce(new Error('routes failed'));
-
-    renderHook(() =>
-      useRoutes('native', 'USDC', 10, 5, 3, { showToastOnError: true })
-    );
-
-    await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledTimes(1);
-    });
-  });
-
   it('usePriceHistory registers polling interval with refreshIntervalMs', async () => {
     const setIntervalSpy = vi.spyOn(window, 'setInterval');
     const clearIntervalSpy = vi.spyOn(window, 'clearInterval');

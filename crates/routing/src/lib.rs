@@ -3,7 +3,12 @@
 //! Provides pathfinding algorithms for optimal swap routing across SDEX and Soroban AMM pools.
 //! Supports N-hop paths with safety bounds, cycle prevention, and price impact calculation.
 
+pub mod adaptive_routing;
+pub mod adaptive_timeout;
+pub mod amm_fallback;
+pub mod canary;
 pub mod compaction;
+pub mod consensus;
 pub mod error;
 pub mod execution_quality;
 pub mod fixtures;
@@ -269,8 +274,14 @@ mod tests {
     #[test]
     fn test_normalize_asset_with_issuer() {
         // The colon and issuer part is preserved as-is (uppercased as a whole)
-        assert_eq!(normalize_asset("usdc:GA5ZSEJ"), "USDC:GA5ZSEJ");
-        assert_eq!(normalize_asset("USDC:ga5zsej"), "USDC:GA5ZSEJ");
+        assert_eq!(
+            normalize_asset("usdc:GA5ZSEJ"),
+            "USDC:GA5ZSEJ"
+        );
+        assert_eq!(
+            normalize_asset("USDC:ga5zsej"),
+            "USDC:GA5ZSEJ"
+        );
     }
 
     // ── normalize_pair_owned tests ────────────────────────────────────

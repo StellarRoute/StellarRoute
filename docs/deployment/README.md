@@ -108,7 +108,6 @@ export STELLAR_NETWORK=testnet
 
 ### 3. Register Pools
 
-<<<<<<< HEAD
 Before running the script you need real Soroban AMM pool contract addresses. Follow the steps below to discover them, then update `config/pools-testnet.json`.
 
 #### Step 1 — Discover pool contract addresses on testnet
@@ -143,6 +142,16 @@ curl "https://horizon-testnet.stellar.org/liquidity_pools?limit=20" | jq '.._emb
 ```
 
 > **Note:** Horizon liquidity pool IDs are hex strings, not Soroban contract addresses. Use this only if the StellarRoute adapter contract accepts Horizon pool IDs. For Soroban-native pools, prefer Option A or B.
+
+**Option D — Aquarius testnet API**
+
+`config/pools-testnet.json` lists Aquarius Soroban AMM pools on testnet. To discover or refresh pool contract IDs:
+
+```bash
+curl -s "https://amm-api-testnet.aqua.network/api/external/v1/pools/?limit=100" | jq '.results[] | {address, tokens: .tokens_str, type: .pool_type}'
+```
+
+Prefer `constant_product` pools for XLM/USDC pairs and pools whose `tokens_str` includes `native` (XLM) plus the target asset. Cross-check the pool address on [Stellar Expert testnet](https://stellar.expert/explorer/testnet) before registering. The Aquarius router on testnet is documented at [Aquarius developer guides](https://docs.aqua.network/developers/code-examples/prerequisites-and-basics).
 
 #### Step 2 — Edit `config/pools-testnet.json`
 
@@ -227,26 +236,7 @@ Once registered, the StellarRoute indexer discovers pools via `get_pool_count` /
 
 For full details on the registration script internals see [`docs/contracts/deployment-runbook.md`](../contracts/deployment-runbook.md#pool-registration-with-scriptsregister-poolssh).
 
-```bash
-./scripts/register-pools.sh --network testnet
-```
-=======
-`config/pools-testnet.json` lists Aquarius Soroban AMM pools on testnet. To discover or refresh pool contract IDs:
-
-1. Query the Aquarius testnet API:
-   ```bash
-   curl -s "https://amm-api-testnet.aqua.network/api/external/v1/pools/?limit=100" | jq '.results[] | {address, tokens: .tokens_str, type: .pool_type}'
-   ```
-2. Prefer `constant_product` pools for XLM/USDC pairs and pools whose `tokens_str` includes `native` (XLM) plus the target asset.
-3. Cross-check the pool address on [Stellar Expert testnet](https://stellar.expert/explorer/testnet) before registering.
-4. Update `config/pools-testnet.json`, then register:
-   ```bash
-   ./scripts/register-pools.sh --network testnet
-   ./scripts/smoke-test-testnet.sh --network testnet
-   ```
-
-The Aquarius router on testnet is documented at [Aquarius developer guides](https://docs.aqua.network/developers/code-examples/prerequisites-and-basics).
->>>>>>> origin/main
+After registration, run `./scripts/smoke-test-testnet.sh --network testnet` to verify end-to-end connectivity.
 
 ### 4. Verify
 ```bash

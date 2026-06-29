@@ -371,27 +371,6 @@ export class StellarRouteClient {
   }
 
   /**
-<<<<<<< HEAD
-   * `POST /api/v1/batch/orderbook` — fetch multiple orderbook snapshots in a single request.
-   *
-   * @param requests Array of base/quote pairs to look up.
-   *
-   * @throws {@link StellarRouteApiError} when the batch request fails.
-   */
-  async getOrderbooksBatch(
-    requests: OrderbookRequestItem[],
-    signal?: AbortSignal,
-  ): Promise<BatchOrderbookResponse> {
-    return this.request<BatchOrderbookResponse>(
-      '/api/v1/batch/orderbook',
-      signal,
-      this.retries,
-      'POST',
-      { requests },
-    );
-  }
-
-  /**
    * `POST /api/v1/simulate/route` — dry-run a route to see expected output,
    * price impact, and slippage before committing to an on-chain swap.
    *
@@ -485,9 +464,6 @@ export class StellarRouteClient {
 
   /**
    * `GET /api/v1/price-history/{base}/{quote}` — fetch price history for charting/sparklines.
-=======
-   * `GET /api/v1/price-history/{base}/{quote}` ? fetch price history for charting/sparklines.
->>>>>>> origin/main
    *
    * @param base  Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
    * @param quote Quote asset identifier.

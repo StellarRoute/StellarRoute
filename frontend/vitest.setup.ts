@@ -63,7 +63,12 @@ vi.mock("@/components/providers/wallet-provider", () => ({
     resyncWallet: vi.fn(),
     dismissSyncMismatch: vi.fn(),
     isTransactionPending: false,
+    setTransactionPending: vi.fn(),
     isConnected: false,
+    connect: vi.fn(),
+    address: null,
+    capabilities: null,
+    refreshCapabilities: vi.fn(),
   }),
 }));
 

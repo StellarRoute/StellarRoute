@@ -15,7 +15,7 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
  *   of live API metrics.
  */
 export function AnalyticsPageClient() {
-  const analyticsEnabled = useFeatureFlag("analytics");
+  const { enabled: analyticsEnabled } = useFeatureFlag("analytics");
 
   if (!analyticsEnabled) {
     return (

@@ -8,7 +8,8 @@ export type FlagName =
   | "swap_ui_v2"
   | "transaction_history"
   | "advanced_slippage"
-  | "real_xdr";
+  | "real_xdr"
+  | "analytics";
 
 export type FlagMap = Partial<Record<FlagName, boolean>>;
 
@@ -33,7 +34,11 @@ function readEnvFlag(flag: FlagName): boolean | undefined {
           ? process.env.NEXT_PUBLIC_FLAG_SWAP_UI_V2
           : flag === 'transaction_history'
             ? process.env.NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY
-            : process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
+            : flag === 'real_xdr'
+              ? process.env.NEXT_PUBLIC_FLAG_REAL_XDR
+              : flag === 'analytics'
+                ? process.env.NEXT_PUBLIC_FEATURE_ANALYTICS
+                : process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
   if (val === undefined) return undefined;
   return val === 'true' || val === '1';
 }

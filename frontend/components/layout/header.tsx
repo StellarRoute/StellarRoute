@@ -29,7 +29,7 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag"
 export function Header() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
-  const analyticsEnabled = useFeatureFlag("analytics")
+  const { enabled: analyticsEnabled } = useFeatureFlag("analytics")
   const navItems = React.useMemo(
     () => getNavItems({ analyticsEnabled }),
     [analyticsEnabled],

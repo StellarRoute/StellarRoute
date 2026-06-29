@@ -63,18 +63,24 @@ jobs:
             suite: lib
           - label: app
             suite: app
-          - label: components (1/4)
+          - label: components (swap-card)
+            suite: components/swap/SwapCard.test.tsx
+          - label: components (swap)
+            suite: components/swap
+            exclude_args: --exclude '**/SwapCard.test.tsx'
+          - label: components (shared)
+            suite: components/shared
+          - label: components (providers)
+            suite: components/providers
+          - label: components (settings)
+            suite: components/settings
+          - label: components (rest)
             suite: components
-            shard: 1/4
-          - label: components (2/4)
-            suite: components
-            shard: 2/4
-          - label: components (3/4)
-            suite: components
-            shard: 3/4
-          - label: components (4/4)
-            suite: components
-            shard: 4/4
+            exclude_args: >-
+              --exclude 'components/swap/**'
+              --exclude 'components/shared/**'
+              --exclude 'components/providers/**'
+              --exclude 'components/settings/**'
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -87,8 +93,8 @@ jobs:
         run: npm ci --prefix frontend
       - name: Run frontend tests
         run: |
-          if [ "${{ matrix.suite }}" = "components" ]; then
-            npm --prefix frontend run test -- components --pool=forks --maxWorkers=1 --shard=${{ matrix.shard }}
+          if [[ "${{ matrix.suite }}" == components* ]]; then
+            npm --prefix frontend run test -- ${{ matrix.suite }} --pool=forks --maxWorkers=1 ${{ matrix.exclude_args }}
           else
             npm --prefix frontend run test -- ${{ matrix.suite }}
           fi

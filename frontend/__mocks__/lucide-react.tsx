@@ -76,6 +76,7 @@ export const Inbox = Icon;
 export const Plus = Icon;
 export const Shield = Icon;
 export const ShieldAlert = Icon;
+export const ShieldOff = Icon;
 export const Compass = Icon;
 export const Zap = Icon;
 export const Maximize2 = Icon;

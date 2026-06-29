@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi, Mock } from 'vitest';
 import { SwapCard } from './SwapCard';
 import { fireEvent } from '@testing-library/react';
 import * as useSwapStateModule from '@/hooks/useSwapState';
+import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
+import { signTransactionWithWallet } from '@/lib/wallet';
+import { submitToHorizon } from '@/lib/wallet/submit';
 
 import { WalletProvider } from '@/components/providers/wallet-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
@@ -17,6 +20,25 @@ vi.mock('next/navigation', () => ({
     get: vi.fn(),
   }),
 }));
+
+const { mockWalletState } = vi.hoisted(() => ({
+  mockWalletState: {
+    capabilities: null as {
+      checkedAt: number;
+      statuses: Array<{
+        capability: string;
+        allowed: boolean;
+        reason?: string;
+        resolution?: string;
+      }>;
+    } | null,
+  },
+}));
+
+const defaultAllowedCapabilities = {
+  checkedAt: Date.now(),
+  statuses: [{ capability: 'sign_transaction', allowed: true }],
+};
 
 vi.mock('./ShareQuoteButton', () => ({
   ShareQuoteButton: () => <button data-testid="mock-share-quote-button">Share</button>,
@@ -58,7 +80,7 @@ vi.mock('@/components/providers/wallet-provider', () => {
         accountSwitchState: { isDetecting: false, hasChanged: false, previousAddress: null },
         isTransactionPending: false,
         setTransactionPending: React.useCallback(() => {}, []),
-        capabilities: null,
+        capabilities: mockWalletState.capabilities,
         refreshCapabilities: React.useCallback(async () => {}, []),
         syncMismatch: false,
         resyncWallet: React.useCallback(async () => {}, []),
@@ -76,6 +98,26 @@ vi.mock('@/lib/wallet', () => ({
   signTransactionWithWallet: vi.fn(),
 }));
 
+vi.mock('@/lib/wallet/xdr-builder', () => ({
+  buildPathPaymentXdr: vi.fn().mockResolvedValue('AAAAtest_unsigned_xdr'),
+  XdrBuildError: class XdrBuildError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+      this.name = 'XdrBuildError';
+    }
+  },
+}));
+
+vi.mock('@/lib/wallet/submit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/wallet/submit')>();
+  return {
+    ...actual,
+    submitToHorizon: vi.fn().mockResolvedValue({ hash: 'test_submit_hash' }),
+  };
+});
+
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <SettingsProvider>
@@ -90,6 +132,10 @@ function setNavigatorOnline(value: boolean) {
     value,
   });
 }
+
+beforeEach(() => {
+  mockWalletState.capabilities = defaultAllowedCapabilities;
+});
 
 describe('SwapCard network resilience and states', () => {
   beforeEach(() => {
@@ -218,6 +264,54 @@ describe('SwapCard network resilience and states', () => {
         name: /insufficient balance/i,
       });
       expect(balanceButton).toBeDisabled();
+    });
+  });
+
+  it('shows permission blocked state when sign_transaction capability is denied', async () => {
+    const user = userEvent.setup();
+    mockWalletState.capabilities = {
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'request_access', allowed: true },
+        { capability: 'view_address', allowed: true },
+        { capability: 'view_network', allowed: false, reason: 'xBull only supports testnet' },
+        {
+          capability: 'sign_transaction',
+          allowed: false,
+          reason: 'xBull only supports testnet',
+          resolution: 'Switch app to testnet',
+        },
+      ],
+    };
+
+    renderWithProviders(<SwapCard />);
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '5' } });
+
+    await waitFor(() => {
+      const blockedButton = screen.getByRole('button', {
+        name: /wallet permissions required/i,
+      });
+      expect(blockedButton).toBeDisabled();
+    });
+  });
+
+  it('blocks swap while wallet capabilities are unresolved', async () => {
+    const user = userEvent.setup();
+    mockWalletState.capabilities = null;
+    renderWithProviders(<SwapCard />);
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '5' } });
+
+    await waitFor(() => {
+      const blockedButton = screen.getByRole('button', {
+        name: /wallet permissions required/i,
+      });
+      expect(blockedButton).toBeDisabled();
     });
   });
 });
@@ -687,5 +781,81 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
     await waitFor(() => {
       expect(screen.getByText(/50\.0000000/)).toBeInTheDocument();
     });
+  });
+});
+
+describe('SwapCard Freighter signing wiring (#735)', () => {
+  const quoteFetchMock = () =>
+    vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/accounts/')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              sequence: '12345',
+              balances: [{ balance: '50.0000000', asset_type: 'native' }],
+            }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            total: '9.5',
+            price_impact: '0.5',
+            path: [],
+            price: '0.95',
+            amount: '10',
+          }),
+      });
+    }) as Mock;
+
+  beforeEach(() => {
+    vi.mocked(buildPathPaymentXdr).mockResolvedValue('AAAAtest_unsigned_xdr');
+    vi.mocked(signTransactionWithWallet).mockResolvedValue('AAAAtest_signed_xdr');
+    vi.mocked(submitToHorizon).mockResolvedValue({ hash: 'test_submit_hash' });
+    global.fetch = quoteFetchMock();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it('calls buildPathPaymentXdr and signTransactionWithWallet when swap is confirmed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SwapCard />);
+
+    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '10' } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /review swap/i })
+      ).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /review swap/i }));
+
+    await waitFor(() => {
+      expect(buildPathPaymentXdr).toHaveBeenCalled();
+      expect(signTransactionWithWallet).toHaveBeenCalledWith(
+        'AAAAtest_unsigned_xdr',
+        'freighter',
+        expect.any(String)
+      );
+    });
+  });
+
+  it('does not call signTransactionWithWallet when wallet is disconnected', async () => {
+    renderWithProviders(<SwapCard />);
+
+    expect(
+      screen.getByRole('button', { name: /connect wallet/i })
+    ).toBeInTheDocument();
+    expect(signTransactionWithWallet).not.toHaveBeenCalled();
+    expect(buildPathPaymentXdr).not.toHaveBeenCalled();
   });
 });

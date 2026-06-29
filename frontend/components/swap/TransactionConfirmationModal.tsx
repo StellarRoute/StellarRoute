@@ -23,6 +23,7 @@ import type { TransactionStatus } from '@/types/transaction';
 import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import { PostSwapSuccessScreen } from './PostSwapSuccessScreen';
 import { useSwapI18n } from '@/lib/swap-i18n';
+import { getTraderErrorCopy } from '@/lib/api/trader-error-copy';
 
 export interface TransactionConfirmationModalProps {
   isOpen: boolean;
@@ -137,6 +138,20 @@ export function TransactionConfirmationModal({
     },
   };
   const config = { ...iconConfig, ...statusTextConfig[status] };
+  const failedCopy =
+    status === 'failed' && errorMessage
+      ? getTraderErrorCopy(new Error(errorMessage))
+      : null;
+  const droppedCopy =
+    status === 'dropped'
+      ? getTraderErrorCopy(new Error('Transaction timed out'))
+      : null;
+  const accessibleDescription =
+    status === 'failed' && failedCopy
+      ? `${failedCopy.headline}. ${failedCopy.recoveryAction}`
+      : status === 'dropped' && droppedCopy
+        ? `${droppedCopy.explanation} ${droppedCopy.recoveryAction}`
+        : config.description;
 
   // Move focus to primary action button on each status transition
   useEffect(() => {
@@ -163,7 +178,7 @@ export function TransactionConfirmationModal({
       >
         {/* Visually hidden state description for aria-describedby */}
         <p id="tcm-state-desc" className="sr-only">
-          {config.description}
+          {accessibleDescription}
         </p>
 
         {/* aria-live region for screen reader announcements */}
@@ -192,9 +207,26 @@ export function TransactionConfirmationModal({
               {config.heading}
             </DialogTitle>
             <DialogDescription className="text-center text-muted-foreground pt-2">
-              {status === 'failed' && errorMessage
-                ? errorMessage
-                : config.description}
+              {status === 'failed' && failedCopy ? (
+                <span className="space-y-1 block">
+                  <span className="block font-medium text-foreground">
+                    {failedCopy.headline}
+                  </span>
+                  <span className="block">{failedCopy.recoveryAction}</span>
+                  {errorMessage &&
+                    errorMessage !== failedCopy.headline &&
+                    !errorMessage.includes(failedCopy.headline) && (
+                      <span className="block text-xs opacity-80">{errorMessage}</span>
+                    )}
+                </span>
+              ) : status === 'dropped' && droppedCopy ? (
+                <span className="space-y-1 block">
+                  <span className="block">{droppedCopy.explanation}</span>
+                  <span className="block">{droppedCopy.recoveryAction}</span>
+                </span>
+              ) : (
+                config.description
+              )}
             </DialogDescription>
           </DialogHeader>
 

@@ -1,54 +1,141 @@
-//! Graph optimization and route compaction filters
-
 use crate::pathfinder::LiquidityEdge;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-/// Compactor evaluates dense overlapping paths to drop low-performing nodes
-pub struct GraphCompactor;
-
-impl GraphCompactor {
-    /// Condense structural routes and inject safe defaults across edge profiles
-    pub fn compact_edges(edges: Vec<LiquidityEdge>) -> Vec<LiquidityEdge> {
-        let mut compacted = Vec::with_capacity(edges.len());
-        
-        for mut edge in edges {
-            // Reconcile and retain active parameters while ensuring option slots persist
-            if edge.liquidity > 0 {
-                // If fields were left blank or drifted, initialize safely as None
-                if edge.anomaly_score.is_none() {
-                    edge.anomaly_score = None;
-                }
-                if edge.anomaly_reasons.is_none() {
-                    edge.anomaly_reasons = None;
-                }
-                compacted.push(edge);
-            }
-        }
-        compacted
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CompactedEdge {
+    pub to_idx: u32,
+    pub venue_type_idx: u8, // Index into a small static table or enum
+    pub venue_ref: String,
+    pub liquidity: i128,
+    pub price: f64,
+    pub fee_bps: u32,
+    pub anomaly_score: f32,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct CompactedGraph {
+    pub assets: Vec<String>,
+    pub asset_map: HashMap<String, u32>,
+    pub edges: Vec<CompactedEdge>,
+    pub offsets: Vec<usize>, // offsets[i] is the start of edges for assets[i]
+}
 
-    #[test]
-    fn test_compaction_retains_anomaly_integrity() {
-        let test_edges = vec![
-            LiquidityEdge {
-                from: "XLM".to_string(),
-                to: "USDC".to_string(),
-                venue_type: "amm".to_string(),
-                venue_ref: "compact_1".to_string(),
-                liquidity: 50_000_000,
-                price: 0.12,
-                fee_bps: 30,
-                anomaly_score: Some(0.85),
-                anomaly_reasons: Some(vec!["high_slippage_risk".to_string()]),
+impl CompactedGraph {
+    pub fn from_edges(edges: Vec<LiquidityEdge>) -> Self {
+        let mut asset_map = HashMap::new();
+        let mut assets = Vec::new();
+
+        let mut get_asset_idx = |asset: &String| {
+            if let Some(&idx) = asset_map.get(asset) {
+                idx
+            } else {
+                let idx = assets.len() as u32;
+                asset_map.insert(asset.clone(), idx);
+                assets.push(asset.clone());
+                idx
             }
-        ];
-        
-        let processed = GraphCompactor::compact_edges(test_edges);
-        assert_eq!(processed.len(), 1);
-        assert_eq!(processed[0].anomaly_score, Some(0.85));
+        };
+
+        // First pass: identify all assets
+        for edge in &edges {
+            get_asset_idx(&edge.from);
+            get_asset_idx(&edge.to);
+        }
+
+        // Group edges by from_idx
+        let mut grouped_edges: HashMap<u32, Vec<CompactedEdge>> = HashMap::new();
+        for edge in edges {
+            let from_idx = *asset_map.get(&edge.from).unwrap();
+            let to_idx = *asset_map.get(&edge.to).unwrap();
+
+            let c_edge = CompactedEdge {
+                to_idx,
+                venue_type_idx: if edge.venue_type == "amm" { 1 } else { 0 },
+                venue_ref: edge.venue_ref,
+                liquidity: edge.liquidity,
+                price: edge.price,
+                fee_bps: edge.fee_bps,
+                anomaly_score: 0.0_f32,
+            };
+            grouped_edges.entry(from_idx).or_default().push(c_edge);
+        }
+
+        let mut final_edges = Vec::new();
+        let mut offsets = Vec::with_capacity(assets.len() + 1);
+
+        for i in 0..assets.len() {
+            offsets.push(final_edges.len());
+            if let Some(mut neighbors) = grouped_edges.remove(&(i as u32)) {
+                final_edges.append(&mut neighbors);
+            }
+        }
+        offsets.push(final_edges.len());
+
+        Self {
+            assets,
+            asset_map,
+            edges: final_edges,
+            offsets,
+        }
+    }
+
+    pub fn get_neighbors(&self, asset_idx: u32) -> &[CompactedEdge] {
+        let start = self.offsets[asset_idx as usize];
+        let end = self.offsets[asset_idx as usize + 1];
+        &self.edges[start..end]
+    }
+
+    pub fn asset_count(&self) -> usize {
+        self.assets.len()
+    }
+
+    pub fn update_edge(
+        &mut self,
+        from: &str,
+        venue_ref: &str,
+        liquidity: i128,
+        price: f64,
+    ) -> bool {
+        if let Some(&from_idx) = self.asset_map.get(from) {
+            let start = self.offsets[from_idx as usize];
+            let end = self.offsets[from_idx as usize + 1];
+            for edge in &mut self.edges[start..end] {
+                if edge.venue_ref == venue_ref {
+                    edge.liquidity = liquidity;
+                    edge.price = price;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Convert compacted graph back to LiquidityEdge vector
+    pub fn to_edges(&self) -> Vec<LiquidityEdge> {
+        let mut edges = Vec::new();
+        for (from_idx, from_asset) in self.assets.iter().enumerate() {
+            let start = self.offsets[from_idx];
+            let end = self.offsets[from_idx + 1];
+            for compact_edge in &self.edges[start..end] {
+                let to_asset = &self.assets[compact_edge.to_idx as usize];
+                edges.push(LiquidityEdge {
+                    from: from_asset.clone(),
+                    to: to_asset.clone(),
+                    venue_type: if compact_edge.venue_type_idx == 1 {
+                        "amm".to_string()
+                    } else {
+                        "sdex".to_string()
+                    },
+                    venue_ref: compact_edge.venue_ref.clone(),
+                    liquidity: compact_edge.liquidity,
+                    price: compact_edge.price,
+                    fee_bps: compact_edge.fee_bps,
+                    anomaly_score: None,
+                    anomaly_reasons: None,
+                });
+            }
+        }
+        edges
     }
 }

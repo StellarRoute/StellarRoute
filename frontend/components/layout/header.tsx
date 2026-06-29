@@ -5,40 +5,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
 
-<<<<<<< HEAD
-import { Button } from "@/components/ui/button"
-//import { WalletButton } from "@/components/shared/WalletButton"
-import { NetworkBadge } from "@/components/shared/network-badge"
-import { MobileNav } from "./mobile-nav"
-import { cn } from "@/lib/utils"
-import { ROUTES } from "@/lib/constants"
-import { ThemeToggle } from "../ThemeToggle"
-
-interface NavItem {
-  label: string
-  href: string
-  disabled?: boolean
-}
-
-const navItems: NavItem[] = [
-  { label: "Swap", href: ROUTES.SWAP },
-  { label: "Orderbook", href: "/orderbook" },
-  { label: "History", href: "/history" },
-  // Future routes - disabled for now
-  // { label: "Analytics", href: "/analytics", disabled: true },
-  // { label: "Docs", href: "/docs", disabled: true },
-]
-=======
 import { Button } from '@/components/ui/button';
 import { WalletButton } from '@/components/shared/wallet-button';
 import { NetworkBadge } from '@/components/shared/network-badge';
 import { MobileNav } from './mobile-nav';
 import { getNavItems } from './nav-items';
 import { cn } from '@/lib/utils';
+import { ROUTES } from '@/lib/constants';
 import { ThemeToggle } from '../ThemeToggle';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
->>>>>>> origin/main
 
 /**
  * Main header/navbar component

@@ -8,31 +8,12 @@ use sqlx::Row;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tracing::{debug, warn};
 
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-
 use crate::{
     cache,
     error::{ApiError, Result},
-    models::{request::AssetPath, AssetInfo},
+    models::{request::AssetPath, AssetInfo, PriceHistoryPoint, PriceHistoryResponse},
     state::AppState,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct PriceHistoryPoint {
-    pub timestamp: i64,
-    pub price: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct PriceHistoryResponse {
-    pub base_asset: AssetInfo,
-    pub quote_asset: AssetInfo,
-    pub window: String,
-    pub source: String,
-    pub generated_at: i64,
-    pub points: Vec<PriceHistoryPoint>,
-}
 
 /// Return a 24h historical price series for a selected trading pair.
 #[utoipa::path(

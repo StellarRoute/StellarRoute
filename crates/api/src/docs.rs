@@ -7,11 +7,10 @@ use crate::models::{
     BatchQuoteItemResult, BatchQuoteResponse, CacheFlushResponse, CacheMetricsResponse,
     DataFreshness, DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo,
     ExclusionDiagnostics, ExclusionReason, HealthResponse, OrderbookLevel, OrderbookResponse,
-    PairsResponse, PathStep, QuoteExpirationWebhookPayload,
-    QuoteExpirationWebhookRegistrationResponse, QuoteRationaleMetadata, QuoteResponse,
-    RouteResponse, TradingPair, VenueEvaluation,
+    PairsResponse, PathStep, PriceHistoryPoint, PriceHistoryResponse,
+    QuoteExpirationWebhookPayload, QuoteExpirationWebhookRegistrationResponse,
+    QuoteRationaleMetadata, QuoteResponse, RouteResponse, TradingPair, VenueEvaluation,
 };
-use crate::routes::price_history::{PriceHistoryPoint, PriceHistoryResponse};
 
 /// OpenAPI documentation
 #[derive(OpenApi)]

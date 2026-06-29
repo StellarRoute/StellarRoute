@@ -85,6 +85,48 @@ const API_ERROR_COPY: Record<ApiErrorCode, TraderErrorCopy> = {
   unknown_error: DEFAULT_COPY,
 };
 
+function inferHorizonError(errorMessage: string): TraderErrorCopy | null {
+  const text = errorMessage.toLowerCase();
+
+  if (text.includes('tx_bad_seq')) {
+    return {
+      headline: 'Account sequence is out of date',
+      explanation: 'Your wallet account changed while this swap was being prepared.',
+      recoveryAction: 'Refresh the quote and submit the swap again.',
+      ctaLabel: 'Refresh and retry',
+    };
+  }
+
+  if (text.includes('op_no_trust')) {
+    return {
+      headline: 'Missing trustline for this asset',
+      explanation: 'Your account cannot receive the destination asset yet.',
+      recoveryAction: 'Add the required trustline in your wallet, then retry.',
+      ctaLabel: 'Add trustline and retry',
+    };
+  }
+
+  if (text.includes('op_underfunded')) {
+    return {
+      headline: 'Insufficient funds for this swap',
+      explanation: 'Your account balance cannot cover the trade amount and network fees.',
+      recoveryAction: 'Lower the amount or add funds, then try again.',
+      ctaLabel: 'Adjust amount',
+    };
+  }
+
+  if (text.includes('transaction timed out') || text.includes('timed out')) {
+    return {
+      headline: 'Transaction timed out',
+      explanation: 'Horizon did not confirm your transaction within 60 seconds.',
+      recoveryAction: 'You can resubmit the swap or dismiss and refresh the quote.',
+      ctaLabel: 'Resubmit swap',
+    };
+  }
+
+  return null;
+}
+
 function inferWalletError(errorMessage: string): TraderErrorCopy | null {
   const text = errorMessage.toLowerCase();
 
@@ -147,6 +189,11 @@ export function getTraderErrorCopy(error: unknown): TraderErrorCopy {
   }
 
   if (error instanceof Error) {
+    const horizonCopy = inferHorizonError(error.message);
+    if (horizonCopy) {
+      return horizonCopy;
+    }
+
     const walletCopy = inferWalletError(error.message);
     if (walletCopy) {
       return walletCopy;

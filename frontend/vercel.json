@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "installCommand": "npm install",
+  "regions": ["sfo1"],
+  "functions": {
+    "app/**/*.{js,ts,jsx,tsx}": {
+      "runtime": "@vercel/node@3"
+    }
+  }
+}

@@ -94,6 +94,7 @@ function parseRetryAfterMs(headerValue: string | null): number | null {
 
 interface FetchOptions {
   signal?: AbortSignal;
+  window?: string;
 }
 
 interface ErrorBody {
@@ -486,7 +487,10 @@ export class StellarRouteClient {
     quote: string,
     opts?: FetchOptions,
   ): Promise<PriceHistoryResponse> {
-    const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
+    const params = new URLSearchParams();
+    if (opts?.window) params.set('window', opts.window);
+    const qs = params.toString();
+    const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${qs ? `?${qs}` : ''}`;
     return this.request<PriceHistoryResponse>(path, opts);
   }
 

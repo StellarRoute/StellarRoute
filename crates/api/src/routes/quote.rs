@@ -10,7 +10,7 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, Json};
+use axum::{extract::State, response::IntoResponse, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;

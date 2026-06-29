@@ -795,8 +795,8 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       const target = event.target as HTMLElement | null;
       const isEditable = target
         ? target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
         : false;
 
       if (event.key === '?' && !isEditable) {
@@ -1151,11 +1151,11 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <span className="text-xs text-blue-500 font-medium">
                 {quote.hasPendingRetry
                   ? t('swap.card.recoveringQuoteCountdown', {
-                      seconds: Math.max(
-                        1,
-                        Math.ceil(quote.pendingRetryRemainingMs / 1000)
-                      ),
-                    })
+                    seconds: Math.max(
+                      1,
+                      Math.ceil(quote.pendingRetryRemainingMs / 1000)
+                    ),
+                  })
                   : t('swap.card.recoveringQuote')}
               </span>
               {quote.hasPendingRetry && (

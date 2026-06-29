@@ -7,11 +7,11 @@ import {
 
 describe('useFormStateRecovery', () => {
   beforeEach(() => {
-    sessionStorage.clear();
+    localStorage.clear();
   });
 
   afterEach(() => {
-    sessionStorage.clear();
+    localStorage.clear();
   });
 
   it('should save and retrieve form state', () => {
@@ -68,11 +68,11 @@ describe('useFormStateRecovery', () => {
     });
 
     // Manually set expired timestamp
-    const stored = sessionStorage.getItem('stellar_form_state');
+    const stored = localStorage.getItem('stellar-route-trade-form');
     if (stored) {
       const parsed = JSON.parse(stored);
-      parsed.timestamp = Date.now() - 6 * 60 * 1000; // 6 minutes ago
-      sessionStorage.setItem('stellar_form_state', JSON.stringify(parsed));
+      parsed.savedAt = Date.now() - 6 * 60 * 1000; // 6 minutes ago
+      localStorage.setItem('stellar-route-trade-form', JSON.stringify(parsed));
     }
 
     // Create new hook instance to bypass ref cache

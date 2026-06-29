@@ -23,6 +23,7 @@ export interface Settings {
   activeProfileId: string;
   accentColor: AccentColor;
   fontScale: FontScale;
+  /** Accessibility high contrast mode. */
   highContrast: boolean;
 }
 

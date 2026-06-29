@@ -1,9 +1,6 @@
 name: SLO Probes
 
 on:
-  schedule:
-    # Run every 5 minutes on main to continuously validate SLO compliance
-    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       base_url:

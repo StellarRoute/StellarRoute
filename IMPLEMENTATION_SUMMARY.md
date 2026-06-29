@@ -159,7 +159,6 @@ Route (app)
 ### Milestone
 **M4 — Marketing UI** ✅
 
-<<<<<<< Updated upstream
 ### Wave Program
 Ready for Stellar Wave program submission with **Trivial** complexity rating.
 

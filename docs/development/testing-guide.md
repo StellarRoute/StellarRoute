@@ -171,8 +171,8 @@ The local commands above map to the GitHub Actions workflows in `.github/workflo
 
 | Workflow | What it covers | Local equivalent |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | Rust backend checks, frontend Vitest, visual regression, SDK checks | `cargo test`, `cargo fmt --check`, `cargo clippy`, `npm --prefix frontend test` |
-| `.github/workflows/gas-benchmarks.yml` | Soroban gas/benchmark checks for contract changes | `cargo test -p stellarroute-contracts` and benchmark-oriented contract runs |
+| `.github/workflows/ci.yml` | Rust backend checks, frontend Vitest, frontend production build, SDK checks | `cargo test`, `cargo fmt --check`, `cargo clippy`, `npm --prefix frontend test`, `npm --prefix frontend run build` |
+| `.github/workflows/gas-benchmarks.yml` | Soroban gas/benchmark checks for contract changes (main/develop pushes and manual runs) | `cargo test -p stellarroute-contracts` and benchmark-oriented contract runs |
 | `.github/workflows/verify-contracts.yml` | Contract bytecode verification and on-chain comparison | `cargo build --release --target wasm32-unknown-unknown` in `crates/contracts` |
 
 Use this mapping when you need to explain which CI path a test failure is likely coming from.

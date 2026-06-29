@@ -28,12 +28,25 @@ pub struct LiquidityEdge {
     pub venue_type: String,
     pub venue_ref: String,
     pub liquidity: i128,
+    #[serde(default)]
     pub price: f64,
+    #[serde(default = "default_fee_bps")]
     pub fee_bps: u32,
+<<<<<<< HEAD
     #[serde(default)]
     pub anomaly_score: f64,
     #[serde(default)]
     pub anomaly_reasons: Vec<String>,
+=======
+    /// Score indicating routing irregularities or flash-loan anomalies
+    pub anomaly_score: Option<f64>,
+    /// Categorized structural anomalies or reasons for transaction flags
+    pub anomaly_reasons: Option<Vec<String>>,
+}
+
+fn default_fee_bps() -> u32 {
+    30
+>>>>>>> origin/main
 }
 
 /// Represents a path through liquidity sources

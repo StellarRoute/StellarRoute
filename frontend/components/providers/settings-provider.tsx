@@ -1,8 +1,20 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react';
 import { useTheme } from 'next-themes';
-import { Settings, DEFAULT_SETTINGS, ThemeSetting, SlippageProfile } from '@/types/settings';
+import {
+  Settings,
+  DEFAULT_SETTINGS,
+  ThemeSetting,
+  SlippageProfile,
+  ACCENT_COLORS,
+} from '@/types/settings';
 import { getUserLocale } from '@/lib/formatting';
 
 const STORAGE_KEY = 'stellar_route_settings';
@@ -22,7 +34,9 @@ interface SettingsContextType {
   updateHighContrast: (enabled: boolean) => void;
 }
 
-const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+const SettingsContext = createContext<SettingsContextType | undefined>(
+  undefined
+);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const { theme, setTheme } = useTheme();
@@ -34,7 +48,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return {
         ...DEFAULT_SETTINGS,
         ...parsed,
-        theme: (theme as ThemeSetting) || parsed.theme || DEFAULT_SETTINGS.theme,
+        theme:
+          (theme as ThemeSetting) || parsed.theme || DEFAULT_SETTINGS.theme,
         locale: parsed.locale || getUserLocale(),
       };
     } catch (e) {
@@ -52,6 +67,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
+<<<<<<< HEAD
   useEffect(() => {
     document.documentElement.classList.toggle('high-contrast', settings.highContrast);
     return () => {
@@ -60,6 +76,52 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [settings.highContrast]);
 
   const isValidSlippage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 50;
+=======
+  // Apply accent color variables on change
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const hex = ACCENT_COLORS[settings.accentColor];
+      if (hex) {
+        document.documentElement.style.setProperty('--primary', hex);
+        document.documentElement.style.setProperty('--ring', hex);
+      }
+    }
+  }, [settings.accentColor]);
+
+  // Apply font scale size on change (scale * 16px)
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty(
+        'font-size',
+        `${settings.fontScale * 16}px`
+      );
+    }
+  }, [settings.fontScale]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (settings.highContrast) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+  }, [settings.highContrast]);
+
+  // ── Updaters ───────────────────────────────────────────────────────────────
+  // Apply high-contrast class on change
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (settings.highContrast) {
+        document.documentElement.classList.add('high-contrast');
+      } else {
+        document.documentElement.classList.remove('high-contrast');
+      }
+    }
+  }, [settings.highContrast]);
+
+  const isValidSlippage = (value: number) =>
+    Number.isFinite(value) && value >= 0 && value <= 50;
+>>>>>>> origin/main
 
   const updateSlippage = (value: number) => {
     if (!isValidSlippage(value)) {
@@ -119,7 +181,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       slippageProfiles: prev.slippageProfiles.map((p) =>
         p.id === id && !p.isPreset ? { ...p, ...updates } : p
       ),
-      slippageTolerance: prev.activeProfileId === id && updates.value !== undefined ? updates.value : prev.slippageTolerance,
+      slippageTolerance:
+        prev.activeProfileId === id && updates.value !== undefined
+          ? updates.value
+          : prev.slippageTolerance,
     }));
   };
 
@@ -127,15 +192,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => {
       const profile = prev.slippageProfiles.find((p) => p.id === id);
       if (profile?.isPreset) return prev; // Cannot delete preset
-      
+
       const newProfiles = prev.slippageProfiles.filter((p) => p.id !== id);
       let newActiveId = prev.activeProfileId;
       let newSlippage = prev.slippageTolerance;
-      
+
       if (prev.activeProfileId === id) {
         newActiveId = DEFAULT_SETTINGS.activeProfileId;
         const fallback = newProfiles.find((p) => p.id === newActiveId);
-        newSlippage = fallback ? fallback.value : DEFAULT_SETTINGS.slippageTolerance;
+        newSlippage = fallback
+          ? fallback.value
+          : DEFAULT_SETTINGS.slippageTolerance;
       }
 
       return {

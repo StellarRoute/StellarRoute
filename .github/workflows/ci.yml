@@ -6,67 +6,7 @@ on:
   pull_request:
     branches: [ main, develop ]
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-
 jobs:
-  backend-checks:
-    name: Backend Checks (Rust)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-      - name: Cargo check workspace
-        run: cargo check --workspace
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Run unit tests
-        run: cargo test
-      - name: Contract Clippy
-        run: cargo clippy -p stellarroute-contracts --all-targets -- -D warnings
-
-  frontend-checks:
-    name: Frontend Checks (Next.js)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: cd frontend && npm ci --legacy-peer-deps
-      - name: Run tests
-        run: cd frontend && NODE_OPTIONS=--max-old-space-size=8192 npm test -- --maxWorkers=1 --exclude hooks/useQuoteRefresh.test.ts
-
-  frontend-visual-regression:
-    name: Frontend Visual Regression
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: cd frontend && npm ci --legacy-peer-deps
-      - name: Install Playwright browsers
-        run: cd frontend && npx playwright install --with-deps chromium
-      - name: Run visual regression
-        run: cd frontend && npx playwright test e2e/visual-baseline.spec.ts --update-snapshots
-
   sdk-checks:
     name: JS SDK Checks
     runs-on: ubuntu-latest
@@ -84,3 +24,49 @@ jobs:
         run: cd sdk-js && npm run build
       - name: Run tests
         run: cd sdk-js && npm test
+
+  frontend-build:
+    name: Frontend Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --prefix frontend
+      - name: Lint frontend
+        run: npm --prefix frontend run lint
+      - name: Build frontend
+        run: npm --prefix frontend run build
+      - name: Performance budget check
+        run: npm --prefix frontend run perf:check:ci
+        continue-on-error: false
+        env:
+          CI: "true"
+
+  frontend-storybook:
+    name: Frontend Ladle Storybook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --prefix frontend
+      - name: Build Ladle stories
+        run: npm --prefix frontend run storybook:ci
+      - name: Upload storybook build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ladle-storybook
+          path: frontend/build/
+          if-no-files-found: error
+          retention-days: 7

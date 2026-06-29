@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, Download, Eye, EyeOff } from 'lucide-react';
+import { Copy, Download } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -25,25 +25,29 @@ import {
   formatDiagnosticsForDisplay,
   generateRequestId,
   redactSensitiveFields,
-  type QuoteDiagnostics,
 } from '@/lib/diagnostics';
 import type { PriceQuote } from '@/types';
 import { toast } from 'sonner';
 
 interface DiagnosticsPanelProps {
   quote: PriceQuote | undefined;
+  requestId?: string | null;
+  lastQuotedAtMs?: number | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export function DiagnosticsPanel({
   quote,
+  requestId: requestIdProp,
+  lastQuotedAtMs,
   isOpen,
   onOpenChange,
 }: DiagnosticsPanelProps) {
   const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
-  const [showSensitiveFields, setShowSensitiveFields] = useState(false);
-  const [requestId] = useState(() => generateRequestId());
+  const [fallbackRequestId] = useState(() => generateRequestId());
+
+  const requestId = requestIdProp || fallbackRequestId;
 
   if (!quote) {
     return (
@@ -60,15 +64,16 @@ export function DiagnosticsPanel({
     );
   }
 
-  const diagnostics = collectQuoteDiagnostics(quote, requestId);
-  const displayText = formatDiagnosticsForDisplay(diagnostics);
-  const finalDisplayText = showSensitiveFields
-    ? displayText
-    : redactSensitiveFields(displayText);
+  const diagnostics = collectQuoteDiagnostics(quote, requestId, {
+    lastQuotedAtMs,
+  });
+  const displayText = redactSensitiveFields(
+    formatDiagnosticsForDisplay(diagnostics),
+  );
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(finalDisplayText);
+      await navigator.clipboard.writeText(displayText);
       toast.success('Diagnostics copied to clipboard');
     } catch {
       toast.error('Failed to copy to clipboard');
@@ -116,7 +121,7 @@ export function DiagnosticsPanel({
         <div className="space-y-4">
           <Card className="bg-muted/30 p-4">
             <div className="font-mono text-xs whitespace-pre-wrap break-words">
-              {finalDisplayText}
+              {displayText}
             </div>
           </Card>
 
@@ -131,22 +136,11 @@ export function DiagnosticsPanel({
               Copy
             </Button>
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowSensitiveFields(!showSensitiveFields)}
-              className="gap-2"
-            >
-              {showSensitiveFields ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-              {showSensitiveFields ? 'Hide' : 'Show'} Sensitive
-            </Button>
-
             <div className="flex gap-2">
-              <Select value={exportFormat} onValueChange={(value: any) => setExportFormat(value)}>
+              <Select
+                value={exportFormat}
+                onValueChange={(value: 'json' | 'csv') => setExportFormat(value)}
+              >
                 <SelectTrigger className="w-24">
                   <SelectValue />
                 </SelectTrigger>

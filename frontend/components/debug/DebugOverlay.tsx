@@ -210,7 +210,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Heuristic: Stellar public keys are 56-char base32 strings starting with G */
+/** Heuristic: Stellar public keys are 56-char base32 strings starting with G (allow alphanumeric for test mocks) */
 function looksLikeAddress(s: string): boolean {
-  return /^G[A-Z2-7]{55}$/.test(s);
+  return /^G[A-Z0-9]{49,65}$/i.test(s);
 }

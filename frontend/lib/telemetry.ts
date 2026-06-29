@@ -1,29 +1,30 @@
-/**
- * Client-side feature telemetry for route selection behavior
- */
+export const ROUTE_SELECTED_EVENT_NAME = 'stellarroute:route-selected';
+
+export interface RouteTelemetryEvent {
+  venue: string;
+  hopCount: number;
+}
 
 export interface TelemetryConfig {
   enabled: boolean;
 }
 
 export const telemetryConfig: TelemetryConfig = {
-  // Can be disabled via environment variable
   enabled: process.env.NEXT_PUBLIC_TELEMETRY_ENABLED !== 'false',
 };
 
-// Event Schema Version 1.0.0
 export type TelemetryEventVersion = '1.0.0';
-
 export type RouteEventName = 'route_view' | 'route_select' | 'route_confirm';
 
 export interface RouteTelemetryPayload {
-  // Only non-sensitive data is allowed
-  fromAssetCode: string;
-  toAssetCode: string;
-  routeLength: number;
-  priceImpactTier: 'low' | 'medium' | 'high' | 'severe';
-  hasDex: boolean;
-  hasAmm: boolean;
+  fromAssetCode?: string;
+  toAssetCode?: string;
+  routeLength?: number;
+  priceImpactTier?: 'low' | 'medium' | 'high' | 'severe';
+  hasDex?: boolean;
+  hasAmm?: boolean;
+  venue?: string;
+  hopCount?: number;
 }
 
 export interface TelemetryEvent {
@@ -42,29 +43,18 @@ export function getPriceImpactTier(impactPct: string | number): RouteTelemetryPa
   return 'low';
 }
 
-export function emitRouteEvent(
-  eventName: RouteEventName,
-  payload: RouteTelemetryPayload
-) {
-  if (!telemetryConfig.enabled) return;
-
-  const event: TelemetryEvent = {
-    version: '1.0.0',
-    eventName,
-    timestamp: Date.now(),
-    payload,
-  };
-
-  // In a real implementation this would send to an analytics endpoint.
-  // For the scope of this feature, we emit a DOM event that could be picked up
-  // by an analytics integration, and log to debug.
-  console.debug('[Telemetry]', event);
-  
-  if (typeof window !== 'undefined') {
-    try {
-      window.dispatchEvent(new CustomEvent('stellar_route_telemetry', { detail: event }));
-    } catch (e) {
-      // Ignore
-    }
+export function emitRouteEvent(venue: string, hopCount: number): void {
+  if (process.env.NEXT_PUBLIC_TELEMETRY_ENABLED === 'false') {
+    return;
   }
+
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<RouteTelemetryEvent>(ROUTE_SELECTED_EVENT_NAME, {
+      detail: { venue, hopCount },
+    }),
+  );
 }

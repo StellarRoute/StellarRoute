@@ -11,7 +11,6 @@ use tracing::debug;
 
 use crate::{
     error::{ApiError, Result},
-    middleware::RequestId,
     models::{ApiResponse, AssetMetadataBulkResponse, AssetMetadataResponse},
     state::AppState,
 };

@@ -70,7 +70,7 @@ describe('OrderbookPage with highlighting', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Orderbook' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Orderbook/i })).toBeInTheDocument();
     });
 
     // Should not show highlighted indicator
@@ -126,9 +126,13 @@ describe('OrderbookPage with highlighting', () => {
       </TradingPairProvider>
     );
 
+<<<<<<< HEAD
     expect(
       screen.getByText('Market list indexer offline. Displaying local adaptive chart profiling tools.'),
     ).toBeInTheDocument();
+=======
+    expect(screen.getByText(/Market list indexer offline/i)).toBeInTheDocument();
+>>>>>>> origin/main
   });
 
   it.skip('handles empty orderbook gracefully', async () => {

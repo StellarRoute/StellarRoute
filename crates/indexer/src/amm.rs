@@ -41,6 +41,9 @@ impl Default for AmmConfig {
     }
 }
 
+const UPSERT_AMM_POOL_RESERVE_SQL: &str =
+    "SELECT upsert_amm_pool_reserve($1, $2, $3, $4, $5, $6, $7, $8, $9)";
+
 /// AMM pool aggregator service
 pub struct AmmAggregator {
     config: AmmConfig,
@@ -375,7 +378,7 @@ impl AmmAggregator {
     async fn update_pool_reserve(&self, reserve: &PoolReserve) -> Result<()> {
         let pool = self.db.pool();
         let trace_context = TraceContext::current();
-        sqlx::query("SELECT upsert_amm_pool_reserve($1, $2, $3, $4, $5, $6, $7, $8, $9)")
+        sqlx::query(UPSERT_AMM_POOL_RESERVE_SQL)
             .bind(&reserve.pool_address)
             .bind(reserve.selling_asset_id)
             .bind(reserve.buying_asset_id)
@@ -562,6 +565,29 @@ pub fn parse_soroban_pool_state(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Verifies that the SQL call to upsert_amm_pool_reserve uses exactly 9 bind
+    /// parameters, matching the 9-arg Postgres function signature added in migration
+    /// 0011_trace_context_provenance (7 core args + source_trace_id + source_span_id).
+    #[test]
+    fn upsert_amm_pool_reserve_query_has_nine_args() {
+        let count = (1..=20)
+            .filter(|n| UPSERT_AMM_POOL_RESERVE_SQL.contains(&format!("${}", n)))
+            .count();
+        assert_eq!(
+            count, 9,
+            "SQL must bind 9 args: 7 core + trace_id + span_id"
+        );
+    }
+
+    /// Verifies TraceContext fields are present and bindable (non-panicking default).
+    #[test]
+    fn trace_context_default_is_bindable() {
+        let tc = TraceContext::default();
+        // Both fields must be strings (will bind as TEXT in sqlx)
+        let _: &str = &tc.trace_id;
+        let _: &str = &tc.span_id;
+    }
     use stellar_xdr::curr::{
         ContractDataDurability, ContractDataEntry, ContractExecutable, ExtensionPoint, Hash,
         Int128Parts, LedgerEntryData, ScAddress, ScContractInstance, ScMap, ScMapEntry, ScSymbol,

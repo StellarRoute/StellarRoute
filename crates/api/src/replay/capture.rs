@@ -157,6 +157,8 @@ mod tests {
             rationale: None,
             price_impact: None,
             exclusion_diagnostics: None,
+            midpoint: None,
+            spread_bps: None,
             data_freshness: Some(DataFreshness {
                 fresh_count: 1,
                 stale_count: 0,

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import * as freighter from '@stellar/freighter-api';
 import { WalletProvider, useWallet } from './wallet-provider';
 import * as walletLib from '@/lib/wallet';
+import { NETWORK_STORAGE_KEY } from '@/lib/network-policy';
 
 vi.unmock('@/components/providers/wallet-provider');
 
@@ -45,6 +46,7 @@ function TestComponent() {
     isTransactionPending,
     setTransactionPending,
     refreshAccount,
+    setNetwork,
     capabilities,
   } = useWallet();
 
@@ -77,6 +79,7 @@ function TestComponent() {
       <button onClick={() => setTransactionPending(true)}>Start Transaction</button>
       <button onClick={() => setTransactionPending(false)}>End Transaction</button>
       <button onClick={refreshAccount}>Refresh Account</button>
+      <button onClick={() => setNetwork('mainnet')}>Set Mainnet</button>
     </div>
   );
 }
@@ -424,6 +427,77 @@ describe('WalletProvider Account Switching', () => {
       expect(screen.getByTestId("connected").textContent).toBe("Connected");
     });
     expect(screen.getByTestId("walletId").textContent).toBe("freighter");
+  });
+});
+
+describe('WalletProvider network selection', () => {
+  it('persists allowed network changes to localStorage', async () => {
+    process.env.NEXT_PUBLIC_MAINNET_LIMITED = 'true';
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Set Mainnet' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('network').textContent).toBe('mainnet');
+    });
+    expect(window.localStorage.getItem(NETWORK_STORAGE_KEY)).toBe('mainnet');
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
+  });
+
+  it('rejects disallowed mainnet when phase A flag is off', async () => {
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Set Mainnet' }));
+
+    expect(screen.getByTestId('network').textContent).toBe('testnet');
+    expect(window.localStorage.getItem(NETWORK_STORAGE_KEY)).toBeNull();
+    expect(screen.getByTestId('error').textContent).toContain('not available');
+  });
+
+  it('treats wallet network casing as equivalent to app network', async () => {
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
+      address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'TESTNET',
+      isConnected: true,
+    });
+
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Connect Freighter' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('connected').textContent).toBe('Connected');
+    });
+    expect(screen.getByTestId('mismatch').textContent).toBe('false');
+  });
+
+  it('treats Freighter PUBLIC label as mainnet when app is on mainnet', async () => {
+    process.env.NEXT_PUBLIC_MAINNET_LIMITED = 'true';
+
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
+      address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'PUBLIC',
+      isConnected: true,
+    });
+
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Set Mainnet' }));
+    await user.click(screen.getByRole('button', { name: 'Connect Freighter' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('connected').textContent).toBe('Connected');
+    });
+    expect(screen.getByTestId('mismatch').textContent).toBe('false');
+
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
   });
 });
 

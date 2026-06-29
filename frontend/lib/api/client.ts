@@ -534,7 +534,11 @@ function generateFallbackRequestId(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton — use this in hooks and server components
+// Factory + singleton — use factory in network-aware hooks
 // ---------------------------------------------------------------------------
 
-export const stellarRouteClient = new StellarRouteClient();
+export function createStellarRouteClient(baseUrl?: string): StellarRouteClient {
+  return new StellarRouteClient(baseUrl);
+}
+
+export const stellarRouteClient = createStellarRouteClient();

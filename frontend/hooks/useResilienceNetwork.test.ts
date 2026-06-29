@@ -15,9 +15,17 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PriceQuote } from '@/types';
-import { StellarRouteApiError, stellarRouteClient, type QuoteFetchResult } from '@/lib/api/client';
+import { StellarRouteApiError, type QuoteFetchResult } from '@/lib/api/client';
 import { useQuoteRefresh } from '@/hooks/useQuoteRefresh';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+
+const { getQuote } = vi.hoisted(() => ({
+  getQuote: vi.fn(),
+}));
+
+vi.mock('@/components/providers/wallet-provider', () => ({
+  useWallet: () => ({ network: 'testnet' }),
+}));
 
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>(
@@ -25,7 +33,7 @@ vi.mock('@/lib/api/client', async () => {
   );
   return {
     ...actual,
-    stellarRouteClient: { ...actual.stellarRouteClient, getQuote: vi.fn() },
+    createStellarRouteClient: vi.fn(() => ({ getQuote })),
   };
 });
 
@@ -61,7 +69,7 @@ afterEach(() => {
 
 describe('Resilience: packet loss (aborted requests)', () => {
   it('recovers after two network-abort failures on retry', async () => {
-    const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
+    const getQuoteMock = vi.mocked(getQuote);
     let calls = 0;
     getQuoteMock.mockImplementation(async () => {
       calls += 1;
@@ -86,7 +94,7 @@ describe('Resilience: packet loss (aborted requests)', () => {
   });
 
   it('surfaces error after exhausting all retries', async () => {
-    const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
+    const getQuoteMock = vi.mocked(getQuote);
     getQuoteMock.mockRejectedValue(new Error('Failed to fetch'));
 
     const { result } = renderHook(() =>
@@ -111,7 +119,7 @@ describe('Resilience: packet loss (aborted requests)', () => {
 
 describe('Resilience: extreme latency', () => {
   it('does not fetch when going offline mid-session', async () => {
-    const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
+    const getQuoteMock = vi.mocked(getQuote);
     getQuoteMock.mockResolvedValue(mockQuoteResult());
 
     const { result } = renderHook(() => useOnlineStatus());
@@ -158,7 +166,7 @@ describe('Resilience: extreme latency', () => {
 
 describe('Resilience: server errors (504/5xx)', () => {
   it('treats 504 as a retryable error and recovers', async () => {
-    const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
+    const getQuoteMock = vi.mocked(getQuote);
     let calls = 0;
     getQuoteMock.mockImplementation(async () => {
       calls += 1;
@@ -183,7 +191,7 @@ describe('Resilience: server errors (504/5xx)', () => {
   });
 
   it('does not retry 400 bad-request errors (non-transient)', async () => {
-    const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
+    const getQuoteMock = vi.mocked(getQuote);
     getQuoteMock.mockRejectedValueOnce(
       new StellarRouteApiError(400, 'bad_request', 'Invalid params'),
     );
@@ -211,7 +219,7 @@ describe('Resilience: server errors (504/5xx)', () => {
 
 describe('Resilience: manual recovery', () => {
   it('quote recovers after manual refresh once network is restored', async () => {
-    const getQuoteMock = vi.mocked(stellarRouteClient.getQuote);
+    const getQuoteMock = vi.mocked(getQuote);
 
     // First call fails (network down)
     getQuoteMock.mockRejectedValueOnce(new Error('Failed to fetch'));

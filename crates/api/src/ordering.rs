@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-use crate::models::{RouteCandidate, RouteHop};
+use crate::models::RouteCandidate;
 
 /// Configuration for deterministic route ordering
 #[derive(Debug, Clone, Serialize, Deserialize)]

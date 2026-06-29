@@ -32,6 +32,7 @@ pub async fn cache_metrics(State(state): State<Arc<AppState>>) -> Json<CacheMetr
         hit_ratio,
         stale_quote_rejections,
         stale_inputs_excluded,
+        redis_errors: crate::metrics::redis_error_total(),
     })
 }
 

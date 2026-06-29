@@ -9,6 +9,7 @@ pub mod prewarmer;
 
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError};
 use serde::{de::DeserializeOwned, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, instrument, warn};
@@ -27,10 +28,76 @@ pub use prewarmer::{
     CachePrewarmer, DemandForecaster, KeyDemandEntry, PrewarmError, PrewarmMetrics,
 };
 
+/// Outcome of a cache lookup used to distinguish misses from Redis outages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheLookupOutcome {
+    Hit,
+    Miss,
+    Unavailable,
+}
+
+/// Result of a cache read operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheResult<T> {
+    Hit(T),
+    Miss,
+    Unavailable,
+}
+
+impl<T> CacheResult<T> {
+    pub fn into_option(self) -> Option<T> {
+        match self {
+            Self::Hit(value) => Some(value),
+            Self::Miss | Self::Unavailable => None,
+        }
+    }
+
+    pub fn outcome(&self) -> CacheLookupOutcome {
+        match self {
+            Self::Hit(_) => CacheLookupOutcome::Hit,
+            Self::Miss => CacheLookupOutcome::Miss,
+            Self::Unavailable => CacheLookupOutcome::Unavailable,
+        }
+    }
+}
+
+/// Redis cache subsystem status for health probes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheHealthStatus {
+    Healthy,
+    Degraded,
+    NotConfigured,
+}
+
+impl CacheHealthStatus {
+    pub fn as_component_status(self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Degraded => "degraded",
+            Self::NotConfigured => "not_configured",
+        }
+    }
+}
+
+/// Returns true when a Redis error reflects infrastructure failure rather than a cache miss.
+pub fn is_redis_infrastructure_error(err: &RedisError) -> bool {
+    match err.kind() {
+        redis::ErrorKind::TypeError => false,
+        redis::ErrorKind::IoError | redis::ErrorKind::ClientError => true,
+        _ => err.is_connection_dropped() || err.is_io_error(),
+    }
+}
+
+fn record_lookup_outcome(outcome: CacheLookupOutcome, operation: &str) {
+    if outcome == CacheLookupOutcome::Unavailable {
+        crate::metrics::record_redis_error(operation);
+    }
+}
+
 /// Cache manager for Redis operations
 #[derive(Clone)]
 pub struct CacheManager {
-    client: ConnectionManager,
+    client: Option<ConnectionManager>,
 }
 
 impl CacheManager {
@@ -40,46 +107,104 @@ impl CacheManager {
         let conn = ConnectionManager::new(client).await?;
 
         debug!("Redis cache manager initialized");
-        Ok(Self { client: conn })
+        Ok(Self { client: Some(conn) })
+    }
+
+    /// Create a cache manager from an existing connection (used in tests).
+    pub fn from_connection(client: ConnectionManager) -> Self {
+        Self {
+            client: Some(client),
+        }
+    }
+
+    /// Create a cache manager that simulates a Redis outage for chaos tests.
+    pub fn simulated_outage() -> Self {
+        Self { client: None }
+    }
+
+    fn record_unavailable(&self, operation: &str) {
+        record_lookup_outcome(CacheLookupOutcome::Unavailable, operation);
+    }
+
+    /// Probe Redis availability for health checks.
+    pub async fn health_status(&mut self) -> CacheHealthStatus {
+        if self.client.is_none() {
+            return CacheHealthStatus::Degraded;
+        }
+        if self.is_healthy().await {
+            CacheHealthStatus::Healthy
+        } else {
+            CacheHealthStatus::Degraded
+        }
     }
 
     /// Get a cached value
     #[instrument(skip(self), fields(cache.hit = tracing::field::Empty))]
-    pub async fn get<T: DeserializeOwned>(&mut self, key: &str) -> Option<T> {
-        match self.client.get::<_, String>(key).await {
+    pub async fn get<T: DeserializeOwned>(&mut self, key: &str) -> CacheResult<T> {
+        let Some(client) = self.client.as_mut() else {
+            warn!(
+                "Redis unavailable during cache get for {}: simulated outage",
+                key
+            );
+            self.record_unavailable("get");
+            return CacheResult::Unavailable;
+        };
+
+        match client.get::<_, String>(key).await {
             Ok(json) => match serde_json::from_str(&json) {
                 Ok(value) => {
                     tracing::Span::current().record("cache.hit", true);
                     debug!("Cache hit for key: {}", key);
-                    Some(value)
+                    CacheResult::Hit(value)
                 }
                 Err(e) => {
                     tracing::Span::current().record("cache.hit", false);
                     warn!("Failed to deserialize cached value for {}: {}", key, e);
-                    None
+                    CacheResult::Miss
                 }
             },
-            Err(_) => {
+            Err(e) => {
                 tracing::Span::current().record("cache.hit", false);
-                debug!("Cache miss for key: {}", key);
-                None
+                if is_redis_infrastructure_error(&e) {
+                    warn!("Redis unavailable during cache get for {}: {}", key, e);
+                    record_lookup_outcome(CacheLookupOutcome::Unavailable, "get");
+                    CacheResult::Unavailable
+                } else {
+                    debug!("Cache miss for key: {}", key);
+                    CacheResult::Miss
+                }
             }
         }
     }
 
     /// Get a cached JSON payload without deserializing.
     #[instrument(skip(self), fields(cache.hit = tracing::field::Empty))]
-    pub async fn get_json(&mut self, key: &str) -> Option<String> {
-        match self.client.get::<_, String>(key).await {
+    pub async fn get_json(&mut self, key: &str) -> CacheResult<String> {
+        let Some(client) = self.client.as_mut() else {
+            warn!(
+                "Redis unavailable during cache get_json for {}: simulated outage",
+                key
+            );
+            self.record_unavailable("get_json");
+            return CacheResult::Unavailable;
+        };
+
+        match client.get::<_, String>(key).await {
             Ok(json) => {
                 tracing::Span::current().record("cache.hit", true);
                 debug!("Raw JSON cache hit for key: {}", key);
-                Some(json)
+                CacheResult::Hit(json)
             }
-            Err(_) => {
+            Err(e) => {
                 tracing::Span::current().record("cache.hit", false);
-                debug!("Raw JSON cache miss for key: {}", key);
-                None
+                if is_redis_infrastructure_error(&e) {
+                    warn!("Redis unavailable during cache get_json for {}: {}", key, e);
+                    record_lookup_outcome(CacheLookupOutcome::Unavailable, "get_json");
+                    CacheResult::Unavailable
+                } else {
+                    debug!("Raw JSON cache miss for key: {}", key);
+                    CacheResult::Miss
+                }
             }
         }
     }
@@ -100,9 +225,28 @@ impl CacheManager {
             ))
         })?;
 
-        self.client
+        let Some(client) = self.client.as_mut() else {
+            warn!(
+                "Redis unavailable during cache set for {}: simulated outage",
+                key
+            );
+            self.record_unavailable("set");
+            return Err(RedisError::from((
+                redis::ErrorKind::IoError,
+                "simulated redis outage",
+            )));
+        };
+
+        client
             .set_ex::<_, _, ()>(key, json, ttl.as_secs())
-            .await?;
+            .await
+            .map_err(|e| {
+                if is_redis_infrastructure_error(&e) {
+                    warn!("Redis unavailable during cache set for {}: {}", key, e);
+                    record_lookup_outcome(CacheLookupOutcome::Unavailable, "set");
+                }
+                e
+            })?;
 
         debug!("Cached key: {} with TTL: {:?}", key, ttl);
         Ok(())
@@ -116,9 +260,28 @@ impl CacheManager {
         json: &str,
         ttl: Duration,
     ) -> Result<(), RedisError> {
-        self.client
+        let Some(client) = self.client.as_mut() else {
+            warn!(
+                "Redis unavailable during cache set_json for {}: simulated outage",
+                key
+            );
+            self.record_unavailable("set_json");
+            return Err(RedisError::from((
+                redis::ErrorKind::IoError,
+                "simulated redis outage",
+            )));
+        };
+
+        client
             .set_ex::<_, _, ()>(key, json, ttl.as_secs())
-            .await?;
+            .await
+            .map_err(|e| {
+                if is_redis_infrastructure_error(&e) {
+                    warn!("Redis unavailable during cache set_json for {}: {}", key, e);
+                    record_lookup_outcome(CacheLookupOutcome::Unavailable, "set_json");
+                }
+                e
+            })?;
 
         debug!("Cached raw JSON key: {} with TTL: {:?}", key, ttl);
         Ok(())
@@ -126,19 +289,70 @@ impl CacheManager {
 
     /// Delete a cached value
     pub async fn delete(&mut self, key: &str) -> Result<(), RedisError> {
-        self.client.del::<_, ()>(key).await?;
+        let Some(client) = self.client.as_mut() else {
+            warn!(
+                "Redis unavailable during cache delete for {}: simulated outage",
+                key
+            );
+            self.record_unavailable("delete");
+            return Err(RedisError::from((
+                redis::ErrorKind::IoError,
+                "simulated redis outage",
+            )));
+        };
+
+        client.del::<_, ()>(key).await.map_err(|e| {
+            if is_redis_infrastructure_error(&e) {
+                warn!("Redis unavailable during cache delete for {}: {}", key, e);
+                record_lookup_outcome(CacheLookupOutcome::Unavailable, "delete");
+            }
+            e
+        })?;
         debug!("Deleted cache key: {}", key);
         Ok(())
     }
 
     /// Delete all cached values that match a Redis glob pattern
     pub async fn delete_by_pattern(&mut self, pattern: &str) -> Result<u64, RedisError> {
-        let keys: Vec<String> = self.client.keys(pattern).await?;
+        let Some(client) = self.client.as_mut() else {
+            warn!(
+                "Redis unavailable during cache delete_by_pattern for {}: simulated outage",
+                pattern
+            );
+            self.record_unavailable("delete_by_pattern");
+            return Err(RedisError::from((
+                redis::ErrorKind::IoError,
+                "simulated redis outage",
+            )));
+        };
+
+        let keys: Vec<String> = match client.keys(pattern).await {
+            Ok(keys) => keys,
+            Err(e) => {
+                if is_redis_infrastructure_error(&e) {
+                    warn!(
+                        "Redis unavailable during cache keys lookup for {}: {}",
+                        pattern, e
+                    );
+                    record_lookup_outcome(CacheLookupOutcome::Unavailable, "delete_by_pattern");
+                }
+                return Err(e);
+            }
+        };
         if keys.is_empty() {
             return Ok(0);
         }
 
-        let deleted: u64 = self.client.del(keys).await?;
+        let deleted: u64 = client.del(keys).await.map_err(|e| {
+            if is_redis_infrastructure_error(&e) {
+                warn!(
+                    "Redis unavailable during cache delete_by_pattern for {}: {}",
+                    pattern, e
+                );
+                record_lookup_outcome(CacheLookupOutcome::Unavailable, "delete_by_pattern");
+            }
+            e
+        })?;
         debug!(
             "Deleted {} cache keys matching pattern: {}",
             deleted, pattern
@@ -148,10 +362,20 @@ impl CacheManager {
 
     /// Check if cache is healthy
     pub async fn is_healthy(&mut self) -> bool {
-        self.client
-            .get::<_, Option<String>>("_health")
-            .await
-            .is_ok()
+        let Some(client) = self.client.as_mut() else {
+            self.record_unavailable("health");
+            return false;
+        };
+
+        match client.get::<_, Option<String>>("_health").await {
+            Ok(_) => true,
+            Err(e) => {
+                if is_redis_infrastructure_error(&e) {
+                    record_lookup_outcome(CacheLookupOutcome::Unavailable, "health");
+                }
+                false
+            }
+        }
     }
 }
 
@@ -163,6 +387,7 @@ pub struct SingleFlight<T> {
 struct InFlight<T> {
     result: tokio::sync::RwLock<Option<Arc<T>>>,
     notify: tokio::sync::Notify,
+    abandoned: AtomicBool,
 }
 
 impl<T: Send + Sync + 'static> SingleFlight<T> {
@@ -188,6 +413,12 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             // 1. Fast-path: check if already in flight
             let mut mg = self.inflight.lock().await;
             if let Some(inflight) = mg.get(key) {
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    mg.remove(key);
+                    drop(mg);
+                    continue;
+                }
+
                 let inflight = Arc::clone(inflight);
                 drop(mg);
 
@@ -205,6 +436,10 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
                 // Wait for notification if not finished yet
                 notified.await;
 
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    continue;
+                }
+
                 // After being notified, loop and re-check state: either the result
                 // is present (return it) or the inflight entry was removed and we
                 // should attempt to become the leader (next loop iteration will do so).
@@ -221,6 +456,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             let inflight = Arc::new(InFlight {
                 result: tokio::sync::RwLock::new(None),
                 notify: tokio::sync::Notify::new(),
+                abandoned: AtomicBool::new(false),
             });
             mg.insert(key.to_string(), Arc::clone(&inflight));
             drop(mg);
@@ -235,14 +471,26 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
 
             impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
                 fn drop(&mut self) {
-                    // Notify waiters so they can re-check state instead of hanging.
+                    let abandoned = self
+                        .inflight
+                        .result
+                        .try_read()
+                        .map(|guard| guard.is_none())
+                        .unwrap_or(true);
+                    if abandoned {
+                        self.inflight.abandoned.store(true, AtomicOrdering::Release);
+                    }
+
                     self.inflight.notify.notify_waiters();
 
                     let inflight_map = self.inflight_map.clone();
                     let key = self.key.clone();
+                    let inflight = Arc::clone(&self.inflight);
                     tokio::spawn(async move {
-                        let mut mg = inflight_map.lock().await;
-                        mg.remove(&key);
+                        if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                            let mut mg = inflight_map.lock().await;
+                            mg.remove(&key);
+                        }
                     });
                 }
             }
@@ -282,6 +530,12 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
         loop {
             let mut mg = self.inflight.lock().await;
             if let Some(inflight) = mg.get(key) {
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    mg.remove(key);
+                    drop(mg);
+                    continue;
+                }
+
                 let inflight = Arc::clone(inflight);
                 drop(mg);
 
@@ -298,6 +552,10 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
 
                 notified.await;
 
+                if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                    continue;
+                }
+
                 let res = inflight.result.read().await;
                 if let Some(result) = res.as_ref() {
                     crate::metrics::record_single_flight_coalesced(label);
@@ -310,6 +568,7 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
             let inflight = Arc::new(InFlight {
                 result: tokio::sync::RwLock::new(None),
                 notify: tokio::sync::Notify::new(),
+                abandoned: AtomicBool::new(false),
             });
             mg.insert(key.to_string(), Arc::clone(&inflight));
             drop(mg);
@@ -323,13 +582,26 @@ impl<T: Send + Sync + 'static> SingleFlight<T> {
 
             impl<T: Send + Sync + 'static> Drop for LeaderGuard<T> {
                 fn drop(&mut self) {
+                    let abandoned = self
+                        .inflight
+                        .result
+                        .try_read()
+                        .map(|guard| guard.is_none())
+                        .unwrap_or(true);
+                    if abandoned {
+                        self.inflight.abandoned.store(true, AtomicOrdering::Release);
+                    }
+
                     self.inflight.notify.notify_waiters();
 
                     let inflight_map = self.inflight_map.clone();
                     let key = self.key.clone();
+                    let inflight = Arc::clone(&self.inflight);
                     tokio::spawn(async move {
-                        let mut mg = inflight_map.lock().await;
-                        mg.remove(&key);
+                        if inflight.abandoned.load(AtomicOrdering::Acquire) {
+                            let mut mg = inflight_map.lock().await;
+                            mg.remove(&key);
+                        }
                     });
                 }
             }
@@ -468,9 +740,9 @@ mod tests {
     async fn test_cache_keys() {
         assert_eq!(keys::pairs_list(), "pairs:list");
         assert_eq!(keys::pairs_list_page(25, 50), "pairs:list:25:50");
-        // orderbook uses canonical pair ordering: "native" < "USDC" lexicographically
-        assert_eq!(keys::orderbook("USDC", "XLM"), "orderbook:native:USDC");
-        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:native:USDC");
+        // orderbook uses canonical pair ordering: "USDC" < "native" lexicographically
+        assert_eq!(keys::orderbook("USDC", "XLM"), "orderbook:USDC:native");
+        assert_eq!(keys::orderbook("XLM", "USDC"), "orderbook:USDC:native");
         assert_eq!(keys::price_history("XLM", "USDC"), "price-history:XLM:USDC");
         assert_eq!(
             keys::quote("xlm", "usdc", "100.0", 50, "sell", true),
@@ -478,19 +750,19 @@ mod tests {
         );
         assert_eq!(
             keys::liquidity_revision("USDC", "xlm"),
-            "liquidity:revision:native:USDC"
+            "liquidity:revision:USDC:native"
         );
         assert_eq!(
             keys::liquidity_revision("xlm", "USDC"),
-            "liquidity:revision:native:USDC"
+            "liquidity:revision:USDC:native"
         );
         assert_eq!(
             keys::quote_pair_pattern("USDC", "XLM"),
-            "*quote:native:USDC:*"
+            "*quote:USDC:native:*"
         );
         assert_eq!(
             keys::quote_pair_pattern("XLM", "usdc"),
-            "*quote:native:USDC:*"
+            "*quote:USDC:native:*"
         );
     }
 
@@ -590,8 +862,29 @@ mod tests {
         // Actually, my current implementation panics for followers if leader didn't set result.
         // Let's refine the implementation to handle this or just verify it doesn't hang.
 
-        // Wait for follower with timeout
+        // Wait for follower with timeout; it should become the new leader after cancellation.
         let result = tokio::time::timeout(std::time::Duration::from_secs(1), follower).await;
         assert!(result.is_ok(), "Follower hung after leader cancellation");
+        assert_eq!(*result.unwrap().expect("follower task failed"), 42);
+    }
+
+    #[test]
+    fn infrastructure_errors_exclude_cache_miss_kinds() {
+        let miss = RedisError::from((redis::ErrorKind::TypeError, "not a string"));
+        assert!(!is_redis_infrastructure_error(&miss));
+    }
+
+    #[tokio::test]
+    async fn unreachable_redis_get_degrades_to_unavailable() {
+        let before = crate::metrics::redis_error_total();
+        let mut cache = CacheManager::simulated_outage();
+
+        let outcome = cache.get::<String>("missing-key").await;
+        assert_eq!(outcome, CacheResult::Unavailable);
+        assert!(
+            crate::metrics::redis_error_total() > before,
+            "redis error metric should increment on infrastructure failure"
+        );
+        assert_eq!(cache.health_status().await, CacheHealthStatus::Degraded);
     }
 }

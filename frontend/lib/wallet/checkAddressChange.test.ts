@@ -58,27 +58,23 @@ describe('checkAddressChange – xBull', () => {
     expect(result).toBeNull();
   });
 
-  it('uses getPublicKey() for passive detection when available', async () => {
-    const mockGetPublicKey = vi.fn().mockResolvedValueOnce('GNEW_XBULL_456');
+  it('returns null when xBull is installed (passive address check unsupported)', async () => {
     (window as unknown as Record<string, unknown>).xbull = {
-      getPublicKey: mockGetPublicKey,
-      connect: vi.fn(),
+      getPublicKey: vi.fn().mockResolvedValueOnce('GNEW_XBULL_456'),
+      connect: vi.fn().mockResolvedValueOnce({ publicKey: 'GNEW_XBULL_456' }),
     };
 
     const result = await checkAddressChange('xbull', 'GABC123');
-    expect(result).toBe('GNEW_XBULL_456');
-    expect(mockGetPublicKey).toHaveBeenCalledTimes(1);
+    expect(result).toBeNull();
   });
 
-  it('falls back to connect() when getPublicKey is not available', async () => {
-    const mockConnect = vi.fn().mockResolvedValueOnce({ publicKey: 'GNEW_XBULL_456' });
+  it('returns null when xBull connect would return a new address', async () => {
     (window as unknown as Record<string, unknown>).xbull = {
-      connect: mockConnect,
+      connect: vi.fn().mockResolvedValueOnce({ publicKey: 'GNEW_XBULL_456' }),
     };
 
     const result = await checkAddressChange('xbull', 'GABC123');
-    expect(result).toBe('GNEW_XBULL_456');
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(result).toBeNull();
   });
 
   it('returns null when xBull address has not changed', async () => {

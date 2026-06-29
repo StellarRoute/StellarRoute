@@ -4,6 +4,9 @@
 Cargo.lock
 *.pdb
 
+# Local cargo network tuning (optional; copy from a teammate or tune for your link)
+.cargo/config.toml
+
 # IDE
 .idea/
 .vscode/

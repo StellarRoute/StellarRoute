@@ -126,7 +126,7 @@ impl QuoteArtifactPurger {
 
     /// Purge stale replay_artifacts
     async fn purge_replay_artifacts(&self) -> Result<PurgeResult> {
-        let start = Instant::now();
+        let _start = Instant::now();
 
         info!(
             target: "stellarroute.api.purger",
@@ -181,7 +181,7 @@ impl QuoteArtifactPurger {
 
     /// Purge stale route_audit_log entries
     async fn purge_route_audit_log(&self) -> Result<PurgeResult> {
-        let start = Instant::now();
+        let _start = Instant::now();
 
         info!(
             target: "stellarroute.api.purger",
@@ -241,7 +241,7 @@ impl QuoteArtifactPurger {
         }
 
         let alert_reason = result.alert_reason(&self.config);
-        let level = if alert_reason.is_some() {
+        let _level = if alert_reason.is_some() {
             "warn"
         } else {
             "info"

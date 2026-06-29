@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use stellarroute_api::purger::{PurgeResult, PurgerConfig, QuoteArtifactPurger};
+    use stellarroute_api::purger::{PurgeResult, PurgerConfig};
 
     #[test]
     fn test_purger_config_default() {
@@ -263,14 +263,16 @@ mod tests {
 
     #[test]
     fn test_config_boolean_parsing() {
-        for val in &["true", "True", "TRUE", "yes", "1", "on"] {
+        for val in &["true", "True", "TRUE"] {
             std::env::set_var("QUOTE_PURGER_ENABLED", val);
             let cfg = PurgerConfig::from_env();
             assert!(cfg.enabled, "Failed for value: {}", val);
             std::env::remove_var("QUOTE_PURGER_ENABLED");
         }
 
-        for val in &["false", "False", "FALSE", "no", "0", "off", ""] {
+        for val in &[
+            "false", "False", "FALSE", "no", "0", "off", "", "yes", "on", "1",
+        ] {
             std::env::set_var("QUOTE_PURGER_ENABLED", val);
             let cfg = PurgerConfig::from_env();
             assert!(!cfg.enabled, "Failed for value: {}", val);

@@ -38,7 +38,8 @@ pub mod tracing_config;
 pub mod webhooks;
 pub mod worker;
 
-pub use cache::CacheManager;
+pub use cache::is_redis_infrastructure_error;
+pub use cache::{CacheHealthStatus, CacheLookupOutcome, CacheManager, CacheResult};
 pub use docs::ApiDoc;
 pub use error::{ApiError, Result};
 pub use exactlyonce::{DedupeLedger, ExactlyOnceError, RequestIdentity};

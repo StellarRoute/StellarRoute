@@ -1,17 +1,23 @@
 import { render, screen, fireEvent, act, within, cleanup } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { PriceImpactHeatmapSlider } from './PriceImpactHeatmapSlider';
-import { stellarRouteClient } from '@/lib/api/client';
 import type { PriceQuote } from '@/types';
 
-// Mock the API client
-vi.mock('@/lib/api/client', () => {
-  return {
-    stellarRouteClient: {
-      getQuotesBatch: vi.fn(),
-    },
-  };
-});
+const { getQuotesBatch } = vi.hoisted(() => ({
+  getQuotesBatch: vi.fn(),
+}));
+
+vi.mock('@/hooks/useStellarRouteClient', () => ({
+  useStellarRouteClient: () => ({ getQuotesBatch }),
+}));
+
+vi.mock('@/components/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: ReactNode }) => children,
+  Tooltip: ({ children }: { children: ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children: ReactNode }) => children,
+  TooltipContent: ({ children }: { children: ReactNode }) => children,
+}));
 
 describe('PriceImpactHeatmapSlider', () => {
   const mockOnChange = vi.fn();
@@ -52,7 +58,7 @@ describe('PriceImpactHeatmapSlider', () => {
     const mockQuotes = Array.from({ length: 10 }, (_, i) =>
       createMockQuote(((i + 1) * 10).toString(), '0.5', '1.2')
     );
-    vi.mocked(stellarRouteClient.getQuotesBatch).mockResolvedValueOnce({
+    vi.mocked(getQuotesBatch).mockResolvedValueOnce({
       quotes: mockQuotes,
       total: 10,
     });
@@ -67,8 +73,8 @@ describe('PriceImpactHeatmapSlider', () => {
       />
     );
 
-    expect(stellarRouteClient.getQuotesBatch).toHaveBeenCalledTimes(1);
-    const callArgs = vi.mocked(stellarRouteClient.getQuotesBatch).mock.calls[0][0];
+    expect(getQuotesBatch).toHaveBeenCalledTimes(1);
+    const callArgs = vi.mocked(getQuotesBatch).mock.calls[0][0];
     expect(callArgs).toHaveLength(10);
     expect(callArgs[0]).toEqual({
       base: 'native',
@@ -85,7 +91,7 @@ describe('PriceImpactHeatmapSlider', () => {
   });
 
   it('renders slider and tracks percentage indicator correctly', async () => {
-    vi.mocked(stellarRouteClient.getQuotesBatch).mockResolvedValueOnce({
+    vi.mocked(getQuotesBatch).mockResolvedValueOnce({
       quotes: [],
       total: 0,
     });
@@ -110,7 +116,7 @@ describe('PriceImpactHeatmapSlider', () => {
   });
 
   it('triggers onChangeAmount when sliding', async () => {
-    vi.mocked(stellarRouteClient.getQuotesBatch).mockResolvedValueOnce({
+    vi.mocked(getQuotesBatch).mockResolvedValueOnce({
       quotes: [],
       total: 0,
     });
@@ -150,7 +156,7 @@ describe('PriceImpactHeatmapSlider', () => {
       resolvePromise = resolve;
     });
 
-    vi.mocked(stellarRouteClient.getQuotesBatch).mockReturnValue(promise);
+    vi.mocked(getQuotesBatch).mockReturnValue(promise);
 
     const { container } = render(
       <PriceImpactHeatmapSlider
@@ -184,7 +190,7 @@ describe('PriceImpactHeatmapSlider', () => {
   });
 
   it('updates amount when a heatmap segment is clicked', async () => {
-    vi.mocked(stellarRouteClient.getQuotesBatch).mockResolvedValueOnce({
+    vi.mocked(getQuotesBatch).mockResolvedValueOnce({
       quotes: Array.from({ length: 10 }, (_, i) =>
         createMockQuote(((i + 1) * 10).toString(), '0.5', '1.0')
       ),

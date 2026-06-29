@@ -24,7 +24,7 @@ export const API_VERSIONED_BASE = API_BASE_URL;
  *   - proxy mode: "" (empty string — relative URLs, same origin)
  */
 export function getApiRoot(): string {
-  if (API_PROXY_ENABLED) {
+  if (process.env.NEXT_PUBLIC_API_PROXY === 'true') {
     // In proxy mode the Next.js rewrite handles routing; the root is the same
     // origin, represented as an empty string so paths like "/health" work.
     return '';
@@ -44,5 +44,5 @@ export const STELLAR_NETWORK =
 
 export const ROUTES = {
   HOME: '/',
-  SWAP: '/',
+  SWAP: '/swap',
 } as const;

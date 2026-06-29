@@ -200,6 +200,25 @@ export class StellarRouteClient {
   }
 
   /**
+   * `POST /api/v1/batch/orderbook` — fetch multiple orderbooks in a single request.
+   *
+   * @throws {@link StellarRouteApiError} when the batch request fails.
+   */
+  async getOrderbooksBatch(
+    requests: OrderbookRequestItem[],
+    signal?: AbortSignal,
+  ): Promise<BatchOrderbookResponse> {
+    const path = '/api/v1/batch/orderbook';
+    return this.request<BatchOrderbookResponse>(
+      path,
+      signal,
+      this.retries,
+      'POST',
+      { requests },
+    );
+  }
+
+  /**
    * `GET /api/v1/quote/{base}/{quote}` — get best price quote.
    *
    * @param base   Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
@@ -350,7 +369,7 @@ export class StellarRouteClient {
   }
 
   /**
-   * `GET /api/v1/price-history/{base}/{quote}` — fetch price history for charting/sparklines.
+   * `GET /api/v1/price-history/{base}/{quote}` ? fetch price history for charting/sparklines.
    *
    * @param base  Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
    * @param quote Quote asset identifier.

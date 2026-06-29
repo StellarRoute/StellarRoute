@@ -1,8 +1,8 @@
 {
-  "bundleSizeKb": 0,
-  "ttiMs": 0,
-  "commitSha": "placeholder",
-  "capturedAt": "1970-01-01T00:00:00.000Z",
+  "bundleSizeKb": 157.2,
+  "ttiMs": 1440.7000000476837,
+  "commitSha": "db83c5f",
+  "capturedAt": "2026-06-24T16:41:42.211Z",
   "asyncChunkThresholds": {
     "routePanelKb": 50,
     "description": "Maximum size for async route panel chunk"

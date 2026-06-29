@@ -46,6 +46,7 @@ export const Stethoscope = Icon;
 export const History = Icon;
 export const Search = Icon;
 export const Download = Icon;
+export const Droplet = Icon;
 
 export const AlertTriangle = Icon;
 export const DollarSign = Icon;
@@ -84,6 +85,8 @@ export const Columns2 = Icon;
 export const LayoutList = Icon;
 export const Bell = Icon;
 export const BellOff = Icon;
+export const Activity = Icon;
+export const Database = Icon;
 
 // Share icon
 export const Share2 = Icon;

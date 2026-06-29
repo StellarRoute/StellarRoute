@@ -6,7 +6,7 @@ import {
   type QuoteRequestItem,
 } from '@/lib/api/client';
 import { getApiRoot } from '@/lib/constants';
-import type { PriceQuote, RoutesResponse } from '@/types';
+import type { PriceHistoryResponse, PriceQuote, RoutesResponse } from '@/types';
 
 // Fixtures aligned with frontend/test/api-schema.test.ts asset identifiers.
 
@@ -379,6 +379,65 @@ describe('getRoutes', () => {
 
     expect(err).toBeInstanceOf(StellarRouteApiError);
     expect((err as StellarRouteApiError).code).toBe('network_error');
+  });
+});
+
+describe('getPriceHistory', () => {
+  const priceHistoryData: PriceHistoryResponse = {
+    base_asset: NATIVE_ASSET,
+    quote_asset: USDC_ASSET,
+    window: '24h',
+    source: 'orderbook_snapshots.mid_price',
+    generated_at: 1_700_000_000_000,
+    points: [
+      {
+        timestamp: 1_699_999_000_000,
+        price: '0.1000000',
+      },
+    ],
+  };
+
+  it('calls GET /api/v1/price-history/{base}/{quote}', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok(priceHistoryData),
+    );
+
+    await new StellarRouteClient({
+      baseUrl: 'https://api.example.com',
+    }).getPriceHistory('native', `USDC:${USDC_ISSUER}`);
+
+    const url = new URL(spy.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(
+      `https://api.example.com/api/v1/price-history/native/USDC%3A${USDC_ISSUER}`,
+    );
+    expect(url.search).toBe('');
+  });
+
+  it('forwards optional window query params when provided', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok(priceHistoryData),
+    );
+
+    await new StellarRouteClient({
+      baseUrl: 'https://api.example.com',
+    }).getPriceHistory('native', 'USDC', { window: '24h' });
+
+    const url = new URL(spy.mock.calls[0]?.[0] as string);
+    expect(url.searchParams.get('window')).toBe('24h');
+  });
+
+  it('surfaces API errors as StellarRouteApiError', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiError('not_found', 'Trading pair not found', 404),
+    );
+
+    const err = await new StellarRouteClient({ retries: 0 })
+      .getPriceHistory('native', 'USDC')
+      .catch((error: unknown) => error);
+
+    expect(err).toBeInstanceOf(StellarRouteApiError);
+    expect((err as StellarRouteApiError).status).toBe(404);
+    expect((err as StellarRouteApiError).code).toBe('not_found');
   });
 });
 

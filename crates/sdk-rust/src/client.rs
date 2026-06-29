@@ -27,7 +27,7 @@ use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
         BatchQuoteRequest, BatchQuoteResponse, ErrorResponse, HealthResponse, OrderbookResponse,
-        PairsResponse, QuoteRequest, QuoteResponse,
+        PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest, RoutesResponse,
     },
 };
 
@@ -134,6 +134,8 @@ impl ClientBuilder {
 /// Async HTTP client for the StellarRoute REST API.
 ///
 /// Construct via [`ClientBuilder`] or the convenience [`StellarRouteClient::new`].
+pub type Client = StellarRouteClient;
+
 #[derive(Debug)]
 pub struct StellarRouteClient {
     base_url: Url,
@@ -188,6 +190,56 @@ impl StellarRouteClient {
                 req = req.query(&[("amount", amount.as_str())]);
             }
             req.query(&[("quote_type", quote_type.as_str())])
+        })
+        .await
+    }
+
+    /// Fetch available routes for a currency pair.
+    ///
+    /// Calls `GET /api/v1/routes/{base}/{quote}` and returns ranked route
+    /// candidates for the requested pair.
+    ///
+    /// Returns [`ApiError`] with code [`ApiErrorCode::NoRoute`] when no route
+    /// exists for the requested pair and amount.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stellarroute_sdk::{Client, RoutesRequest};
+    ///
+    /// # async fn example() -> Result<(), stellarroute_sdk::ApiError> {
+    /// let client = Client::new("https://api.stellarroute.io")?;
+    /// let response = client.routes(RoutesRequest {
+    ///     base: "native",
+    ///     quote: "USDC",
+    ///     amount: 1_000_000,
+    ///     slippage_bps: Some(50),
+    ///     quote_type: None,
+    /// }).await?;
+    /// println!("Best route: {:?}", response.routes.first());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn routes(&self, request: RoutesRequest<'_>) -> Result<RoutesResponse> {
+        let path = format!(
+            "api/v1/routes/{}/{}",
+            encode_path_segment(request.base),
+            encode_path_segment(request.quote)
+        );
+        let base_url = self.url(&path)?;
+        let amount = request.amount.to_string();
+        let slippage_bps = request.slippage_bps.map(|value| value.to_string());
+        let quote_type = request.quote_type.map(|value| value.to_string());
+
+        self.execute_with_retry(|| {
+            let mut req = self.http.get(base_url.clone()).query(&[("amount", amount.as_str())]);
+            if let Some(ref slippage_bps) = slippage_bps {
+                req = req.query(&[("slippage_bps", slippage_bps.as_str())]);
+            }
+            if let Some(ref quote_type) = quote_type {
+                req = req.query(&[("quote_type", quote_type.as_str())]);
+            }
+            req
         })
         .await
     }
@@ -248,6 +300,29 @@ impl StellarRouteClient {
                 .map_err(|e| SdkError::Http(format!("Failed to read response body: {e}")))?;
 
             if !status.is_success() {
+                // SURFACE: ApiErrorCode::NoRoute — documented in OpenAPI as error_code "NO_ROUTE" on empty candidate set
+                if status == reqwest::StatusCode::NOT_FOUND
+                    || serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|value| value.get("error_code").and_then(serde_json::Value::as_str))
+                        .map(|code| code.eq_ignore_ascii_case("NO_ROUTE"))
+                        .unwrap_or(false)
+                    || serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|value| value.get("error").and_then(serde_json::Value::as_str))
+                        .map(|code| code.eq_ignore_ascii_case("no_route"))
+                        .unwrap_or(false)
+                {
+                    let message = serde_json::from_str::<ErrorResponse>(&body)
+                        .map(|err| err.message)
+                        .unwrap_or_else(|_| "No route found".to_string());
+                    return Err(SdkError::Api {
+                        code: ApiErrorCode::NoRoute,
+                        message,
+                        status: status.as_u16(),
+                    });
+                }
+
                 // Retry on 5xx errors.
                 if status.is_server_error() && attempts < self.max_retries {
                     let delay = self.base_backoff.saturating_mul(1u32.pow(attempts));
@@ -280,6 +355,19 @@ impl StellarRouteClient {
 }
 
 // ── Rate-limit header extraction ──────────────────────────────────────────────
+
+fn encode_path_segment(segment: &str) -> String {
+    segment
+        .bytes()
+        .map(|byte| {
+            if (byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')) {
+                byte as char
+            } else {
+                format!("%{:02X}", byte)
+            }
+        })
+        .collect()
+}
 
 fn extract_rate_limit_info(headers: &reqwest::header::HeaderMap) -> RateLimitInfo {
     let parse_u32 = |name: &str| -> Option<u32> {

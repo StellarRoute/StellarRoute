@@ -4,6 +4,7 @@ import { AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useWallet } from '@/components/providers/wallet-provider';
+import { isNetworkAllowed } from '@/lib/network-policy';
 import { cn } from '@/lib/utils';
 
 const WALLET_DOCS: Record<string, string> = {
@@ -20,11 +21,14 @@ interface NetworkMismatchBannerProps {
  * Blocks swap until resolved or user disconnects
  */
 export function NetworkMismatchBanner({ className }: NetworkMismatchBannerProps) {
-  const { networkMismatch, network, walletNetwork, walletId, disconnect } = useWallet();
+  const { networkMismatch, network, walletNetwork, walletId, disconnect, setNetwork } =
+    useWallet();
 
   if (!networkMismatch) return null;
 
   const walletDocsUrl = walletId ? WALLET_DOCS[walletId] : null;
+  const canUseWalletNetwork =
+    walletNetwork !== null && isNetworkAllowed(walletNetwork);
 
   return (
     <Alert
@@ -46,6 +50,16 @@ export function NetworkMismatchBanner({ className }: NetworkMismatchBannerProps)
           <strong>{network}</strong>. Please switch your wallet network to continue.
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canUseWalletNetwork && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setNetwork(walletNetwork)}
+              className="h-8 text-xs border-amber-600/30 hover:bg-amber-500/20"
+            >
+              Use wallet network
+            </Button>
+          )}
           {walletDocsUrl && (
             <Button
               variant="outline"

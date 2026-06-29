@@ -5,9 +5,10 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
 use sqlx::{PgPool, Row};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::models::QuoteExpirationWebhookPayload;
+use crate::metrics;
 
 const WEBHOOK_EVENT_NAME: &str = "quote.expired";
 const MAX_DELIVERY_RETRIES: usize = 3;
@@ -33,7 +34,10 @@ impl QuoteExpirationWebhookService {
     pub fn new(db: PgPool) -> Self {
         Self {
             db,
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
     }
 
@@ -174,7 +178,14 @@ impl QuoteExpirationWebhookService {
             }
         };
 
-        for attempt in 0..=MAX_DELIVERY_RETRIES {
+        let start = std::time::Instant::now();
+        let mut last_status: Option<reqwest::StatusCode> = None;
+        let mut last_error: Option<String> = None;
+
+        for attempt in 1..=MAX_DELIVERY_RETRIES {
+            metrics::record_webhook_delivery_attempt(&registration.consumer_id, attempt as u32);
+            
+            let attempt_start = std::time::Instant::now();
             let response = self
                 .client
                 .post(&registration.webhook_url)
@@ -182,42 +193,87 @@ impl QuoteExpirationWebhookService {
                 .header("x-stellarroute-event", WEBHOOK_EVENT_NAME)
                 .header("x-stellarroute-consumer", &registration.consumer_id)
                 .header("x-stellarroute-signature", format!("sha256={signature}"))
+                .header("x-stellarroute-timestamp", payload.timestamp.to_string())
                 .body(payload_json.clone())
                 .send()
                 .await;
 
             match response {
                 Ok(resp) if resp.status().is_success() => {
+                    let duration = start.elapsed();
                     debug!(
                         consumer_id = %registration.consumer_id,
                         status = %resp.status(),
+                        duration_ms = duration.as_millis(),
                         "Webhook delivered"
                     );
+                    metrics::record_webhook_delivery_success(&registration.consumer_id, duration);
                     return;
                 }
                 Ok(resp) => {
+                    last_status = Some(resp.status());
+                    last_error = Some(format!("HTTP status {}", resp.status()));
+                    let duration = attempt_start.elapsed();
                     warn!(
                         consumer_id = %registration.consumer_id,
                         status = %resp.status(),
                         attempt,
+                        duration_ms = duration.as_millis(),
                         "Webhook delivery failed"
                     );
+                    
+                    // Don't retry on 4xx (client errors)
+                    if resp.status().is_client_error() {
+                        let total_duration = start.elapsed();
+                        metrics::record_webhook_delivery_failure(&registration.consumer_id, "client_error_4xx", total_duration);
+                        error!(
+                            consumer_id = %registration.consumer_id,
+                            status = %resp.status(),
+                            quote_id = %payload.quote_id,
+                            "Webhook delivery failed with client error - not retrying"
+                        );
+                        return;
+                    }
                 }
                 Err(e) => {
+                    last_error = Some(e.to_string());
+                    let duration = attempt_start.elapsed();
                     warn!(
                         consumer_id = %registration.consumer_id,
                         error = %e,
                         attempt,
+                        duration_ms = duration.as_millis(),
                         "Webhook delivery request error"
                     );
                 }
             }
 
             if attempt < MAX_DELIVERY_RETRIES {
-                let backoff_ms = INITIAL_BACKOFF_MS.saturating_mul(1u64 << attempt);
+                let backoff_ms = INITIAL_BACKOFF_MS.saturating_mul(1u64 << (attempt - 1));
                 tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
             }
         }
+
+        // If we got here, all retries failed
+        let total_duration = start.elapsed();
+        let failure_reason = if let Some(status) = last_status {
+            if status.is_server_error() {
+                "server_error_5xx"
+            } else {
+                "max_retries_exceeded"
+            }
+        } else {
+            "connection_error"
+        };
+        metrics::record_webhook_delivery_failure(&registration.consumer_id, failure_reason, total_duration);
+        error!(
+            consumer_id = %registration.consumer_id,
+            quote_id = %payload.quote_id,
+            last_status = ?last_status,
+            last_error = ?last_error,
+            duration_ms = total_duration.as_millis(),
+            "Webhook delivery failed after all retries - dead-lettered"
+        );
     }
 
     pub async fn dispatch_to_consumer(

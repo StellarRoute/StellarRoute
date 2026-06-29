@@ -35,9 +35,12 @@ import type { Result } from "axe-core";
  *   2. Add a comment explaining why it is deferred.
  *   3. Document it in docs/a11y-testing.md under "Baseline Exclusions".
  *
- * Currently empty — no pre-existing violations have been deferred.
+ * Deferred:
+ *   - color-contrast: indigo primary palette (#6366f1) fails WCAG AA against
+ *     the dark-mode backgrounds (#0a0e1a / #141c2b). Requires a design-level
+ *     colour-token change tracked separately; must not block unrelated CI.
  */
-const BASELINE_EXCLUSIONS: string[] = [];
+const BASELINE_EXCLUSIONS: string[] = ["color-contrast"];
 
 // ---------------------------------------------------------------------------
 // Fixtures

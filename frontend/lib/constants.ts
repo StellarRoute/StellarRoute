@@ -44,5 +44,5 @@ export const STELLAR_NETWORK =
 
 export const ROUTES = {
   HOME: '/',
-  SWAP: '/',
+  SWAP: '/swap',
 } as const;

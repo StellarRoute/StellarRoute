@@ -71,6 +71,8 @@ pub struct CacheMetricsResponse {
     pub stale_quote_rejections: u64,
     /// Total stale inputs excluded across all successful quotes
     pub stale_inputs_excluded: u64,
+    /// Total Redis infrastructure errors observed by the cache layer
+    pub redis_errors: u64,
 }
 
 /// Cache flush response for admin cache invalidation operations
@@ -648,6 +650,8 @@ pub enum ApiErrorCode {
     InvalidAssetFormat,
     /// No executable trading route found
     NoRoute,
+    /// Route would fail execution on-chain (simulation detected failure)
+    NotExecutable,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
 }
@@ -667,6 +671,7 @@ impl ApiErrorCode {
             Self::InvalidSlippage => "invalid_slippage",
             Self::InvalidAssetFormat => "invalid_asset_format",
             Self::NoRoute => "no_route",
+            Self::NotExecutable => "not_executable",
             Self::StaleMarketData => "stale_market_data",
         }
     }
@@ -863,6 +868,7 @@ pub struct QuoteExpirationWebhookRegistrationResponse {
     pub consumer_id: String,
     pub webhook_url: String,
     pub enabled: bool,
+    /// Present only when the server generated a signing secret (caller omitted one).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generated_signing_secret: Option<String>,
 }

@@ -51,12 +51,15 @@ pub async fn get_price_history(
 
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
-            if let Some(cached) = cache
+            match cache
                 .get::<PriceHistoryResponse>(&cache::keys::price_history(&base, &quote))
                 .await
             {
-                debug!("Returning cached price history for {}/{}", base, quote);
-                return Ok(Json(cached));
+                crate::cache::CacheResult::Hit(cached) => {
+                    debug!("Returning cached price history for {}/{}", base, quote);
+                    return Ok(Json(cached));
+                }
+                crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => {}
             }
         }
     }

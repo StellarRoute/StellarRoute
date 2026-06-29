@@ -795,8 +795,8 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       const target = event.target as HTMLElement | null;
       const isEditable = target
         ? target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
         : false;
 
       if (event.key === '?' && !isEditable) {
@@ -1041,6 +1041,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               variant="outline"
               size="icon"
               onClick={handleSwitchTokens}
+              aria-label="Switch pay and receive tokens"
               className="absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 hover:scale-110 active:scale-95 transition-all duration-300 group"
             >
               <ArrowUpDown className="h-4 w-4 text-primary group-hover:rotate-180 transition-transform duration-500" />
@@ -1150,11 +1151,11 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <span className="text-xs text-blue-500 font-medium">
                 {quote.hasPendingRetry
                   ? t('swap.card.recoveringQuoteCountdown', {
-                      seconds: Math.max(
-                        1,
-                        Math.ceil(quote.pendingRetryRemainingMs / 1000)
-                      ),
-                    })
+                    seconds: Math.max(
+                      1,
+                      Math.ceil(quote.pendingRetryRemainingMs / 1000)
+                    ),
+                  })
                   : t('swap.card.recoveringQuote')}
               </span>
               {quote.hasPendingRetry && (

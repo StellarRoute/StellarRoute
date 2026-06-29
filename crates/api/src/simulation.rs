@@ -135,7 +135,7 @@ impl SorobanSimulator {
             return None;
         }
         let http = reqwest::Client::builder()
-            .timeout(config.timeout)
+            .timeout(config.timeout.saturating_mul(2))
             .build()
             .ok()?;
         let bucket = Arc::new(Mutex::new(TokenBucket::new(config.max_rps)));

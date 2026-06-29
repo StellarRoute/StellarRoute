@@ -6,32 +6,12 @@
  */
 
 import type { WalletNetwork } from './types';
+import {
+  getHorizonUrl,
+  getNetworkPassphrase,
+} from '@/lib/network-endpoints';
 
-const HORIZON_URLS: Record<string, string> = {
-  testnet: 'https://horizon-testnet.stellar.org',
-  mainnet: 'https://horizon.stellar.org',
-};
-
-const NETWORK_PASSPHRASES: Record<string, string> = {
-  testnet: 'Test SDF Network ; September 2015',
-  mainnet: 'Public Global Stellar Network ; September 2015',
-  futurenet: 'Test SDF Future Network ; October 2022',
-};
-
-export function getHorizonUrl(network: WalletNetwork | null): string {
-  const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
-  const key = String(network ?? defaultNetwork).toLowerCase();
-  if (key === defaultNetwork.toLowerCase() && process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL) {
-    return process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL;
-  }
-  return HORIZON_URLS[key] ?? HORIZON_URLS[defaultNetwork] ?? HORIZON_URLS.testnet;
-}
-
-export function getNetworkPassphrase(network: WalletNetwork | null): string {
-  const defaultNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
-  const key = String(network ?? defaultNetwork).toLowerCase();
-  return NETWORK_PASSPHRASES[key] ?? NETWORK_PASSPHRASES[defaultNetwork] ?? NETWORK_PASSPHRASES.testnet;
-}
+export { getHorizonUrl, getNetworkPassphrase };
 
 export interface HorizonSubmitResult {
   hash: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,11 +10,23 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { SupportedWallet, AvailableWallet } from '@/lib/wallet/types';
+import type { SupportedWallet, AvailableWallet, WalletNetwork } from '@/lib/wallet/types';
+import {
+  getAllowedNetworks,
+  isNetworkAllowed,
+  normalizeAppNetwork,
+  type AppNetwork,
+} from '@/lib/network-policy';
 import { AlertCircle, CheckCircle, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
-import { STELLAR_NETWORK } from '@/lib/constants';
 
-export type OnboardingStep = 'welcome' | 'select-wallet' | 'connecting' | 'success' | 'error' | 'network-mismatch';
+export type OnboardingStep =
+  | 'welcome'
+  | 'select-network'
+  | 'select-wallet'
+  | 'connecting'
+  | 'success'
+  | 'error'
+  | 'network-mismatch';
 
 export interface WalletConnectionOnboardingProps {
   open: boolean;
@@ -23,12 +35,15 @@ export interface WalletConnectionOnboardingProps {
   isLoading: boolean;
   error: string | null;
   onConnect: (walletId: SupportedWallet) => Promise<void>;
+  appNetwork: WalletNetwork;
   walletNetwork: string | null;
-  onNetworkSelection?: (network: string) => void;
+  onNetworkSelection?: (network: WalletNetwork) => void;
 }
 
-const SUPPORTED_NETWORKS = ['testnet', 'mainnet'];
-const APP_NETWORK = STELLAR_NETWORK;
+const NETWORK_LABELS: Record<AppNetwork, string> = {
+  testnet: 'Testnet',
+  mainnet: 'Mainnet',
+};
 
 export function WalletConnectionOnboarding({
   open,
@@ -37,48 +52,84 @@ export function WalletConnectionOnboarding({
   isLoading,
   error,
   onConnect,
+  appNetwork,
   walletNetwork,
   onNetworkSelection,
 }: WalletConnectionOnboardingProps) {
+  const allowedNetworks = useMemo(() => getAllowedNetworks(), []);
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet | null>(null);
-  const [selectedNetwork, setSelectedNetwork] = useState<string>(APP_NETWORK);
+  const [selectedNetwork, setSelectedNetwork] = useState<AppNetwork>(() => {
+    const normalizedApp = normalizeAppNetwork(appNetwork);
+    return normalizedApp && allowedNetworks.includes(normalizedApp)
+      ? normalizedApp
+      : allowedNetworks[0];
+  });
   const [connectionError, setConnectionError] = useState<string | null>(error);
 
-  const isWalletNetworkMismatch =
-    walletNetwork !== null &&
-    walletNetwork.toLowerCase() !== APP_NETWORK.toLowerCase();
+  useEffect(() => {
+    const normalizedApp = normalizeAppNetwork(appNetwork);
+    if (normalizedApp && allowedNetworks.includes(normalizedApp)) {
+      setSelectedNetwork(normalizedApp);
+    }
+  }, [appNetwork, allowedNetworks]);
 
   useEffect(() => {
-    if (step === 'success' && isWalletNetworkMismatch) {
-      setStep('network-mismatch');
+    if (step !== 'connecting' || !walletNetwork) {
+      return;
     }
-  }, [isWalletNetworkMismatch, step]);
+
+    const mismatch =
+      normalizeAppNetwork(walletNetwork) !== normalizeAppNetwork(selectedNetwork);
+    setStep(mismatch ? 'network-mismatch' : 'success');
+  }, [step, walletNetwork, selectedNetwork]);
+
+  const handleNetworkChoice = (network: AppNetwork) => {
+    setSelectedNetwork(network);
+    onNetworkSelection?.(network);
+    setStep('select-wallet');
+  };
+
+  const handleContinueFromWelcome = () => {
+    if (allowedNetworks.length > 1) {
+      setStep('select-network');
+      return;
+    }
+    setStep('select-wallet');
+  };
 
   const handleWalletSelect = async (wallet: AvailableWallet) => {
     if (!wallet.installed) {
-      // User needs to install wallet
       window.open(
         wallet.id === 'freighter'
           ? 'https://www.freighter.app/'
           : 'https://wallet.xbull.app/',
-        '_blank'
+        '_blank',
       );
       return;
     }
 
+    onNetworkSelection?.(selectedNetwork);
     setSelectedWallet(wallet.id as SupportedWallet);
     setConnectionError(null);
     setStep('connecting');
 
     try {
       await onConnect(wallet.id as SupportedWallet);
-      setStep('success');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Connection failed. Please try again.';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Connection failed. Please try again.';
       setConnectionError(errorMessage);
       setStep('error');
     }
+  };
+
+  const handleUseWalletNetwork = () => {
+    if (!walletNetwork || !isNetworkAllowed(walletNetwork)) {
+      return;
+    }
+    onNetworkSelection?.(walletNetwork);
+    setStep('success');
   };
 
   const handleRetry = () => {
@@ -94,22 +145,22 @@ export function WalletConnectionOnboarding({
     }
   };
 
+  const resetFlow = () => {
+    setStep('welcome');
+    setSelectedWallet(null);
+    setConnectionError(null);
+  };
+
   const handleClose = () => {
-    // Allow closing in welcome, success, and error states
     if (['welcome', 'success', 'error'].includes(step)) {
       onOpenChange(false);
-      // Reset on close
-      setStep('welcome');
-      setSelectedWallet(null);
-      setConnectionError(null);
+      resetFlow();
     }
   };
 
   const handleNetworkMismatchClose = () => {
     onOpenChange(false);
-    setStep('welcome');
-    setSelectedWallet(null);
-    setConnectionError(null);
+    resetFlow();
   };
 
   return (
@@ -150,15 +201,8 @@ export function WalletConnectionOnboarding({
                 <AlertDescription>
                   <strong>Why do we ask for wallet connection?</strong>
                   <p className="mt-1 text-xs">
-                    We use your wallet connection to:
-                  </p>
-                  <ul className="mt-1 space-y-1 text-xs list-inside list-disc">
-                    <li>Display your account balance</li>
-                    <li>Execute trades with your permission</li>
-                    <li>Manage your transaction history</li>
-                  </ul>
-                  <p className="mt-2 text-xs">
-                    We never access your private keys. All transactions require your explicit approval.
+                    We use your wallet connection to display balances, execute trades with your
+                    permission, and manage transaction history. We never access your private keys.
                   </p>
                 </AlertDescription>
               </Alert>
@@ -167,8 +211,45 @@ export function WalletConnectionOnboarding({
                 <Button variant="outline" onClick={handleClose} className="flex-1">
                   Cancel
                 </Button>
-                <Button onClick={() => setStep('select-wallet')} className="flex-1">
+                <Button onClick={handleContinueFromWelcome} className="flex-1">
                   Continue
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {step === 'select-network' && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Select Network</DialogTitle>
+              <DialogDescription>
+                Choose the Stellar network you want to use in StellarRoute
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid gap-3">
+                {allowedNetworks.map((network) => (
+                  <button
+                    key={network}
+                    type="button"
+                    onClick={() => handleNetworkChoice(network)}
+                    className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                      selectedNetwork === network
+                        ? 'border-primary bg-accent'
+                        : 'border-border hover:border-primary hover:bg-accent'
+                    }`}
+                  >
+                    <h4 className="font-semibold">{NETWORK_LABELS[network]}</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Use Stellar {NETWORK_LABELS[network]} for quotes and swaps
+                    </p>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-4">
+                <Button variant="outline" onClick={() => setStep('welcome')} className="flex-1">
+                  Back
                 </Button>
               </div>
             </div>
@@ -180,7 +261,8 @@ export function WalletConnectionOnboarding({
             <DialogHeader>
               <DialogTitle>Select Your Wallet</DialogTitle>
               <DialogDescription>
-                Choose which Stellar wallet you&apos;d like to connect
+                Connecting on {NETWORK_LABELS[selectedNetwork] ?? appNetwork}. Choose
+                which Stellar wallet you&apos;d like to connect.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -189,6 +271,7 @@ export function WalletConnectionOnboarding({
                   {availableWallets.map((wallet) => (
                     <button
                       key={wallet.id}
+                      type="button"
                       onClick={() => handleWalletSelect(wallet)}
                       disabled={isLoading}
                       className={`relative p-4 rounded-lg border-2 transition-all text-left ${
@@ -213,11 +296,6 @@ export function WalletConnectionOnboarding({
                           <ExternalLink className="h-4 w-4 text-muted-foreground" />
                         )}
                       </div>
-                      {!wallet.installed && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Click to install
-                        </p>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -226,29 +304,6 @@ export function WalletConnectionOnboarding({
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
                     <p className="font-medium">No Supported Wallet Found</p>
-                    <p className="text-sm mt-2">
-                      Please install one of the supported wallets:
-                    </p>
-                    <div className="flex gap-2 mt-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          window.open('https://www.freighter.app/', '_blank')
-                        }
-                      >
-                        Install Freighter
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          window.open('https://wallet.xbull.app/', '_blank')
-                        }
-                      >
-                        Install xBull
-                      </Button>
-                    </div>
                   </AlertDescription>
                 </Alert>
               )}
@@ -256,7 +311,9 @@ export function WalletConnectionOnboarding({
               <div className="flex gap-2 pt-4">
                 <Button
                   variant="outline"
-                  onClick={() => setStep('welcome')}
+                  onClick={() =>
+                    setStep(allowedNetworks.length > 1 ? 'select-network' : 'welcome')
+                  }
                   className="flex-1"
                 >
                   Back
@@ -269,7 +326,9 @@ export function WalletConnectionOnboarding({
         {step === 'connecting' && (
           <>
             <DialogHeader>
-              <DialogTitle>Connecting {selectedWallet === 'freighter' ? 'Freighter' : 'xBull'}</DialogTitle>
+              <DialogTitle>
+                Connecting {selectedWallet === 'freighter' ? 'Freighter' : 'xBull'}
+              </DialogTitle>
               <DialogDescription>
                 Please approve the connection in your wallet
               </DialogDescription>
@@ -278,9 +337,6 @@ export function WalletConnectionOnboarding({
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <div className="text-center space-y-2">
                 <p className="font-medium">Waiting for approval...</p>
-                <p className="text-sm text-muted-foreground">
-                  A popup or notification should appear in your wallet. Please review and approve the connection request.
-                </p>
               </div>
             </div>
           </>
@@ -291,7 +347,7 @@ export function WalletConnectionOnboarding({
             <DialogHeader>
               <DialogTitle>Wallet Connected!</DialogTitle>
               <DialogDescription>
-                Your {selectedWallet === 'freighter' ? 'Freighter' : 'xBull'} wallet is now connected
+                Your wallet is connected on {String(appNetwork)}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-6 py-8 flex flex-col items-center">
@@ -350,27 +406,24 @@ export function WalletConnectionOnboarding({
             <DialogHeader>
               <DialogTitle>Network Mismatch</DialogTitle>
               <DialogDescription>
-                Your wallet is on a different network
+                Your wallet is on a different network than StellarRoute
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-6 py-4">
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  <p className="font-medium mb-2">Wallet Network: {walletNetwork || 'Unknown'}</p>
+                  <p className="font-medium mb-2">Wallet network: {walletNetwork || 'Unknown'}</p>
                   <p className="text-sm mb-2">
-                    StellarRoute is currently set to use the <strong>{APP_NETWORK}</strong> network.
-                  </p>
-                  <p className="text-sm mb-4">
-                    To continue, please switch your wallet to the {APP_NETWORK} network, or you can proceed at your own risk.
+                    StellarRoute is set to <strong>{appNetwork}</strong>.
                   </p>
                   <div className="bg-background p-3 rounded border text-xs font-mono">
-                    Wallet: {walletNetwork} | App: {APP_NETWORK}
+                    Wallet: {walletNetwork} | App: {appNetwork}
                   </div>
                 </AlertDescription>
               </Alert>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   variant="outline"
                   onClick={() => setStep('select-wallet')}
@@ -378,8 +431,13 @@ export function WalletConnectionOnboarding({
                 >
                   Try Again
                 </Button>
+                {walletNetwork && isNetworkAllowed(walletNetwork) && (
+                  <Button onClick={handleUseWalletNetwork} className="flex-1">
+                    Use wallet network
+                  </Button>
+                )}
                 <Button onClick={handleNetworkMismatchClose} className="flex-1">
-                  Proceed Anyway
+                  Close
                 </Button>
               </div>
             </div>

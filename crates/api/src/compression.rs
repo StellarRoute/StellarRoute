@@ -23,14 +23,6 @@ enum ResponseEncoding {
 }
 
 impl ResponseEncoding {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Brotli => "br",
-            Self::Gzip => "gzip",
-            Self::Identity => "identity",
-        }
-    }
-
     fn header_value(self) -> Option<&'static str> {
         match self {
             Self::Brotli => Some("br"),

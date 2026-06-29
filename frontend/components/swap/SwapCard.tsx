@@ -1000,6 +1000,7 @@ export function SwapCard({ storyFixture }: SwapCardProps = {}) {
               variant="outline"
               size="icon"
               onClick={handleSwitchTokens}
+              aria-label="Switch pay and receive tokens"
               className="absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 hover:scale-110 active:scale-95 transition-all duration-300 group"
             >
               <ArrowUpDown className="h-4 w-4 text-primary group-hover:rotate-180 transition-transform duration-500" />

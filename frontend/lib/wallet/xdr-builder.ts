@@ -1,3 +1,4 @@
+import { signTransactionWithWallet } from "@/lib/wallet";
 /**
  * Stellar XDR Builder
  *

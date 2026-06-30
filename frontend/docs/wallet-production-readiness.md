@@ -1,3 +1,4 @@
+import { signTransactionWithWallet } from "@/lib/wallet";
 # Wallet Production Readiness Runbook
 
 This document maps every wallet-related code path to its current status — **stub / test-only** vs **production-ready** — and provides a Phase B on-chain swap checklist for contributors landing real signing support.
@@ -14,7 +15,7 @@ This document maps every wallet-related code path to its current status — **st
 | **View address** | `getAddress()` (Freighter) / `connect().publicKey` (xBull) | ✅ Production ready | Called during `connectWallet` and `refreshWalletSession` |
 | **View network** | `getNetworkDetails()` (Freighter) / hardcoded `"testnet"` (xBull) | ⚠️ Partial | xBull always returns `"testnet"` — needs real network detection for mainnet |
 | **Sign transaction** | `signTransactionWithWallet(xdr, walletId)` in `lib/wallet/index.ts` | ✅ Production ready | Freighter: `signTransaction()`; xBull: `window.xbull.sign()` |
-| **Sign transaction stub** | `signTransactionStub(xdr)` in `lib/wallet/index.ts` | 🔴 Stub only | Returns `{ ok: false }` — used in tests and out-of-scope flows. **Never call in production.** |
+| **Sign transaction stub** | `signTransactionWithWallet(xdr)` in `lib/wallet/index.ts` | 🔴 Stub only | Returns `{ ok: false }` — used in tests and out-of-scope flows. **Never call in production.** |
 | **Spendable balance** | `useWalletBalance` in `hooks/useWalletBalance.ts` | ✅ Production ready | Fetches `GET /accounts/{address}` from Horizon; native spendable balance subtracts `XLM_FEE_RESERVE`; consumed by `SwapCard` for balance display, loading/error states, and MAX |
 | **Auto-reconnect** | `WalletProvider` effect in `wallet-provider.tsx` | ✅ Production ready | Reads `stellarroute.wallet.lastWalletId` from `localStorage`, respects `autoReconnectPreferred` flag |
 | **Reconnect on focus/online** | `WalletProvider` window event listeners | ✅ Production ready | Throttled to 5 s to avoid hammering the wallet extension |
@@ -33,7 +34,7 @@ This document maps every wallet-related code path to its current status — **st
 
 | Symbol | File | What it does | Replace with |
 |---|---|---|---|
-| `signTransactionStub` | `lib/wallet/index.ts` | Echoes XDR back, `ok: false` | Remove call sites; always use `signTransactionWithWallet` |
+| `signTransactionWithWallet` | `lib/wallet/index.ts` | Echoes XDR back, `ok: false` | Remove call sites; always use `signTransactionWithWallet` |
 | `submitTransaction` (stub body) | `lib/wallet/submit.ts` | Not yet posting to Horizon | POST XDR to `https://horizon.stellar.org/transactions` (or testnet equivalent) |
 | `refreshCapabilities` mock | `components/providers/wallet-provider.tsx` | Sets empty `statuses: []` | Call `checkWalletCapabilities(walletId, network)` from `lib/wallet/index.ts` |
 
@@ -54,7 +55,7 @@ Before enabling real on-chain swaps (Phase B):
 - [ ] **Implement `submitTransaction`** in `lib/wallet/submit.ts` — POST signed XDR to Horizon `/transactions`; handle `400 tx_bad_auth`, `400 op_underfunded`, and network timeouts
 - [ ] **Wire `refreshCapabilities`** in `WalletProvider` — replace mock with `checkWalletCapabilities(walletId, network)` so `WalletCapabilitiesBanner` reflects real status
 - [ ] **Fix xBull network detection** — replace hardcoded `"testnet"` with a real API call so `networkMismatch` works on mainnet
-- [ ] **Remove all `signTransactionStub` call sites** — search for `signTransactionStub` and ensure only `signTransactionWithWallet` is used in non-test code
+- [ ] **Remove all `signTransactionWithWallet` call sites** — search for `signTransactionWithWallet` and ensure only `signTransactionWithWallet` is used in non-test code
 - [ ] **Validate network passphrase mapping** — ensure `networkPassphrase` passed to `signTransaction` matches Stellar's canonical values (`Test SDF Network ; September 2015` / `Public Global Stellar Network ; September 2015`)
 - [ ] **Test Freighter + xBull on testnet end-to-end** — confirm sign → broadcast → Horizon confirmation flow with real wallets
 - [ ] **Add Horizon error taxonomy to `lib/api/trader-error-copy.ts`** — map `tx_bad_seq`, `op_no_trust`, `op_line_full`, etc. to user-facing messages

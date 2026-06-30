@@ -1,3 +1,4 @@
+import { signTransactionWithWallet } from "@/lib/wallet";
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { signTransactionWithWallet, checkWalletCapabilities } from './index';
 

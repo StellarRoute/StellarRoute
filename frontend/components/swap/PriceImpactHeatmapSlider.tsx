@@ -46,10 +46,10 @@ export function PriceImpactHeatmapSlider({
   }, [toToken]);
 
   // Fetch batch quotes for 10%, 20%, ..., 100% of balance
+  const { getQuotesBatch } = client;
+
   useEffect(() => {
     if (!fromToken || !toToken || !balance || balance <= 0) {
-      setQuotes([]);
-      setError(null);
       return;
     }
 
@@ -70,7 +70,7 @@ export function PriceImpactHeatmapSlider({
           };
         });
 
-        const response = await client.getQuotesBatch(requests);
+        const response = await getQuotesBatch(requests);
         if (active) {
           setQuotes(response.quotes || []);
         }
@@ -91,7 +91,7 @@ export function PriceImpactHeatmapSlider({
     return () => {
       active = false;
     };
-  }, [fromToken, toToken, balance, decimals, client]);
+  }, [fromToken, toToken, balance, decimals, getQuotesBatch]);
 
   // Calculate current percentage based on balance and currentAmount
   const currentPercentage = useMemo(() => {

@@ -131,8 +131,6 @@ impl CompactedGraph {
                     liquidity: compact_edge.liquidity,
                     price: compact_edge.price,
                     fee_bps: compact_edge.fee_bps,
-                    anomaly_score: None,
-                    anomaly_reasons: None,
                 });
             }
         }

@@ -1,4 +1,4 @@
-import { signTransactionWithWallet } from "@/lib/wallet";
+
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';

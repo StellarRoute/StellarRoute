@@ -104,7 +104,7 @@ mod tests {
 
     // Wire a constant-product adapter to a mock pool seeded with the given
     // reserves and return a client for issuing quotes against it.
-    fn setup(env: &Env, reserve_in: i128, reserve_out: i128) -> PoolAdapterClient {
+    fn setup(env: &Env, reserve_in: i128, reserve_out: i128) -> PoolAdapterClient<'_> {
         let pool_id = env.register_contract(None, MockPool);
         MockPoolClient::new(env, &pool_id).set_rsrvs(&reserve_in, &reserve_out);
 

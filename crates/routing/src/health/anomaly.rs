@@ -258,12 +258,8 @@ mod tests {
             stale_read_is_anomaly: false,
             ..Default::default()
         };
-<<<<<<< HEAD
         let alert_threshold = config.alert_threshold;
         let mut detector = LiquidityAnomalyDetector::new(config);
-=======
-        let mut detector = LiquidityAnomalyDetector::new(config.clone());
->>>>>>> origin/main
 
         // Initial update
         let _ = detector.update_and_detect("amm:drain", Some((1000, 1000)), None, Some(Utc::now()));
@@ -283,12 +279,8 @@ mod tests {
             alert_threshold: 0.7,
             ..Default::default()
         };
-<<<<<<< HEAD
         let alert_threshold = config.alert_threshold;
         let mut detector = LiquidityAnomalyDetector::new(config);
-=======
-        let mut detector = LiquidityAnomalyDetector::new(config.clone());
->>>>>>> origin/main
 
         // Initial update
         let _ = detector.update_and_detect(

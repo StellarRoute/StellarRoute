@@ -209,8 +209,6 @@ impl GraphManager {
                             liquidity: (a * 1e7) as i128,
                             price: p,
                             fee_bps: if is_amm { 30 } else { 20 },
-                            anomaly_score: None,
-                            anomaly_reasons: None,
                         });
                     }
                 }
@@ -237,19 +235,15 @@ mod tests {
         let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
         let manager = GraphManager::new(pool);
 
-        let initial_edges = vec![
-            LiquidityEdge {
-                from: "XLM".to_string(),
-                to: "USDC".to_string(),
-                venue_type: "sdex".to_string(),
-                venue_ref: "1".to_string(),
-                liquidity: 100,
-                price: 1.0,
-                fee_bps: 30,
-                anomaly_score: None,
-                anomaly_reasons: None,
-            }
-        ];
+        let initial_edges = vec![LiquidityEdge {
+            from: "XLM".to_string(),
+            to: "USDC".to_string(),
+            venue_type: "sdex".to_string(),
+            venue_ref: "1".to_string(),
+            liquidity: 100,
+            price: 1.0,
+            fee_bps: 30,
+        }];
 
         manager.edges.store(Arc::new(initial_edges.clone()));
 
@@ -257,19 +251,15 @@ mod tests {
         assert_eq!(snapshot1.asset_count(), 2);
         assert_eq!(snapshot1.assets[0], "XLM");
 
-        let new_edges = vec![
-            LiquidityEdge {
-                from: "USDC".to_string(),
-                to: "XLM".to_string(),
-                venue_type: "sdex".to_string(),
-                venue_ref: "2".to_string(),
-                liquidity: 200,
-                price: 0.99,
-                fee_bps: 30,
-                anomaly_score: None,
-                anomaly_reasons: None,
-            }
-        ];
+        let new_edges = vec![LiquidityEdge {
+            from: "USDC".to_string(),
+            to: "XLM".to_string(),
+            venue_type: "sdex".to_string(),
+            venue_ref: "2".to_string(),
+            liquidity: 200,
+            price: 0.99,
+            fee_bps: 30,
+        }];
         manager.edges.store(Arc::new(new_edges));
 
         let snapshot2 = manager.get_edges();
@@ -284,20 +274,16 @@ mod tests {
     async fn test_concurrent_reads() {
         let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
         let manager = Arc::new(GraphManager::new(pool));
-        
-        let initial_edges = vec![
-            LiquidityEdge {
-                from: "A".to_string(),
-                to: "B".to_string(),
-                venue_type: "sdex".to_string(),
-                venue_ref: "1".to_string(),
-                liquidity: 100,
-                price: 1.0,
-                fee_bps: 30,
-                anomaly_score: None,
-                anomaly_reasons: None,
-            }
-        ];
+
+        let initial_edges = vec![LiquidityEdge {
+            from: "A".to_string(),
+            to: "B".to_string(),
+            venue_type: "sdex".to_string(),
+            venue_ref: "1".to_string(),
+            liquidity: 100,
+            price: 1.0,
+            fee_bps: 30,
+        }];
         manager.edges.store(Arc::new(initial_edges));
 
         let mut handles = vec![];
@@ -315,19 +301,15 @@ mod tests {
         let m2 = manager.clone();
         let updater = tokio::spawn(async move {
             for i in 0..50 {
-                let edges = vec![
-                    LiquidityEdge {
-                        from: format!("A{}", i),
-                        to: "B".to_string(),
-                        venue_type: "sdex".to_string(),
-                        venue_ref: "1".to_string(),
-                        liquidity: 100,
-                        price: 1.0,
-                        fee_bps: 30,
-                        anomaly_score: None,
-                        anomaly_reasons: None,
-                    }
-                ];
+                let edges = vec![LiquidityEdge {
+                    from: format!("A{}", i),
+                    to: "B".to_string(),
+                    venue_type: "sdex".to_string(),
+                    venue_ref: "1".to_string(),
+                    liquidity: 100,
+                    price: 1.0,
+                    fee_bps: 30,
+                }];
                 m2.edges.store(Arc::new(edges));
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             }

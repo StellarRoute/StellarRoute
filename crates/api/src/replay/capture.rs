@@ -149,13 +149,8 @@ mod tests {
                 to_asset: AssetInfo::native(),
                 price: "1.0000000".to_string(),
                 source: "sdex".to_string(),
-<<<<<<< HEAD
-                liquidity_depth: None,
-                fee_bps: None,
-=======
                 fee_bps: None,
                 liquidity_depth: None,
->>>>>>> origin/main
             }],
             timestamp: 0,
             expires_at: None,

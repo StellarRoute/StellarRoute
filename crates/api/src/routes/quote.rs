@@ -27,6 +27,8 @@ use stellarroute_routing::health::scorer::{
     AmmScorer, HealthScorer, HealthScoringConfig, SdexScorer, VenueScorerInput, VenueType,
 };
 
+use crate::routes::quote::webhook_helpers::{build_quote_webhook_payload, extract_consumer_id};
+
 use crate::{
     audit::{AuditExclusion, AuditInputs, AuditOutcome, AuditPathStep, AuditSelected},
     budget::{BudgetConfig, BudgetTracker, PipelineStage},
@@ -42,6 +44,46 @@ use crate::{
     },
     state::AppState,
 };
+
+mod webhook_helpers {
+    use axum::http::HeaderMap;
+    use uuid::Uuid;
+
+    use crate::models::{QuoteExpirationWebhookPayload, QuoteResponse};
+
+    pub(crate) fn extract_consumer_id(headers: &HeaderMap) -> Option<String> {
+        headers
+            .get("x-api-key")
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("api_key:{value}"))
+    }
+
+    pub(crate) fn build_quote_webhook_payload(
+        consumer_id: String,
+        base: &str,
+        quote: &str,
+        quote_resp: &QuoteResponse,
+    ) -> QuoteExpirationWebhookPayload {
+        let now = chrono::Utc::now().timestamp_millis();
+        let expired_at = quote_resp.expires_at.unwrap_or(now);
+
+        QuoteExpirationWebhookPayload {
+            event_id: Uuid::new_v4().to_string(),
+            consumer_id,
+            quote_id: format!("quote:{base}:{quote}:{}", quote_resp.timestamp),
+            pair: format!("{base}/{quote}"),
+            reason: "quote_expired".to_string(),
+            expired_at,
+            event: "quote.expired".to_string(),
+            timestamp: now,
+            base_asset: base.to_string(),
+            quote_asset: quote.to_string(),
+            amount_in: quote_resp.amount.clone(),
+        }
+    }
+}
 
 /// Get price quote for a trading pair
 ///

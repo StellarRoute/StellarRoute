@@ -25,7 +25,7 @@ use crate::{
 /// This is the exact sort applied at the end of both `list_pairs` and
 /// `list_markets`; extracted here so regression tests can call it without
 /// a database or `AppState`.
-pub(crate) fn sort_pairs_canonical(pairs: &mut Vec<TradingPair>) {
+pub(crate) fn sort_pairs_canonical(pairs: &mut [TradingPair]) {
     pairs.sort_by(|a, b| {
         a.base_asset
             .cmp(&b.base_asset)

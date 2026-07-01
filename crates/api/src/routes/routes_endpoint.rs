@@ -7,8 +7,9 @@ use axum::{
 use std::sync::Arc;
 use tracing::debug;
 
+use stellarroute_routing::health::filter::GraphFilter;
 use stellarroute_routing::health::policy::ExclusionPolicy;
-use stellarroute_routing::health::scorer::VenueType;
+use stellarroute_routing::health::scorer::{HealthRecord, ScoredVenue, VenueType};
 use stellarroute_routing::optimizer::HybridOptimizer;
 use stellarroute_routing::policy::RoutingPolicy;
 
@@ -131,15 +132,75 @@ pub async fn get_routes(
                 return Arc::new(Err(ApiError::NoRouteFound));
             }
 
-            // Apply kill switches via a logic that works with compacted indices?
-            // For now, we perform filtering during BFS in the pathfinder which is safer.
-            // However, we need to pass the exclusion policy down.
-            let overrides = state_c.kill_switch.get_override_registry().await;
-            let _exclusion_policy = ExclusionPolicy {
-                thresholds: Default::default(),
+            // Build ExclusionPolicy and filter degraded/excluded venues from the
+            // compacted graph before pathfinding.  The compacted graph does not carry
+            // timestamps, so we cannot derive freshness-based health scores here;
+            // instead we assign a neutral score of 1.0 so that only override and
+            // circuit-breaker directives take effect (threshold filtering is the
+            // responsibility of the indexer-maintained graph state).
+            let mut overrides = state_c.kill_switch.get_override_registry().await;
+            // Merge any static config overrides (mirrors quote.rs Stage 3 merge)
+            for entry in stellarroute_routing::health::scorer::HealthScoringConfig::default()
+                .overrides
+                .clone()
+            {
+                overrides
+                    .venue_entries
+                    .insert(entry.venue_ref, entry.directive);
+            }
+            let exclusion_policy = ExclusionPolicy {
+                thresholds: Default::default(), // thresholds intentionally zeroed: no score-based exclusion
                 overrides,
                 circuit_breaker: Some(state_c.circuit_breaker.clone()),
             };
+
+            // Deduplicate venues from all graph edges and assign neutral scores so
+            // that only overrides / circuit-breaker logic fires.
+            let all_edges = compacted_graph.to_edges();
+            let scored_venues: Vec<ScoredVenue> = {
+                let mut seen = std::collections::HashSet::new();
+                all_edges
+                    .iter()
+                    .filter(|e| seen.insert(e.venue_ref.clone()))
+                    .map(|e| {
+                        let venue_type = if e.venue_type == "amm" {
+                            VenueType::Amm
+                        } else {
+                            VenueType::Sdex
+                        };
+                        ScoredVenue {
+                            venue_ref: e.venue_ref.clone(),
+                            venue_type: venue_type.clone(),
+                            record: HealthRecord {
+                                venue_ref: e.venue_ref.clone(),
+                                venue_type,
+                                score: 1.0,
+                                signals: serde_json::json!({}),
+                                computed_at: chrono::Utc::now(),
+                            },
+                        }
+                    })
+                    .collect()
+            };
+
+            let filter = GraphFilter::new(&exclusion_policy);
+            let (filtered_edges, exclusion_diagnostics) =
+                filter.filter_edges(&all_edges, &scored_venues);
+
+            if !exclusion_diagnostics.excluded_venues.is_empty() {
+                tracing::info!(
+                    excluded = exclusion_diagnostics.excluded_venues.len(),
+                    "routes: health exclusion policy removed degraded venues"
+                );
+            }
+
+            // Rebuild a filtered compacted graph from the healthy edges only.
+            let compacted_graph =
+                stellarroute_routing::compaction::CompactedGraph::from_edges(filtered_edges);
+
+            if compacted_graph.asset_count() == 0 {
+                return Arc::new(Err(ApiError::NoRouteFound));
+            }
 
             let amount_e7 = (amount * 1e7) as i128;
 

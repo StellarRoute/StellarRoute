@@ -63,7 +63,7 @@ fn default_enabled() -> bool {
 }
 
 fn default_interval_secs() -> u64 {
-    3600  // 1 hour
+    3600 // 1 hour
 }
 
 fn default_replay_retention_days() -> i32 {

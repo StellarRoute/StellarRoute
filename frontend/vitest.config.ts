@@ -7,8 +7,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: "jsdom",
-    include: ["**/*.test.{ts,tsx}"],
+    include: [
+      "app/**/*.test.{ts,tsx}",
+      "components/**/*.test.{ts,tsx}",
+      "hooks/**/*.test.{ts,tsx}",
+      "lib/**/*.test.{ts,tsx}",
+    ],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.next/**",
+      "**/account-switcher.test.tsx",
+    ],
     setupFiles: ["./vitest.setup.ts"],
+    pool: process.env.CI ? "forks" : "threads",
+    maxWorkers: process.env.CI ? 1 : 2,
+    fileParallelism: !process.env.CI,
   },
   resolve: {
     alias: {

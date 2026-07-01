@@ -23,14 +23,6 @@ enum ResponseEncoding {
 }
 
 impl ResponseEncoding {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Brotli => "br",
-            Self::Gzip => "gzip",
-            Self::Identity => "identity",
-        }
-    }
-
     fn header_value(self) -> Option<&'static str> {
         match self {
             Self::Brotli => Some("br"),
@@ -58,7 +50,7 @@ pub fn json_response<T: Serialize>(
         ResponseEncoding::Identity => json,
     };
 
-    crate::metrics::record_quote_response_bytes(encoding.label(), original_len, body.len());
+    crate::metrics::record_quote_response_bytes(body.len());
 
     let mut builder = Response::builder()
         .header(CONTENT_TYPE, "application/json")

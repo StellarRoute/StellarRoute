@@ -43,7 +43,7 @@ fn bench_single_fixture_2hop(c: &mut Criterion) {
 
     c.bench_function("regression_single_2hop", |b| {
         b.iter(|| {
-            let report = runner.run(black_box(&[fixture.clone()]), None);
+            let report = runner.run(black_box(std::slice::from_ref(&fixture)), None);
             black_box(report)
         })
     });
@@ -65,7 +65,7 @@ fn bench_single_fixture_large_graph(c: &mut Criterion) {
 
     c.bench_function("regression_single_large_graph", |b| {
         b.iter(|| {
-            let report = runner.run(black_box(&[fixture.clone()]), None);
+            let report = runner.run(black_box(std::slice::from_ref(&fixture)), None);
             black_box(report)
         })
     });

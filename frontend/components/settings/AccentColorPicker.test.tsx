@@ -104,6 +104,6 @@ describe("AccentColorPicker", () => {
         <AccentColorPicker />
       </Wrapper>
     );
-    expect(screen.getByLabelText(/pick a custom accent colour/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/pick a custom accent (color|colour)/i)).toBeInTheDocument();
   });
 });

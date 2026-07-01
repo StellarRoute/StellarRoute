@@ -59,11 +59,21 @@ cd stellarroute
 
 ```bash
 docker-compose up -d
+./scripts/wait-for-services.sh
+./scripts/wait-for-dbs.sh
 ```
 
-This will start:
-- PostgreSQL on port 5432
-- Redis on port 6379
+This will start and verify the health of:
+- PostgreSQL on port 5432 (checked via `pg_isready`)
+- Redis on port 6379 (checked via `ping`)
+
+The `./scripts/wait-for-dbs.sh` script will block and verify both databases are fully initialized and healthy before you build or run the services.
+
+The wait script checks Postgres and Redis readiness before you run the API or indexer. If your machine needs more time to pull images or initialize volumes, extend the timeout:
+
+```bash
+TIMEOUT_SECONDS=120 ./scripts/wait-for-services.sh
+```
 
 ### 6. Build the Project
 
@@ -79,14 +89,27 @@ cargo test
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root. Copy the template and adjust values for your environment:
 
-```env
-DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
-REDIS_URL=redis://localhost:6379
-STELLAR_HORIZON_URL=https://horizon.stellar.org
-SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
+```bash
+cp .env.example .env
 ```
+
+See the [Environment Variables Reference](./environment-variables.md) for the full catalog (database pool tuning, WebSocket limits, rate limits, tracing, indexer maintenance, frontend flags, and more). The example file only includes the minimum needed for local development.
+
+### Frontend Configuration (Profiles)
+
+For the frontend web application, configuration is managed via environment variables defined in the `frontend/` directory (e.g., in `.env.local` or `.env.production`).
+
+To point the frontend to a hosted testnet API and target the Stellar Testnet:
+1. Copy the testnet environment example:
+   ```bash
+   cp frontend/.env.testnet.example frontend/.env.local
+   ```
+2. Configure the following environment variables:
+   - `NEXT_PUBLIC_API_URL`: Points to the hosted backend API (e.g., `https://api.testnet.stellarroute.com/api/v1`).
+   - `NEXT_PUBLIC_STELLAR_NETWORK`: Defines the target network (`testnet` or `mainnet`). This drives default wallet connections, header/footer network badges, and network validation rules.
+   - `NEXT_PUBLIC_STELLAR_HORIZON_URL`: Configures a custom Stellar Horizon endpoint (e.g., `https://horizon-testnet.stellar.org`).
 
 ## Next Steps
 
@@ -244,14 +267,17 @@ docker-compose down --volumes --remove-orphans
 docker-compose up -d
 ```
 
-#### PostgreSQL connection refused after `docker-compose up -d`
+#### PostgreSQL or Redis connection refused after `docker-compose up -d`
 
-The container may still be starting. Wait for the health check to pass:
+The containers may still be starting. You can use the wait script to block until both services are fully healthy:
 
 ```bash
+./scripts/wait-for-dbs.sh
+```
+
+Alternatively, check their statuses manually:
+```bash
 docker-compose ps   # STATUS should show "(healthy)"
-# or wait explicitly
-until docker-compose exec postgres pg_isready -U stellarroute; do sleep 1; done
 ```
 
 #### Database connection failures from the application
@@ -307,27 +333,7 @@ cargo build
 
 #### Build succeeds but binary panics at startup — missing env vars
 
-Make sure `.env` exists in the project root with all required variables:
-
-```env
-DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
-REDIS_URL=redis://localhost:6379
-STELLAR_HORIZON_URL=https://horizon.stellar.org
-SOROBAN_RPC_URL=https://soroban-rpc.testnet.stellar.org
-```
-
----
-
-### Environment Variable Configuration
-
-The project reads environment variables at runtime. If you omit a required variable the service will refuse to start with a descriptive error.
-
-| Variable | Default | Notes |
-|---|---|---|
-| `DATABASE_URL` | — | Required. Full PostgreSQL connection string. |
-| `REDIS_URL` | — | Required. Redis connection string. |
-| `STELLAR_HORIZON_URL` | `https://horizon.stellar.org` | Stellar public Horizon API |
-| `SOROBAN_RPC_URL` | `https://soroban-rpc.testnet.stellar.org` | Soroban RPC endpoint |
+Make sure `.env` exists in the project root (see `.env.example`). The API requires `DATABASE_URL`; the indexer additionally requires `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, and `ROUTER_CONTRACT_ADDRESS`. See the [Environment Variables Reference](./environment-variables.md) for required vs optional settings per service.
 
 ---
 

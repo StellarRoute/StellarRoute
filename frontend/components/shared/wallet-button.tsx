@@ -1,29 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useWallet } from '@/hooks/useWallet';
+import { useWallet } from '@/components/providers/wallet-provider';
 import { useWalletOnboarding } from '@/hooks/useWalletOnboarding';
 import { WalletConnectionOnboarding } from '@/components/modals/WalletConnectionOnboarding';
 import { AccountSwitcher } from './account-switcher';
+import type { SupportedWallet, WalletNetwork } from '@/lib/wallet/types';
 import { Button } from '@/components/ui/button';
 
-const APP_NETWORK = 'TESTNET';
+function formatShortAddress(address: string): string {
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 4)}…${address.slice(-4)}`;
+}
 
 export function WalletButton() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
-  const [walletNetworkForOnboarding, setWalletNetworkForOnboarding] = useState<string | null>(null);
 
   const {
-    session,
+    address,
+    isConnected,
+    network,
+    walletNetwork,
+    networkMismatch,
     availableWallets,
-    loading,
+    isLoading,
     error,
-    shortAddress,
     connect,
     disconnect,
-    copyAddress,
+    setNetwork,
   } = useWallet();
 
   const {
@@ -32,36 +38,50 @@ export function WalletButton() {
     markOnboardingAsCompleted,
     markOnboardingAsSeenAndOpened,
   } = useWalletOnboarding({
-    isConnected: session.isConnected,
+    isConnected,
   });
 
-  const mismatch =
-    session.network &&
-    session.network.toUpperCase() !== APP_NETWORK.toUpperCase();
-
-  // Auto-open onboarding for first-time users
   useEffect(() => {
     if (showOnboarding && isFirstConnection && !showOnboardingModal) {
       setShowOnboardingModal(true);
       markOnboardingAsSeenAndOpened();
     }
-  }, [showOnboarding, isFirstConnection, showOnboardingModal, markOnboardingAsSeenAndOpened]);
+  }, [
+    showOnboarding,
+    isFirstConnection,
+    showOnboardingModal,
+    markOnboardingAsSeenAndOpened,
+  ]);
 
-  const handleOnboardingConnect = async (walletId: any) => {
+  const handleOnboardingConnect = async (walletId: SupportedWallet) => {
     try {
       await connect(walletId);
-      setWalletNetworkForOnboarding(session.network ?? null);
       markOnboardingAsCompleted();
     } catch (err) {
-      // Error will be shown in onboarding modal
       throw err;
     }
   };
 
-  if (!session.isConnected) {
+  const handleNetworkSelection = (nextNetwork: WalletNetwork) => {
+    setNetwork(nextNetwork);
+  };
+
+  const copyAddress = async () => {
+    if (!address) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(address);
+    } catch (err) {
+      console.error('Failed to copy address:', err);
+    }
+  };
+
+  if (!isConnected) {
     return (
       <>
         <Button
+          id="wallet-button"
           onClick={() => setShowOnboardingModal(true)}
           className="min-h-[44px]"
         >
@@ -72,10 +92,12 @@ export function WalletButton() {
           open={showOnboardingModal}
           onOpenChange={setShowOnboardingModal}
           availableWallets={availableWallets}
-          isLoading={loading}
-          error={error}
+          isLoading={isLoading}
+          error={error?.message ?? null}
           onConnect={handleOnboardingConnect}
-          walletNetwork={walletNetworkForOnboarding}
+          appNetwork={network}
+          walletNetwork={walletNetwork}
+          onNetworkSelection={handleNetworkSelection}
         />
       </>
     );
@@ -84,19 +106,21 @@ export function WalletButton() {
   return (
     <div className="flex flex-col gap-2">
       <AccountSwitcher
-        onAccountChange={(newAddress) => {
-          console.log('Account changed to:', newAddress);
-          // This could trigger balance/quote refreshes
+        onAccountChange={() => {
           setShowQrCode(false);
         }}
       />
 
       <div className="flex items-center gap-2">
-        <span className="rounded-md border px-3 py-2 text-sm font-mono bg-muted/20">
-          {shortAddress}
+        <span
+          className="rounded-md border px-3 py-2 text-sm font-mono bg-muted/20"
+          title={address ?? undefined}
+        >
+          {address ? formatShortAddress(address) : 'Connected'}
         </span>
 
         <button
+          type="button"
           onClick={() => setShowQrCode(!showQrCode)}
           className={`rounded-md border px-3 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
             showQrCode
@@ -110,6 +134,7 @@ export function WalletButton() {
         </button>
 
         <button
+          type="button"
           onClick={copyAddress}
           className="rounded-md border px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground bg-background transition-colors cursor-pointer"
         >
@@ -117,6 +142,7 @@ export function WalletButton() {
         </button>
 
         <button
+          type="button"
           onClick={disconnect}
           className="rounded-md border px-3 py-2 text-sm hover:bg-destructive hover:text-destructive-foreground bg-background transition-colors cursor-pointer"
         >
@@ -124,11 +150,11 @@ export function WalletButton() {
         </button>
       </div>
 
-      {showQrCode && session.address && (
+      {showQrCode && address && (
         <div className="flex flex-col items-center gap-3 rounded-xl border bg-card p-4 text-card-foreground shadow-md transition-all duration-300 animate-in fade-in slide-in-from-top-2">
           <div className="rounded-lg bg-white p-3 shadow-inner border border-border flex items-center justify-center">
             <QRCodeSVG
-              value={session.address}
+              value={address}
               size={160}
               level="H"
               includeMargin={true}
@@ -139,23 +165,23 @@ export function WalletButton() {
               Public Address
             </span>
             <span className="text-xs font-mono select-all break-all text-foreground/80 leading-relaxed">
-              {session.address}
+              {address}
             </span>
           </div>
         </div>
       )}
 
       <div className="text-sm text-muted-foreground">
-        Wallet network: {session.network ?? 'Unknown'}
+        Wallet network: {walletNetwork ?? network ?? 'Unknown'}
       </div>
 
-      {mismatch && (
+      {networkMismatch && (
         <div className="text-sm text-yellow-600 font-medium">
-          Network mismatch: app is {APP_NETWORK}, wallet is {session.network}
+          Network mismatch: app is {network}, wallet is {walletNetwork}
         </div>
       )}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error.message}</p>}
     </div>
   );
 }

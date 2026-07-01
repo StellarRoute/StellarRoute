@@ -20,6 +20,8 @@ use crate::audit::AuditWriter;
 use crate::cache::{PrewarmConfig, PrewarmJob};
 use crate::exactlyonce::DedupeLedger;
 use crate::indexer_lag::IndexerLagMonitor;
+use crate::liquidity_alerts::LiquidityThinnessAlerts;
+use crate::webhooks::QuoteExpirationWebhookService;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 
 /// Primary database pool for write operations plus an optional replica pool
@@ -168,6 +170,14 @@ pub struct AppState {
     pub idempotency_ledger: Arc<DedupeLedger>,
     /// External dependency probes and dedicated circuit breakers.
     pub external_dependency_health: Arc<ExternalDependencyHealth>,
+    /// Orderbook liquidity thinness alert dispatcher.
+    pub liquidity_thinness_alerts: Arc<LiquidityThinnessAlerts>,
+    /// Quote expiration webhook dispatcher.
+    pub quote_expiration_webhooks: Arc<QuoteExpirationWebhookService>,
+    /// Optional Soroban simulation client for dry-run validation
+    pub soroban_simulator: Option<Arc<crate::simulation::SorobanSimulator>>,
+    /// Whether to run simulations in realtime/latency-sensitive mode
+    pub soroban_simulation_enabled: bool,
 }
 
 impl AppState {
@@ -194,6 +204,20 @@ impl AppState {
             ledger
         };
         let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+        let liquidity_thinness_alerts = Arc::new(LiquidityThinnessAlerts::from_env());
+        let quote_expiration_webhooks =
+            Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
+
+        // Build optional Soroban simulator (if configured)
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
+            .ok()
+            .and_then(|url| {
+                let cfg = crate::simulation::SimulationConfig {
+                    rpc_url: url,
+                    ..Default::default()
+                };
+                crate::simulation::SorobanSimulator::new(cfg)
+            });
 
         Self {
             db,
@@ -222,6 +246,13 @@ impl AppState {
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
+            liquidity_thinness_alerts,
+            quote_expiration_webhooks,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         }
     }
 
@@ -262,6 +293,19 @@ impl AppState {
             ledger
         };
         let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+        let liquidity_thinness_alerts = Arc::new(LiquidityThinnessAlerts::from_env());
+        let quote_expiration_webhooks =
+            Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
+
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
+            .ok()
+            .and_then(|url| {
+                let cfg = crate::simulation::SimulationConfig {
+                    rpc_url: url,
+                    ..Default::default()
+                };
+                crate::simulation::SorobanSimulator::new(cfg)
+            });
 
         // Build the AppState value to return, then optionally start background jobs
         let app_state = Self {
@@ -291,6 +335,13 @@ impl AppState {
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
+            liquidity_thinness_alerts,
+            quote_expiration_webhooks,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         };
 
         // Start cache prewarm job if configured via env `PREWARM_PAIRS`.
@@ -406,7 +457,7 @@ impl AppState {
         // Check Redis
         if let Some(cache) = &self.cache {
             if let Ok(mut guard) = cache.try_lock() {
-                if !guard.is_healthy().await {
+                if guard.health_status().await != crate::cache::CacheHealthStatus::Healthy {
                     score *= 0.8;
                 }
             }

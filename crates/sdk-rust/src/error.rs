@@ -25,6 +25,8 @@ pub enum ApiErrorCode {
     StaleMarketData,
     /// The server is temporarily overloaded (HTTP 503).
     Overloaded,
+    /// No route exists between the requested asset pair for the given amount.
+    NoRoute,
     /// Unexpected server-side failure (HTTP 500).
     InternalError,
     /// Any other error code not listed above.
@@ -55,6 +57,7 @@ impl std::str::FromStr for ApiErrorCode {
             "rate_limit_exceeded" => Self::RateLimitExceeded,
             "stale_market_data" => Self::StaleMarketData,
             "overloaded" => Self::Overloaded,
+            "no_route" => Self::NoRoute,
             "internal_error" => Self::InternalError,
             other => Self::Other(other.to_string()),
         })
@@ -71,6 +74,7 @@ impl ApiErrorCode {
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::StaleMarketData => "stale_market_data",
             Self::Overloaded => "overloaded",
+            Self::NoRoute => "no_route",
             Self::InternalError => "internal_error",
             Self::Other(s) => s.as_str(),
         }
@@ -94,6 +98,8 @@ pub struct RateLimitInfo {
     pub remaining: Option<u32>,
     /// Unix timestamp when the window resets.
     pub reset: Option<u64>,
+    /// Seconds to wait before retrying, from the `Retry-After` header.
+    pub retry_after: Option<u64>,
 }
 
 // ── Main error type ───────────────────────────────────────────────────────────

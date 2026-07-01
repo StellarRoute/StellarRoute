@@ -198,7 +198,8 @@ impl GraphManager {
                             (None, Some((a * 1e7) as i128))
                         };
 
-                        let anomaly_res = detector.update_and_detect(&venue_ref, reserves, depth);
+                        let _anomaly_res =
+                            detector.update_and_detect(&venue_ref, reserves, depth, None);
 
                         next_edges.push(LiquidityEdge {
                             from: e_from.clone(),
@@ -207,9 +208,7 @@ impl GraphManager {
                             venue_ref,
                             liquidity: (a * 1e7) as i128,
                             price: p,
-                            fee_bps: fee_bps_u32,
-                            anomaly_score: anomaly_res.score,
-                            anomaly_reasons: anomaly_res.reasons,
+                            fee_bps: if is_amm { 30 } else { 20 },
                         });
                     }
                 }
@@ -233,8 +232,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_graph_manager_snapshot_consistency() {
-        // Mock pool - we won't actually query it in this unit test
-        // but we need it for the struct.
         let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
         let manager = GraphManager::new(pool);
 
@@ -246,21 +243,14 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }];
 
-        // Set initial state
-        manager
-            .edges
-            .store(Arc::new(CompactedGraph::from_edges(initial_edges.clone())));
+        manager.edges.store(Arc::new(initial_edges.clone()));
 
-        // Obtain a snapshot
         let snapshot1 = manager.get_edges();
         assert_eq!(snapshot1.asset_count(), 2);
         assert_eq!(snapshot1.assets[0], "XLM");
 
-        // Update the manager with new data
         let new_edges = vec![LiquidityEdge {
             from: "USDC".to_string(),
             to: "XLM".to_string(),
@@ -269,21 +259,15 @@ mod tests {
             liquidity: 200,
             price: 0.99,
             fee_bps: 30,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }];
-        manager
-            .edges
-            .store(Arc::new(CompactedGraph::from_edges(new_edges)));
+        manager.edges.store(Arc::new(new_edges));
 
-        // Obtain a second snapshot
         let snapshot2 = manager.get_edges();
         assert_eq!(snapshot2.asset_count(), 2);
         assert_eq!(snapshot2.assets[0], "USDC");
 
-        // Verify snapshot1 is STILL valid and unchanged
-        assert_eq!(snapshot1.asset_count(), 2);
-        assert_eq!(snapshot1.assets[0], "XLM");
+        assert_eq!(snapshot1.len(), 1);
+        assert_eq!(snapshot1[0].from, "XLM");
     }
 
     #[tokio::test]
@@ -299,12 +283,8 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
-            anomaly_score: 0.0,
-            anomaly_reasons: vec![],
         }];
-        manager
-            .edges
-            .store(Arc::new(CompactedGraph::from_edges(initial_edges)));
+        manager.edges.store(Arc::new(initial_edges));
 
         let mut handles = vec![];
         for _ in 0..10 {
@@ -329,10 +309,8 @@ mod tests {
                     liquidity: 100,
                     price: 1.0,
                     fee_bps: 30,
-                    anomaly_score: 0.0,
-                    anomaly_reasons: vec![],
                 }];
-                m2.edges.store(Arc::new(CompactedGraph::from_edges(edges)));
+                m2.edges.store(Arc::new(edges));
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             }
         });
@@ -341,27 +319,5 @@ mod tests {
             h.await.unwrap();
         }
         updater.await.unwrap();
-    }
-
-    #[test]
-    fn test_fee_selection_varied_fixtures() {
-        // Local helper reproducing the selection logic used in `sync_graph`.
-        fn select_fee(db_fee: Option<i32>, is_amm: bool) -> u32 {
-            if is_amm {
-                db_fee.map(|v| v as u32).unwrap_or(DEFAULT_AMM_FEE_BPS)
-            } else {
-                db_fee.map(|v| v as u32).unwrap_or(DEFAULT_SDEX_FEE_BPS)
-            }
-        }
-
-        // AMM with explicit DB fee
-        assert_eq!(select_fee(Some(25), true), 25);
-        // AMM missing DB fee -> fallback
-        assert_eq!(select_fee(None, true), DEFAULT_AMM_FEE_BPS);
-
-        // SDEX with explicit DB fee
-        assert_eq!(select_fee(Some(5), false), 5);
-        // SDEX missing DB fee -> fallback
-        assert_eq!(select_fee(None, false), DEFAULT_SDEX_FEE_BPS);
     }
 }

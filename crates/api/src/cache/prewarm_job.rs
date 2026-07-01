@@ -117,6 +117,7 @@ impl PrewarmJob {
                                         slippage_bps: Some(slippage),
                                         quote_type: QuoteType::Sell,
                                         explain: Some(false),
+                                        fields: None,
                                     };
 
                                     match crate::routes::quote::compute_quote_response(

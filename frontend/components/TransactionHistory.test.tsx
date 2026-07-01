@@ -10,8 +10,27 @@ const historyState = vi.hoisted(() => ({
   clearHistory: vi.fn(),
 }));
 
+const walletState = vi.hoisted(() => ({
+  address: "GBSUTEST1234ABCD" as string | null,
+  isConnected: true,
+  availableWallets: [],
+  isLoading: false,
+  error: null as { message: string } | null,
+  connect: vi.fn(),
+  walletNetwork: null as string | null,
+}));
+
 vi.mock("@/hooks/useTransactionHistory", () => ({
   useTransactionHistory: () => historyState,
+}));
+
+vi.mock("@/components/providers/wallet-provider", () => ({
+  useWallet: () => walletState,
+}));
+
+vi.mock("@/components/modals/WalletConnectionOnboarding", () => ({
+  WalletConnectionOnboarding: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="wallet-onboarding-modal" /> : null,
 }));
 
 vi.mock("@/lib/transaction-csv-export", async (importOriginal) => {
@@ -73,6 +92,9 @@ describe("TransactionHistory", () => {
   beforeEach(() => {
     historyState.transactions = [];
     historyState.clearHistory = vi.fn();
+    walletState.address = "GBSUTEST1234ABCD";
+    walletState.isConnected = true;
+    walletState.error = null;
   });
 
   afterEach(() => {
@@ -207,6 +229,62 @@ describe("TransactionHistory", () => {
     });
 
     expect(screen.queryByTestId("tx-row-tx-0")).not.toBeInTheDocument();
+  });
+
+  describe("Wallet connection state", () => {
+    it("shows disconnected empty state with connect CTA when wallet is not connected", async () => {
+      walletState.isConnected = false;
+      walletState.address = null;
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("wallet-disconnected-state")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Connect Your Wallet")).toBeInTheDocument();
+      expect(screen.getByTestId("connect-wallet-cta")).toBeInTheDocument();
+    });
+
+    it("opens wallet onboarding modal when connect CTA is clicked", async () => {
+      walletState.isConnected = false;
+      walletState.address = null;
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("connect-wallet-cta")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("connect-wallet-cta"));
+
+      expect(screen.getByTestId("wallet-onboarding-modal")).toBeInTheDocument();
+    });
+
+    it("shows connected wallet address in header when wallet is connected", async () => {
+      walletState.isConnected = true;
+      walletState.address = "GBSUTEST1234ABCD";
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText("GBSUTEST1234ABCD")).toBeInTheDocument();
+      });
+    });
+
+    it("shows transaction table when wallet is connected and has transactions", async () => {
+      walletState.isConnected = true;
+      walletState.address = "GBSUTEST1234ABCD";
+      historyState.transactions = createTransactions(3);
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("tx-row-tx-0")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("wallet-disconnected-state")).not.toBeInTheDocument();
+    });
   });
 
   describe("CSV Export and Column Selection", () => {

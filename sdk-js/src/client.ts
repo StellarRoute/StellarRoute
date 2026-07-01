@@ -1,15 +1,24 @@
 import type {
   ApiErrorCode,
+  ExecuteSwapParams,
+  ExecuteSwapResult,
   HealthStatus,
   Orderbook,
   PairsResponse,
   PathStep,
+  PriceHistoryResponse,
+  PriceHistoryWindow,
   PriceQuote,
   QuoteRequestItem,
   BatchQuoteResponse,
+  OrderbookRequestItem,
+  BatchOrderbookResponse,
   QuoteStalenessConfig,
   QuoteType,
+  RankedRoutesResponse,
   RouteResponse,
+  SimulateRouteRequest,
+  SimulateRouteResponse,
 } from './types.js';
 import { DEFAULT_STALENESS_CONFIG, isQuoteStale, isQuoteExpired } from './types.js';
 
@@ -193,6 +202,25 @@ export class StellarRouteClient {
   }
 
   /**
+   * `POST /api/v1/batch/orderbook` — fetch multiple orderbooks in a single request.
+   *
+   * @throws {@link StellarRouteApiError} when the batch request fails.
+   */
+  async getOrderbooksBatch(
+    requests: OrderbookRequestItem[],
+    signal?: AbortSignal,
+  ): Promise<BatchOrderbookResponse> {
+    const path = '/api/v1/batch/orderbook';
+    return this.request<BatchOrderbookResponse>(
+      path,
+      signal,
+      this.retries,
+      'POST',
+      { requests },
+    );
+  }
+
+  /**
    * `GET /api/v1/quote/{base}/{quote}` — get best price quote.
    *
    * @param base   Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
@@ -259,6 +287,10 @@ export class StellarRouteClient {
   /**
    * `GET /api/v1/route/{base}/{quote}` — get optimal trading route.
    *
+   * @deprecated Use {@link getRankedRoutes} instead, which calls the ranked
+   *   `/api/v1/routes` endpoint and returns richer candidate data including
+   *   scores, feasibility fields, and multiple route options.
+   *
    * @param base   Base asset identifier.
    * @param quote  Quote asset identifier.
    * @param amount Amount of the base asset to trade.
@@ -285,6 +317,39 @@ export class StellarRouteClient {
   }
 
   /**
+   * `GET /api/v1/routes/{base}/{quote}` — get ranked trading route candidates.
+   *
+   * Returns multiple ranked routes with composite scores, price impact, and
+   * per-hop metadata. Routes are sorted by score (higher is better).
+   *
+   * @param base    Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
+   * @param quote   Quote asset identifier.
+   * @param amount  Amount of the base asset to trade. Defaults to `"1"`.
+   * @param limit   Maximum number of routes to return (1–20, default 5).
+   * @param maxHops Maximum hops per route (1–6, default 3).
+   *
+   * @throws {@link StellarRouteApiError} with `status === 404` when no route exists.
+   * @throws {@link StellarRouteApiError} with `status === 400` for invalid params.
+   */
+  async getRankedRoutes(
+    base: string,
+    quote: string,
+    amount?: number,
+    limit?: number,
+    maxHops?: number,
+    signal?: AbortSignal,
+  ): Promise<RankedRoutesResponse> {
+    const params = new URLSearchParams();
+    if (amount !== undefined) params.set('amount', String(amount));
+    if (limit !== undefined) params.set('limit', String(limit));
+    if (maxHops !== undefined) params.set('max_hops', String(maxHops));
+
+    const qs = params.toString();
+    const path = `/api/v1/routes/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${qs ? `?${qs}` : ''}`;
+    return this.request<RankedRoutesResponse>(path, signal);
+  }
+
+  /**
    * `POST /api/v1/batch/quote` — fetch multiple price quotes in a single request.
    *
    * @param requests Array of quote requests to fetch.
@@ -303,6 +368,120 @@ export class StellarRouteClient {
       'POST',
       requests,
     );
+  }
+
+  /**
+   * `POST /api/v1/simulate/route` — dry-run a route to see expected output,
+   * price impact, and slippage before committing to an on-chain swap.
+   *
+   * @param params Route and simulation parameters.
+   *
+   * @throws {@link StellarRouteApiError} with `status === 404` when no
+   *   matching route exists.
+   * @throws {@link StellarRouteApiError} with `status === 400` for invalid
+   *   request params.
+   *
+   * @example
+   * ```ts
+   * const result = await client.simulateRoute({
+   *   route: { hops: [{ from_asset: 'native', to_asset: 'USDC:GA...', source: 'sdex' }] },
+   *   amount: '100',
+   *   slippage_bps: 50,
+   * });
+   * console.log(result.quote.price);
+   * ```
+   */
+  simulateRoute(
+    params: SimulateRouteRequest,
+    signal?: AbortSignal,
+  ): Promise<SimulateRouteResponse> {
+    return this.request<SimulateRouteResponse>(
+      '/api/v1/simulate/route',
+      signal,
+      this.retries,
+      'POST',
+      params,
+    );
+  }
+
+  /**
+   * Execute a swap via the StellarRoute API.
+   *
+   * When the API provides a swap-build endpoint, this method calls it and
+   * returns the Stellar XDR transaction envelope for the caller to sign and
+   * submit. Until that endpoint ships, the method calls `simulateRoute` first
+   * to validate the route, then throws `StellarRouteApiError` with code
+   * `"not_implemented"` so callers can detect the stub and fall back gracefully.
+   *
+   * **Usage pattern**
+   * ```ts
+   * try {
+   *   const result = await client.executeSwap({
+   *     route: { hops: [...] },
+   *     amount: '100',
+   *     sender: 'G...',
+   *     min_output: '98',
+   *     slippage_bps: 50,
+   *   });
+   *   // sign result.xdr_envelope and submit via Stellar SDK
+   * } catch (err) {
+   *   if (isStellarRouteApiError(err) && err.code === 'not_implemented') {
+   *     // Build and submit transaction via Stellar SDK directly
+   *   }
+   * }
+   * ```
+   *
+   * @param params Swap execution parameters including route, amount, sender, and slippage.
+   *
+   * @throws {@link StellarRouteApiError} with `code === "not_implemented"` until
+   *   the swap-build endpoint is deployed.
+   * @throws {@link StellarRouteApiError} for simulation failures (route not found,
+   *   validation errors, stale data, etc.).
+   */
+  async executeSwap(
+    params: ExecuteSwapParams,
+    signal?: AbortSignal,
+  ): Promise<ExecuteSwapResult> {
+    // Validate route is executable via dry-run before attempting swap.
+    await this.simulateRoute(
+      {
+        route: params.route,
+        amount: params.amount,
+        slippage_bps: params.slippage_bps,
+      },
+      signal,
+    );
+
+    // Swap-build endpoint not yet deployed. Throw a documented stub error so
+    // callers can detect and fall back to building the transaction themselves.
+    throw new StellarRouteApiError(
+      501,
+      'not_implemented',
+      'executeSwap: on-chain swap-build endpoint not yet available. ' +
+        'Simulate succeeded — build and sign the XDR transaction via the Stellar SDK.',
+    );
+  }
+
+  /**
+   * `GET /api/v1/price-history/{base}/{quote}` — fetch price history for charting/sparklines.
+   *
+   * @param base  Base asset identifier: `"native"`, `"CODE"`, or `"CODE:ISSUER"`.
+   * @param quote Quote asset identifier.
+   * @param options Optional parameters: `window` for the time range.
+   *
+   * @throws {@link StellarRouteApiError} with `status === 404` when the pair is not found.
+   */
+  getPriceHistory(
+    base: string,
+    quote: string,
+    options?: { window?: PriceHistoryWindow; signal?: AbortSignal },
+  ): Promise<PriceHistoryResponse> {
+    const params = new URLSearchParams();
+    if (options?.window !== undefined) params.set('window', options.window);
+
+    const qs = params.toString();
+    const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${qs ? `?${qs}` : ''}`;
+    return this.request<PriceHistoryResponse>(path, options?.signal);
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────────

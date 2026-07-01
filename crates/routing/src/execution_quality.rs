@@ -354,7 +354,7 @@ mod tests {
             is_error: false,
         });
         let w = tracker.weight_for("amm");
-        assert!(w >= 0.1 && w <= 0.95);
+        assert!((0.1..=0.95).contains(&w));
     }
 
     #[test]

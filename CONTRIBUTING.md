@@ -144,6 +144,19 @@ cargo audit
 cargo fmt && cargo clippy -- -D warnings && cargo test
 ```
 
+CI also runs `cargo check --workspace` on every pull request and push to
+`main`/`develop`, so workspace-wide compile regressions block merges before the
+slower test jobs finish.
+
+### Testnet Smoke CI
+
+The testnet deployment workflow runs post-deploy smoke calls against the router
+contract. Configure these repository variables before enabling release blocking:
+
+- `SOROBAN_CONTRACT_ID`: pinned testnet router contract id.
+- `STELLARROUTE_SMOKE_ROUTE`: Soroban CLI route argument used by `validate_route` and `get_quote`.
+- `STELLARROUTE_SMOKE_AMOUNT_IN`: optional quote input amount; defaults to `10000000`.
+
 ### General
 
 - Keep functions and modules small and focused.

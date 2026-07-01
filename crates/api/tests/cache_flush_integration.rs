@@ -1,14 +1,17 @@
 //! Integration tests for the admin cache flush endpoint.
 
-use axum::{body::Body, http::{Request, StatusCode}};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use serde_json::Value;
 use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
 use stellarroute_api::{
     cache::{self, CacheManager},
-    models::{AssetInfo, OrderbookResponse, QuoteResponse},
+    models::{AssetInfo, OrderbookResponse, OrderbookSummary, QuoteResponse},
     routes,
-    state::{AppState, CachePolicy},
+    state::{AppState, CachePolicy, DatabasePools},
 };
 use tower::ServiceExt;
 
@@ -19,7 +22,10 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     let cache = match CacheManager::new(&redis_url).await {
         Ok(cache) => cache,
         Err(err) => {
-            eprintln!("Skipping admin cache flush test because Redis is unavailable: {}", err);
+            eprintln!(
+                "Skipping admin cache flush test because Redis is unavailable: {}",
+                err
+            );
             return;
         }
     };
@@ -27,9 +33,10 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     let pool = PgPoolOptions::new()
         .connect_lazy("postgres://localhost/postgres")
         .expect("failed to create lazy DB pool");
+    let db = DatabasePools::new(pool, None);
 
     let state = Arc::new(
-        AppState::with_cache_and_policy(pool, cache.clone(), CachePolicy::default())
+        AppState::with_cache_and_policy(db, cache.clone(), CachePolicy::default())
             .with_admin_auth_token("test-secret"),
     );
     let router = routes::create_router(state.clone());
@@ -44,6 +51,7 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price: "0.5".to_string(),
         total: "0.5".to_string(),
         quote_type: "sell".to_string(),
+        degraded: false,
         path: Vec::new(),
         timestamp: 0,
         expires_at: None,
@@ -53,6 +61,8 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let orderbook_value = OrderbookResponse {
@@ -60,6 +70,12 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         quote_asset: AssetInfo::credit("USDC".to_string(), None),
         bids: Vec::new(),
         asks: Vec::new(),
+        summary: OrderbookSummary {
+            bid: None,
+            ask: None,
+            spread_bps: None,
+            midpoint: None,
+        },
         timestamp: 0,
     };
 
@@ -99,6 +115,14 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
     assert_eq!(json["total_deleted"].as_u64(), Some(2));
 
     let mut cache_lock = state.cache.as_ref().unwrap().lock().await;
-    assert!(cache_lock.get::<OrderbookResponse>(&orderbook_key).await.is_none());
-    assert!(cache_lock.get::<QuoteResponse>(&quote_key).await.is_none());
+    assert!(cache_lock
+        .get::<OrderbookResponse>(&orderbook_key)
+        .await
+        .into_option()
+        .is_none());
+    assert!(cache_lock
+        .get::<QuoteResponse>(&quote_key)
+        .await
+        .into_option()
+        .is_none());
 }

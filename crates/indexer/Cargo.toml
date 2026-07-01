@@ -38,6 +38,7 @@ httpdate = "1.0"
 prometheus = "0.13"
 lazy_static = "1.4"
 toml = "0.8"
+parking_lot = "0.12"
 
 # Stellar SDK
 stellar-xdr = { version = "21.2.0", features = ["std", "base64"] }

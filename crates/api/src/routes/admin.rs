@@ -1,19 +1,16 @@
 //! Administrative API routes
 
-use anyhow::anyhow;
 use axum::{
     extract::{Path, State},
     Json,
 };
-use serde::Serialize;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
-    cache,
     error::{ApiError, Result},
     middleware::admin::AdminAuth,
-    models::{CacheFlushResponse, ErrorResponse},
+    models::CacheFlushResponse,
     state::AppState,
 };
 
@@ -38,7 +35,7 @@ pub async fn flush_cache(
     Path((base, quote)): Path<(String, String)>,
 ) -> Result<Json<CacheFlushResponse>> {
     let cache = state.cache.as_ref().ok_or_else(|| {
-        ApiError::Internal(anyhow::anyhow!("Cache backend is not configured"))
+        ApiError::Internal(Arc::new(anyhow::anyhow!("Cache backend is not configured")))
     })?;
 
     let quote_pattern = build_quote_pattern(&base, &quote);
@@ -48,11 +45,25 @@ pub async fn flush_cache(
     let deleted_quote_keys = cache
         .delete_by_pattern(&quote_pattern)
         .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Cache delete failed: {}", e)))?;
+        .unwrap_or_else(|e| {
+            warn!(
+                quote_pattern = %quote_pattern,
+                error = %e,
+                "Redis unavailable during admin quote cache flush; continuing with zero deletions"
+            );
+            0
+        });
     let deleted_orderbook_keys = cache
         .delete_by_pattern(&orderbook_pattern)
         .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Cache delete failed: {}", e)))?;
+        .unwrap_or_else(|e| {
+            warn!(
+                orderbook_pattern = %orderbook_pattern,
+                error = %e,
+                "Redis unavailable during admin orderbook cache flush; continuing with zero deletions"
+            );
+            0
+        });
 
     let total_deleted = deleted_quote_keys + deleted_orderbook_keys;
 

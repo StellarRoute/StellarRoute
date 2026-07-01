@@ -47,8 +47,8 @@
 
   /* Additional Stellar-specific colors */
   --color-stellar-purple: #6366f1;
-  --color-bid-green: #22c55e;
-  --color-ask-red: #ef4444;
+  --color-bid-green: var(--bid-green);
+  --color-ask-red: var(--ask-red);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -63,6 +63,8 @@
   --radius: 0.625rem;
   /* Light Theme */
   --background: #ffffff;
+  --bid-green: #059669;
+  --ask-red: #ef4444;
   --foreground: #020617;
   --card: #ffffff;
   --card-foreground: #020617;
@@ -105,6 +107,8 @@
 .dark {
   /* Dark Theme Default */
   --background: #0a0e1a;
+  --bid-green: #10b981;
+  --ask-red: #f87171;
   --foreground: #f8fafc;
   --card: #111827;
   --card-foreground: #f8fafc;
@@ -148,6 +152,8 @@
 .high-contrast {
   --background: #ffffff;
   --foreground: #000000;
+  --bid-green: #006600;
+  --ask-red: #cc0000;
   --card: #ffffff;
   --card-foreground: #000000;
   --popover: #ffffff;
@@ -183,6 +189,8 @@
 .dark.high-contrast {
   --background: #000000;
   --foreground: #ffffff;
+  --bid-green: #44ff44;
+  --ask-red: #ff4444;
   --card: #0a0a0a;
   --card-foreground: #ffffff;
   --popover: #0a0a0a;

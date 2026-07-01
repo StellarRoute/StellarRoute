@@ -420,10 +420,10 @@ fn test_register_multiple_distinct_pools() {
 #[test]
 fn test_pause_blocks_swaps() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
-    client.pause();
+    client.pause(&admin);
 
     let result = client.try_execute_swap(
         &Address::generate(&env),
@@ -441,19 +441,19 @@ fn test_pause_blocks_swaps() {
 #[test]
 fn test_pause_does_not_block_registration() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
-    client.pause();
+    let (admin, _, client) = deploy_router(&env);
+    client.pause(&admin);
     client.register_pool(&deploy_mock_pool(&env));
 }
 
 #[test]
 fn test_unpause_resumes_swaps() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
 
     let result = client.try_execute_swap(
         &Address::generate(&env),
@@ -471,11 +471,11 @@ fn test_unpause_resumes_swaps() {
 #[test]
 fn test_pause_unpause_toggle() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
 
-    client.pause();
+    client.pause(&admin);
     assert_eq!(
         client.try_execute_swap(
             &Address::generate(&env),
@@ -490,7 +490,7 @@ fn test_pause_unpause_toggle() {
         Err(Ok(ContractError::Paused))
     );
 
-    client.unpause();
+    client.unpause(&admin);
     assert!(client
         .try_execute_swap(
             &Address::generate(&env),
@@ -1105,10 +1105,10 @@ fn test_adapter_get_reserves_failure_is_typed() {
 #[test]
 fn test_swap_while_paused_fails() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
-    client.pause();
+    client.pause(&admin);
     assert_eq!(
         client.try_execute_swap(
             &Address::generate(&env),
@@ -1267,10 +1267,10 @@ fn property_all_contract_errors_are_reachable() {
 
     // Paused
     {
-        let (_, _, c) = deploy_router(&env);
+        let (admin, _, c) = deploy_router(&env);
         let pool = deploy_mock_pool(&env);
         c.register_pool(&pool);
-        c.pause();
+        c.pause(&admin);
         assert_eq!(
             c.try_execute_swap(
                 &Address::generate(&env),
@@ -1405,6 +1405,111 @@ fn test_full_lifecycle() {
     assert_eq!(result.amount_out, quote.expected_output);
 }
 
+// ── Migration Edge Case Tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_admin_functions_blocked_before_migration() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+
+    // Try proposing a governance action before migration
+    let result = client.try_propose(&admin, &ProposalAction::Pause);
+    // Should return NotMultiSig
+    assert_eq!(result, Err(Ok(ContractError::NotMultiSig)));
+}
+
+#[test]
+fn test_threshold_boundary_conditions() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let s3 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1);
+    signers.push_back(s2);
+    signers.push_back(s3);
+
+    // Test threshold 1 (valid minimum)
+    client.migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
+
+    // Now reset and test threshold 3 (valid maximum)
+    let (admin2, _, client2) = deploy_router(&env);
+    client2.migrate_to_multisig(&admin2, &signers, &3_u32, &10000_u64, &None);
+
+    // Test threshold 0 (invalid)
+    let (admin3, _, client3) = deploy_router(&env);
+    let result = client3.try_migrate_to_multisig(&admin3, &signers, &0_u32, &10000_u64, &None);
+    assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
+
+    // Test threshold 4 (invalid, exceeds signer count)
+    let (admin4, _, client4) = deploy_router(&env);
+    let result2 = client4.try_migrate_to_multisig(&admin4, &signers, &4_u32, &10000_u64, &None);
+    assert_eq!(result2, Err(Ok(ContractError::InvalidAmount)));
+}
+
+#[test]
+fn test_duplicate_signers_in_migration() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let s1 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1.clone());
+    signers.push_back(s1); // duplicate
+
+    let result = client.try_migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
+    assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
+}
+
+#[test]
+fn test_empty_signers_list() {
+    let env = setup_env();
+    let (admin, _, client) = deploy_router(&env);
+    let signers = Vec::new(&env); // empty
+
+    let result = client.try_migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
+    assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
+}
+
+#[test]
+fn test_migration_called_by_non_admin() {
+    let env = setup_env();
+    let (_admin, _, client) = deploy_router(&env);
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1);
+    signers.push_back(s2);
+
+    let not_admin = Address::generate(&env);
+    let result = client.try_migrate_to_multisig(&not_admin, &signers, &2_u32, &10000_u64, &None);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+#[test]
+fn test_double_migration_rejected() {
+    let env = setup_env();
+    let (_s1, _s2, _s3, admin, client) = deploy_multisig_router(&env);
+
+    let s1 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s1);
+
+    let result = client.try_migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
+    assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
+}
+
+#[test]
+fn test_governance_action_by_non_signer_post_migration() {
+    let env = setup_env();
+    let (_s1, _s2, _s3, _, client) = deploy_multisig_router(&env);
+    let non_signer = Address::generate(&env);
+
+    // Non-signer tries to propose
+    let result = client.try_propose(&non_signer, &ProposalAction::Pause);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
 #[cfg(test)]
 mod property_fuzz_tests {
     use super::*;
@@ -1425,8 +1530,10 @@ mod property_fuzz_tests {
 
             if (1..=4).contains(&hops) {
                 prop_assert!(result.is_ok());
+            } else if hops == 0 {
+                prop_assert_eq!(result, Err(Ok(ContractError::EmptyRoute)));
             } else {
-                prop_assert_eq!(result, Err(Ok(ContractError::InvalidRoute)));
+                prop_assert_eq!(result, Err(Ok(ContractError::TooManyHops)));
             }
         }
 
@@ -1499,10 +1606,10 @@ fn test_initialize_emits_event() {
 #[test]
 fn test_pause_unpause_emit_events() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     let before = env.events().all().len();
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
     assert!(env.events().all().len() > before);
 }
 
@@ -1613,18 +1720,43 @@ fn test_is_paused_default_false() {
 #[test]
 fn test_is_paused_after_pause() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
-    client.pause();
+    let (admin, _, client) = deploy_router(&env);
+    client.pause(&admin);
     assert!(client.is_paused());
 }
 
 #[test]
 fn test_is_paused_after_unpause() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
-    client.pause();
-    client.unpause();
+    let (admin, _, client) = deploy_router(&env);
+    client.pause(&admin);
+    client.unpause(&admin);
     assert!(!client.is_paused());
+}
+
+#[test]
+fn test_admin_rotation_rejects_old_admin_for_pause_unpause_upgrade() {
+    let env = setup_env();
+    let (old_admin, _, client) = deploy_router(&env);
+    let new_admin = Address::generate(&env);
+    client.set_admin(&new_admin);
+
+    assert_eq!(
+        client.try_pause(&old_admin),
+        Err(Ok(ContractError::Unauthorized))
+    );
+
+    client.pause(&new_admin);
+    assert_eq!(
+        client.try_unpause(&old_admin),
+        Err(Ok(ContractError::Unauthorized))
+    );
+    client.unpause(&new_admin);
+
+    assert_eq!(
+        client.try_execute_upgrade(&old_admin),
+        Err(Ok(ContractError::Unauthorized))
+    );
 }
 
 #[test]
@@ -1689,12 +1821,68 @@ fn test_extend_storage_ttl_no_pools() {
     let env = setup_env();
     let (admin, _fee_to, client) = deploy_router(&env);
 
-    client.pause();
+    client.pause(&admin);
 
     let new_hash = BytesN::from_array(&env, &[8u8; 32]);
     assert!(client
         .try_propose_upgrade(&admin, &new_hash, &99999)
         .is_err());
+}
+
+// ─── Upgrade Time-Lock Tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_propose_upgrade_then_execute_before_lock_fails() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    let result = client.try_execute_upgrade(&admin);
+    assert_eq!(result, Err(Ok(ContractError::UpgradeLocked)));
+}
+
+#[test]
+fn test_execute_upgrade_succeeds_after_advancing_ledger() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    let proposal_seq = current_seq(&env);
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    // Advance ledger past the enforced minimum upgrade delay.
+    env.ledger().with_mut(|li| {
+        li.sequence_number = (proposal_seq + crate::upgrade::MIN_DELAY_LEDGERS + 1) as u32;
+    });
+
+    let result = client.try_execute_upgrade(&admin);
+    assert_ne!(result, Err(Ok(ContractError::UpgradeLocked)));
+}
+
+#[test]
+fn test_cancel_upgrade_clears_pending_state() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    // Cancel the pending upgrade
+    client.cancel_upgrade(&admin);
+
+    let result = client.try_execute_upgrade(&admin);
+    assert_eq!(result, Err(Ok(ContractError::NoUpgradePending)));
+
+    // Proposing another upgrade should succeed now that pending state was cleared
+    let new_hash2 = BytesN::from_array(&env, &[0x43; 32]);
+    assert!(client
+        .try_propose_upgrade(&admin, &new_hash2, &execute_after)
+        .is_ok());
 }
 
 // ─── Token Allowlist Tests ────────────────────────────────────────────────────
@@ -2144,10 +2332,10 @@ fn test_ttl_status_pools_remaining_accurate() {
 #[test]
 fn test_pause_extends_instance_ttl() {
     let env = setup_env();
-    let (_, _, client) = deploy_router(&env);
+    let (admin, _, client) = deploy_router(&env);
     // pause should not panic (it now calls extend_instance_ttl)
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
 }
 
 #[test]

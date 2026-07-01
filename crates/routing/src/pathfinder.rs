@@ -28,8 +28,14 @@ pub struct LiquidityEdge {
     pub venue_type: String,
     pub venue_ref: String,
     pub liquidity: i128,
+    #[serde(default)]
     pub price: f64,
+    #[serde(default = "default_fee_bps")]
     pub fee_bps: u32,
+}
+
+fn default_fee_bps() -> u32 {
+    30
 }
 
 /// Represents a path through liquidity sources
@@ -39,7 +45,7 @@ pub struct SwapPath {
     pub estimated_output: i128,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PathHop {
     pub source_asset: String,
     pub destination_asset: String,

@@ -1,388 +1,296 @@
-//! Multi-hop CPI failure atomic rollback integration tests
+//! Multi-hop CPI failure atomic rollback integration tests.
 //!
-//! These tests verify that multi-hop swaps roll back atomically when an
-//! intermediate CPI (Cross-Program Invocation) fails, ensuring no partial
-//! token movement occurs.
+//! Verifies that failed multi-hop swaps do not commit partial state changes
+//! (volume, nonce) and that failures propagate from adapter CPI calls.
 
-#![cfg(test)]
-
+use crate::errors::ContractError;
+use crate::router::{StellarRoute, StellarRouteClient};
+use crate::types::{Asset, PoolType, Route, RouteHop, SwapParams};
 use soroban_sdk::{
-    contract, contractimpl, testutils::Address as _, Address, Env, String, Vec as SorobanVec,
+    testutils::{Address as _, Events},
+    Address, Env, Vec,
 };
 
-use crate::router::{Router, RouterClient};
-use crate::types::{PathStep, SwapError};
+mod mock_amm {
+    use super::Asset;
+    use soroban_sdk::{contract, contractimpl, Env};
 
-/// Mock adapter contract that can be configured to fail at specific calls
-#[contract]
-pub struct FailingAdapter;
+    #[contract]
+    pub struct MockAmmPool;
 
-#[contractimpl]
-impl FailingAdapter {
-    /// Simulate a swap that always fails
-    pub fn swap(
-        _env: Env,
-        _token_in: Address,
-        _token_out: Address,
-        _amount_in: i128,
-        _min_amount_out: i128,
-    ) -> Result<i128, SwapError> {
-        Err(SwapError::InsufficientLiquidity)
-    }
-}
+    #[contractimpl]
+    impl MockAmmPool {
+        pub fn adapter_quote(_e: Env, _in: Asset, _out: Asset, amount_in: i128) -> i128 {
+            amount_in * 99 / 100
+        }
 
-/// Mock adapter contract that succeeds
-#[contract]
-pub struct SuccessAdapter;
-
-#[contractimpl]
-impl SuccessAdapter {
-    pub fn swap(
-        _env: Env,
-        _token_in: Address,
-        _token_out: Address,
-        amount_in: i128,
-        _min_amount_out: i128,
-    ) -> Result<i128, SwapError> {
-        // Simple 1:1 swap for testing
-        Ok(amount_in)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use soroban_sdk::testutils::{Events, Ledger};
-
-    #[test]
-    fn test_single_hop_failure_rolls_back() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let router_id = env.register_contract(None, Router);
-        let router = RouterClient::new(&env, &router_id);
-
-        let failing_adapter_id = env.register_contract(None, FailingAdapter);
-
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let user = Address::generate(&env);
-
-        let path = SorobanVec::from_array(
-            &env,
-            [PathStep {
-                token_in: token_a.clone(),
-                token_out: token_b.clone(),
-                adapter: failing_adapter_id,
-                pool_id: String::from_str(&env, "pool_1"),
-            }],
-        );
-
-        let initial_balance = 1000i128;
-        let swap_amount = 100i128;
-
-        // Execute swap - should fail
-        let result = router.try_swap_exact_in(&user, &path, &swap_amount, &0);
-
-        assert!(result.is_err(), "Swap should fail");
-
-        // Verify no events were emitted for successful swap
-        let events = env.events().all();
-        let swap_events: Vec<_> = events
-            .iter()
-            .filter(|e| {
-                e.1
-                    .first()
-                    .and_then(|t| t.as_symbol())
-                    .map(|s| s.to_string() == "swap_complete")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        assert_eq!(swap_events.len(), 0, "No swap_complete events should exist");
-    }
-
-    #[test]
-    fn test_failure_at_hop_index_0() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let router_id = env.register_contract(None, Router);
-        let router = RouterClient::new(&env, &router_id);
-
-        let failing_adapter_id = env.register_contract(None, FailingAdapter);
-        let success_adapter_id = env.register_contract(None, SuccessAdapter);
-
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let token_c = Address::generate(&env);
-        let user = Address::generate(&env);
-
-        // Path: A -> B (fails) -> C (should not execute)
-        let path = SorobanVec::from_array(
-            &env,
-            [
-                PathStep {
-                    token_in: token_a.clone(),
-                    token_out: token_b.clone(),
-                    adapter: failing_adapter_id,
-                    pool_id: String::from_str(&env, "pool_1"),
-                },
-                PathStep {
-                    token_in: token_b.clone(),
-                    token_out: token_c.clone(),
-                    adapter: success_adapter_id,
-                    pool_id: String::from_str(&env, "pool_2"),
-                },
-            ],
-        );
-
-        let swap_amount = 100i128;
-
-        let result = router.try_swap_exact_in(&user, &path, &swap_amount, &0);
-
-        assert!(result.is_err(), "Multi-hop swap should fail at hop 0");
-
-        // Verify rollback event
-        let events = env.events().all();
-        let rollback_events: Vec<_> = events
-            .iter()
-            .filter(|e| {
-                e.1
-                    .first()
-                    .and_then(|t| t.as_symbol())
-                    .map(|s| s.to_string() == "swap_rollback")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        assert!(
-            rollback_events.len() > 0,
-            "Rollback event should be emitted"
-        );
-    }
-
-    #[test]
-    fn test_failure_at_hop_index_1() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let router_id = env.register_contract(None, Router);
-        let router = RouterClient::new(&env, &router_id);
-
-        let failing_adapter_id = env.register_contract(None, FailingAdapter);
-        let success_adapter_id = env.register_contract(None, SuccessAdapter);
-
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let token_c = Address::generate(&env);
-        let user = Address::generate(&env);
-
-        // Path: A -> B (succeeds) -> C (fails)
-        let path = SorobanVec::from_array(
-            &env,
-            [
-                PathStep {
-                    token_in: token_a.clone(),
-                    token_out: token_b.clone(),
-                    adapter: success_adapter_id.clone(),
-                    pool_id: String::from_str(&env, "pool_1"),
-                },
-                PathStep {
-                    token_in: token_b.clone(),
-                    token_out: token_c.clone(),
-                    adapter: failing_adapter_id,
-                    pool_id: String::from_str(&env, "pool_2"),
-                },
-            ],
-        );
-
-        let swap_amount = 100i128;
-
-        let result = router.try_swap_exact_in(&user, &path, &swap_amount, &0);
-
-        assert!(result.is_err(), "Multi-hop swap should fail at hop 1");
-
-        // Verify no partial token movement - check that intermediate hop was rolled back
-        let events = env.events().all();
-        let swap_complete_events: Vec<_> = events
-            .iter()
-            .filter(|e| {
-                e.1
-                    .first()
-                    .and_then(|t| t.as_symbol())
-                    .map(|s| s.to_string() == "swap_complete")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        assert_eq!(
-            swap_complete_events.len(),
-            0,
-            "No swap should complete on rollback"
-        );
-    }
-
-    #[test]
-    fn test_failure_at_hop_index_2_three_hop() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let router_id = env.register_contract(None, Router);
-        let router = RouterClient::new(&env, &router_id);
-
-        let failing_adapter_id = env.register_contract(None, FailingAdapter);
-        let success_adapter_id = env.register_contract(None, SuccessAdapter);
-
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let token_c = Address::generate(&env);
-        let token_d = Address::generate(&env);
-        let user = Address::generate(&env);
-
-        // Path: A -> B (succeeds) -> C (succeeds) -> D (fails)
-        let path = SorobanVec::from_array(
-            &env,
-            [
-                PathStep {
-                    token_in: token_a.clone(),
-                    token_out: token_b.clone(),
-                    adapter: success_adapter_id.clone(),
-                    pool_id: String::from_str(&env, "pool_1"),
-                },
-                PathStep {
-                    token_in: token_b.clone(),
-                    token_out: token_c.clone(),
-                    adapter: success_adapter_id.clone(),
-                    pool_id: String::from_str(&env, "pool_2"),
-                },
-                PathStep {
-                    token_in: token_c.clone(),
-                    token_out: token_d.clone(),
-                    adapter: failing_adapter_id,
-                    pool_id: String::from_str(&env, "pool_3"),
-                },
-            ],
-        );
-
-        let swap_amount = 100i128;
-
-        let result = router.try_swap_exact_in(&user, &path, &swap_amount, &0);
-
-        assert!(result.is_err(), "Multi-hop swap should fail at hop 2");
-
-        // Events should reflect rollback outcome
-        let events = env.events().all();
-        let rollback_events: Vec<_> = events
-            .iter()
-            .filter(|e| {
-                e.1
-                    .first()
-                    .and_then(|t| t.as_symbol())
-                    .map(|s| s.to_string() == "swap_rollback")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        assert!(
-            rollback_events.len() > 0,
-            "Rollback event should be emitted for 3-hop failure"
-        );
-    }
-
-    #[test]
-    fn test_adapter_contract_failure_propagates() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let router_id = env.register_contract(None, Router);
-        let router = RouterClient::new(&env, &router_id);
-
-        let failing_adapter_id = env.register_contract(None, FailingAdapter);
-
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let user = Address::generate(&env);
-
-        let path = SorobanVec::from_array(
-            &env,
-            [PathStep {
-                token_in: token_a.clone(),
-                token_out: token_b.clone(),
-                adapter: failing_adapter_id,
-                pool_id: String::from_str(&env, "pool_1"),
-            }],
-        );
-
-        let result = router.try_swap_exact_in(&user, &path, &100, &0);
-
-        match result {
-            Err(e) => {
-                // Verify the error indicates adapter failure
-                assert!(
-                    format!("{:?}", e).contains("InsufficientLiquidity")
-                        || format!("{:?}", e).contains("Error"),
-                    "Error should propagate from adapter"
-                );
+        pub fn swap(_e: Env, _in: Asset, _out: Asset, amount_in: i128, min_out: i128) -> i128 {
+            let out = amount_in * 99 / 100;
+            if out < min_out {
+                panic!("mock pool: slippage");
             }
-            Ok(_) => panic!("Should have failed"),
+            out
+        }
+
+        pub fn get_rsrvs(_e: Env) -> (i128, i128) {
+            (1_000_000_000, 1_000_000_000)
         }
     }
+}
 
-    #[test]
-    fn test_all_hops_succeed_no_rollback() {
-        let env = Env::default();
-        env.mock_all_auths();
+mod mock_failing {
+    use super::Asset;
+    use soroban_sdk::{contract, contractimpl, Env};
 
-        let router_id = env.register_contract(None, Router);
-        let router = RouterClient::new(&env, &router_id);
+    #[contract]
+    pub struct MockFailingPool;
 
-        let success_adapter_id = env.register_contract(None, SuccessAdapter);
+    #[contractimpl]
+    impl MockFailingPool {
+        pub fn adapter_quote(_e: Env, _in: Asset, _out: Asset, _amount: i128) -> i128 {
+            panic!("mock: pool unavailable")
+        }
 
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let token_c = Address::generate(&env);
-        let user = Address::generate(&env);
+        pub fn swap(_e: Env, _in: Asset, _out: Asset, _amount: i128, _min: i128) -> i128 {
+            panic!("mock: pool unavailable")
+        }
 
-        let path = SorobanVec::from_array(
-            &env,
-            [
-                PathStep {
-                    token_in: token_a.clone(),
-                    token_out: token_b.clone(),
-                    adapter: success_adapter_id.clone(),
-                    pool_id: String::from_str(&env, "pool_1"),
-                },
-                PathStep {
-                    token_in: token_b.clone(),
-                    token_out: token_c.clone(),
-                    adapter: success_adapter_id,
-                    pool_id: String::from_str(&env, "pool_2"),
-                },
-            ],
-        );
-
-        let result = router.try_swap_exact_in(&user, &path, &100, &0);
-
-        assert!(result.is_ok(), "All successful hops should complete");
-
-        // Verify no rollback events
-        let events = env.events().all();
-        let rollback_events: Vec<_> = events
-            .iter()
-            .filter(|e| {
-                e.1
-                    .first()
-                    .and_then(|t| t.as_symbol())
-                    .map(|s| s.to_string() == "swap_rollback")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        assert_eq!(
-            rollback_events.len(),
-            0,
-            "No rollback events on successful path"
-        );
+        pub fn get_rsrvs(_e: Env) -> (i128, i128) {
+            panic!("mock: pool unavailable")
+        }
     }
+}
+
+fn setup_env() -> Env {
+    let env = Env::default();
+    env.mock_all_auths();
+    env
+}
+
+fn deploy_router(env: &Env) -> (Address, StellarRouteClient<'_>) {
+    let admin = Address::generate(env);
+    let fee_to = Address::generate(env);
+    let id = env.register_contract(None, StellarRoute);
+    let client = StellarRouteClient::new(env, &id);
+    client.initialize(&admin, &30, &fee_to, &None, &None, &None, &None, &None);
+    (admin, client)
+}
+
+fn deploy_pool_99(env: &Env) -> Address {
+    env.register_contract(None, mock_amm::MockAmmPool)
+}
+
+fn deploy_pool_fail(env: &Env) -> Address {
+    env.register_contract(None, mock_failing::MockFailingPool)
+}
+
+fn seq(env: &Env) -> u64 {
+    env.ledger().sequence() as u64
+}
+
+fn multi_pool_route(env: &Env, pools: &[Address]) -> Route {
+    let mut hops = Vec::new(env);
+    for pool in pools {
+        hops.push_back(RouteHop {
+            source: Asset::Native,
+            destination: Asset::Native,
+            pool: pool.clone(),
+            pool_type: PoolType::AmmConstProd,
+        });
+    }
+    Route {
+        hops,
+        estimated_output: 0,
+        min_output: 0,
+        expires_at: 999_999,
+    }
+}
+
+fn swap_params(
+    env: &Env,
+    route: Route,
+    amount_in: i128,
+    min_out: i128,
+    recipient: Address,
+) -> SwapParams {
+    SwapParams {
+        route,
+        amount_in,
+        min_amount_out: min_out,
+        recipient,
+        deadline: seq(env) + 200,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
+    }
+}
+
+#[test]
+fn test_single_hop_failure_rolls_back() {
+    let env = setup_env();
+    let (_, client) = deploy_router(&env);
+    let pool = deploy_pool_fail(&env);
+    client.register_pool(&pool);
+
+    let sender = Address::generate(&env);
+    let events_before = env.events().all().len();
+    let result = client.try_execute_swap(
+        &sender,
+        &swap_params(
+            &env,
+            multi_pool_route(&env, &[pool]),
+            100,
+            0,
+            sender.clone(),
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(ContractError::AmmSwapCallFailed)));
+    assert_eq!(
+        env.events().all().len(),
+        events_before,
+        "failed swap should not emit new events"
+    );
+}
+
+#[test]
+fn test_failure_at_hop_index_0() {
+    let env = setup_env();
+    let (_, client) = deploy_router(&env);
+
+    let failing = deploy_pool_fail(&env);
+    let healthy = deploy_pool_99(&env);
+    client.register_pool(&failing);
+    client.register_pool(&healthy);
+
+    let sender = Address::generate(&env);
+    let vol_before = client.get_total_swap_volume();
+
+    let result = client.try_execute_swap(
+        &sender,
+        &swap_params(
+            &env,
+            multi_pool_route(&env, &[failing, healthy]),
+            100,
+            0,
+            sender.clone(),
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(ContractError::AmmSwapCallFailed)));
+    assert_eq!(client.get_total_swap_volume(), vol_before);
+}
+
+#[test]
+fn test_failure_at_hop_index_1() {
+    let env = setup_env();
+    let (_, client) = deploy_router(&env);
+
+    let healthy = deploy_pool_99(&env);
+    let failing = deploy_pool_fail(&env);
+    client.register_pool(&healthy);
+    client.register_pool(&failing);
+
+    let sender = Address::generate(&env);
+    let vol_before = client.get_total_swap_volume();
+
+    let result = client.try_execute_swap(
+        &sender,
+        &swap_params(
+            &env,
+            multi_pool_route(&env, &[healthy, failing]),
+            100,
+            0,
+            sender.clone(),
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(ContractError::AmmSwapCallFailed)));
+    assert_eq!(
+        client.get_total_swap_volume(),
+        vol_before,
+        "mid-route failure must roll back committed volume"
+    );
+}
+
+#[test]
+fn test_failure_at_hop_index_2_three_hop() {
+    let env = setup_env();
+    let (_, client) = deploy_router(&env);
+
+    let p1 = deploy_pool_99(&env);
+    let p2 = deploy_pool_99(&env);
+    let p3 = deploy_pool_fail(&env);
+    client.register_pool(&p1);
+    client.register_pool(&p2);
+    client.register_pool(&p3);
+
+    let sender = Address::generate(&env);
+    let vol_before = client.get_total_swap_volume();
+
+    let result = client.try_execute_swap(
+        &sender,
+        &swap_params(
+            &env,
+            multi_pool_route(&env, &[p1, p2, p3]),
+            100,
+            0,
+            sender.clone(),
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(ContractError::AmmSwapCallFailed)));
+    assert_eq!(client.get_total_swap_volume(), vol_before);
+}
+
+#[test]
+fn test_adapter_contract_failure_propagates() {
+    let env = setup_env();
+    let (_, client) = deploy_router(&env);
+    let pool = deploy_pool_fail(&env);
+    client.register_pool(&pool);
+
+    let sender = Address::generate(&env);
+    let result = client.try_execute_swap(
+        &sender,
+        &swap_params(
+            &env,
+            multi_pool_route(&env, &[pool]),
+            100,
+            0,
+            sender.clone(),
+        ),
+    );
+
+    assert_eq!(result, Err(Ok(ContractError::AmmSwapCallFailed)));
+}
+
+#[test]
+fn test_all_hops_succeed_no_rollback() {
+    let env = setup_env();
+    let (_, client) = deploy_router(&env);
+
+    let p1 = deploy_pool_99(&env);
+    let p2 = deploy_pool_99(&env);
+    client.register_pool(&p1);
+    client.register_pool(&p2);
+
+    let sender = Address::generate(&env);
+    let vol_before = client.get_total_swap_volume();
+    let events_before = env.events().all().len();
+
+    let result = client.execute_swap(
+        &sender,
+        &swap_params(
+            &env,
+            multi_pool_route(&env, &[p1, p2]),
+            100,
+            0,
+            sender.clone(),
+        ),
+    );
+
+    assert!(result.amount_out > 0);
+    assert!(client.get_total_swap_volume() > vol_before);
+    assert!(env.events().all().len() > events_before);
 }

@@ -106,5 +106,5 @@ async fn get_bulk_asset_metadata_returns_200() {
     let assets = json["data"]["assets"]
         .as_array()
         .expect("Expected 'assets' array");
-    assert!(assets.len() >= 1);
+    assert!(!assets.is_empty());
 }

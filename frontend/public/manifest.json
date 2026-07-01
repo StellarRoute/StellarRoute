@@ -2,7 +2,7 @@
     "name": "StellarRoute",
     "short_name": "StellarRoute",
     "description": "Decentralized routing and swap interface on Stellar network",
-    "start_url": "/",
+    "start_url": "/swap",
     "scope": "/",
     "display": "standalone",
     "orientation": "portrait",

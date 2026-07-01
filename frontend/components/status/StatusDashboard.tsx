@@ -1,28 +1,29 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useCallback, useEffect } from 'react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Clock } from 'lucide-react';
+import {
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Clock,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { API_BASE_URL } from '@/lib/constants';
+import { useHealth, useHealthDeps } from '@/hooks/useApi';
+import { getTraderErrorCopy } from '@/lib/api/trader-error-copy';
+import { STATUS_PAGE_REFRESH_MS } from '@/lib/api/client';
 
 interface ComponentStatus {
   [key: string]: string;
-}
-
-interface HealthData {
-  status: string;
-  timestamp: string;
-  version: string;
-  components: ComponentStatus;
-}
-
-interface DependencyHealthData {
-  status: string;
-  timestamp: string;
-  components: ComponentStatus;
 }
 
 const STATUS_ICONS = {
@@ -66,25 +67,38 @@ function getStatusKey(status: string): keyof typeof STATUS_ICONS {
   return 'unknown';
 }
 
-function ComponentStatusItem({ name, status }: { name: string; status: string }) {
+function ComponentStatusItem({
+  name,
+  status,
+}: {
+  name: string;
+  status: string;
+}) {
   const statusKey = getStatusKey(status);
   const Icon = STATUS_ICONS[statusKey];
   const colorClass = STATUS_COLORS[statusKey];
   const bgClass = STATUS_BG[statusKey];
 
   return (
-    <div className={cn('flex items-center justify-between p-4 rounded-lg border', bgClass)}>
+    <div
+      className={cn(
+        'flex items-center justify-between p-4 rounded-lg border',
+        bgClass
+      )}
+    >
       <div className="flex items-center gap-3">
         <Icon className={cn('h-5 w-5', colorClass)} />
         <div>
-          <p className="font-medium capitalize">
-            {name.replace(/_/g, ' ')}
-          </p>
+          <p className="font-medium capitalize">{name.replace(/_/g, ' ')}</p>
           <p className="text-sm text-muted-foreground capitalize">{status}</p>
         </div>
       </div>
       <Badge
-        variant={statusKey === 'healthy' || statusKey === 'ok' ? 'default' : 'secondary'}
+        variant={
+          statusKey === 'healthy' || statusKey === 'ok'
+            ? 'default'
+            : 'secondary'
+        }
         className="capitalize"
       >
         {statusKey}
@@ -94,63 +108,53 @@ function ComponentStatusItem({ name, status }: { name: string; status: string })
 }
 
 export function StatusDashboard() {
-  const [healthData, setHealthData] = useState<HealthData | null>(null);
-  const [depsData, setDepsData] = useState<DependencyHealthData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      setError(null);
-      
-      // Fetch basic health
-      const healthRes = await fetch(`${API_BASE_URL.replace('/api/v1', '')}/health`);
-      const healthJson = await healthRes.json();
-      setHealthData(healthJson.data);
+  const healthIntervalMs = autoRefresh ? STATUS_PAGE_REFRESH_MS : undefined;
 
-      // Fetch dependency health
-      const depsRes = await fetch(`${API_BASE_URL.replace('/api/v1', '')}/health/deps`);
-      const depsJson = await depsRes.json();
-      setDepsData(depsJson.data);
+  const {
+    data: healthData,
+    loading: healthLoading,
+    error: healthError,
+    refresh: refreshHealth,
+  } = useHealth(healthIntervalMs);
 
+  const {
+    data: depsData,
+    loading: depsLoading,
+    error: depsError,
+    refresh: refreshDeps,
+  } = useHealthDeps(healthIntervalMs);
+
+  const loading = healthLoading || depsLoading;
+
+  useEffect(() => {
+    if (!healthLoading && !depsLoading && (healthData || depsData)) {
       setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch status');
-    } finally {
-      setLoading(false);
     }
-  }, []);
+  }, [healthLoading, depsLoading, healthData, depsData]);
 
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+  const rawError = healthError ?? depsError ?? null;
+  const errorMessage = rawError ? getTraderErrorCopy(rawError).headline : null;
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      fetchStatus();
-    }, 30000); // Refresh every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, fetchStatus]);
-
-  const handleRefresh = () => {
-    setLoading(true);
-    fetchStatus();
-  };
+  const handleRefresh = useCallback(() => {
+    refreshHealth();
+    refreshDeps();
+  }, [refreshHealth, refreshDeps]);
 
   if (loading && !healthData) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+        <RefreshCw
+          data-testid="icon"
+          className="h-8 w-8 animate-spin text-muted-foreground"
+        />
       </div>
     );
   }
 
-  if (error && !healthData) {
+  if (errorMessage && !healthData) {
     return (
       <Card className="border-red-500/20 bg-red-500/5">
         <CardHeader>
@@ -158,7 +162,7 @@ export function StatusDashboard() {
             <XCircle className="h-5 w-5" />
             Connection Error
           </CardTitle>
-          <CardDescription>{error}</CardDescription>
+          <CardDescription>{errorMessage}</CardDescription>
         </CardHeader>
         <CardContent>
           <Button onClick={handleRefresh} variant="outline">
@@ -176,12 +180,13 @@ export function StatusDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Overall Status Card */}
       <Card className={cn('border-2', STATUS_BG[overallStatusKey])}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <OverallIcon className={cn('h-8 w-8', STATUS_COLORS[overallStatusKey])} />
+              <OverallIcon
+                className={cn('h-8 w-8', STATUS_COLORS[overallStatusKey])}
+              />
               <div>
                 <CardTitle className="text-2xl">
                   {overallStatusKey === 'healthy' || overallStatusKey === 'ok'
@@ -205,8 +210,11 @@ export function StatusDashboard() {
                 size="sm"
                 onClick={handleRefresh}
                 disabled={loading}
+                aria-label="Refresh status"
               >
-                <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+                <RefreshCw
+                  className={cn('h-4 w-4', loading && 'animate-spin')}
+                />
               </Button>
               <Button
                 variant={autoRefresh ? 'default' : 'outline'}
@@ -220,7 +228,6 @@ export function StatusDashboard() {
         </CardHeader>
       </Card>
 
-      {/* Core Components */}
       {healthData && (
         <Card>
           <CardHeader>
@@ -230,14 +237,13 @@ export function StatusDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(healthData.components).map(([name, status]) => (
+            {Object.entries(healthData.components ?? {}).map(([name, status]) => (
               <ComponentStatusItem key={name} name={name} status={status} />
             ))}
           </CardContent>
         </Card>
       )}
 
-      {/* Dependencies */}
       {depsData && (
         <Card>
           <CardHeader>
@@ -247,14 +253,13 @@ export function StatusDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(depsData.components).map(([name, status]) => (
+            {Object.entries(depsData.components ?? {}).map(([name, status]) => (
               <ComponentStatusItem key={name} name={name} status={status} />
             ))}
           </CardContent>
         </Card>
       )}
 
-      {/* Info Footer */}
       <Card className="bg-muted/30">
         <CardContent className="pt-6">
           <div className="text-sm text-muted-foreground space-y-2">
@@ -262,10 +267,31 @@ export function StatusDashboard() {
               <strong>Status Indicators:</strong>
             </p>
             <ul className="list-disc list-inside space-y-1 ml-2">
-              <li><span className="text-emerald-600 dark:text-emerald-400 font-medium">Healthy/OK</span> - Service is fully operational</li>
-              <li><span className="text-amber-600 dark:text-amber-400 font-medium">Warning</span> - Service is operational but experiencing elevated latency or lag</li>
-              <li><span className="text-red-600 dark:text-red-400 font-medium">Unhealthy/Degraded</span> - Service is experiencing issues</li>
-              <li><span className="text-muted-foreground font-medium">Not Configured</span> - Optional service not enabled</li>
+              <li>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                  Healthy/OK
+                </span>{' '}
+                - Service is fully operational
+              </li>
+              <li>
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  Warning
+                </span>{' '}
+                - Service is operational but experiencing elevated latency or
+                lag
+              </li>
+              <li>
+                <span className="text-red-600 dark:text-red-400 font-medium">
+                  Unhealthy/Degraded
+                </span>{' '}
+                - Service is experiencing issues
+              </li>
+              <li>
+                <span className="text-muted-foreground font-medium">
+                  Not Configured
+                </span>{' '}
+                - Optional service not enabled
+              </li>
             </ul>
           </div>
         </CardContent>

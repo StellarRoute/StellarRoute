@@ -94,7 +94,6 @@ pub struct IndexerConfig {
     /// Identifier of this partition instance (env: `INDEXER_PARTITION_ID`).
     #[serde(default = "default_partition_id")]
     pub partition_id: usize,
-
 }
 
 impl std::fmt::Debug for IndexerConfig {
@@ -165,14 +164,27 @@ fn default_snapshot_retention_days() -> i32 {
     90
 }
 
-fn default_snapshot_compaction_hours() -> i32 { 24 }
+fn default_snapshot_compaction_hours() -> i32 {
+    24
+}
 
-fn default_partition_id() -> usize { 0 }
+fn default_partition_id() -> usize {
+    0
+}
 
 // New defaults for partitioning and hot‑pair detection
-fn default_partition_count() -> usize { 4 }
-fn default_hot_pair_allowlist() -> String { String::new() }
-fn default_hot_pair_window_secs() -> u64 { 300 }
+fn default_partition_count() -> usize {
+    4
+}
+fn default_hot_pair_allowlist() -> String {
+    String::new()
+}
+fn default_hot_pair_volume_threshold() -> u64 {
+    1_000_000_000
+}
+fn default_hot_pair_window_secs() -> u64 {
+    300
+}
 
 impl IndexerConfig {
     pub fn load() -> std::result::Result<Self, config::ConfigError> {

@@ -8,6 +8,7 @@ import {
   dispatchTransactionNotification,
   type NotificationPreference,
 } from "@/lib/notifications";
+import { XdrBuildError } from "@/lib/wallet/xdr-builder";
 
 export interface TradeParams {
   fromAsset: string;
@@ -49,6 +50,12 @@ interface UseTransactionLifecycleOptions {
    */
   submitTransaction?: (signedXdr: string) => Promise<{ hash: string }>;
   /**
+   * Optional XDR builder — when provided, builds a real Stellar path-payment
+   * transaction from TradeParams before calling signTransaction.
+   * When absent and walletAddress is set, the lifecycle fails fast instead of using mock XDR.
+   */
+  buildXdr?: (params: TradeParams) => Promise<string>;
+  /**
    * Notification preference — injected to keep the hook testable without a real settings store.
    * Defaults to { enabled: false } so notifications are opt-in.
    */
@@ -56,17 +63,29 @@ interface UseTransactionLifecycleOptions {
 }
 
 /** Default stub: simulates a successful wallet signature */
-async function defaultSignTransaction(xdr: string): Promise<string> {
+export async function defaultSignTransaction(xdr: string): Promise<string> {
   await new Promise((resolve) => setTimeout(resolve, 1500));
   return `signed_${xdr}`;
 }
 
 /** Default stub: simulates a successful Horizon submission */
-async function defaultSubmitTransaction(
+export async function defaultSubmitTransaction(
   _signedXdr: string
 ): Promise<{ hash: string }> {
   await new Promise((resolve) => setTimeout(resolve, 2000));
   return { hash: "mock_tx_" + Math.random().toString(36).substring(7) };
+}
+
+export function isDefaultSignTransaction(
+  fn: (xdr: string) => Promise<string>
+): boolean {
+  return fn === defaultSignTransaction;
+}
+
+export function isDefaultSubmitTransaction(
+  fn: (signedXdr: string) => Promise<{ hash: string }>
+): boolean {
+  return fn === defaultSubmitTransaction;
 }
 
 function isRejectionError(message: string): boolean {
@@ -74,7 +93,9 @@ function isRejectionError(message: string): boolean {
   return (
     lower.includes("reject") ||
     lower.includes("denied") ||
-    lower.includes("user declined")
+    lower.includes("user declined") ||
+    lower.includes("cancel") ||
+    lower.includes("cancelled")
   );
 }
 
@@ -85,6 +106,7 @@ export function useTransactionLifecycle(
     deadlineMs = 60_000,
     signTransaction = defaultSignTransaction,
     submitTransaction = defaultSubmitTransaction,
+    buildXdr,
     notificationPreference = { enabled: false },
   } = options;
 
@@ -124,6 +146,26 @@ export function useTransactionLifecycle(
       setTxHash(undefined);
       setErrorMessage(undefined);
 
+      if (params.walletAddress) {
+        if (!buildXdr) {
+          setErrorMessage(
+            "Transaction could not be built. Please refresh and try again."
+          );
+          setStatus("failed");
+          return;
+        }
+        if (isDefaultSignTransaction(signTransaction)) {
+          setErrorMessage("Wallet not ready for signing.");
+          setStatus("failed");
+          return;
+        }
+        if (isDefaultSubmitTransaction(submitTransaction)) {
+          setErrorMessage("Transaction submission is not configured.");
+          setStatus("failed");
+          return;
+        }
+      }
+
       // Generate a temporary id for the pending record
       const tempId = "pending_" + Date.now();
       txIdRef.current = tempId;
@@ -145,10 +187,42 @@ export function useTransactionLifecycle(
         walletAddress: params.walletAddress,
       });
 
-      // Step 1: Sign
+      // Step 1: Build XDR (validate quote shape, then construct envelope)
+      let xdrToSign: string;
+      if (buildXdr) {
+        try {
+          xdrToSign = await buildXdr(params);
+        } catch (err: unknown) {
+          if (cancelledRef.current) return;
+          const msg = err instanceof XdrBuildError
+            ? `Transaction build failed (${err.code}): ${err.message}`
+            : err instanceof Error ? err.message : 'Failed to build transaction';
+          setErrorMessage(msg);
+          setStatus("failed");
+          updateTransactionStatus(tempId, "failed", { errorMessage: msg });
+          dispatchTransactionNotification(
+            {
+              status: "failed",
+              fromAsset: params.fromAsset,
+              fromAmount: params.fromAmount,
+              toAsset: params.toAsset,
+              toAmount: params.toAmount,
+              txId: tempId,
+            },
+            notificationPreference,
+          );
+          return;
+        }
+      } else {
+        xdrToSign = "mock_xdr";
+      }
+
+      if (cancelledRef.current) return;
+
+      // Step 2: Sign
       let signedXdr: string;
       try {
-        signedXdr = await signTransaction("mock_xdr");
+        signedXdr = await signTransaction(xdrToSign);
       } catch (err: unknown) {
         if (cancelledRef.current) return;
         const msg =
@@ -250,6 +324,7 @@ export function useTransactionLifecycle(
     [
       signTransaction,
       submitTransaction,
+      buildXdr,
       deadlineMs,
       notificationPreference,
       addTransaction,

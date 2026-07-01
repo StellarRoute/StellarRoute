@@ -384,9 +384,12 @@ mod tests {
     /// Verify that a mocked lag provider returning None falls back to 0.
     #[test]
     fn test_lag_fallback_to_zero_on_error() {
-        // query_replica_lag_secs returns None on error; callers unwrap_or(0)
-        let result: Option<u32> = None;
-        assert_eq!(result.unwrap_or(0), 0);
+        fn lag_or_zero(lag: Option<u32>) -> u32 {
+            lag.unwrap_or(0)
+        }
+
+        assert_eq!(lag_or_zero(None), 0);
+        assert_eq!(lag_or_zero(Some(3)), 3);
     }
 
     /// Verify negative lag (clock skew) is clamped to zero.

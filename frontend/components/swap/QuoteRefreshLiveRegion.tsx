@@ -2,7 +2,7 @@
 
 import type { QuoteRefreshAnnouncements } from '@/hooks/useQuoteRefreshAnnouncements';
 
-export interface QuoteRefreshLiveRegionProps extends QuoteRefreshAnnouncements {}
+export type QuoteRefreshLiveRegionProps = QuoteRefreshAnnouncements;
 
 /**
  * Visually hidden aria-live regions for quote refresh outcomes.

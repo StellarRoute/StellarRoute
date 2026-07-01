@@ -15,7 +15,6 @@ use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, info_span, warn, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -43,38 +42,6 @@ use crate::{
     },
     state::AppState,
 };
-
-fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
-    headers
-        .get("x-api-key")
-        .and_then(|h| h.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| format!("api_key:{value}"))
-}
-
-fn build_quote_webhook_payload(
-    consumer_id: String,
-    base: &str,
-    quote: &str,
-    quote_resp: &QuoteResponse,
-) -> QuoteExpirationWebhookPayload {
-    let quote_id = format!(
-        "{}:{}:{}:{}",
-        base, quote, quote_resp.timestamp, quote_resp.amount
-    );
-
-    QuoteExpirationWebhookPayload {
-        event_id: Uuid::new_v4().to_string(),
-        consumer_id,
-        quote_id,
-        pair: format!("{base}/{quote}"),
-        reason: "ttl_expired".to_string(),
-        expired_at: quote_resp
-            .expires_at
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
-    }
-}
 
 /// Get price quote for a trading pair
 ///
@@ -159,6 +126,7 @@ pub async fn get_quote(
         .unwrap_or(false);
     let explain = explain_header || params.explain.unwrap_or(false);
     let selected_fields = params.selected_fields();
+    let consumer_id = extract_consumer_id(&headers);
 
     let start_time = std::time::Instant::now();
 
@@ -205,16 +173,15 @@ pub async fn get_quote(
 
                 // ── Audit log ────────────────────────────────────────────
                 let trace_id = crate::tracing_config::TraceContext::current().trace_id;
-                let inner_quote = quote_resp.quote().unwrap();
                 let audit_inputs = AuditInputs {
                     base: base.clone(),
                     quote: quote.clone(),
-                    amount: inner_quote.amount.clone(),
+                    amount: quote_resp.amount.clone(),
                     slippage_bps: params.slippage_bps(),
-                    quote_type: inner_quote.quote_type.clone(),
+                    quote_type: quote_resp.quote_type.clone(),
                 };
-                let audit_selected = build_audit_selected(inner_quote);
-                let audit_exclusions = build_audit_exclusions(inner_quote);
+                let audit_selected = build_audit_selected(&quote_resp);
+                let audit_exclusions = build_audit_exclusions(&quote_resp);
                 state.audit_writer.emit(
                     request_id.as_str(),
                     &trace_id,
@@ -226,13 +193,43 @@ pub async fn get_quote(
                     audit_exclusions,
                 );
 
-                let inner = quote_resp.into_quote().map_err(|e| {
-                    crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!(
-                        "failed to deserialize cached quote: {e}"
-                    )))
-                })?;
-                let envelope = crate::models::ApiResponse::new(inner, request_id.to_string());
-                Ok(Json(envelope))
+                // ── Spawn delayed webhook dispatch ──────────────────────
+                if let Some(consumer_id) = consumer_id.clone() {
+                    if let Some(expires_at) = quote_resp.expires_at {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let delay_ms = if expires_at > now {
+                            expires_at - now
+                        } else {
+                            0
+                        };
+                        let payload = build_quote_webhook_payload(
+                            consumer_id.clone(),
+                            &base,
+                            &quote,
+                            &quote_resp,
+                        );
+                        state
+                            .quote_expiration_webhooks
+                            .clone()
+                            .spawn_delayed_dispatch_for_consumer(
+                                consumer_id,
+                                payload,
+                                std::time::Duration::from_millis(delay_ms as u64),
+                            );
+                    }
+                }
+
+                let data = if let Some(fields) = &selected_fields {
+                    build_sparse_quote_data(&quote_resp, fields)?
+                } else {
+                    serde_json::to_value(quote_resp)
+                        .map_err(|e| ApiError::Internal(Arc::new(anyhow::anyhow!(e))))?
+                };
+                let envelope = crate::models::ApiResponse::new(data, request_id.to_string());
+                crate::compression::json_response(
+                    &envelope,
+                    headers.get(axum::http::header::ACCEPT_ENCODING),
+                )
             }
             Err(e) => {
                 let (error_class, audit_outcome) = match &e {
@@ -497,15 +494,12 @@ pub async fn get_batch_quotes(
                 };
 
                 match get_quote_inner(state, base_asset, quote_asset, params, false).await {
-                    Ok((quote, _cache_hit)) => match quote.into_quote() {
-                        Ok(inner) => BatchQuoteItemResult::ok(i, inner),
-                        Err(e) => BatchQuoteItemResult::err(
-                            i,
-                            BatchItemError {
-                                code: "internal".to_string(),
-                                message: e.to_string(),
-                            },
-                        ),
+                    Ok((prepared_quote, _cache_hit)) => match prepared_quote.into_quote() {
+                        Ok(quote) => BatchQuoteItemResult::ok(i, quote),
+                        Err(e) => {
+                            let (code, message) = batch_error_from_api_error(&e);
+                            BatchQuoteItemResult::err(i, BatchItemError { code, message })
+                        }
                     },
                     Err(e) => {
                         let (code, message) = batch_error_from_api_error(&e);
@@ -628,21 +622,33 @@ pub(crate) async fn get_quote_inner(
             // Return pre-serialized JSON on hot cache hits to avoid deserializing and reserializing.
             if let Some(cache) = &state.cache {
                 if let Ok(mut cache) = cache.try_lock() {
-                    if let Some(cached_json) = cache.get_json(&quote_cache_key).await {
-                        state.cache_metrics.inc_quote_hit();
-                        crate::metrics::record_cache_hit("quote");
-                        tracing::Span::current().record("cache_hit", true);
-                        debug!("Returning cached quote for {}/{}", base, quote);
-                        return Arc::new(Ok((
-                            PreparedQuoteResponse::from_cached_json(cached_json),
-                            true,
-                        )));
+                    match cache.get_json(&quote_cache_key).await {
+                        crate::cache::CacheResult::Hit(cached_json) => {
+                            state.cache_metrics.inc_quote_hit();
+                            crate::metrics::record_cache_hit("quote");
+                            tracing::Span::current().record("cache_hit", true);
+                            debug!("Returning cached quote for {}/{}", base, quote);
+                            return Arc::new(Ok((
+                                PreparedQuoteResponse::from_cached_json(cached_json),
+                                true,
+                            )));
+                        }
+                        crate::cache::CacheResult::Miss => {
+                            crate::metrics::record_cache_miss("quote");
+                        }
+                        crate::cache::CacheResult::Unavailable => {
+                            debug!(
+                                "Redis unavailable for quote cache lookup {}/{}; computing fresh quote",
+                                base, quote
+                            );
+                        }
                     }
                 }
+            } else {
+                crate::metrics::record_cache_miss("quote");
             }
 
-            // Cache miss
-            crate::metrics::record_cache_miss("quote");
+            // Cache miss or Redis unavailable — compute from DB/routing.
 
             // Compute best price with freshness scoring
             let response = match compute_quote_response(
@@ -691,7 +697,7 @@ pub(crate) async fn get_quote_inner(
     }
 }
 
-async fn compute_quote_response(
+pub(crate) async fn compute_quote_response(
     state: Arc<AppState>,
     base_asset: AssetPath,
     quote_asset: AssetPath,
@@ -741,7 +747,6 @@ async fn compute_quote_response(
     }
 
     let (
-
         price,
         path,
         rationale,
@@ -815,6 +820,7 @@ async fn compute_quote_response(
             params.slippage_bps(),
             quote_type_str,
             liquidity_snapshot,
+            crate::replay::artifact::DecisionGraphSnapshot::default(),
             health_config,
             &response,
             None,
@@ -967,7 +973,7 @@ async fn find_best_price(
     );
 
     let fetch_result = fetch_guard.complete();
-    budget_tracker.record(PipelineStage::FetchCandidates, fetch_result);
+    budget_tracker.record(PipelineStage::FetchCandidates, fetch_result.clone());
     state
         .timeout_controller
         .record_latency(fetch_result.duration());
@@ -1253,6 +1259,28 @@ async fn find_best_price(
         fee_bps: Some(selected.fee_bps),
     }];
 
+    // Optional Soroban simulation step for AMM venues. If configured and enabled,
+    // run a dry-run and convert explicit simulation failures into a NotExecutable error.
+    if selected.venue_type == "amm" {
+        if state.soroban_simulation_enabled {
+            if let Some(sim) = &state.soroban_simulator {
+                // Build a lightweight simulation payload. The real transaction XDR
+                // builder lives elsewhere; for dry-run validation we encode key
+                // route identifiers so tests/mocks can inspect the request.
+                let tx_xdr = format!("simulate:amm:{}:{}:{}",
+                    selected.venue_ref, amount, selected.price);
+
+                let sim_res = sim.simulate(&tx_xdr).await;
+
+                if sim_res.simulated && !sim_res.success {
+                    let reason = sim_res
+                        .failure_reason
+                        .unwrap_or_else(|| "simulation_failure".to_string());
+                    return Err(ApiError::NotExecutable(reason));
+                }
+            }
+        }
+    }
     Ok((
         selected.price,
         path,
@@ -1270,7 +1298,7 @@ fn link_source_traces(candidates: &[DirectVenueCandidate]) {
     for candidate in candidates {
         if let Some(trace_context) = candidate.source_trace_context() {
             if let Some(otel_context) = trace_context.to_otel_context() {
-                Span::current().add_link(otel_context);
+                Span::current().add_link(otel_context.span().span_context().clone());
             }
         }
     }
@@ -1362,7 +1390,10 @@ async fn maybe_invalidate_quote_cache(
     if let Some(cache) = &state.cache {
         if let Ok(mut cache) = cache.try_lock() {
             let revision_key = cache::keys::liquidity_revision(base, quote);
-            let cached_revision = cache.get::<String>(&revision_key).await;
+            let cached_revision = match cache.get::<String>(&revision_key).await {
+                crate::cache::CacheResult::Hit(value) => Some(value),
+                crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => None,
+            };
 
             if cached_revision.as_deref() != Some(liquidity_revision.as_str()) {
                 if cached_revision.is_some() {
@@ -1381,6 +1412,11 @@ async fn maybe_invalidate_quote_cache(
                             pair: format!("{base}/{quote}"),
                             reason: "cache_invalidated".to_string(),
                             expired_at: chrono::Utc::now().timestamp_millis(),
+                            event: "quote.expired".to_string(),
+                            timestamp: chrono::Utc::now().timestamp_millis(),
+                            base_asset: base.to_string(),
+                            quote_asset: quote.to_string(),
+                            amount_in: String::new(),
                         };
 
                         state
@@ -1530,12 +1566,22 @@ async fn find_asset_id(state: &AppState, asset: &AssetPath) -> Result<uuid::Uuid
 }
 
 /// Convert AssetPath to AssetInfo
-fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
+pub(crate) fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
     if asset.asset_code == "native" {
         AssetInfo::native()
     } else {
         AssetInfo::credit(asset.asset_code.clone(), asset.asset_issuer.clone())
     }
+}
+
+pub(crate) async fn get_quote_for_pair_dry_run(
+    state: Arc<AppState>,
+    base_asset: AssetPath,
+    quote_asset: AssetPath,
+    params: QuoteParams,
+) -> Result<QuoteResponse> {
+    let (prepared, _) = get_quote_inner(state, base_asset, quote_asset, params, false).await?;
+    prepared.into_quote()
 }
 
 /// Build an [`AuditSelected`] from a successful [`QuoteResponse`].
@@ -1716,8 +1762,8 @@ mod tests {
     #[test]
     fn insufficient_liquidity_returns_no_route() {
         let candidates = vec![
-            candidate("amm", "pool1", 1.0, 5.0),
-            candidate("sdex", "offer1", 0.99, 2.0),
+            candidate("amm", "pool1", 1.0, 5.0, 30),
+            candidate("sdex", "offer1", 0.99, 2.0, 0),
         ];
 
         let result = evaluate_single_hop_direct_venues(candidates, 10.0);
@@ -1815,7 +1861,7 @@ mod tests {
         // The stale candidate has been excluded by freshness filtering before this call.
         // Only the fresh-but-low-liquidity candidate reaches evaluate_single_hop_direct_venues.
         let fresh_candidates = vec![
-            candidate("sdex", "offer_fresh", 1.0, 5.0), // fresh but only 5 units available
+            candidate("sdex", "offer_fresh", 1.0, 5.0, 0), // fresh but only 5 units available
         ];
         // Request 100 units — exceeds the fresh candidate's available_amount.
         let result = evaluate_single_hop_direct_venues(fresh_candidates, 100.0);
@@ -1837,8 +1883,8 @@ mod tests {
     fn mixed_freshness_with_sufficient_fresh_liquidity_succeeds() {
         // Stale candidate already filtered out; only these fresh candidates remain.
         let fresh_candidates = vec![
-            candidate("amm", "pool_fresh", 1.05, 200.0),
-            candidate("sdex", "offer_fresh", 1.02, 150.0),
+            candidate("amm", "pool_fresh", 1.05, 200.0, 30),
+            candidate("sdex", "offer_fresh", 1.02, 150.0, 0),
         ];
         let amount = 100.0;
 

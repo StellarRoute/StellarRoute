@@ -80,13 +80,95 @@ On startup, the service:
 3. Runs indexer migrations automatically
 4. Starts SDEX indexing and AMM aggregation loops
 
-## 4. Polling vs Streaming Modes
+## 4. Polling vs Streaming (SSE) Mode
 
-- The runtime binary currently starts SDEX indexing in polling mode.
-- The SDEX indexer library also supports a streaming mode API (`IndexingMode::Streaming`).
-- Horizon stream support is implemented with a polling-backed stream abstraction today and is documented as SSE-ready in code.
+The indexer supports two ingestion modes for SDEX offers, controlled by the `HORIZON_MODE` environment variable.
 
-Operationally, use this guide assuming polling mode for production runs of the current binary.
+### Configuration
+
+| Variable | Values | Default |
+|---|---|---|
+| `HORIZON_MODE` | `poll` \| `sse` | `poll` |
+| `POLL_INTERVAL_SECS` | integer seconds | `2` (Horizon fetch timeout) |
+
+The binary maps the config value to an internal mode and passes it to `SdexIndexer::with_mode()`:
+
+```bash
+# Polling mode (default) — fetches offers in a loop every ~5 seconds
+export HORIZON_MODE=poll
+
+# SSE streaming mode — subscribes to Horizon's server-sent event stream
+export HORIZON_MODE=sse
+```
+
+### Polling mode
+
+The indexer calls `GET /offers` from Horizon on a fixed cadence (loop sleeps 5 seconds between runs). Each iteration:
+1. Fetches a page of offers (up to `horizon_limit`, default 200 per page).
+2. Upserts assets and offers into Postgres.
+3. Records `stellarroute_indexer_offers_indexed_total` for the batch.
+
+Polling is safe to use with any Horizon instance and is the recommended mode for most deployments.
+
+### SSE streaming mode
+
+When `HORIZON_MODE=sse`, the indexer opens a persistent HTTP connection to the Horizon `/offers` stream endpoint. Each incoming event:
+1. Increments `stellarroute_indexer_sse_events_received_total{source="sdex"}`.
+2. Advances an in-memory cursor (paging token) for reconnect continuity.
+3. Upserts the offer in real time without a polling delay.
+
+**Automatic fallback to polling:** If the SSE connection fails to establish 3 consecutive times, the indexer logs a warning and switches permanently to polling mode for the remainder of the process lifetime:
+
+```
+WARN SSE connection failed consistently; falling back to polling
+```
+
+An unexpected stream close (server-side disconnect) is treated as a single failure event, increments `stellarroute_indexer_sse_disconnects_total{source="sdex"}`, and triggers a reconnect loop without counting toward the 3-failure threshold.
+
+### SSE metrics
+
+Two Prometheus counters track SSE health:
+
+| Metric | Label | Description |
+|---|---|---|
+| `stellarroute_indexer_sse_events_received_total` | `source="sdex"` | Total offer events received over SSE |
+| `stellarroute_indexer_sse_disconnects_total` | `source="sdex"` | Total times the SSE stream closed unexpectedly |
+
+Expose these via `GET /metrics` (served by the API binary when Prometheus is configured) or scrape with a Prometheus instance pointed at the indexer metrics port.
+
+Example Prometheus query for disconnect rate:
+
+```promql
+rate(stellarroute_indexer_sse_disconnects_total{source="sdex"}[5m])
+```
+
+If this rate is consistently above zero, the Horizon endpoint is unstable or rate-limiting the persistent connection — switch to polling mode or reduce load.
+
+### Troubleshooting: Horizon rate limits
+
+**Symptoms**
+- Logs contain `SDEX polling rate-limited; preserving cursor and waiting` (polling mode) or frequent `SSE connection failed` messages (SSE mode).
+- `stellarroute_indexer_horizon_throttle_events_total` counter increases rapidly.
+- `sdex_offers.updated_at` stops advancing.
+
+**What the indexer does automatically**
+- Honors the `Retry-After` response header when present.
+- Applies adaptive jittered exponential backoff on consecutive 429 responses.
+- In polling mode: preserves the current cursor so no offers are skipped.
+- In SSE mode: falls back to polling after 3 connection failures (which may include 429s that close the stream).
+
+**Operator actions**
+1. Check `stellarroute_indexer_horizon_consecutive_429s{source="sdex"}` — if it stays elevated, reduce poll frequency or switch to a non-rate-limited Horizon endpoint.
+2. If using a public testnet Horizon instance, consider running your own via Stellar's `quickstart` Docker image to get a higher rate limit.
+3. For SSE mode: if the stream disconnects repeatedly but polling succeeds, set `HORIZON_MODE=poll` and monitor `sdex_offers.updated_at` for recovery.
+4. Confirm recovery by querying:
+
+```sql
+SELECT MAX(updated_at) AS sdex_last_update, NOW() - MAX(updated_at) AS age
+FROM sdex_offers;
+```
+
+Age should return to under 30 seconds within a few polling cycles after the rate limit window passes.
 
 ## 5. Database Surfaces Written by the Indexer
 
@@ -229,6 +311,19 @@ curl http://localhost:3000/health
 
 ## 9. Operational Notes
 
-- Migrations are run automatically by the indexer binary on startup.
+- Migrations are run automatically by the indexer binary on startup. Applied in order:
+  - `0001_init.sql` — base schema (assets, sdex_offers)
+  - `0002_performance_indexes.sql` — query indexes
+  - `0003_trading_pairs_and_snapshots.sql` — trading pairs + orderbook snapshots
+  - `0004_normalized_liquidity.sql` — unified liquidity view
+  - `0005_venue_health_scores.sql` — venue health tracking
+  - `0006_maintenance_policies.sql` — retention/archival policies
+  - `0007_backfill_and_normalized_storage.sql` — backfill + materialized storage
+  - `0008_soroban_discovery_cursors.sql` — Soroban event cursors
+  - `0009_finalize_unified_liquidity.sql` — unified liquidity finalization
+  - `0010_asset_metadata.sql` — asset metadata fields
+  - `0011_trace_context_provenance.sql` — trace context + provenance columns
+  - `0012_contract_swap_activity.sql` — on-chain swap activity log
+  - `0013_amm_pools.sql` — AMM pool registry table
 - The indexer can continue running through transient ingestion errors; investigate sustained staleness rather than brief blips.
 - For architecture-level data quality strategy and SQL diagnostics, use [RECONCILIATION.md](../architecture/RECONCILIATION.md) as the source of truth.

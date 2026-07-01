@@ -4,7 +4,7 @@
 //!
 //! **Single-admin (pre-migration) mode** — Two-step time-locked upgrade:
 //!   1. Admin calls `propose_upgrade(new_wasm_hash, execute_after)`.
-//!   2. After `execute_after` ledger sequences, anyone calls `execute_upgrade()`.
+//!   2. After `execute_after` ledger sequences, the admin calls `execute_upgrade()`.
 //!   3. Admin may `cancel_upgrade()` at any time before execution.
 //!
 //! **Multi-sig mode** — Upgrade is encoded as a `ProposalAction::Upgrade` and
@@ -18,7 +18,7 @@ use crate::errors::ContractError;
 use crate::storage::{self, extend_instance_ttl};
 use crate::types::{ContractVersion, PendingUpgrade};
 use crate::{events, storage::StorageKey};
-use soroban_sdk::{BytesN, Env};
+use soroban_sdk::{Address, BytesN, Env};
 
 /// Minimum time-lock delay in ledger sequences (~6 hours at ~5 s/ledger).
 pub const MIN_DELAY_LEDGERS: u64 = 4320;
@@ -113,8 +113,13 @@ pub fn propose_upgrade(
 }
 
 /// Execute a pending time-locked upgrade once the delay has elapsed.
-/// Callable by anyone — the time-lock itself is the authorization.
-pub fn execute_upgrade(e: &Env) -> Result<(), ContractError> {
+/// Callable only by the active single-admin identity.
+pub fn execute_upgrade(e: &Env, admin: Address) -> Result<(), ContractError> {
+    if storage::get_admin(e) != admin {
+        return Err(ContractError::Unauthorized);
+    }
+    admin.require_auth();
+
     let pending = storage::get_pending_upgrade(e).ok_or(ContractError::NoUpgradePending)?;
 
     let now = e.ledger().sequence() as u64;

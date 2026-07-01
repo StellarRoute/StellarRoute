@@ -27,7 +27,7 @@ use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
         BatchQuoteRequest, BatchQuoteResponse, ErrorResponse, HealthResponse, OrderbookResponse,
-        PairsResponse, QuoteRequest, QuoteResponse,
+        PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest, RoutesResponse,
     },
 };
 
@@ -42,6 +42,7 @@ use crate::{
 /// let client = ClientBuilder::new("https://api.stellarroute.io")
 ///     .timeout(Duration::from_secs(10))
 ///     .user_agent("my-app/1.0")
+///     .max_retries(3)
 ///     .build()
 ///     .unwrap();
 /// ```
@@ -49,6 +50,8 @@ pub struct ClientBuilder {
     api_url: String,
     timeout: Duration,
     user_agent: String,
+    max_retries: u32,
+    base_backoff: Duration,
 }
 
 impl ClientBuilder {
@@ -58,6 +61,8 @@ impl ClientBuilder {
             api_url: api_url.into(),
             timeout: Duration::from_secs(30),
             user_agent: format!("stellarroute-sdk-rust/{}", env!("CARGO_PKG_VERSION")),
+            max_retries: 0,
+            base_backoff: Duration::from_millis(500),
         }
     }
 
@@ -70,6 +75,24 @@ impl ClientBuilder {
     /// Override the `User-Agent` header.
     pub fn user_agent(mut self, ua: impl Into<String>) -> Self {
         self.user_agent = ua.into();
+        self
+    }
+
+    /// Maximum number of automatic retries on 429 / 5xx / network errors (default: 0).
+    ///
+    /// Retries use exponential backoff starting at `base_backoff` (default 500 ms),
+    /// doubling each attempt. When the server returns a `Retry-After` header, that
+    /// duration is used instead of the computed backoff.
+    pub fn max_retries(mut self, max_retries: u32) -> Self {
+        self.max_retries = max_retries;
+        self
+    }
+
+    /// Base backoff duration for retries (default: 500 ms).
+    ///
+    /// The actual delay is `base_backoff * 2^attempt`, capped at 30 seconds.
+    pub fn base_backoff(mut self, backoff: Duration) -> Self {
+        self.base_backoff = backoff;
         self
     }
 
@@ -97,7 +120,12 @@ impl ClientBuilder {
             .build()
             .map_err(|e| SdkError::InvalidConfig(format!("Failed to build HTTP client: {e}")))?;
 
-        Ok(StellarRouteClient { base_url, http })
+        Ok(StellarRouteClient {
+            base_url,
+            http,
+            max_retries: self.max_retries,
+            base_backoff: self.base_backoff,
+        })
     }
 }
 
@@ -106,10 +134,14 @@ impl ClientBuilder {
 /// Async HTTP client for the StellarRoute REST API.
 ///
 /// Construct via [`ClientBuilder`] or the convenience [`StellarRouteClient::new`].
+pub type Client = StellarRouteClient;
+
 #[derive(Debug)]
 pub struct StellarRouteClient {
     base_url: Url,
     http: reqwest::Client,
+    max_retries: u32,
+    base_backoff: Duration,
 }
 
 impl StellarRouteClient {
@@ -148,14 +180,68 @@ impl StellarRouteClient {
     /// exists for the pair, or [`ApiErrorCode::ValidationError`] for bad params.
     pub async fn quote(&self, request: QuoteRequest<'_>) -> Result<QuoteResponse> {
         let path = format!("api/v1/quote/{}/{}", request.base, request.quote);
-        let mut req = self.http.get(self.url(&path)?);
+        let base_url = self.url(&path)?;
+        let amount = request.amount.map(String::from);
+        let quote_type = request.quote_type;
 
-        if let Some(amount) = request.amount {
-            req = req.query(&[("amount", amount)]);
-        }
-        req = req.query(&[("quote_type", request.quote_type.as_str())]);
+        self.execute_with_retry(|| {
+            let mut req = self.http.get(base_url.clone());
+            if let Some(ref amount) = amount {
+                req = req.query(&[("amount", amount.as_str())]);
+            }
+            req.query(&[("quote_type", quote_type.as_str())])
+        })
+        .await
+    }
 
-        self.execute(req).await
+    /// Fetch available routes for a currency pair.
+    ///
+    /// Calls `GET /api/v1/routes/{base}/{quote}` and returns ranked route
+    /// candidates for the requested pair.
+    ///
+    /// Returns [`ApiError`] with code [`ApiErrorCode::NoRoute`] when no route
+    /// exists for the requested pair and amount.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stellarroute_sdk::{Client, RoutesRequest};
+    ///
+    /// # async fn example() -> Result<(), stellarroute_sdk::ApiError> {
+    /// let client = Client::new("https://api.stellarroute.io")?;
+    /// let response = client.routes(RoutesRequest {
+    ///     base: "native",
+    ///     quote: "USDC",
+    ///     amount: 1_000_000,
+    ///     slippage_bps: Some(50),
+    ///     quote_type: None,
+    /// }).await?;
+    /// println!("Best route: {:?}", response.routes.first());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn routes(&self, request: RoutesRequest<'_>) -> Result<RoutesResponse> {
+        let path = format!(
+            "api/v1/routes/{}/{}",
+            encode_path_segment(request.base),
+            encode_path_segment(request.quote)
+        );
+        let base_url = self.url(&path)?;
+        let amount = request.amount.to_string();
+        let slippage_bps = request.slippage_bps.map(|value| value.to_string());
+        let quote_type = request.quote_type.map(|value| value.to_string());
+
+        self.execute_with_retry(|| {
+            let mut req = self.http.get(base_url.clone()).query(&[("amount", amount.as_str())]);
+            if let Some(ref slippage_bps) = slippage_bps {
+                req = req.query(&[("slippage_bps", slippage_bps.as_str())]);
+            }
+            if let Some(ref quote_type) = quote_type {
+                req = req.query(&[("quote_type", quote_type.as_str())]);
+            }
+            req
+        })
+        .await
     }
 
     /// `POST /api/v1/batch/quote` — fetch multiple price quotes in a single request.
@@ -163,11 +249,9 @@ impl StellarRouteClient {
     /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] if any
     /// request item is malformed or the batch is too large.
     pub async fn batch_quote(&self, request: BatchQuoteRequest) -> Result<BatchQuoteResponse> {
-        let req = self
-            .http
-            .post(self.url("api/v1/batch/quote")?)
-            .json(&request);
-        self.execute(req).await
+        let url = self.url("api/v1/batch/quote")?;
+        self.execute_with_retry(|| self.http.post(url.clone()).json(&request))
+            .await
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
@@ -179,55 +263,111 @@ impl StellarRouteClient {
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let req = self.http.get(self.url(path)?);
-        self.execute(req).await
+        let url = self.url(path)?;
+        self.execute_with_retry(|| self.http.get(url.clone())).await
     }
 
-    async fn execute<T: serde::de::DeserializeOwned>(
-        &self,
-        request: reqwest::RequestBuilder,
-    ) -> Result<T> {
-        let response = request
-            .send()
-            .await
-            .map_err(|e| SdkError::Http(e.to_string()))?;
+    async fn execute_with_retry<T, F>(&self, build_request: F) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        F: Fn() -> reqwest::RequestBuilder,
+    {
+        let mut attempts = 0u32;
+        loop {
+            let response = build_request()
+                .send()
+                .await
+                .map_err(|e| SdkError::Http(e.to_string()))?;
 
-        let status = response.status();
+            let status = response.status();
 
-        // Handle rate limiting before reading the body.
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let info = extract_rate_limit_info(response.headers());
-            return Err(SdkError::RateLimited { info });
+            // Handle rate limiting before reading the body.
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let info = extract_rate_limit_info(response.headers());
+
+                if attempts < self.max_retries {
+                    let delay = retry_delay(&info, self.base_backoff, attempts);
+                    tokio::time::sleep(delay).await;
+                    attempts += 1;
+                    continue;
+                }
+                return Err(SdkError::RateLimited { info });
+            }
+
+            let body = response
+                .text()
+                .await
+                .map_err(|e| SdkError::Http(format!("Failed to read response body: {e}")))?;
+
+            if !status.is_success() {
+                // SURFACE: ApiErrorCode::NoRoute — documented in OpenAPI as error_code "NO_ROUTE" on empty candidate set
+                if status == reqwest::StatusCode::NOT_FOUND
+                    || serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|value| value.get("error_code").and_then(serde_json::Value::as_str))
+                        .map(|code| code.eq_ignore_ascii_case("NO_ROUTE"))
+                        .unwrap_or(false)
+                    || serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|value| value.get("error").and_then(serde_json::Value::as_str))
+                        .map(|code| code.eq_ignore_ascii_case("no_route"))
+                        .unwrap_or(false)
+                {
+                    let message = serde_json::from_str::<ErrorResponse>(&body)
+                        .map(|err| err.message)
+                        .unwrap_or_else(|_| "No route found".to_string());
+                    return Err(SdkError::Api {
+                        code: ApiErrorCode::NoRoute,
+                        message,
+                        status: status.as_u16(),
+                    });
+                }
+
+                // Retry on 5xx errors.
+                if status.is_server_error() && attempts < self.max_retries {
+                    let delay = self.base_backoff.saturating_mul(1u32.pow(attempts));
+                    let delay = delay.min(Duration::from_secs(30));
+                    tokio::time::sleep(delay).await;
+                    attempts += 1;
+                    continue;
+                }
+
+                let (code, message) = match serde_json::from_str::<ErrorResponse>(&body) {
+                    Ok(err) => (
+                        err.error.parse::<ApiErrorCode>().expect("infallible parse"),
+                        err.message,
+                    ),
+                    Err(_) => (
+                        ApiErrorCode::InternalError,
+                        format!("API request failed with status {status}"),
+                    ),
+                };
+                return Err(SdkError::Api {
+                    code,
+                    message,
+                    status: status.as_u16(),
+                });
+            }
+
+            return serde_json::from_str(&body).map_err(Into::into);
         }
-
-        let body = response
-            .text()
-            .await
-            .map_err(|e| SdkError::Http(format!("Failed to read response body: {e}")))?;
-
-        if !status.is_success() {
-            let (code, message) = match serde_json::from_str::<ErrorResponse>(&body) {
-                Ok(err) => (
-                    err.error.parse::<ApiErrorCode>().expect("infallible parse"),
-                    err.message,
-                ),
-                Err(_) => (
-                    ApiErrorCode::InternalError,
-                    format!("API request failed with status {status}"),
-                ),
-            };
-            return Err(SdkError::Api {
-                code,
-                message,
-                status: status.as_u16(),
-            });
-        }
-
-        serde_json::from_str(&body).map_err(Into::into)
     }
 }
 
 // ── Rate-limit header extraction ──────────────────────────────────────────────
+
+fn encode_path_segment(segment: &str) -> String {
+    segment
+        .bytes()
+        .map(|byte| {
+            if (byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')) {
+                byte as char
+            } else {
+                format!("%{:02X}", byte)
+            }
+        })
+        .collect()
+}
 
 fn extract_rate_limit_info(headers: &reqwest::header::HeaderMap) -> RateLimitInfo {
     let parse_u32 = |name: &str| -> Option<u32> {
@@ -247,5 +387,18 @@ fn extract_rate_limit_info(headers: &reqwest::header::HeaderMap) -> RateLimitInf
         limit: parse_u32("x-ratelimit-limit"),
         remaining: parse_u32("x-ratelimit-remaining"),
         reset: parse_u64("x-ratelimit-reset"),
+        retry_after: parse_u64("retry-after"),
     }
+}
+
+/// Compute the delay before a retry attempt.
+///
+/// Honors the `Retry-After` header from rate-limit responses, falling back to
+/// exponential backoff: `base_backoff * 2^attempt`, capped at 30 seconds.
+fn retry_delay(info: &RateLimitInfo, base_backoff: Duration, attempt: u32) -> Duration {
+    if let Some(seconds) = info.retry_after {
+        return Duration::from_secs(seconds);
+    }
+    let delay = base_backoff.saturating_mul(1u32.pow(attempt));
+    delay.min(Duration::from_secs(30))
 }

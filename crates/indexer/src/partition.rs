@@ -5,14 +5,13 @@
 //! implements hot‑pair detection based on a configurable allow‑list (future
 //! extensions can use volume‑based detection).
 
-use std::collections::HashSet;
+use parking_lot::RwLock;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use parking_lot::RwLock;
-use tracing::debug;
 
 use crate::config::IndexerConfig;
-use crate::metrics;
+use crate::metrics::{FAIRNESS_SCORE, INDEXER_LAG_LEDGERS, PARTITION_QUEUE_DEPTH};
 
 /// Represents a partition manager that decides whether a given market pair
 /// should be processed by this instance.
@@ -27,7 +26,7 @@ pub struct PartitionManager {
     /// Time window (seconds) for volume based hot‑pair detection.
     hot_window_secs: u64,
     /// Map of pair -> (volume, last_updated timestamp).
-    volume_map: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, (u64, i64)>>>,
+    volume_map: Arc<RwLock<HashMap<String, (u64, i64)>>>,
     /// Set of explicitly configured hot pair identifiers.
     hot_allowlist: Arc<RwLock<HashSet<String>>>,
 }
@@ -50,6 +49,9 @@ impl PartitionManager {
         Self {
             partition_count: cfg.partition_count,
             partition_id: cfg.partition_id,
+            hot_volume_threshold: cfg.hot_pair_volume_threshold,
+            hot_window_secs: cfg.hot_pair_window_secs,
+            volume_map: Arc::new(RwLock::new(HashMap::new())),
             hot_allowlist: Arc::new(RwLock::new(hot_set)),
         }
     }
@@ -80,7 +82,17 @@ impl PartitionManager {
     /// Check if a pair is designated as hot.
     pub fn is_hot(&self, pair: &str) -> bool {
         let set = self.hot_allowlist.read();
-        set.contains(pair)
+        if set.contains(pair) {
+            return true;
+        }
+        drop(set);
+
+        let now = chrono::Utc::now().timestamp();
+        let volumes = self.volume_map.read();
+        volumes.get(pair).is_some_and(|(volume, updated_at)| {
+            *volume >= self.hot_volume_threshold
+                && now.saturating_sub(*updated_at) <= self.hot_window_secs as i64
+        })
     }
 
     /// Record metrics for this partition. Call this periodically (e.g. each

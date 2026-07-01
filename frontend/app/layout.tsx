@@ -33,6 +33,28 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "StellarRoute",
   },
+
+  openGraph: {
+    title: "StellarRoute - DEX Aggregator for Stellar",
+    description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+    url: "https://stellarroute.app",
+    type: "website",
+    images: [
+      {
+        url: "/icons/icon-512.svg",
+        width: 512,
+        height: 512,
+        alt: "StellarRoute logo",
+      },
+    ],
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "StellarRoute - DEX Aggregator for Stellar",
+    description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+    images: ["/icons/icon-512.svg"],
+  },
 };
 
 export default function RootLayout({

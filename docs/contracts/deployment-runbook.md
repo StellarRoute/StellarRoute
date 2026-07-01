@@ -221,6 +221,39 @@ The script uses the router's `get_ttl_status` response:
 
 - Mainnet extension costs real XLM; monitor spend carefully.
 - Testnet extension is a low-cost operation, but still requires a funded account.
+- To enable failure alerts to a Slack-compatible webhook, set the `TTL_ALERT_WEBHOOK_URL` environment variable:
+  ```bash
+  TTL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/... ./scripts/extend-ttl.sh --network testnet
+  ```
+
+### Alerting and escalation
+
+The TTL extension script can send a webhook alert when an extension attempt fails. Configure an optional environment variable before running the script:
+
+```bash
+export TTL_ALERT_WEBHOOK_URL="https://hooks.slack.com/services/EXAMPLE/WEBHOOK/TOKEN"
+```
+
+The value should be a full HTTPS webhook URL. For Slack, the script posts a JSON payload to that endpoint.
+
+Example Slack incoming webhook snippet:
+
+```bash
+curl -X POST \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"StellarRoute TTL extension failed on testnet: check the operator logs and contract state"}' \
+  "$TTL_ALERT_WEBHOOK_URL"
+```
+
+If TTL extension fails twice in a row, escalate immediately:
+
+1. Review the latest operator logs and the contract state for the affected network.
+2. Verify whether the contract is still healthy and whether storage keys are nearing expiry.
+3. If the issue persists, pause or reduce automated reliance on the bot and notify the on-call operator or maintainer.
+4. Re-run the TTL check manually and, if needed, extend the affected state directly.
+5. Record the incident and the remediation steps for follow-up.
+
+For the operational risk behind this process, see [audit/assumptions.md](../../audit/assumptions.md).
 
 ## Pool registration with `scripts/register-pools.sh`
 
@@ -235,17 +268,71 @@ The script reads the pool list from:
 - `config/pools-testnet.json`
 - `config/pools-mainnet.json`
 
+### Discovering real pool contract addresses
+
+`config/pools-testnet.json` ships with placeholder entries. You must replace them with real Soroban contract IDs before registration will do anything.
+
+**Option A — Stellar Expert (browser)**
+
+Open [https://testnet.stellar.expert/explorer/testnet](https://testnet.stellar.expert/explorer/testnet), search for a known token pair or AMM factory, and copy the 56-character contract ID (starts with `C`).
+
+**Option B — Soroban RPC (factory contract)**
+
+```bash
+soroban contract invoke \
+  --id <FACTORY_CONTRACT_ID> \
+  --network testnet \
+  -- get_pools
+```
+
+**Option C — Horizon liquidity-pools endpoint (classic AMM only)**
+
+```bash
+curl "https://horizon-testnet.stellar.org/liquidity_pools?limit=20" | jq '.._embedded.records[].id'
+```
+
+> Horizon returns hex pool IDs, not Soroban contract addresses. Use only if your adapter accepts Horizon pool IDs.
+
+### Editing `config/pools-testnet.json`
+
+Replace each `PLACEHOLDER_POOL_ADDRESS_*` value with a real contract ID. The script automatically skips any entry whose `address` starts with `PLACEHOLDER`.
+
+Example filled file:
+
+```json
+{
+  "description": "Testnet liquidity pool addresses to register with the StellarRoute router contract.",
+  "pools": [
+    {
+      "name": "XLM/USDC Testnet Pool",
+      "address": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "notes": "Constant-product AMM pool — XLM base, USDC quote"
+    },
+    {
+      "name": "XLM/BTC Testnet Pool",
+      "address": "CBEZJWFMKJHPJ3YHPYUGJFMXM5VBXE3HMGHQRQNMFVNRQWKQ6RZXKWM",
+      "notes": "Constant-product AMM pool — XLM base, BTC quote"
+    }
+  ]
+}
+```
+
 ### Pool registration workflow
 
-1. Ensure the target `pools-<network>.json` file exists.
-2. Confirm each pool entry contains a valid Stellar address.
-3. Run the script to invoke `register_pool` for each configured pool.
-4. The script verifies registration using `is_pool_registered`.
-5. It prints the deployed on-chain pool count.
+1. Obtain real pool contract IDs (see above).
+2. Edit `config/pools-<network>.json` replacing all placeholders.
+3. Confirm the router is deployed (`config/deployment-<network>.json` must exist).
+4. Run the script to invoke `register_pool` for each configured pool.
+5. The script verifies registration using `is_pool_registered`.
+6. It prints the deployed on-chain pool count.
+
+Once registered, the StellarRoute indexer discovers pools via the router's `get_pool_count` / `get_pools` methods and includes their reserve data in `amm_pool_reserves` and `normalized_liquidity`.
+
+For a full walkthrough including expected log output see [`docs/deployment/README.md` §3](../deployment/README.md#3-register-pools).
 
 ### Common failure modes
 
-- placeholder pool addresses in config
+- placeholder pool addresses in config (script skips and reports `Registered: 0`)
 - invalid or malformed pool contract IDs
 - router contract not deployed or incorrect deployment artifact
 
@@ -258,6 +345,22 @@ The script reads the pool list from:
 ./scripts/extend-ttl.sh --network testnet
 ./scripts/upgrade.sh --network testnet
 ```
+
+## Smoke testing with pause/unpause coverage
+
+The default `smoke-test-testnet.sh` runs core functionality only. To include pause/unpause operator smoke coverage:
+
+```bash
+STELLARROUTE_SMOKE_PAUSE=1 ./scripts/smoke-test-testnet.sh --network testnet
+```
+
+This will:
+1. Check current pause status
+2. If unpaused, call `pause` and verify the contract is paused
+3. Call `unpause` and verify the contract is unpaused
+4. Leaves the contract in the same state as it started
+
+The test uses the deployer identity (default: `deployer`), which must be the admin of the router contract.
 
 For operator-managed registration that should persist across restarts and serve as bootstrap fallback for the indexer, use the DB helper script:
 

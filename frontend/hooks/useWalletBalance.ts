@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletNetwork } from '@/lib/wallet/types';
+import { getHorizonUrl } from '@/lib/network-endpoints';
 import { XLM_FEE_RESERVE } from '@/lib/stellar-reserves';
 
 interface HorizonBalanceLine {
@@ -20,16 +21,10 @@ interface WalletBalanceState {
   spendableBalance: string | null;
   loading: boolean;
   error: Error | null;
+  refetch: () => void;
 }
 
-const HORIZON_URLS: Record<string, string> = {
-  testnet: 'https://horizon-testnet.stellar.org',
-  mainnet: 'https://horizon.stellar.org',
-};
-
-function normalizeNetwork(network: WalletNetwork | null): string {
-  return String(network ?? 'testnet').toLowerCase();
-}
+const REFETCH_DEBOUNCE_MS = 1_500;
 
 function findAssetBalance(
   balances: HorizonBalanceLine[],
@@ -66,14 +61,21 @@ export function useWalletBalance({
   isConnected: boolean;
   network: WalletNetwork | null;
 }): WalletBalanceState {
-  const [state, setState] = useState<WalletBalanceState>({
+  const [state, setState] = useState<Omit<WalletBalanceState, 'refetch'>>({
     balance: null,
     spendableBalance: null,
     loading: false,
     error: null,
   });
 
-  const networkKey = normalizeNetwork(network);
+  const lastFetchAt = useRef(0);
+  const [fetchTick, setFetchTick] = useState(0);
+
+  const refetch = useCallback(() => {
+    const now = Date.now();
+    if (now - lastFetchAt.current < REFETCH_DEBOUNCE_MS) return;
+    setFetchTick((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!isConnected || !address) {
@@ -86,18 +88,10 @@ export function useWalletBalance({
       return;
     }
 
-    const horizonUrl = HORIZON_URLS[networkKey];
-    if (!horizonUrl) {
-      setState({
-        balance: null,
-        spendableBalance: null,
-        loading: false,
-        error: new Error(`Unsupported network: ${network}`),
-      });
-      return;
-    }
+    const horizonUrl = getHorizonUrl(network);
 
     const controller = new AbortController();
+    lastFetchAt.current = Date.now();
     setState((previous) => ({ ...previous, loading: true, error: null }));
 
     fetch(`${horizonUrl}/accounts/${encodeURIComponent(address)}`, {
@@ -131,7 +125,7 @@ export function useWalletBalance({
       });
 
     return () => controller.abort();
-  }, [address, asset, isConnected, network, networkKey]);
+  }, [address, asset, isConnected, network, fetchTick]);
 
-  return useMemo(() => state, [state]);
+  return useMemo(() => ({ ...state, refetch }), [state, refetch]);
 }

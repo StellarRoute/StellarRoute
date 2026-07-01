@@ -75,7 +75,8 @@ fn redact_canonical_asset(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::replay::artifact::{
-        HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION,
+        DecisionGraphSnapshot, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact,
+        CURRENT_SCHEMA_VERSION,
     };
     use chrono::Utc;
     use proptest::prelude::*;
@@ -99,12 +100,14 @@ mod tests {
                 available_amount: "100.0000000".to_string(),
                 fee_bps: None,
             }],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
                 staleness_threshold_secs: 30,
                 min_tvl_threshold_e7: 1_000_000_000,
             },
+            decision_graph: DecisionGraphSnapshot::default(),
             original_output: serde_json::json!({
                 "base_asset": {
                     "asset_type": "credit_alphanum4",
@@ -126,6 +129,7 @@ mod tests {
                     }
                 ]
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 
@@ -141,17 +145,20 @@ mod tests {
             slippage_bps: 50,
             quote_type: "sell".to_string(),
             liquidity_snapshot: vec![],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
                 staleness_threshold_secs: 30,
                 min_tvl_threshold_e7: 1_000_000_000,
             },
+            decision_graph: DecisionGraphSnapshot::default(),
             original_output: serde_json::json!({
                 "base_asset": { "asset_type": "native", "asset_issuer": null },
                 "quote_asset": { "asset_type": "native" },
                 "price": "1.0000000"
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 

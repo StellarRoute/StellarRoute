@@ -30,6 +30,11 @@ async fn test_database_connection() {
         maintenance_interval_mins: 60,
         snapshot_retention_days: 90,
         snapshot_compaction_hours: 24,
+        partition_count: 4,
+        hot_pair_allowlist: String::new(),
+        hot_pair_volume_threshold: 1_000_000_000,
+        hot_pair_window_secs: 300,
+        partition_id: 0,
     };
 
     let db = Database::new(&config)
@@ -76,6 +81,11 @@ async fn test_amm_aggregator_initialization() {
         maintenance_interval_mins: 60,
         snapshot_retention_days: 90,
         snapshot_compaction_hours: 24,
+        partition_count: 4,
+        hot_pair_allowlist: String::new(),
+        hot_pair_volume_threshold: 1_000_000_000,
+        hot_pair_window_secs: 300,
+        partition_id: 0,
     };
 
     let db = Database::new(&config)
@@ -124,6 +134,11 @@ async fn test_registry_seed_and_indexer_bootstrap() {
         maintenance_interval_mins: 60,
         snapshot_retention_days: 90,
         snapshot_compaction_hours: 24,
+        partition_count: 4,
+        hot_pair_allowlist: String::new(),
+        hot_pair_volume_threshold: 1_000_000_000,
+        hot_pair_window_secs: 300,
+        partition_id: 0,
     };
 
     let db = Database::new(&config)

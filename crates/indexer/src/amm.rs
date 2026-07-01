@@ -8,11 +8,11 @@ use crate::error::{IndexerError, Result};
 use crate::models::{PoolReserve, PoolState};
 use crate::soroban::{SorobanRpc, SorobanRpcClient};
 use crate::telemetry::TraceContext;
-use stellar_xdr::curr::{Limits, LedgerEntry, LedgerEntryData, ScVal, ReadXdr};
 use chrono::Utc;
 use serde_json;
 use sqlx::Row;
 use std::time::Duration;
+use stellar_xdr::curr::{LedgerEntry, LedgerEntryData, Limits, ReadXdr, ScVal};
 use tracing::{debug, error, info, warn};
 
 const DISCOVERY_CURSOR_JOB: &str = "soroban_pool_discovery";
@@ -40,6 +40,9 @@ impl Default for AmmConfig {
         }
     }
 }
+
+const UPSERT_AMM_POOL_RESERVE_SQL: &str =
+    "SELECT upsert_amm_pool_reserve($1, $2, $3, $4, $5, $6, $7, $8, $9)";
 
 /// AMM pool aggregator service
 pub struct AmmAggregator {
@@ -115,6 +118,13 @@ impl AmmAggregator {
                     new_pools.len()
                 );
                 self.process_pool_batch(&new_pools).await?;
+            }
+
+            let indexed_swaps = self
+                .index_swap_activity(start_ledger, current_ledger)
+                .await?;
+            if indexed_swaps > 0 {
+                info!("Indexed {} contract swap activity events", indexed_swaps);
             }
         }
 
@@ -223,6 +233,23 @@ impl AmmAggregator {
         }
 
         Ok(new_pools)
+    }
+
+    async fn index_swap_activity(&self, start_ledger: u64, end_ledger: u64) -> Result<u64> {
+        use crate::soroban::EventFilter;
+
+        let filters = vec![EventFilter {
+            event_type: "contract".to_string(),
+            contract_ids: vec![self.config.router_contract.clone()],
+            topics: vec![vec!["swap".to_string()]],
+        }];
+
+        let events = self
+            .soroban
+            .get_events(start_ledger, Some(end_ledger), filters)
+            .await?;
+
+        crate::activity::ingest_swap_events(self.db.pool(), &events).await
     }
 
     /// Get pools currently tracked in the database
@@ -351,7 +378,7 @@ impl AmmAggregator {
     async fn update_pool_reserve(&self, reserve: &PoolReserve) -> Result<()> {
         let pool = self.db.pool();
         let trace_context = TraceContext::current();
-        sqlx::query("SELECT upsert_amm_pool_reserve($1, $2, $3, $4, $5, $6, $7, $8, $9)")
+        sqlx::query(UPSERT_AMM_POOL_RESERVE_SQL)
             .bind(&reserve.pool_address)
             .bind(reserve.selling_asset_id)
             .bind(reserve.buying_asset_id)
@@ -416,16 +443,17 @@ pub fn parse_soroban_pool_state(
     // 1. Decode base64 XDR as LedgerEntry or LedgerEntryData
     let ledger_entry_data = match LedgerEntry::from_xdr_base64(xdr_base64, Limits::none()) {
         Ok(entry) => entry.data,
-        Err(_) => {
-            match LedgerEntryData::from_xdr_base64(xdr_base64, Limits::none()) {
-                Ok(data) => data,
-                Err(e) => {
-                    let err_msg = format!("failed to parse XDR as LedgerEntry or LedgerEntryData: {}", e);
-                    warn!("XDR decode fallback: pool {} - {}", pool_address, err_msg);
-                    return Err(IndexerError::SorobanRpc(err_msg));
-                }
+        Err(_) => match LedgerEntryData::from_xdr_base64(xdr_base64, Limits::none()) {
+            Ok(data) => data,
+            Err(e) => {
+                let err_msg = format!(
+                    "failed to parse XDR as LedgerEntry or LedgerEntryData: {}",
+                    e
+                );
+                warn!("XDR decode fallback: pool {} - {}", pool_address, err_msg);
+                return Err(IndexerError::SorobanRpc(err_msg));
             }
-        }
+        },
     };
 
     // 2. Extract ContractDataEntry
@@ -536,12 +564,35 @@ pub fn parse_soroban_pool_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stellar_xdr::curr::{
-        ContractDataEntry, ContractDataDurability, ContractExecutable, ScContractInstance,
-        ExtensionPoint, LedgerEntryData, ScAddress, ScMap, ScMapEntry, ScSymbol, ScVal,
-        Int128Parts, Hash, WriteXdr,
-    };
     use serde_json::json;
+
+    /// Verifies that the SQL call to upsert_amm_pool_reserve uses exactly 9 bind
+    /// parameters, matching the 9-arg Postgres function signature added in migration
+    /// 0011_trace_context_provenance (7 core args + source_trace_id + source_span_id).
+    #[test]
+    fn upsert_amm_pool_reserve_query_has_nine_args() {
+        let count = (1..=20)
+            .filter(|n| UPSERT_AMM_POOL_RESERVE_SQL.contains(&format!("${}", n)))
+            .count();
+        assert_eq!(
+            count, 9,
+            "SQL must bind 9 args: 7 core + trace_id + span_id"
+        );
+    }
+
+    /// Verifies TraceContext fields are present and bindable (non-panicking default).
+    #[test]
+    fn trace_context_default_is_bindable() {
+        let tc = TraceContext::default();
+        // Both fields must be strings (will bind as TEXT in sqlx)
+        let _: &str = &tc.trace_id;
+        let _: &str = &tc.span_id;
+    }
+    use stellar_xdr::curr::{
+        ContractDataDurability, ContractDataEntry, ContractExecutable, ExtensionPoint, Hash,
+        Int128Parts, LedgerEntryData, ScAddress, ScContractInstance, ScMap, ScMapEntry, ScSymbol,
+        ScVal, WriteXdr,
+    };
 
     #[test]
     fn test_parse_soroban_pool_state_success() {

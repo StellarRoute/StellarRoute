@@ -107,10 +107,136 @@ export STELLAR_NETWORK=testnet
 ```
 
 ### 3. Register Pools
-Edit `config/pools-testnet.json` with real pool addresses, then:
+
+Before running the script you need real Soroban AMM pool contract addresses. Follow the steps below to discover them, then update `config/pools-testnet.json`.
+
+#### Step 1 — Discover pool contract addresses on testnet
+
+Soroban AMM pools are ordinary contracts deployed independently of StellarRoute. There are three ways to find their addresses:
+
+**Option A — Stellar Expert (browser)**
+
+1. Open [https://testnet.stellar.expert/explorer/testnet](https://testnet.stellar.expert/explorer/testnet).
+2. Search for the AMM factory contract or a known pool token pair (e.g. `XLM/USDC`).
+3. Copy the contract ID (starts with `C`, 56 characters).
+
+**Option B — Soroban RPC query**
+
+If you know the factory contract address, enumerate pools via its `get_pools` method:
+
+```bash
+soroban contract invoke \
+  --id <FACTORY_CONTRACT_ID> \
+  --network testnet \
+  -- get_pools
+```
+
+Each returned entry is a pool contract ID you can use in `pools-testnet.json`.
+
+**Option C — Stellar Horizon liquidity-pools endpoint**
+
+Classic AMM pools (constant-product) are also discoverable via Horizon:
+
+```bash
+curl "https://horizon-testnet.stellar.org/liquidity_pools?limit=20" | jq '.._embedded.records[].id'
+```
+
+> **Note:** Horizon liquidity pool IDs are hex strings, not Soroban contract addresses. Use this only if the StellarRoute adapter contract accepts Horizon pool IDs. For Soroban-native pools, prefer Option A or B.
+
+**Option D — Aquarius testnet API**
+
+`config/pools-testnet.json` lists Aquarius Soroban AMM pools on testnet. To discover or refresh pool contract IDs:
+
+```bash
+curl -s "https://amm-api-testnet.aqua.network/api/external/v1/pools/?limit=100" | jq '.results[] | {address, tokens: .tokens_str, type: .pool_type}'
+```
+
+Prefer `constant_product` pools for XLM/USDC pairs and pools whose `tokens_str` includes `native` (XLM) plus the target asset. Cross-check the pool address on [Stellar Expert testnet](https://stellar.expert/explorer/testnet) before registering. The Aquarius router on testnet is documented at [Aquarius developer guides](https://docs.aqua.network/developers/code-examples/prerequisites-and-basics).
+
+#### Step 2 — Edit `config/pools-testnet.json`
+
+Replace each `PLACEHOLDER_POOL_ADDRESS_*` value with the contract ID you discovered. Keep the `name` and `notes` fields for operator reference.
+
+**Example filled `config/pools-testnet.json`:**
+
+```json
+{
+  "description": "Testnet liquidity pool addresses to register with the StellarRoute router contract.",
+  "pools": [
+    {
+      "name": "XLM/USDC Testnet Pool",
+      "address": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "notes": "Constant-product AMM pool — XLM base, USDC quote"
+    },
+    {
+      "name": "XLM/BTC Testnet Pool",
+      "address": "CBEZJWFMKJHPJ3YHPYUGJFMXM5VBXE3HMGHQRQNMFVNRQWKQ6RZXKWM",
+      "notes": "Constant-product AMM pool — XLM base, BTC quote"
+    }
+  ]
+}
+```
+
+> The addresses above are illustrative examples. Use real contract IDs obtained from Step 1.
+
+Any entry whose `address` starts with `PLACEHOLDER` is automatically skipped by the registration script.
+
+#### Step 3 — Run the registration script
+
 ```bash
 ./scripts/register-pools.sh --network testnet
 ```
+
+The script reads `config/pools-testnet.json`, skips placeholder entries, and calls the router contract's `register_pool` function for each real address.
+
+**Expected log output (successful run):**
+
+```
+[INFO]  Registering 2 pools on testnet (contract: C...ROUTER...)
+[INFO]  [1/2] Registering: XLM/USDC Testnet Pool (CBIELTK6...)
+[OK]    Verified: XLM/USDC Testnet Pool is registered
+[INFO]  [2/2] Registering: XLM/BTC Testnet Pool (CBEZJWFM...)
+[OK]    Verified: XLM/BTC Testnet Pool is registered
+
+[OK]    ===== POOL REGISTRATION COMPLETE =====
+[OK]    Registered: 2
+[OK]    Failed:     0
+[OK]    Total on-chain pool count: 2
+```
+
+**Expected log output (placeholder entries present):**
+
+```
+[WARN]  Skipping placeholder pool: XLM/USDC Testnet Pool
+[WARN]  Skipping placeholder pool: XLM/BTC Testnet Pool
+
+[OK]    ===== POOL REGISTRATION COMPLETE =====
+[OK]    Registered: 0
+[OK]    Failed:     0
+[OK]    Total on-chain pool count: 0
+```
+
+If `Registered: 0` is shown for a non-placeholder run, verify the router contract is deployed (`./scripts/deploy.sh` must have run first) and that `config/deployment-testnet.json` exists with a valid contract ID.
+
+#### Relationship between pool config and `register_pool`
+
+Each entry in `pools-testnet.json` maps directly to one `register_pool` invocation on the router contract:
+
+```
+pools-testnet.json entry.address
+        │
+        ▼
+router.register_pool(pool = <address>)   ← on-chain call
+        │
+        ▼
+router.is_pool_registered(pool = <address>)  ← verification call
+```
+
+Once registered, the StellarRoute indexer discovers pools via `get_pool_count` / `get_pools` at startup and includes their reserve data in the `amm_pool_reserves` table and `normalized_liquidity` view used by the quote and routing APIs.
+
+For full details on the registration script internals see [`docs/contracts/deployment-runbook.md`](../contracts/deployment-runbook.md#pool-registration-with-scriptsregister-poolssh).
+
+After registration, run `./scripts/smoke-test-testnet.sh --network testnet` to verify end-to-end connectivity.
 
 ### 4. Verify
 ```bash
@@ -181,12 +307,61 @@ Before deploying an upgrade to mainnet:
 - [ ] Previous WASM binary archived
 - [ ] Deployment artifact backed up
 
+## Mainnet Deployment
+
+Mainnet deploys are manual-only and gated behind repository safeguards. Do not run until testnet verification and audit sign-off are complete.
+
+### Prerequisites
+
+- Funded mainnet deployer identity (separate from testnet)
+- Repository variable `DEPLOY_MAINNET_ENABLED=true`
+- Repository secret `SOROBAN_MAINNET_DEPLOYER_SECRET` (mainnet-only; never reuse testnet keys)
+
+### Deploy via GitHub Actions
+
+1. Open **Actions → Deploy to Mainnet → Run workflow**.
+2. Use **dry run** first to build WASM and validate the pipeline without submitting transactions.
+3. Re-run with dry run disabled after secrets and variables are confirmed.
+
+On success, the workflow uploads `config/deployment-mainnet.json` as a GitHub Actions artifact (90-day retention).
+
+### Deploy locally
+
+```bash
+./scripts/deploy.sh --network mainnet --dry-run
+./scripts/deploy.sh --network mainnet
+./scripts/verify.sh --network mainnet
+```
+
+### Mainnet rollback and upgrade
+
+Soroban does not support native rollback. To revert a bad upgrade:
+
+1. Stop routing traffic to the affected router contract.
+2. Archive the last known-good WASM binary from the deployment artifact.
+3. Run `./scripts/upgrade.sh --network mainnet` with the previous WASM version checked out, or deploy a fresh router if state is compromised.
+4. Re-register pools from `config/pools-mainnet.json` after the router is healthy.
+5. Run `./scripts/verify.sh --network mainnet` and `./scripts/monitor.sh --network mainnet` before restoring traffic.
+
+For planned upgrades, follow the testnet upgrade flow in [Upgrade Process](#upgrade-process) on mainnet only after testnet verification passes.
+
 ## CI/CD Workflows
 
 ### Manual Deploy (`deploy-testnet.yml`)
 - Trigger: GitHub Actions > "Deploy to Testnet" > Run workflow
 - Supports dry-run mode (build + hash only, no deploy)
 - Requires `SOROBAN_DEPLOYER_SECRET` secret and `DEPLOY_ENABLED=true` variable
+- Automatically registers pools from `config/pools-testnet.json` after deployment
+- Fails if all pools are placeholders (no real pool addresses)
+- Smoke tests verify at least one pool is registered and routable
+- Runs testnet contract smoke tests against `vars.SOROBAN_CONTRACT_ID`
+
+### Gated Mainnet Deploy (`deploy-mainnet.yml`)
+- Trigger: GitHub Actions > "Deploy to Mainnet" > Run workflow (manual only)
+- Requires `DEPLOY_MAINNET_ENABLED=true` repository variable
+- Requires `SOROBAN_MAINNET_DEPLOYER_SECRET` repository secret (separate from testnet)
+- Supports dry-run mode (build + simulate without on-chain deploy)
+- Uploads `config/deployment-mainnet.json` artifact after a successful deploy
 
 ### Nightly Verification (`verify-contracts.yml`)
 - Runs automatically at 03:00 UTC daily

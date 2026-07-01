@@ -7,7 +7,10 @@
 //! Run with:
 //!   cargo test -p stellarroute-sdk
 
-use stellarroute_sdk::{ApiErrorCode, ClientBuilder, QuoteRequest, QuoteType, SdkError};
+use std::time::Duration;
+use stellarroute_sdk::{
+    ApiErrorCode, ClientBuilder, QuoteRequest, QuoteType, RoutesRequest, SdkError,
+};
 use wiremock::{
     matchers::{method, path, query_param},
     Mock, MockServer, ResponseTemplate,
@@ -21,6 +24,17 @@ async fn mock_server() -> MockServer {
 
 fn client(server: &MockServer) -> stellarroute_sdk::StellarRouteClient {
     ClientBuilder::new(server.uri()).build().unwrap()
+}
+
+fn client_with_retries(
+    server: &MockServer,
+    max_retries: u32,
+) -> stellarroute_sdk::StellarRouteClient {
+    ClientBuilder::new(server.uri())
+        .max_retries(max_retries)
+        .base_backoff(Duration::from_millis(10))
+        .build()
+        .unwrap()
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
@@ -112,6 +126,16 @@ async fn orderbook_returns_bids_and_asks() {
             },
             "bids": [{ "price": "0.1050000", "amount": "500.0000000", "total": "52.5000000" }],
             "asks": [{ "price": "0.1060000", "amount": "300.0000000", "total": "31.8000000" }],
+<<<<<<< HEAD
+            "summary": {
+                "bid": "0.1050000",
+                "ask": "0.1060000",
+                "spread_bps": 95,
+                "midpoint": "0.1055000"
+            },
+=======
+            "summary": { "bid": "0.1050000", "ask": "0.1060000", "spread_bps": 9, "midpoint": "0.1055000" },
+>>>>>>> origin/main
             "timestamp": 1740312000
         })))
         .mount(&server)
@@ -261,6 +285,142 @@ async fn quote_validation_error_maps_to_typed_error() {
 
     assert!(err.is_validation_error());
     assert_eq!(err.status_code(), Some(400));
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn routes_sends_expected_query_params_and_deserializes_response() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/routes/native/USDC"))
+        .and(query_param("amount", "1000000"))
+        .and(query_param("slippage_bps", "50"))
+        .and(query_param("quote_type", "sell"))
+        .and(wiremock::matchers::header_regex("user-agent", r"^stellarroute-sdk-rust/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+            "quote_asset": {
+                "asset_type": "credit_alphanum4",
+                "asset_code": "USDC",
+                "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+            },
+            "amount": "1000000",
+            "routes": [
+                {
+                    "estimated_output": "1005000",
+                    "impact_bps": 12,
+                    "score": 0.98,
+                    "policy_used": "best_price",
+                    "path": [
+                        {
+                            "from_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+                            "to_asset": {
+                                "asset_type": "credit_alphanum4",
+                                "asset_code": "USDC",
+                                "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                            },
+                            "price": "1.0050000",
+                            "source": "sdex"
+                        }
+                    ]
+                }
+            ],
+            "timestamp": 1740312000
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server)
+        .routes(RoutesRequest {
+            base: "native",
+            quote: "USDC",
+            amount: 1_000_000,
+            slippage_bps: Some(50),
+            quote_type: Some(QuoteType::Sell),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(resp.amount, "1000000");
+    assert_eq!(resp.routes[0].estimated_output, "1005000");
+    assert_eq!(resp.routes[0].path[0].source, "sdex");
+}
+
+#[tokio::test]
+async fn routes_no_route_maps_to_no_route_error() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/routes/native/GHOST"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "no_route",
+            "message": "No trading route found for this pair"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .routes(RoutesRequest {
+            base: "native",
+            quote: "GHOST",
+            amount: 1_000_000,
+            slippage_bps: None,
+            quote_type: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, SdkError::Api { code: ApiErrorCode::NoRoute, .. }));
+}
+
+#[tokio::test]
+#[ignore = "requires live StellarRoute API"]
+async fn test_routes_returns_response() {
+    let client = stellarroute_sdk::StellarRouteClient::new(
+        &std::env::var("STELLARROUTE_API_URL")
+            .expect("STELLARROUTE_API_URL must be set to run live tests"),
+    )
+    .expect("client construction should not fail with a valid URL");
+
+    let response = client
+        .routes(RoutesRequest {
+            base: "native",
+            quote: "USDC",
+            amount: 1_000_000,
+            slippage_bps: Some(100),
+            quote_type: Some(QuoteType::Sell),
+        })
+        .await
+        .expect("routes request should succeed against live API");
+
+    assert!(!response.routes.is_empty(), "expected at least one route");
+}
+
+#[tokio::test]
+#[ignore = "requires live StellarRoute API — uses a known-unroutable pair"]
+async fn test_routes_no_route_returns_correct_error() {
+    let client = stellarroute_sdk::StellarRouteClient::new(
+        &std::env::var("STELLARROUTE_API_URL").expect("STELLARROUTE_API_URL must be set"),
+    )
+    .unwrap();
+
+    let err = client
+        .routes(RoutesRequest {
+            base: "native",
+            quote: "NONEXISTENT_ASSET_ABC123",
+            amount: 1_000_000,
+            slippage_bps: None,
+            quote_type: None,
+        })
+        .await
+        .expect_err("should return an error for unroutable pair");
+
+    assert_eq!(
+        err.code,
+        ApiErrorCode::NoRoute,
+        "expected NoRoute error code, got: {:?}",
+        err.code
+    );
 }
 
 // ── Error handling ────────────────────────────────────────────────────────────
@@ -416,4 +576,149 @@ fn quote_type_display() {
     assert_eq!(QuoteType::Sell.as_str(), "sell");
     assert_eq!(QuoteType::Buy.as_str(), "buy");
     assert_eq!(QuoteType::Sell.to_string(), "sell");
+}
+
+// ── Retry behavior ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn retries_on_429_then_succeeds() {
+    let server = mock_server().await;
+
+    // First response: 429 with Retry-After
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second response: success
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [],
+            "total": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client_with_retries(&server, 2).pairs().await.unwrap();
+    assert_eq!(resp.total, 0);
+}
+
+#[tokio::test]
+async fn retries_on_5xx_then_succeeds() {
+    let server = mock_server().await;
+
+    // First response: 500
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": "internal_error",
+            "message": "Server error"
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second response: success
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": "healthy",
+            "timestamp": "2026-03-25T12:00:00Z",
+            "version": "0.1.0",
+            "components": {}
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client_with_retries(&server, 2).health().await.unwrap();
+    assert!(resp.is_healthy());
+}
+
+#[tokio::test]
+async fn retries_exhausted_returns_error() {
+    let server = mock_server().await;
+
+    // All responses are 429
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .mount(&server)
+        .await;
+
+    let err = client_with_retries(&server, 1).pairs().await.unwrap_err();
+    assert!(err.is_rate_limited());
+    assert_eq!(err.status_code(), Some(429));
+}
+
+#[tokio::test]
+async fn default_no_retries_returns_error_immediately() {
+    let server = mock_server().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(serde_json::json!({
+            "error": "rate_limit_exceeded",
+            "message": "Too many requests"
+        })))
+        .mount(&server)
+        .await;
+
+    // Default client has max_retries = 0
+    let err = client(&server).pairs().await.unwrap_err();
+    assert!(err.is_rate_limited());
+}
+
+#[tokio::test]
+async fn retries_respect_retry_after_header() {
+    let server = mock_server().await;
+
+    // First: 429 with Retry-After: 1
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second: success
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [],
+            "total": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let start = std::time::Instant::now();
+    let resp = client_with_retries(&server, 2).pairs().await.unwrap();
+    let elapsed = start.elapsed();
+
+    assert_eq!(resp.total, 0);
+    // Should have waited at least ~1 second due to Retry-After: 1
+    assert!(elapsed >= Duration::from_millis(900));
 }

@@ -10,3 +10,8 @@ cd sdk-js
 npm install
 npm run docs:api
 ```
+
+## Error Handling
+
+For practical retry semantics, SDK helper usage, and trader-facing error patterns, see the [API Integrator Error Guide](../api/integrator-error-guide.md).
+

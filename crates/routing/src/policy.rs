@@ -97,7 +97,8 @@ impl RoutingPolicy {
         overrides: impl IntoIterator<Item = (String, u32)>,
     ) {
         for (venue_ref, slippage_bps) in overrides {
-            self.venue_slippage_overrides.insert(venue_ref, slippage_bps);
+            self.venue_slippage_overrides
+                .insert(venue_ref, slippage_bps);
         }
     }
 

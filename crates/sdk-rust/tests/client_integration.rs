@@ -126,16 +126,7 @@ async fn orderbook_returns_bids_and_asks() {
             },
             "bids": [{ "price": "0.1050000", "amount": "500.0000000", "total": "52.5000000" }],
             "asks": [{ "price": "0.1060000", "amount": "300.0000000", "total": "31.8000000" }],
-<<<<<<< HEAD
-            "summary": {
-                "bid": "0.1050000",
-                "ask": "0.1060000",
-                "spread_bps": 95,
-                "midpoint": "0.1055000"
-            },
-=======
             "summary": { "bid": "0.1050000", "ask": "0.1060000", "spread_bps": 9, "midpoint": "0.1055000" },
->>>>>>> origin/main
             "timestamp": 1740312000
         })))
         .mount(&server)
@@ -370,7 +361,13 @@ async fn routes_no_route_maps_to_no_route_error() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, SdkError::Api { code: ApiErrorCode::NoRoute, .. }));
+    assert!(matches!(
+        err,
+        SdkError::Api {
+            code: ApiErrorCode::NoRoute,
+            ..
+        }
+    ));
 }
 
 #[tokio::test]
@@ -415,12 +412,14 @@ async fn test_routes_no_route_returns_correct_error() {
         .await
         .expect_err("should return an error for unroutable pair");
 
-    assert_eq!(
-        err.code,
-        ApiErrorCode::NoRoute,
-        "expected NoRoute error code, got: {:?}",
-        err.code
-    );
+    match err {
+        SdkError::Api { code, .. } => assert_eq!(
+            code,
+            ApiErrorCode::NoRoute,
+            "expected NoRoute error code, got: {code:?}"
+        ),
+        other => panic!("expected Api error, got {other:?}"),
+    }
 }
 
 // ── Error handling ────────────────────────────────────────────────────────────

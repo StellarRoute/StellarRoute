@@ -102,7 +102,9 @@ async fn test_no_panic_when_webhook_url_unset() {
     };
     let mut thresholds = HashMap::new();
     thresholds.insert("native/USDC".to_string(), threshold);
-    let alerts = Arc::new(LiquidityThinnessAlerts::with_thresholds_and_url(thresholds, None));
+    let alerts = Arc::new(LiquidityThinnessAlerts::with_thresholds_and_url(
+        thresholds, None,
+    ));
 
     let thin_orderbook = orderbook(vec![("0.11", "25.0")], vec![("0.12", "70.0")]);
     alerts.maybe_alert(&thin_orderbook);

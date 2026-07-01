@@ -172,7 +172,7 @@ pub struct PairsResponse {
 }
 
 /// Orderbook response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderbookResponse {
     pub base_asset: AssetInfo,
     pub quote_asset: AssetInfo,
@@ -183,7 +183,7 @@ pub struct OrderbookResponse {
 }
 
 /// Orderbook price level
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderbookLevel {
     pub price: String,
     pub amount: String,
@@ -191,7 +191,7 @@ pub struct OrderbookLevel {
 }
 
 /// Summary information for an orderbook snapshot
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderbookSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bid: Option<String>,

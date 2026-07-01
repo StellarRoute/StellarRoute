@@ -10,7 +10,7 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
@@ -27,6 +27,8 @@ use stellarroute_routing::health::scorer::{
     AmmScorer, HealthScorer, HealthScoringConfig, SdexScorer, VenueScorerInput, VenueType,
 };
 
+use crate::routes::quote::webhook_helpers::{build_quote_webhook_payload, extract_consumer_id};
+
 use crate::{
     audit::{AuditExclusion, AuditInputs, AuditOutcome, AuditPathStep, AuditSelected},
     budget::{BudgetConfig, BudgetTracker, PipelineStage},
@@ -42,6 +44,46 @@ use crate::{
     },
     state::AppState,
 };
+
+mod webhook_helpers {
+    use axum::http::HeaderMap;
+    use uuid::Uuid;
+
+    use crate::models::{QuoteExpirationWebhookPayload, QuoteResponse};
+
+    pub(crate) fn extract_consumer_id(headers: &HeaderMap) -> Option<String> {
+        headers
+            .get("x-api-key")
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("api_key:{value}"))
+    }
+
+    pub(crate) fn build_quote_webhook_payload(
+        consumer_id: String,
+        base: &str,
+        quote: &str,
+        quote_resp: &QuoteResponse,
+    ) -> QuoteExpirationWebhookPayload {
+        let now = chrono::Utc::now().timestamp_millis();
+        let expired_at = quote_resp.expires_at.unwrap_or(now);
+
+        QuoteExpirationWebhookPayload {
+            event_id: Uuid::new_v4().to_string(),
+            consumer_id,
+            quote_id: format!("quote:{base}:{quote}:{}", quote_resp.timestamp),
+            pair: format!("{base}/{quote}"),
+            reason: "quote_expired".to_string(),
+            expired_at,
+            event: "quote.expired".to_string(),
+            timestamp: now,
+            base_asset: base.to_string(),
+            quote_asset: quote.to_string(),
+            amount_in: quote_resp.amount.clone(),
+        }
+    }
+}
 
 /// Get price quote for a trading pair
 ///
@@ -1261,23 +1303,23 @@ async fn find_best_price(
 
     // Optional Soroban simulation step for AMM venues. If configured and enabled,
     // run a dry-run and convert explicit simulation failures into a NotExecutable error.
-    if selected.venue_type == "amm" {
-        if state.soroban_simulation_enabled {
-            if let Some(sim) = &state.soroban_simulator {
-                // Build a lightweight simulation payload. The real transaction XDR
-                // builder lives elsewhere; for dry-run validation we encode key
-                // route identifiers so tests/mocks can inspect the request.
-                let tx_xdr = format!("simulate:amm:{}:{}:{}",
-                    selected.venue_ref, amount, selected.price);
+    if selected.venue_type == "amm" && state.soroban_simulation_enabled {
+        if let Some(sim) = &state.soroban_simulator {
+            // Build a lightweight simulation payload. The real transaction XDR
+            // builder lives elsewhere; for dry-run validation we encode key
+            // route identifiers so tests/mocks can inspect the request.
+            let tx_xdr = format!(
+                "simulate:amm:{}:{}:{}",
+                selected.venue_ref, amount, selected.price
+            );
 
-                let sim_res = sim.simulate(&tx_xdr).await;
+            let sim_res = sim.simulate(&tx_xdr).await;
 
-                if sim_res.simulated && !sim_res.success {
-                    let reason = sim_res
-                        .failure_reason
-                        .unwrap_or_else(|| "simulation_failure".to_string());
-                    return Err(ApiError::NotExecutable(reason));
-                }
+            if sim_res.simulated && !sim_res.success {
+                let reason = sim_res
+                    .failure_reason
+                    .unwrap_or_else(|| "simulation_failure".to_string());
+                return Err(ApiError::NotExecutable(reason));
             }
         }
     }

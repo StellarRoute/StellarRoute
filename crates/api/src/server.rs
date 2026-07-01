@@ -276,8 +276,7 @@ impl Server {
         // that require the client's `SocketAddr` (via `ConnectInfo<SocketAddr>`) work.
         axum::serve(
             listener,
-            self.app
-                .into_make_service_with_connect_info::<SocketAddr>(),
+            self.app.into_make_service_with_connect_info::<SocketAddr>(),
         )
         .with_graceful_shutdown(async move {
             shutdown_clone.wait_for_signal().await;

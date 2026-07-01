@@ -182,7 +182,7 @@ impl GraphManager {
                         // `fee_bps` may be present from amm_pool_reserves (for AMM) or NULL.
                         // We'll use DB-provided value when present; otherwise fallback.
                         let db_fee: Option<i32> = r.get::<Option<i32>, _>("fee_bps");
-                        let fee_bps_u32: u32 = if is_amm {
+                        let _fee_bps_u32: u32 = if is_amm {
                             db_fee.map(|v| v as u32).unwrap_or(DEFAULT_AMM_FEE_BPS)
                         } else {
                             db_fee.map(|v| v as u32).unwrap_or(DEFAULT_SDEX_FEE_BPS)

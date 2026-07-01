@@ -132,6 +132,19 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
     };
   }, [data]);
 
+  const quoteId = useMemo(
+    () =>
+      data
+        ? `q-${data.timestamp}-${Math.random().toString(36).slice(2, 10)}`
+        : undefined,
+    [data?.timestamp, data?.source_timestamp, data?.total],
+  );
+
+  const snapshotVersion = useMemo(
+    () => (data ? `v${data.source_timestamp ?? data.timestamp}` : undefined),
+    [data?.source_timestamp, data?.timestamp],
+  );
+
   return {
     ...result,
     loading,

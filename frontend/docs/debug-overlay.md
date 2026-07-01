@@ -36,26 +36,54 @@ A floating dev-only panel that displays diagnostic data (quote IDs, snapshot ver
 
 ## Usage in a page / component
 
+### Automatic wiring (swap flows)
+
+When using the swap feature, quote metadata (ID, snapshot version, timings) is **automatically** wired from the `useQuote` hook through `SwapCard` into the debug overlay via a React context (`DebugOverlayContext`). No explicit prop passing is required.
+
+The `useQuote` hook extracts:
+- **`quoteId`**: Unique identifier for each quote (generated from timestamp + random suffix)
+- **`snapshotVersion`**: Data source version (extracted from the quote's `source_timestamp` or `timestamp`)
+- **`timings`**: Performance metrics for the current quote request, such as quote latency
+
 ```tsx
-import { DebugOverlay } from '@/components/debug/DebugOverlay';
-
-// Minimal usage — panel is toggled by keyboard / query param
-<DebugOverlay />
-
-// With data
-<DebugOverlay
-  info={{
-    quoteId: quote.id,
-    snapshotVersion: snapshot.version,
-    timings: {
-      quoteLatency: performance.now() - fetchStart,
-      renderTime: performance.now() - renderStart,
-    },
-  }}
-/>
+// In SwapCard — automatically populated
+const { setDebugInfo } = useDebugOverlay();
+useEffect(() => {
+  setDebugInfo({
+    quoteId: quote.quoteId,
+    snapshotVersion: quote.snapshotVersion,
+    timings: quote.timings,
+  });
+}, [quote.quoteId, quote.snapshotVersion, quote.timings, setDebugInfo]);
 ```
 
-The overlay is already mounted inside `AppShell` so it is available on every page. You only need to provide the `info` prop if you want to surface page-specific data.
+### Manual usage (other pages/components)
+
+For non-swap pages, you can manually provide data to the debug overlay:
+
+```tsx
+import { DebugOverlay } from '@/components/debug/DebugOverlay';
+import { useDebugOverlay } from '@/contexts/DebugOverlayContext';
+
+export function MyComponent() {
+  const { setDebugInfo } = useDebugOverlay();
+
+  useEffect(() => {
+    setDebugInfo({
+      quoteId: myQuoteId,
+      snapshotVersion: mySnapshotVersion,
+      timings: {
+        quoteLatency: performance.now() - fetchStart,
+        renderTime: performance.now() - renderStart,
+      },
+    });
+  }, []);
+
+  return <div>My component</div>;
+}
+```
+
+The overlay is already mounted inside `AppShell` and wrapped with `DebugOverlayProvider` so it is available on every page.
 
 ---
 

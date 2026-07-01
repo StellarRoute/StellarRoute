@@ -42,6 +42,8 @@ export function AppShell({ children }: AppShellProps) {
   } = useSessionRecovery();
   const { getSavedFormState } = useFormStateRecovery();
 
+  const { debugInfo } = useDebugOverlay();
+
   // Determine if page should be full-width (orderbook, analytics) or centered (swap)
   const isFullWidth =
     pathname?.startsWith('/orderbook') || pathname?.startsWith('/analytics');
@@ -135,7 +137,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Developer debug overlay — hidden in production, toggle with Ctrl/Cmd+Shift+D or ?debug=1 */}
       <Suspense fallback={null}>
-        <DebugOverlay />
+        <DebugOverlay info={debugInfo} />
       </Suspense>
     </div>
   );

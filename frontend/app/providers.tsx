@@ -9,6 +9,7 @@ import { SettingsProvider } from '@/components/providers/settings-provider';
 import { SessionRecoveryProvider } from '@/components/providers/session-recovery-provider';
 import { GlobalToastListener } from '@/components/providers/GlobalToastListener';
 import { TradingPairProvider } from '@/contexts/TradingPairContext';
+import { DebugOverlayProvider } from '@/contexts/DebugOverlayContext';
 
 interface ProvidersProps {
   children: ReactNode;

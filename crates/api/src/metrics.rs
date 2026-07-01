@@ -426,13 +426,19 @@ lazy_static! {
 }
 
 pub fn record_webhook_delivery_success(integrator_id: &str, duration: Duration) {
-    WEBHOOK_DELIVERY_SUCCESS.with_label_values(&[integrator_id]).inc();
+    WEBHOOK_DELIVERY_SUCCESS
+        .with_label_values(&[integrator_id])
+        .inc();
     WEBHOOK_DELIVERY_DURATION
         .with_label_values(&[integrator_id, "true"])
         .observe(duration.as_secs_f64());
 }
 
-pub fn record_webhook_delivery_failure(integrator_id: &str, failure_reason: &str, duration: Duration) {
+pub fn record_webhook_delivery_failure(
+    integrator_id: &str,
+    failure_reason: &str,
+    duration: Duration,
+) {
     WEBHOOK_DELIVERY_FAILURE
         .with_label_values(&[integrator_id, failure_reason])
         .inc();

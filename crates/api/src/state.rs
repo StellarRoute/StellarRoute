@@ -209,15 +209,13 @@ impl AppState {
             Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
 
         // Build optional Soroban simulator (if configured)
-        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
-            .ok()
-            .and_then(|url| {
-                let cfg = crate::simulation::SimulationConfig {
-                    rpc_url: url,
-                    ..Default::default()
-                };
-                crate::simulation::SorobanSimulator::new(cfg)
-            });
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL").ok().and_then(|url| {
+            let cfg = crate::simulation::SimulationConfig {
+                rpc_url: url,
+                ..Default::default()
+            };
+            crate::simulation::SorobanSimulator::new(cfg)
+        });
 
         Self {
             db,
@@ -297,15 +295,13 @@ impl AppState {
         let quote_expiration_webhooks =
             Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
 
-        let soroban_simulator = std::env::var("SOROBAN_RPC_URL")
-            .ok()
-            .and_then(|url| {
-                let cfg = crate::simulation::SimulationConfig {
-                    rpc_url: url,
-                    ..Default::default()
-                };
-                crate::simulation::SorobanSimulator::new(cfg)
-            });
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL").ok().and_then(|url| {
+            let cfg = crate::simulation::SimulationConfig {
+                rpc_url: url,
+                ..Default::default()
+            };
+            crate::simulation::SorobanSimulator::new(cfg)
+        });
 
         // Build the AppState value to return, then optionally start background jobs
         let app_state = Self {

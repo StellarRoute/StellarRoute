@@ -177,7 +177,10 @@ async fn unknown_pair_returns_not_found_per_item() {
 
     // `message` field must be present and non-empty
     assert!(
-        item["error"]["message"].as_str().map(|s| !s.is_empty()).unwrap_or(false),
+        item["error"]["message"]
+            .as_str()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false),
         "error item must carry a non-empty message"
     );
 }
@@ -214,12 +217,20 @@ async fn mixed_batch_partial_failure_semantics() {
     assert_eq!(status, StatusCode::OK, "mixed batch must return HTTP 200");
 
     let data = &json["data"];
-    let results = data["results"].as_array().expect("results must be an array");
+    let results = data["results"]
+        .as_array()
+        .expect("results must be an array");
     assert_eq!(results.len(), 3, "result count must match request count");
 
     // Items 1 and 2 must be errors
-    assert_eq!(results[1]["status"], "error", "item 1 (unknown pair) must be error");
-    assert_eq!(results[2]["status"], "error", "item 2 (same base/quote) must be error");
+    assert_eq!(
+        results[1]["status"], "error",
+        "item 1 (unknown pair) must be error"
+    );
+    assert_eq!(
+        results[2]["status"], "error",
+        "item 2 (same base/quote) must be error"
+    );
 
     // item 2 same-base-quote violation maps to validation_error
     assert_eq!(
@@ -316,7 +327,8 @@ async fn results_preserve_request_order() {
     for (expected_index, item) in results.iter().enumerate() {
         let actual_index = item["index"]
             .as_u64()
-            .expect("each result must have an integer 'index' field") as usize;
+            .expect("each result must have an integer 'index' field")
+            as usize;
         assert_eq!(
             actual_index, expected_index,
             "result at position {} has wrong index {}",
@@ -355,7 +367,10 @@ fn item_result_ok_shape() {
     let result = BatchOrderbookItemResult::ok(3, orderbook);
     assert_eq!(result.status, "ok");
     assert_eq!(result.index, 3);
-    assert!(result.orderbook.is_some(), "orderbook must be present on ok items");
+    assert!(
+        result.orderbook.is_some(),
+        "orderbook must be present on ok items"
+    );
     assert!(result.error.is_none(), "error must be absent on ok items");
 
     let json = serde_json::to_value(&result).unwrap();
@@ -387,8 +402,14 @@ fn item_result_error_shape() {
 
     assert_eq!(result.status, "error");
     assert_eq!(result.index, 1);
-    assert!(result.error.is_some(), "error must be present on error items");
-    assert!(result.orderbook.is_none(), "orderbook must be absent on error items");
+    assert!(
+        result.error.is_some(),
+        "error must be present on error items"
+    );
+    assert!(
+        result.orderbook.is_none(),
+        "orderbook must be absent on error items"
+    );
 
     let json = serde_json::to_value(&result).unwrap();
     assert_eq!(json["status"], "error");
@@ -502,23 +523,38 @@ fn index_ordering_is_preserved_after_sort() {
     let mut results = vec![
         BatchOrderbookItemResult::err(
             4,
-            BatchItemError { code: "not_found".to_string(), message: String::new() },
+            BatchItemError {
+                code: "not_found".to_string(),
+                message: String::new(),
+            },
         ),
         BatchOrderbookItemResult::err(
             2,
-            BatchItemError { code: "not_found".to_string(), message: String::new() },
+            BatchItemError {
+                code: "not_found".to_string(),
+                message: String::new(),
+            },
         ),
         BatchOrderbookItemResult::err(
             0,
-            BatchItemError { code: "not_found".to_string(), message: String::new() },
+            BatchItemError {
+                code: "not_found".to_string(),
+                message: String::new(),
+            },
         ),
         BatchOrderbookItemResult::err(
             3,
-            BatchItemError { code: "not_found".to_string(), message: String::new() },
+            BatchItemError {
+                code: "not_found".to_string(),
+                message: String::new(),
+            },
         ),
         BatchOrderbookItemResult::err(
             1,
-            BatchItemError { code: "not_found".to_string(), message: String::new() },
+            BatchItemError {
+                code: "not_found".to_string(),
+                message: String::new(),
+            },
         ),
     ];
 

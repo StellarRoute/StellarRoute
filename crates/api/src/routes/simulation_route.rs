@@ -229,7 +229,10 @@ pub async fn simulate_route_dry_run(
 
         // AssetPath objects required by the quote pipeline.
         let from_asset = AssetPath::parse(&hop.source_asset).map_err(|e| {
-            ApiError::Validation(format!("invalid source_asset '{}': {}", hop.source_asset, e))
+            ApiError::Validation(format!(
+                "invalid source_asset '{}': {}",
+                hop.source_asset, e
+            ))
         })?;
         let to_asset = AssetPath::parse(&hop.destination_asset).map_err(|e| {
             ApiError::Validation(format!(
@@ -392,10 +395,7 @@ pub fn request_route_to_swap_path(route: &RouteDryRunPath) -> Result<SwapPath> {
         } else {
             "sdex"
         };
-        let venue_ref = hop
-            .venue_ref
-            .clone()
-            .unwrap_or_else(|| hop.source.clone());
+        let venue_ref = hop.venue_ref.clone().unwrap_or_else(|| hop.source.clone());
 
         let price: f64 = hop
             .price
@@ -453,9 +453,7 @@ pub fn apply_slippage_overrides_to_policy(
 ) {
     for ov in overrides {
         // Ensure the venue is not blocked by a blanket denylist.
-        policy
-            .venue_denylist
-            .retain(|v| v != &ov.venue_ref);
+        policy.venue_denylist.retain(|v| v != &ov.venue_ref);
 
         // Explicitly allow it so the policy filter passes.
         if !policy.venue_allowlist.contains(&ov.venue_ref) {
@@ -613,7 +611,10 @@ mod tests {
             .iter()
             .filter(|v| v.as_str() == "sdex")
             .count();
-        assert_eq!(count, 1, "venue_ref should appear at most once in allowlist");
+        assert_eq!(
+            count, 1,
+            "venue_ref should appear at most once in allowlist"
+        );
     }
 
     #[test]

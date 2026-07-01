@@ -283,7 +283,9 @@ async fn two_hop_happy_path_returns_200_with_quote_diagnostics() {
     );
 
     // path must contain both hops
-    let path = quote["path"].as_array().expect("quote.path must be an array");
+    let path = quote["path"]
+        .as_array()
+        .expect("quote.path must be an array");
     assert_eq!(
         path.len(),
         2,
@@ -316,10 +318,7 @@ async fn two_hop_happy_path_returns_200_with_quote_diagnostics() {
             step.get("price").is_some(),
             "path[{i}] must have price (diagnostic parity with quote pipeline)"
         );
-        assert!(
-            step.get("source").is_some(),
-            "path[{i}] must have source"
-        );
+        assert!(step.get("source").is_some(), "path[{i}] must have source");
     }
 }
 

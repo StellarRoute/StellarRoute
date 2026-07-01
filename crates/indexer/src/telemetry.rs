@@ -22,7 +22,6 @@
 
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry::{global, KeyValue};
-use opentelemetry::trace::TraceContextExt;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, Tracer};

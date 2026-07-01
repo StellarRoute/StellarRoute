@@ -285,7 +285,10 @@ mod tests {
             assert!(
                 cmp != std::cmp::Ordering::Greater,
                 "ordering violated: ({}, {}) must come before ({}, {})",
-                a.base_asset, a.counter_asset, b.base_asset, b.counter_asset,
+                a.base_asset,
+                a.counter_asset,
+                b.base_asset,
+                b.counter_asset,
             );
         }
     }
@@ -294,10 +297,7 @@ mod tests {
     #[test]
     fn sort_is_idempotent() {
         let usdc = format!("USDC:{ISSUER_USDC}");
-        let mut pairs = vec![
-            make_pair(&usdc, "native"),
-            make_pair("native", &usdc),
-        ];
+        let mut pairs = vec![make_pair(&usdc, "native"), make_pair("native", &usdc)];
         sort_pairs_canonical(&mut pairs);
         let first: Vec<(String, String)> = pairs
             .iter()
@@ -338,10 +338,7 @@ mod tests {
         let usdc = format!("USDC:{ISSUER_USDC}");
         let eurc = format!("EURC:{ISSUER_EURC}");
 
-        let mut pairs = vec![
-            make_pair("native", &usdc),
-            make_pair("native", &eurc),
-        ];
+        let mut pairs = vec![make_pair("native", &usdc), make_pair("native", &eurc)];
         sort_pairs_canonical(&mut pairs);
 
         // "EURC:…" ('E' = 69) < "USDC:…" ('U' = 85)

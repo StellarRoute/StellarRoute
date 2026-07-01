@@ -1,56 +1,94 @@
 # API Integrator Error Guide
 
-This guide helps integrators handle StellarRoute API errors in production clients, SDKs, and UIs.
+This guide helps integrators handle StellarRoute API errors in production clients, SDKs, and UIs. It provides practical recommendations on retry semantics, backoff strategies, client-side caching, and user presentation.
 
 ## Retry vs fail-fast matrix
 
+The following matrix defines the recommended retry strategy for each standard API error code (both REST and WebSocket).
+
 | Error code | HTTP status | Action | Retry guidance |
-|---|---|---|---|
-| `bad_request` | 400 | Fail fast | Do not retry; fix the request payload. |
-| `invalid_asset` | 400 | Fail fast | Do not retry; validate asset identifiers before retrying. |
-| `validation_error` | 400 | Fail fast | Do not retry; present validation messages and correct inputs. |
-| `not_found` | 404 | Fail fast | Do not retry; the resource is missing or the pair is unsupported. |
-| `no_route` | 404 | Fail fast | Do not retry immediately; the market is currently untradeable. |
-| `stale_market_data` | 422 | Retry with refresh | Refresh market data and retry after a short delay. |
-| `rate_limit_exceeded` | 429 | Retry with backoff | Retry after `Retry-After` / reset header or exponential backoff. |
-| `overloaded` | 503 | Retry with backoff | Retry after a longer delay and stop after a few attempts. |
-| `internal_error` | 500 | Retry carefully | Retry once or twice for transient failures, but fail fast if repeated. |
+|:---|:---|:---|:---|
+| `bad_request` | 400 | Fail fast | Do not retry; the payload format, structure, or content type is invalid. |
+| `invalid_asset` | 400 | Fail fast | Do not retry; validate asset format (`CODE:ISSUER` or `native`) before resubmitting. |
+| `validation_error` | 400 | Fail fast | Do not retry; present validation details to the user and request updated inputs. |
+| `unauthorized` | 401 | Fail fast | Do not retry automatically; check credentials, API key, or prompt wallet connection. |
+| `not_found` | 404 | Fail fast | Do not retry; the requested resource (pair, orderbook, etc.) does not exist. |
+| `no_route` | 404 | Fail fast / Wait | Do not retry immediately; no trade path exists between the assets. Wait for orderbook updates. |
+| `stale_market_data` | 422 | Retry with refresh | Refresh quote parameters and retry after a short delay (e.g. 500ms - 1s). See [Handling stale_market_data](#handling-stale_market_data). |
+| `rate_limit_exceeded` | 429 | Retry with backoff | Retry after the delay specified in `Retry-After` header or using exponential backoff. |
+| `overloaded` | 503 | Retry with backoff | Wait and retry with exponential backoff. Cap at 3–4 attempts, then fall back to a failure state. |
+| `internal_error` | 500 | Retry carefully | Retry once or twice with brief delay for transient server errors; otherwise fail fast. |
+| `unknown_action` (WS) | N/A | Fail fast | Do not retry; check the subscription message action name. |
+| `invalid_subscription` (WS) | N/A | Fail fast | Do not retry; check required subscription fields. |
+| `too_many_subscriptions` (WS) | N/A | Fail fast / Limit | Stop subscribing. Close inactive connections or subscriptions before opening new ones. |
+
+---
 
 ## Recommended backoff strategy
 
 ### `rate_limit_exceeded`
 
-- Prefer `Retry-After` when the API returns it.
-- Otherwise, use an exponential backoff sequence: `1s`, `2s`, `4s`.
-- Limit retries to a small fixed number (e.g. 3 attempts) to avoid traffic bursts.
-- Example: if you receive `X-RateLimit-Reset`, schedule the next attempt for that reset time.
+The API rate limiter protects the routing service and indexers. When rate limits are reached, the API returns a `429 Too Many Requests` status code and standard rate-limiting headers.
+
+- **`Retry-After` Header**: If the response contains a `Retry-After` header, clients should respect it. It indicates the duration (in seconds) or the date-time to wait before retrying.
+- **`X-RateLimit-*` Headers**:
+  - `X-RateLimit-Limit`: Maximum requests allowed in the window.
+  - `X-RateLimit-Remaining`: Requests remaining in the current window.
+  - `X-RateLimit-Reset`: Unix timestamp (epoch seconds) indicating when the window resets.
+- **Exponential Backoff**: If no explicit delay is provided in headers, implement a backoff schedule (e.g., `1s`, `2s`, `4s`) with small random jitter to avoid retry storms.
+- **Retry Cap**: Limit automatic retries to 3 attempts. If the rate limit continues to be exceeded, notify the user.
 
 ### `overloaded`
 
-- Treat this as temporary operational backpressure.
-- Wait `1s` then retry, then increase to `2s`, `4s`, and stop after 3–4 attempts.
-- If the service remains overloaded, surface a safe fallback path instead of retrying endlessly.
+An `overloaded` (503) error indicates the backend is experiencing high transaction load, database lock congestion, or indexer lag.
+
+- Treat this as temporary system backpressure.
+- Implement exponential backoff beginning at `1s`, increasing to `2s` and `4s`.
+- Cap retries at 3–4 attempts to prevent exacerbating server load.
+- If retries fail, degrade gracefully by showing a "high traffic" banner or disabling live updates.
 
 ### `internal_error`
 
-- Consider a short early retry for transient failures, but avoid retry loops.
-- Example: retry once after `500ms` and give up if the same error persists.
+An `internal_error` (500) indicates an unhandled server error.
+
+- Assume it is transient but dangerous to retry aggressively.
+- Perform a single retry after `500ms`.
+- If the retry fails, fail fast and log the response error details for diagnostics.
+
+---
 
 ## Handling `stale_market_data`
 
-- This error means the quote could not be fulfilled because the API's market snapshot was stale.
-- Integrators should refresh their quote input and retry after a short pause.
-- Example flow:
-  1. Detect `stale_market_data`.
-  2. Re-fetch the latest available pair/orderbook data if applicable.
-  3. Retry the quote request after `500ms` to `1s`.
-  4. Fail gracefully if the error repeats more than 2–3 times.
+The `stale_market_data` (422) error indicates that the underlying orderbook depth or Soroban pool reserves have not been updated within the allowed freshness window (e.g., due to indexer latency or blockchain delay).
 
-> Note: `stale_market_data` is not the same as an invalid request. It is a transient market freshness issue.
+To handle this cleanly in your client:
+
+```mermaid
+graph TD
+    A[Request Quote] --> B{API Returns 422?}
+    B -- No --> C[Success / Return Quote]
+    B -- Yes: stale_market_data --> D[Wait 500ms - 1s]
+    D --> E[Re-fetch fresh parameters or pairs]
+    E --> F[Retry Quote Request]
+    F --> G{API Returns 422?}
+    G -- Yes --> H[Cap reached? max 2-3 retries]
+    G -- No --> C
+    H -- No --> D
+    H -- Yes --> I[Fail Gracefully / Show Message]
+```
+
+### Stale Market Data Integration Pattern
+1. **Detect**: Catch `stale_market_data` from the API or via SDK convenience helper `err.isStaleMarketData()`.
+2. **Backoff**: Wait `500ms` to `1s` to give the background indexer time to catch up and ingest the latest ledger close.
+3. **Parameter Refresh**: Optional but recommended—refetch the source assets/pairs configurations to ensure the swap parameters are still correct.
+4. **Retry**: Resubmit the quote request.
+5. **Circuit Breaker**: Cap retries at `2` or `3` attempts. If it continues to fail, surface an action block to the user so they can adjust their inputs or choose a different pair.
+
+---
 
 ## JS SDK examples
 
-Use SDK helpers to branch on API errors cleanly.
+The JavaScript SDK (`@stellarroute/sdk-js`) wraps HTTP errors in a helper `StellarRouteApiError` class.
 
 ```ts
 import {
@@ -59,148 +97,288 @@ import {
   isStellarRouteApiError,
 } from '@stellarroute/sdk-js';
 
-const client = new StellarRouteClient({ baseUrl: 'https://api.stellarroute.io' });
+const client = new StellarRouteClient({
+  baseUrl: 'https://api.stellarroute.io',
+  timeoutMs: 10000,
+  retries: 2, // Automatic retries on 429 and 5xx
+});
 
 try {
-  await client.getQuote('native', 'USDC', 100);
+  // Option A: Raw quote request
+  const quote = await client.getQuote('native', 'USDC', 100);
+  console.log(`Quote received: ${quote.price}`);
+  
+  // Option B: Quote request with client-side expiration/staleness validation
+  const validQuote = await client.getQuoteWithValidation(
+    'native',
+    'USDC',
+    100,
+    'sell',
+    50, // 0.5% slippage
+    { max_age_seconds: 15, reject_stale: true }
+  );
 } catch (err) {
   if (!isStellarRouteApiError(err)) {
-    console.error('Unexpected failure', err);
+    console.error('Non-API or network error:', err);
     throw err;
   }
 
-  if (err.isValidationError()) {
-    console.warn('Invalid quote request:', err.message);
+  // Branch on type of error using SDK convenience helpers
+  if (err.isNotFound()) {
+    console.warn('Pair not found or asset is unsupported.');
+  } else if (err.isValidationError()) {
+    console.warn('Invalid input arguments:', err.message, err.details);
   } else if (err.isStaleMarketData()) {
-    console.warn('Market data stale, retrying...');
-    // Refresh market data and retry after a short delay.
+    console.warn('Stale market data, initiating refresh and retry loop...');
+    // Handle stale market data retry flow...
   } else if (err.isRateLimited()) {
-    console.warn('Request was rate limited, backoff and retry later.');
+    console.warn(`Rate limit exceeded (HTTP 429).`);
   } else if (err.isOverloaded()) {
-    console.warn('Service overloaded, retry with backoff or degrade gracefully.');
-  } else if (err.isNotFound()) {
-    console.warn('Pair not available.');
+    console.warn('Service overloaded. Please retry in a few seconds.');
+  } else if (err.isNetworkError()) {
+    console.error('Failed to reach the server. Check your internet connection.');
+  } else if (err.code === 'quote_expired') {
+    console.warn('The generated quote has expired.');
+  } else if (err.code === 'quote_stale') {
+    console.warn('Client-side staleness detection rejected the quote.');
   } else {
-    console.error('API error:', err.code, err.message);
+    console.error(`API error [${err.code}]: ${err.message}`);
   }
 }
 ```
 
 ### Useful JS SDK helpers
+- `err.isNotFound()` — returns `true` for `404` / `not_found`
+- `err.isValidationError()` — returns `true` for `400` / `validation_error` or `invalid_asset`
+- `err.isRateLimited()` — returns `true` for `429` / `rate_limit_exceeded`
+- `err.isOverloaded()` — returns `true` for `503` / `overloaded`
+- `err.isStaleMarketData()` — returns `true` for `422` / `stale_market_data`
+- `err.isNetworkError()` — returns `true` for network-level transport failure / timeout (status `0`)
 
-- `err.isNotFound()` — 404 / `not_found`
-- `err.isValidationError()` — 400 / `validation_error` or `invalid_asset`
-- `err.isRateLimited()` — 429 / `rate_limit_exceeded`
-- `err.isOverloaded()` — 503 / `overloaded`
-- `err.isStaleMarketData()` — 422 / `stale_market_data`
-- `err.isNetworkError()` — network failure / timeout
+---
 
 ## Rust SDK examples
 
-Use the typed `SdkError` enum and the `ApiErrorCode` values.
+The Rust SDK (`stellarroute-sdk`) returns a typed `Result<T, SdkError>` and defines convenience functions for error mapping.
 
 ```rust
+use std::time::Duration;
 use stellarroute_sdk::{ApiErrorCode, ClientBuilder, QuoteRequest, QuoteType, SdkError};
 
-let client = ClientBuilder::new("http://127.0.0.1:3000").build()?;
+#[tokio::main]
+async fn main() {
+    let client = ClientBuilder::new("http://localhost:3000")
+        .timeout(Duration::from_secs(10))
+        .max_retries(3) // Auto retries on 429 and 5xx
+        .build()
+        .unwrap();
 
-match client.quote(QuoteRequest::sell("native", "USDC")).await {
-    Ok(quote) => println!("price: {}", quote.price),
-    Err(err) => match err {
-        SdkError::RateLimited { info } => {
-            println!("rate limited until {:?}", info.reset);
-        }
-        SdkError::Api { code, message, status } => {
-            if code == ApiErrorCode::StaleMarketData {
-                println!("market data stale, refresh and retry");
-            } else if code == ApiErrorCode::Overloaded {
-                println!("service overloaded, try again later");
-            } else if code == ApiErrorCode::NotFound {
-                println!("pair not found");
-            } else {
-                println!("api error {} {}", status, message);
+    let request = QuoteRequest {
+        base: "native".to_string(),
+        quote: "USDC".to_string(),
+        amount: Some("100"),
+        quote_type: QuoteType::Sell,
+    };
+
+    match client.quote(request).await {
+        Ok(quote) => println!("Executable price: {}", quote.price),
+        Err(err) => {
+            // Option 1: Match directly on SdkError variants
+            match &err {
+                SdkError::InvalidConfig(msg) => eprintln!("Config error: {}", msg),
+                SdkError::Http(msg) => eprintln!("Transport failure: {}", msg),
+                SdkError::Deserialization(json_err) => eprintln!("Failed parsing JSON: {}", json_err),
+                SdkError::RateLimited { info } => {
+                    eprintln!("Rate limited. Reset at: {:?}", info.reset);
+                }
+                SdkError::Api { code, message, status } => {
+                    eprintln!("API Error [{} / HTTP {}]: {}", code, status, message);
+                }
+            }
+
+            // Option 2: Use SDK convenience boolean helpers
+            if err.is_not_found() {
+                eprintln!("Pair or route not found");
+            } else if err.is_validation_error() {
+                eprintln!("Input parameters validation failed");
+            } else if err.is_stale_market_data() {
+                eprintln!("Market data is stale. Please wait and try again.");
+            } else if err.is_overloaded() {
+                eprintln!("Backend is overloaded. Backing off...");
             }
         }
-        SdkError::Http(_) => eprintln!("transport failure"),
-        SdkError::InvalidConfig(_) => eprintln!("invalid SDK config"),
-        SdkError::Deserialization(_) => eprintln!("invalid response payload"),
-    },
+    }
 }
 ```
 
 ### Rust SDK convenience helpers
+- `err.is_not_found()` — maps to `ApiErrorCode::NotFound`
+- `err.is_validation_error()` — maps to `ApiErrorCode::ValidationError` or `ApiErrorCode::InvalidAsset`
+- `err.is_rate_limited()` — maps to `SdkError::RateLimited`
+- `err.is_stale_market_data()` — maps to `ApiErrorCode::StaleMarketData`
+- `err.is_overloaded()` — maps to `ApiErrorCode::Overloaded`
+- `err.is_transport()` — maps to `SdkError::Http`
 
-- `err.is_not_found()`
-- `err.is_validation_error()`
-- `err.is_rate_limited()`
-- `err.is_stale_market_data()`
-- `err.is_overloaded()`
+---
 
 ## Sample JSON error responses
 
+### `bad_request` (HTTP 400)
 ```json
-{ "error": "bad_request", "message": "Malformed request" }
+{
+  "error": "bad_request",
+  "message": "Malformed request syntax or structure"
+}
 ```
 
+### `invalid_asset` (HTTP 400)
 ```json
 {
   "error": "invalid_asset",
-  "message": "Invalid asset identifier",
-  "details": { "asset": "USDC:INVALID" }
+  "message": "Invalid asset identifier format",
+  "details": {
+    "asset": "USDC:INVALID_ISSUER_G_ADDRESS"
+  }
 }
 ```
 
+### `validation_error` (HTTP 400)
 ```json
 {
   "error": "validation_error",
-  "message": "Amount must be a positive integer",
-  "details": { "field": "amount", "reason": "must be greater than zero" }
+  "message": "Amount must be a positive decimal string",
+  "details": {
+    "field": "amount",
+    "reason": "must be greater than zero"
+  }
 }
 ```
 
+### `unauthorized` (HTTP 401)
 ```json
-{ "error": "not_found", "message": "Trading pair not found" }
+{
+  "error": "unauthorized",
+  "message": "The request lacks valid authentication credentials"
+}
 ```
 
+### `not_found` (HTTP 404)
 ```json
-{ "error": "no_route", "message": "No trading route available for this pair" }
+{
+  "error": "not_found",
+  "message": "Trading pair not found"
+}
 ```
 
+### `no_route` (HTTP 404)
+```json
+{
+  "error": "no_route",
+  "message": "No executable route found for this asset pair at the requested trade size"
+}
+```
+
+### `stale_market_data` (HTTP 422)
 ```json
 {
   "error": "stale_market_data",
-  "message": "Quote data is too old",
-  "details": { "last_updated": "2026-05-31T14:33:00Z" }
+  "message": "Pricing data is stale",
+  "details": {
+    "last_updated": "2026-07-01T09:40:00Z",
+    "threshold_seconds": 30
+  }
 }
 ```
 
+### `rate_limit_exceeded` (HTTP 429)
 ```json
 {
   "error": "rate_limit_exceeded",
-  "message": "Too many requests",
-  "details": { "retry_after_seconds": 10 }
+  "message": "Too many requests sent in a short period",
+  "details": {
+    "retry_after_seconds": 15
+  }
 }
 ```
 
+### `overloaded` (HTTP 503)
 ```json
-{ "error": "overloaded", "message": "Service overloaded, please retry later" }
+{
+  "error": "overloaded",
+  "message": "Service is under heavy load. Please retry later."
+}
 ```
 
+### `internal_error` (HTTP 500)
 ```json
-{ "error": "internal_error", "message": "Unexpected server failure" }
+{
+  "error": "internal_error",
+  "message": "Unexpected server failure"
+}
 ```
 
-## Versioning and deprecation guidance
+### WebSocket `unknown_action`
+```json
+{
+  "error": "unknown_action",
+  "message": "The action 'unsubscribe_all' is not supported"
+}
+```
 
-Integrators should pin an explicit API version path, for example `/api/v1/...`.
-Follow the release and deprecation headers described in [API Versioning and Deprecation Policy](versioning-policy.md).
+### WebSocket `invalid_subscription`
+```json
+{
+  "error": "invalid_subscription",
+  "message": "Subscription payload is missing 'base_asset'",
+  "details": {
+    "required_fields": ["base_asset", "counter_asset"]
+  }
+}
+```
 
-## Frontend guidance
+### WebSocket `too_many_subscriptions`
+```json
+{
+  "error": "too_many_subscriptions",
+  "message": "Connection has reached the limit of 50 active subscriptions"
+}
+```
 
-Frontend teams should translate API error codes into trader-facing copy instead of exposing raw codes.
-If there is an active design error copy issue, use it as the source of truth for messaging.
+---
 
-- Use `rate_limit_exceeded`/`overloaded` to show polite retry messaging.
-- Use `stale_market_data` to show a refresh or retry prompt with minimal friction.
-- Use `validation_error` and `invalid_asset` to surface actionable input corrections.
-- Use `not_found` and `no_route` to explain that the requested market is unavailable.
+## Versioning and deprecation headers interaction
+
+When working with deprecated routes or versions, the API responds with standard metadata headers alongside standard payloads or error codes:
+
+1. **`Deprecation` Header**: Returns `true` if the requested route or API version is marked for deprecation.
+2. **`Sunset` Header**: Provides the RFC 7231 date-time when the route or API version will be turned off and become unsupported.
+3. **`Link` Header**: Contains the successor version path or a link to migration instructions (e.g. `<successor_url>; rel="successor-version", <migration_guide>; rel="deprecation"`).
+
+### Deprecation Sunset Errors
+Once the `Sunset` deadline passes, requests targeting deprecated endpoints or versions will **fail fast** and return:
+- An HTTP status `404 Not Found` with the `not_found` error code.
+- Or an HTTP status `400 Bad Request` with the `bad_request` error code (if the major API version path is entirely unsupported).
+
+Integrators should track these headers in client middleware to trigger warning logs or schedule dependency updates. See [API Versioning and Deprecation Policy](versioning-policy.md) for details.
+
+---
+
+## Frontend guidance and trader-facing copy
+
+If you are developing user interfaces, you should **never** show raw API error codes (e.g., `stale_market_data` or `validation_error`) to traders.
+
+Instead, map each error code to consistent, actionable trader-facing copy using the guidelines in the [Trader-Facing Error Copy and Tone Style Guide](../../frontend/docs/trader-error-copy-style-guide.md).
+
+### Quick copy reference:
+- **`validation_error`**: *Check your trade details* — One or more inputs are outside the allowed format or range. (CTA: Review trade inputs)
+- **`invalid_asset`**: *This asset pair is not available right now* — The selected asset format or issuer could not be matched. (CTA: Select another pair)
+- **`no_route`**: *No executable route found* — Current liquidity cannot complete this trade at the requested size. (CTA: Adjust trade size)
+- **`stale_market_data`**: *Market data is still updating* — Fresh pricing is not available yet for this route. (CTA: Refresh in a few seconds)
+- **`rate_limit_exceeded`**: *Quote refresh is temporarily limited* — Too many quote requests were sent in a short window. (CTA: Try again shortly)
+- **`overloaded`**: *Quote service is handling high traffic* — Routing services are taking longer than normal to respond. (CTA: Retry quote)
+- **`unauthorized`**: *Session check required* — Your current request needs a valid session context. (CTA: Reconnect wallet)
+- **`not_found`**: *Requested market data was not found* — The selected pair or route data is currently unavailable. (CTA: Choose another pair)
+- **`internal_error`**: *Quote service hit an internal issue* — The request reached the server but could not be completed safely. (CTA: Retry quote)
+- **`network_error`**: *Network connection interrupted* — The app could not reach routing services from this device. (CTA: Reconnect and refresh)
+
+In the Next.js frontend, this translation is implemented dynamically via `getTraderErrorCopy` in [trader-error-copy.ts](../../frontend/lib/api/trader-error-copy.ts).

@@ -10,7 +10,7 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
@@ -1267,8 +1267,10 @@ async fn find_best_price(
                 // Build a lightweight simulation payload. The real transaction XDR
                 // builder lives elsewhere; for dry-run validation we encode key
                 // route identifiers so tests/mocks can inspect the request.
-                let tx_xdr = format!("simulate:amm:{}:{}:{}",
-                    selected.venue_ref, amount, selected.price);
+                let tx_xdr = format!(
+                    "simulate:amm:{}:{}:{}",
+                    selected.venue_ref, amount, selected.price
+                );
 
                 let sim_res = sim.simulate(&tx_xdr).await;
 

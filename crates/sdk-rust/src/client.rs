@@ -232,7 +232,10 @@ impl StellarRouteClient {
         let quote_type = request.quote_type.map(|value| value.to_string());
 
         self.execute_with_retry(|| {
-            let mut req = self.http.get(base_url.clone()).query(&[("amount", amount.as_str())]);
+            let mut req = self
+                .http
+                .get(base_url.clone())
+                .query(&[("amount", amount.as_str())]);
             if let Some(ref slippage_bps) = slippage_bps {
                 req = req.query(&[("slippage_bps", slippage_bps.as_str())]);
             }
@@ -301,18 +304,22 @@ impl StellarRouteClient {
 
             if !status.is_success() {
                 // SURFACE: ApiErrorCode::NoRoute — documented in OpenAPI as error_code "NO_ROUTE" on empty candidate set
-                if status == reqwest::StatusCode::NOT_FOUND
-                    || serde_json::from_str::<serde_json::Value>(&body)
-                        .ok()
-                        .and_then(|value| value.get("error_code").and_then(serde_json::Value::as_str))
-                        .map(|code| code.eq_ignore_ascii_case("NO_ROUTE"))
-                        .unwrap_or(false)
-                    || serde_json::from_str::<serde_json::Value>(&body)
-                        .ok()
-                        .and_then(|value| value.get("error").and_then(serde_json::Value::as_str))
-                        .map(|code| code.eq_ignore_ascii_case("no_route"))
-                        .unwrap_or(false)
-                {
+                let is_no_route = serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .map(|value| {
+                        value
+                            .get("error_code")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.eq_ignore_ascii_case("NO_ROUTE"))
+                            .unwrap_or(false)
+                            || value
+                                .get("error")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.eq_ignore_ascii_case("no_route"))
+                                .unwrap_or(false)
+                    })
+                    .unwrap_or(false);
+                if status == reqwest::StatusCode::NOT_FOUND || is_no_route {
                     let message = serde_json::from_str::<ErrorResponse>(&body)
                         .map(|err| err.message)
                         .unwrap_or_else(|_| "No route found".to_string());
@@ -360,8 +367,8 @@ fn encode_path_segment(segment: &str) -> String {
     segment
         .bytes()
         .map(|byte| {
-            if (byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')) {
-                byte as char
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                (byte as char).to_string()
             } else {
                 format!("%{:02X}", byte)
             }

@@ -22,6 +22,14 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ## Error handling
+//!
+//! The SDK returns [`SdkError`] for all failures, distinguishing transport
+//! errors, rate limits, and structured API error codes.
+//!
+//! For practical retry semantics, SDK helper usage, and trader-facing error patterns,
+//! see the [API Integrator Error Guide](../../docs/api/integrator-error-guide.md).
 
 pub mod client;
 pub mod error;

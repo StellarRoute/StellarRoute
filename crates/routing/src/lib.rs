@@ -274,14 +274,8 @@ mod tests {
     #[test]
     fn test_normalize_asset_with_issuer() {
         // The colon and issuer part is preserved as-is (uppercased as a whole)
-        assert_eq!(
-            normalize_asset("usdc:GA5ZSEJ"),
-            "USDC:GA5ZSEJ"
-        );
-        assert_eq!(
-            normalize_asset("USDC:ga5zsej"),
-            "USDC:GA5ZSEJ"
-        );
+        assert_eq!(normalize_asset("usdc:GA5ZSEJ"), "USDC:GA5ZSEJ");
+        assert_eq!(normalize_asset("USDC:ga5zsej"), "USDC:GA5ZSEJ");
     }
 
     // ── normalize_pair_owned tests ────────────────────────────────────

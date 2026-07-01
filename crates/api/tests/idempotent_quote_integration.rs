@@ -7,10 +7,8 @@ use axum::{
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
 use stellarroute_api::{
-    exactlyonce::RequestIdentity,
-    routes::idempotent_quote::IDEMPOTENCY_KEY_MAX_LEN,
-    state::DatabasePools,
-    Server, ServerConfig,
+    exactlyonce::RequestIdentity, routes::idempotent_quote::IDEMPOTENCY_KEY_MAX_LEN,
+    state::DatabasePools, Server, ServerConfig,
 };
 use tower::ServiceExt;
 
@@ -40,11 +38,7 @@ async fn make_db_router() -> axum::Router {
         .into_router()
 }
 
-async fn post_quote(
-    router: &axum::Router,
-    key: Option<&str>,
-    body: Value,
-) -> (StatusCode, Value) {
+async fn post_quote(router: &axum::Router, key: Option<&str>, body: Value) -> (StatusCode, Value) {
     let mut builder = Request::builder()
         .method("POST")
         .uri("/api/v1/quote")
@@ -125,12 +119,10 @@ async fn empty_idempotency_key_returns_400() {
     let (status, json) = post_quote(&router, Some("   "), sample_quote_body()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(json["data"]["error"], "validation_error");
-    assert!(
-        json["data"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("Idempotency-Key")
-    );
+    assert!(json["data"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("Idempotency-Key"));
 }
 
 #[tokio::test]
@@ -163,7 +155,10 @@ async fn duplicate_idempotency_key_replays_identical_quote_data() {
     let (status2, json2) = post_quote(&router, Some(key), body).await;
 
     assert_eq!(status1, status2);
-    assert_eq!(json1["data"], json2["data"], "quote payload must match on replay");
+    assert_eq!(
+        json1["data"], json2["data"],
+        "quote payload must match on replay"
+    );
 }
 
 #[tokio::test]

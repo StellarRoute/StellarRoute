@@ -370,7 +370,13 @@ async fn routes_no_route_maps_to_no_route_error() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, SdkError::Api { code: ApiErrorCode::NoRoute, .. }));
+    assert!(matches!(
+        err,
+        SdkError::Api {
+            code: ApiErrorCode::NoRoute,
+            ..
+        }
+    ));
 }
 
 #[tokio::test]

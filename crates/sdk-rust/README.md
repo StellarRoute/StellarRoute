@@ -31,3 +31,8 @@ The CLI uses stable exit codes for scripting:
 - `2`: CLI usage/validation error (including invalid `--output`)
 - `3`: invalid client configuration (for example, malformed `--api-url`)
 - `4`: runtime/API error (HTTP/API/serialization failure)
+
+## Error Handling
+
+For integration guidance on retry semantics, SDK helper usage, and trader-facing error copy, see the [API Integrator Error Guide](../../docs/api/integrator-error-guide.md).
+

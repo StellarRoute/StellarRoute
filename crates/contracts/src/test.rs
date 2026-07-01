@@ -1413,10 +1413,7 @@ fn test_admin_functions_blocked_before_migration() {
     let (admin, _, client) = deploy_router(&env);
 
     // Try proposing a governance action before migration
-    let result = client.try_propose(
-        &admin,
-        &ProposalAction::Pause,
-    );
+    let result = client.try_propose(&admin, &ProposalAction::Pause);
     // Should return NotMultiSig
     assert_eq!(result, Err(Ok(ContractError::NotMultiSig)));
 }
@@ -1434,44 +1431,20 @@ fn test_threshold_boundary_conditions() {
     signers.push_back(s3);
 
     // Test threshold 1 (valid minimum)
-    client.migrate_to_multisig(
-        &admin,
-        &signers,
-        &1_u32,
-        &10000_u64,
-        &None,
-    );
+    client.migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
 
     // Now reset and test threshold 3 (valid maximum)
     let (admin2, _, client2) = deploy_router(&env);
-    client2.migrate_to_multisig(
-        &admin2,
-        &signers,
-        &3_u32,
-        &10000_u64,
-        &None,
-    );
+    client2.migrate_to_multisig(&admin2, &signers, &3_u32, &10000_u64, &None);
 
     // Test threshold 0 (invalid)
     let (admin3, _, client3) = deploy_router(&env);
-    let result = client3.try_migrate_to_multisig(
-        &admin3,
-        &signers,
-        &0_u32,
-        &10000_u64,
-        &None,
-    );
+    let result = client3.try_migrate_to_multisig(&admin3, &signers, &0_u32, &10000_u64, &None);
     assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
 
     // Test threshold 4 (invalid, exceeds signer count)
     let (admin4, _, client4) = deploy_router(&env);
-    let result2 = client4.try_migrate_to_multisig(
-        &admin4,
-        &signers,
-        &4_u32,
-        &10000_u64,
-        &None,
-    );
+    let result2 = client4.try_migrate_to_multisig(&admin4, &signers, &4_u32, &10000_u64, &None);
     assert_eq!(result2, Err(Ok(ContractError::InvalidAmount)));
 }
 
@@ -1484,13 +1457,7 @@ fn test_duplicate_signers_in_migration() {
     signers.push_back(s1.clone());
     signers.push_back(s1); // duplicate
 
-    let result = client.try_migrate_to_multisig(
-        &admin,
-        &signers,
-        &1_u32,
-        &10000_u64,
-        &None,
-    );
+    let result = client.try_migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
     assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
 }
 
@@ -1500,13 +1467,7 @@ fn test_empty_signers_list() {
     let (admin, _, client) = deploy_router(&env);
     let signers = Vec::new(&env); // empty
 
-    let result = client.try_migrate_to_multisig(
-        &admin,
-        &signers,
-        &1_u32,
-        &10000_u64,
-        &None,
-    );
+    let result = client.try_migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
     assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
 }
 
@@ -1521,13 +1482,7 @@ fn test_migration_called_by_non_admin() {
     signers.push_back(s2);
 
     let not_admin = Address::generate(&env);
-    let result = client.try_migrate_to_multisig(
-        &not_admin,
-        &signers,
-        &2_u32,
-        &10000_u64,
-        &None,
-    );
+    let result = client.try_migrate_to_multisig(&not_admin, &signers, &2_u32, &10000_u64, &None);
     assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
 }
 
@@ -1540,13 +1495,7 @@ fn test_double_migration_rejected() {
     let mut signers = Vec::new(&env);
     signers.push_back(s1);
 
-    let result = client.try_migrate_to_multisig(
-        &admin,
-        &signers,
-        &1_u32,
-        &10000_u64,
-        &None,
-    );
+    let result = client.try_migrate_to_multisig(&admin, &signers, &1_u32, &10000_u64, &None);
     assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
 }
 
@@ -1557,10 +1506,7 @@ fn test_governance_action_by_non_signer_post_migration() {
     let non_signer = Address::generate(&env);
 
     // Non-signer tries to propose
-    let result = client.try_propose(
-        &non_signer,
-        &ProposalAction::Pause,
-    );
+    let result = client.try_propose(&non_signer, &ProposalAction::Pause);
     assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
 }
 
@@ -1908,7 +1854,8 @@ fn test_execute_upgrade_succeeds_after_advancing_ledger() {
     client.propose_upgrade(&admin, &new_hash, &execute_after);
 
     // Advance ledger sequence past execute_after
-    env.ledger().with_mut(|li| li.sequence_number = (execute_after + 1) as u32);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = (execute_after + 1) as u32);
 
     // Note: We can't actually test executing upgrade because it requires
     // a registered WASM hash in the environment, but we can test that the
@@ -1932,7 +1879,9 @@ fn test_cancel_upgrade_clears_pending_state() {
 
     // Now try to propose another upgrade (should succeed, meaning no pending)
     let new_hash2 = BytesN::from_array(&env, &[0x43; 32]);
-    assert!(client.try_propose_upgrade(&admin, &new_hash2, &execute_after).is_ok());
+    assert!(client
+        .try_propose_upgrade(&admin, &new_hash2, &execute_after)
+        .is_ok());
 
     // Try to execute should fail (no pending after cancel)
     let result = client.try_execute_upgrade(&admin);

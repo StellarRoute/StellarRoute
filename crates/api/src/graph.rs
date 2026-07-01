@@ -209,8 +209,6 @@ impl GraphManager {
                             liquidity: (a * 1e7) as i128,
                             price: p,
                             fee_bps: if is_amm { 30 } else { 20 },
-                            anomaly_score: None,
-                            anomaly_reasons: None,
                         });
                     }
                 }
@@ -245,8 +243,6 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
-            anomaly_score: None,
-            anomaly_reasons: None,
         }];
 
         manager.edges.store(Arc::new(initial_edges.clone()));
@@ -263,8 +259,6 @@ mod tests {
             liquidity: 200,
             price: 0.99,
             fee_bps: 30,
-            anomaly_score: None,
-            anomaly_reasons: None,
         }];
         manager.edges.store(Arc::new(new_edges));
 
@@ -289,8 +283,6 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
-            anomaly_score: None,
-            anomaly_reasons: None,
         }];
         manager.edges.store(Arc::new(initial_edges));
 
@@ -317,8 +309,6 @@ mod tests {
                     liquidity: 100,
                     price: 1.0,
                     fee_bps: 30,
-                    anomaly_score: None,
-                    anomaly_reasons: None,
                 }];
                 m2.edges.store(Arc::new(edges));
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;

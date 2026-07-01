@@ -51,12 +51,36 @@ jobs:
           CI: "true"
 
   frontend-tests:
-    name: Frontend Unit Tests (${{ matrix.suite }})
+    name: Frontend Unit Tests (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        suite: [components, hooks, lib, app]
+        include:
+          - label: hooks
+            suite: hooks
+          - label: lib
+            suite: lib
+          - label: app
+            suite: app
+          - label: components (swap-card)
+            suite: components/swap/SwapCard.test.tsx
+          - label: components (swap)
+            suite: components/swap
+            exclude_args: --exclude '**/SwapCard.test.tsx'
+          - label: components (shared)
+            suite: components/shared
+          - label: components (providers)
+            suite: components/providers
+          - label: components (settings)
+            suite: components/settings
+          - label: components (rest)
+            suite: components
+            exclude_args: >-
+              --exclude 'components/swap/**'
+              --exclude 'components/shared/**'
+              --exclude 'components/providers/**'
+              --exclude 'components/settings/**'
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -68,9 +92,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix frontend
       - name: Run frontend tests
-        run: npm --prefix frontend run test -- ${{ matrix.suite }}
+        run: |
+          if [[ "${{ matrix.suite }}" == components* ]]; then
+            npm --prefix frontend run test -- ${{ matrix.suite }} --pool=forks --maxWorkers=1 ${{ matrix.exclude_args }}
+          else
+            npm --prefix frontend run test -- ${{ matrix.suite }}
+          fi
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
           CI: "true"
 
   frontend-storybook:

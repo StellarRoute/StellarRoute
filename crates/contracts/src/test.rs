@@ -1474,7 +1474,7 @@ fn test_empty_signers_list() {
 #[test]
 fn test_migration_called_by_non_admin() {
     let env = setup_env();
-    let (admin, _, client) = deploy_router(&env);
+    let (_admin, _, client) = deploy_router(&env);
     let s1 = Address::generate(&env);
     let s2 = Address::generate(&env);
     let mut signers = Vec::new(&env);
@@ -1489,7 +1489,7 @@ fn test_migration_called_by_non_admin() {
 #[test]
 fn test_double_migration_rejected() {
     let env = setup_env();
-    let (admin, _, client) = deploy_multisig_router(&env);
+    let (_s1, _s2, _s3, admin, client) = deploy_multisig_router(&env);
 
     let s1 = Address::generate(&env);
     let mut signers = Vec::new(&env);
@@ -1502,7 +1502,7 @@ fn test_double_migration_rejected() {
 #[test]
 fn test_governance_action_by_non_signer_post_migration() {
     let env = setup_env();
-    let (s1, s2, s3, _, client) = deploy_multisig_router(&env);
+    let (_s1, _s2, _s3, _, client) = deploy_multisig_router(&env);
     let non_signer = Address::generate(&env);
 
     // Non-signer tries to propose
@@ -1851,17 +1851,15 @@ fn test_execute_upgrade_succeeds_after_advancing_ledger() {
 
     let new_hash = BytesN::from_array(&env, &[0x42; 32]);
     let execute_after = current_seq(&env) + 100;
+    let proposal_seq = current_seq(&env);
     client.propose_upgrade(&admin, &new_hash, &execute_after);
 
-    // Advance ledger sequence past execute_after
-    env.ledger()
-        .with_mut(|li| li.sequence_number = (execute_after + 1) as u32);
+    // Advance ledger past the enforced minimum upgrade delay.
+    env.ledger().with_mut(|li| {
+        li.sequence_number = (proposal_seq + crate::upgrade::MIN_DELAY_LEDGERS + 1) as u32;
+    });
 
-    // Note: We can't actually test executing upgrade because it requires
-    // a registered WASM hash in the environment, but we can test that the
-    // only failure isn't UpgradeLocked anymore
     let result = client.try_execute_upgrade(&admin);
-    // Should fail for other reasons (like missing WASM hash), but not UpgradeLocked
     assert_ne!(result, Err(Ok(ContractError::UpgradeLocked)));
 }
 
@@ -1877,15 +1875,14 @@ fn test_cancel_upgrade_clears_pending_state() {
     // Cancel the pending upgrade
     client.cancel_upgrade(&admin);
 
-    // Now try to propose another upgrade (should succeed, meaning no pending)
+    let result = client.try_execute_upgrade(&admin);
+    assert_eq!(result, Err(Ok(ContractError::NoUpgradePending)));
+
+    // Proposing another upgrade should succeed now that pending state was cleared
     let new_hash2 = BytesN::from_array(&env, &[0x43; 32]);
     assert!(client
         .try_propose_upgrade(&admin, &new_hash2, &execute_after)
         .is_ok());
-
-    // Try to execute should fail (no pending after cancel)
-    let result = client.try_execute_upgrade(&admin);
-    assert_eq!(result, Err(Ok(ContractError::NoUpgradePending)));
 }
 
 // ─── Token Allowlist Tests ────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
-const { mockWalletState } = vi.hoisted(() => ({
+const { mockWalletState, mockQuoteRefresh } = vi.hoisted(() => ({
   mockWalletState: {
     capabilities: null as {
       checkedAt: number;
@@ -33,6 +33,7 @@ const { mockWalletState } = vi.hoisted(() => ({
       }>;
     } | null,
   },
+  mockQuoteRefresh: vi.fn(),
 }));
 
 const defaultAllowedCapabilities = {
@@ -43,6 +44,58 @@ const defaultAllowedCapabilities = {
 vi.mock('./ShareQuoteButton', () => ({
   ShareQuoteButton: () => <button data-testid="mock-share-quote-button">Share</button>,
 }));
+
+vi.mock('@/hooks/useQuoteRefresh', () => ({
+  useQuoteRefresh: (...args: unknown[]) => mockQuoteRefresh(...args),
+}));
+
+vi.mock('@/hooks/useApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useApi')>();
+  return {
+    ...actual,
+    useQuoteStream: () => ({
+      data: undefined,
+      isConnected: false,
+      error: null,
+      wsAvailable: false,
+    }),
+    useRoutes: (
+      base: string,
+      quote: string,
+      amount?: number,
+    ) => {
+      const skip =
+        !base ||
+        !quote ||
+        amount === undefined ||
+        Number.isNaN(amount) ||
+        amount <= 0;
+      return {
+        data: skip
+          ? undefined
+          : {
+              base_asset: { asset_type: 'native' },
+              quote_asset: {
+                asset_type: 'credit_alphanum4',
+                asset_code: 'USDC',
+              },
+              amount: String(amount),
+              timestamp: Date.now(),
+              routes: [],
+            },
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      };
+    },
+    useBatchQuote: () => ({
+      data: undefined,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    }),
+  };
+});
 
 vi.mock('@/components/providers/wallet-provider', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -133,8 +186,70 @@ function setNavigatorOnline(value: boolean) {
   });
 }
 
+function mockQuoteRefreshState(
+  amount?: number,
+  options?: { total?: string; priceImpact?: string },
+) {
+  const hasAmount = amount !== undefined && Number.isFinite(amount) && amount > 0;
+  const quote = hasAmount
+    ? {
+        base_asset: { asset_type: 'native' },
+        quote_asset: {
+          asset_type: 'credit_alphanum4',
+          asset_code: 'USDC',
+          asset_issuer: 'GABC',
+        },
+        amount: String(amount),
+        price: '0.95',
+        total: options?.total ?? '9.5',
+        price_impact: options?.priceImpact ?? '0.5',
+        path: [],
+        quote_type: 'sell' as const,
+        timestamp: Date.now(),
+      }
+    : undefined;
+
+  return {
+    data: quote,
+    loading: false,
+    error: null,
+    isStale: false,
+    refresh: vi.fn(),
+    lastQuotedAtMs: hasAmount ? Date.now() : null,
+    requestId: hasAmount ? 'test-req-id' : null,
+    isRecovering: false,
+    retryAttempt: 0,
+    hasPendingRetry: false,
+    pendingRetryRemainingMs: 0,
+    cancelRetry: vi.fn(),
+    manualRefreshCoolingDown: false,
+    autoRefreshEnabled: false,
+    setAutoRefreshEnabled: vi.fn(),
+    rateLimitRemainingMs: 0,
+  };
+}
+
+function configureQuoteRefresh(
+  options?: { total?: string; priceImpact?: string },
+) {
+  mockQuoteRefresh.mockImplementation(
+    (_base: string, _quote: string, amount?: number) =>
+      mockQuoteRefreshState(amount, options),
+  );
+}
+
+async function connectWalletAndWaitForBalance(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+  await waitFor(() => {
+    expect(screen.getByText(/50\.0000000/)).toBeInTheDocument();
+  });
+}
+
 beforeEach(() => {
   mockWalletState.capabilities = defaultAllowedCapabilities;
+  configureQuoteRefresh();
 });
 
 describe('SwapCard network resilience and states', () => {
@@ -192,17 +307,13 @@ describe('SwapCard network resilience and states', () => {
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
 
-    const connectButton = screen.getByRole('button', {
-      name: /connect wallet/i,
-    });
-    await user.click(connectButton);
+    await connectWalletAndWaitForBalance(user);
 
     await waitFor(() => {
       expect(screen.getByText(/enter amount/i)).toBeInTheDocument();
     });
 
     const payInput = screen.getByLabelText(/you pay/i);
-    // Optimized: fireEvent bypasses keypress rendering overhead to prevent timeouts
     fireEvent.change(payInput, { target: { value: '10' } });
 
     await waitFor(() => {
@@ -211,19 +322,7 @@ describe('SwapCard network resilience and states', () => {
   });
 
   it('shows high price impact warning for large amounts', async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            total: '50',
-            price_impact: '15.0', // High price impact (> 10%)
-            path: [],
-            price: '0.5',
-            amount: '90',
-          }),
-      })
-    ) as Mock;
+    configureQuoteRefresh({ total: '50', priceImpact: '15.0' });
 
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
@@ -254,7 +353,7 @@ describe('SwapCard network resilience and states', () => {
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
 
-    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+    await connectWalletAndWaitForBalance(user);
 
     const payInput = screen.getByLabelText(/you pay/i);
     fireEvent.change(payInput, { target: { value: '100.0155' } });
@@ -695,6 +794,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
   });
 
   it('prevents swap when amount exceeds real balance', async () => {
+    configureQuoteRefresh({ total: '95.0' });
     global.fetch = vi.fn((url: string) => {
       if (url.includes('/accounts/')) {
         return Promise.resolve({
@@ -705,26 +805,13 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
             }),
         });
       }
-      return Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            total: '95.0',
-            price_impact: '0.5',
-            path: [],
-            price: '0.95',
-            amount: '100',
-          }),
-      });
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     }) as Mock;
 
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
 
-    const connectButton = screen.getByRole('button', {
-      name: /connect wallet/i,
-    });
-    await user.click(connectButton);
+    await connectWalletAndWaitForBalance(user);
 
     // Enter amount greater than balance
     const payInput = screen.getByLabelText(/you pay/i);
@@ -785,7 +872,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
 });
 
 describe('SwapCard Freighter signing wiring (#735)', () => {
-  const quoteFetchMock = () =>
+  const horizonFetchMock = () =>
     vi.fn((url: string) => {
       if (typeof url === 'string' && url.includes('/accounts/')) {
         return Promise.resolve({
@@ -797,24 +884,15 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
             }),
         });
       }
-      return Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            total: '9.5',
-            price_impact: '0.5',
-            path: [],
-            price: '0.95',
-            amount: '10',
-          }),
-      });
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     }) as Mock;
 
   beforeEach(() => {
     vi.mocked(buildPathPaymentXdr).mockResolvedValue('AAAAtest_unsigned_xdr');
     vi.mocked(signTransactionWithWallet).mockResolvedValue('AAAAtest_signed_xdr');
     vi.mocked(submitToHorizon).mockResolvedValue({ hash: 'test_submit_hash' });
-    global.fetch = quoteFetchMock();
+    configureQuoteRefresh();
+    global.fetch = horizonFetchMock();
   });
 
   afterEach(() => {
@@ -826,7 +904,7 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
 
-    await user.click(screen.getByRole('button', { name: /connect wallet/i }));
+    await connectWalletAndWaitForBalance(user);
 
     const payInput = screen.getByLabelText(/you pay/i);
     fireEvent.change(payInput, { target: { value: '10' } });

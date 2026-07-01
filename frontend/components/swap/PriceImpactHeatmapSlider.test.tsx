@@ -4,13 +4,15 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { PriceImpactHeatmapSlider } from './PriceImpactHeatmapSlider';
 import type { PriceQuote } from '@/types';
 
-const { getQuotesBatch } = vi.hoisted(() => ({
+const mockClient = vi.hoisted(() => ({
   getQuotesBatch: vi.fn(),
 }));
 
 vi.mock('@/hooks/useStellarRouteClient', () => ({
-  useStellarRouteClient: () => ({ getQuotesBatch }),
+  useStellarRouteClient: () => mockClient,
 }));
+
+const { getQuotesBatch } = mockClient;
 
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: ReactNode }) => children,

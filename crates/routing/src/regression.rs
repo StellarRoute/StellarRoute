@@ -74,8 +74,6 @@ impl BenchmarkFixture {
                 liquidity: rng.gen_range(500_000_000..5_000_000_000i128),
                 price: rng.gen_range(0.8..1.2),
                 fee_bps: rng.gen_range(10..100),
-                anomaly_score: None,
-                anomaly_reasons: None,
             },
             LiquidityEdge {
                 from: self.from_asset.clone(),
@@ -85,8 +83,6 @@ impl BenchmarkFixture {
                 liquidity: rng.gen_range(200_000_000..2_000_000_000i128),
                 price: rng.gen_range(0.85..1.15),
                 fee_bps: rng.gen_range(5..50),
-                anomaly_score: None,
-                anomaly_reasons: None,
             },
         ];
 
@@ -102,8 +98,6 @@ impl BenchmarkFixture {
                 liquidity,
                 price: rng.gen_range(0.5..2.0),
                 fee_bps: rng.gen_range(5..200),
-                anomaly_score: None,
-                anomaly_reasons: None,
             });
             edges.push(LiquidityEdge {
                 from: asset.clone(),
@@ -113,8 +107,6 @@ impl BenchmarkFixture {
                 liquidity: rng.gen_range(100_000_000..10_000_000_000i128),
                 price: rng.gen_range(0.5..2.0),
                 fee_bps: rng.gen_range(5..200),
-                anomaly_score: None,
-                anomaly_reasons: None,
             });
         }
 

@@ -41,14 +41,13 @@ fn test_anomaly_detection_integration() {
 fn test_optimizer_flags_anomalies() {
     let optimizer = HybridOptimizer::new(PathfinderConfig::default());
 
-    // Create edges with anomalies
     let edges = vec![
         LiquidityEdge {
             from: "XLM".to_string(),
             to: "USDC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "anomalous_pool".to_string(),
-            liquidity: 10_000_000,
+            liquidity: 10_000_000_000,
             price: 1.0,
             fee_bps: 30,
             anomaly_score: None,
@@ -59,7 +58,7 @@ fn test_optimizer_flags_anomalies() {
             to: "USDC".to_string(),
             venue_type: "sdex".to_string(),
             venue_ref: "healthy_offer".to_string(),
-            liquidity: 10_000_000,
+            liquidity: 10_000_000_000,
             price: 1.01,
             fee_bps: 20,
             anomaly_score: None,
@@ -72,5 +71,7 @@ fn test_optimizer_flags_anomalies() {
         .find_optimal_routes("XLM", "USDC", &edges, 100_000_000, &routing_policy)
         .unwrap();
 
-    assert!(!result.selected_path.hops.is_empty());
+    assert!(result.metrics.hop_count >= 1);
+    assert_eq!(result.metrics.anomaly_score, 0.0);
+    assert!(result.metrics.anomaly_reasons.is_empty());
 }

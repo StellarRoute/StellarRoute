@@ -62,6 +62,10 @@ function makeSubmitFail(message = 'Submission failed') {
   return vi.fn().mockRejectedValue(new Error(message));
 }
 
+function makeBuildXdrOk() {
+  return vi.fn().mockResolvedValue('mock_xdr');
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -78,6 +82,7 @@ describe('useTransactionLifecycle — notification dispatch on terminal transiti
   it('calls dispatchTransactionNotification once with status "confirmed" on successful swap', async () => {
     const { result } = renderHook(() =>
       useTransactionLifecycle({
+        buildXdr: makeBuildXdrOk(),
         signTransaction: makeSignOk(),
         submitTransaction: makeSubmitOk('tx_abc'),
         notificationPreference: enabledPreference,
@@ -106,6 +111,7 @@ describe('useTransactionLifecycle — notification dispatch on terminal transiti
   it('calls dispatchTransactionNotification once with status "failed" when signing fails', async () => {
     const { result } = renderHook(() =>
       useTransactionLifecycle({
+        buildXdr: makeBuildXdrOk(),
         signTransaction: makeSignFail('Signature rejected'),
         submitTransaction: makeSubmitOk(),
         notificationPreference: enabledPreference,
@@ -130,6 +136,7 @@ describe('useTransactionLifecycle — notification dispatch on terminal transiti
   it('calls dispatchTransactionNotification once with status "failed" when submission fails', async () => {
     const { result } = renderHook(() =>
       useTransactionLifecycle({
+        buildXdr: makeBuildXdrOk(),
         signTransaction: makeSignOk(),
         submitTransaction: makeSubmitFail('Network error'),
         notificationPreference: enabledPreference,
@@ -159,6 +166,7 @@ describe('useTransactionLifecycle — notification dispatch on terminal transiti
 
     const { result } = renderHook(() =>
       useTransactionLifecycle({
+        buildXdr: makeBuildXdrOk(),
         signTransaction: makeSignOk(),
         submitTransaction: submitNeverResolves,
         deadlineMs: 1000,
@@ -207,6 +215,7 @@ describe('useTransactionLifecycle — notification dispatch on terminal transiti
   it('does NOT call dispatchTransactionNotification when notificationPreference.enabled is false', async () => {
     const { result } = renderHook(() =>
       useTransactionLifecycle({
+        buildXdr: makeBuildXdrOk(),
         signTransaction: makeSignOk(),
         submitTransaction: makeSubmitOk(),
         notificationPreference: { enabled: false },

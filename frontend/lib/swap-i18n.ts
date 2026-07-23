@@ -91,6 +91,8 @@ export type SwapTranslationKey =
   | "swap.cta.swapAnyway"
   | "swap.cta.swapping"
   | "swap.cta.errorFetchingQuote"
+  | "swap.cta.updateQuote"
+  | "swap.cta.quoteExpired"
   | "swap.card.refreshQuote"
   | "swap.card.diagnostics"
   | "swap.card.outdated"
@@ -334,6 +336,8 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.cta.swapAnyway": "Swap Anyway",
     "swap.cta.swapping": "Swapping...",
     "swap.cta.errorFetchingQuote": "Error fetching quote",
+    "swap.cta.updateQuote": "Update Quote",
+    "swap.cta.quoteExpired": "Quote expired — update to continue",
     "swap.card.refreshQuote": "Refresh quote",
     "swap.card.diagnostics": "View quote diagnostics",
     "swap.card.outdated": "Quote outdated — refresh for latest price",
@@ -572,6 +576,8 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.cta.swapAnyway": "Intercambiar de todos modos",
     "swap.cta.swapping": "Intercambiando...",
     "swap.cta.errorFetchingQuote": "Error al obtener cotización",
+    "swap.cta.updateQuote": "Actualizar cotización",
+    "swap.cta.quoteExpired": "Cotización expirada — actualice para continuar",
     "swap.card.refreshQuote": "Actualizar cotización",
     "swap.card.diagnostics": "View quote diagnostics",
     "swap.card.outdated": "Cotización desactualizada — actualiza para obtener el precio más reciente",
@@ -813,6 +819,8 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.cta.swapAnyway": "仍要兑换",
     "swap.cta.swapping": "兑换中...",
     "swap.cta.errorFetchingQuote": "获取报价失败",
+    "swap.cta.updateQuote": "更新报价",
+    "swap.cta.quoteExpired": "报价已过期 — 请更新以继续",
     "swap.card.refreshQuote": "刷新报价",
     "swap.card.diagnostics": "查看报价诊断信息",
     "swap.card.outdated": "报价已过期——请刷新获取最新价格",

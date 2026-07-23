@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, Wallet, ShieldOff } from "lucide-react";
+import { Loader2, AlertCircle, Wallet, ShieldOff, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSwapI18n } from "@/lib/swap-i18n";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -17,12 +17,15 @@ export type SwapButtonState =
   | "ready"
   | "executing"
   | "error"
+  | "stale_quote"
   | "permission_blocked";
 
 interface SwapButtonProps {
   state: SwapButtonState;
   onSwap: () => void;
   onConnectWallet?: () => void;
+  /** Called when the user clicks the "Update Quote" CTA in stale_quote state. */
+  onUpdateQuote?: () => void;
   isLoading?: boolean;
   className?: string;
 }
@@ -31,6 +34,7 @@ export function SwapButton({
   state,
   onSwap,
   onConnectWallet,
+  onUpdateQuote,
   isLoading = false,
   className,
 }: SwapButtonProps) {
@@ -111,6 +115,17 @@ export function SwapButton({
           disabled: true,
           variant: "outline" as const,
           className: "border-destructive/50 text-destructive",
+        };
+      case "stale_quote":
+        return {
+          label: t("swap.cta.updateQuote"),
+          onClick: onUpdateQuote,
+          disabled: isLoading,
+          variant: "outline" as const,
+          icon: isLoading
+            ? <Loader2 className={cn("mr-2 h-5 w-5", !prefersReducedMotion && "animate-spin")} />
+            : <RefreshCw className="mr-2 h-5 w-5" />,
+          className: "border-amber-500/60 text-amber-600 hover:bg-amber-500/10 hover:border-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300",
         };
       case "permission_blocked":
         return {

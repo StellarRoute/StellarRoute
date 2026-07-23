@@ -3,13 +3,16 @@ import { ReactNode } from "react";
 
 type ViewStateVariant = "loading" | "empty" | "error";
 
-interface ViewStateProps {
+export interface ViewStateProps {
   variant: ViewStateVariant;
   title: string;
   description: string;
   action?: ReactNode;
   className?: string;
 }
+
+// Type alias for consumers expecting SwapViewStateProps
+export type SwapViewStateProps = ViewStateProps;
 
 const iconByVariant: Record<ViewStateVariant, ReactNode> = {
   loading: <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />,
@@ -40,3 +43,6 @@ export function ViewState({
     </div>
   );
 }
+
+// Component alias for consumers expecting SwapViewState
+export const SwapViewState = ViewState;

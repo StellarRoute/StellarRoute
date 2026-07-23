@@ -1,6 +1,7 @@
 import { PathStep } from '@/types';
 import { Card } from '@/components/ui/card';
 import { getAssetCode, parseSource } from '@/lib/route-helpers';
+import { SwapViewState } from '@/components/shared/ViewState';
 
 export interface RouteRowProps {
   step?: PathStep;
@@ -11,25 +12,34 @@ export interface RouteRowProps {
 export function RouteRow({ step, isLoading, error }: RouteRowProps) {
   if (isLoading) {
     return (
-      <Card className="p-3" role="status" aria-busy="true">
-        <div className="text-sm text-muted-foreground">Loading route row…</div>
-      </Card>
+      <SwapViewState
+        variant="loading"
+        title="Loading Route"
+        description="Fetching best route step details…"
+        className="p-3"
+      />
     );
   }
 
   if (error) {
     return (
-      <Card className="p-3 border-destructive">
-        <div className="text-sm text-destructive">Route row error: {error}</div>
-      </Card>
+      <SwapViewState
+        variant="error"
+        title="Route Error"
+        description={error}
+        className="p-3 border-destructive"
+      />
     );
   }
 
   if (!step) {
     return (
-      <Card className="p-3">
-        <div className="text-sm text-muted-foreground">No route step</div>
-      </Card>
+      <SwapViewState
+        variant="empty"
+        title="No Route Step"
+        description="No route step available to display."
+        className="p-3"
+      />
     );
   }
 
@@ -44,7 +54,9 @@ export function RouteRow({ step, isLoading, error }: RouteRowProps) {
           <div className="text-sm font-semibold">{from} → {to}</div>
           <div className="text-xs text-muted-foreground">Price {step.price}</div>
         </div>
-        <div className="text-xs rounded px-2 py-1 bg-muted/40">{sourceMeta.isSDEX ? 'SDEX' : sourceMeta.poolName || 'AMM'}</div>
+        <div className="text-xs rounded px-2 py-1 bg-muted/40">
+          {sourceMeta.isSDEX ? 'SDEX' : sourceMeta.poolName || 'AMM'}
+        </div>
       </div>
     </Card>
   );

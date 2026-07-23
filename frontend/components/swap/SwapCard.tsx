@@ -12,6 +12,7 @@ import RouteDisplay from './RoutePanelAsync';
 import { MobileRouteBottomSheet } from './MobileRouteBottomSheet';
 import { BatchSwapPreview, type BatchSwapLeg } from './BatchSwapPreview';
 import { SwapButton, SwapButtonState } from './SwapButton';
+import { StaleQuoteBanner } from './StaleQuoteBanner';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
 import { TransactionConfirmationModal } from './TransactionConfirmationModal';
@@ -19,6 +20,7 @@ import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
+import { useStaleQuote } from '@/hooks/useStaleQuote';
 import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
@@ -126,6 +128,14 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
     null
   );
+
+  // Stale-quote detection: disabled when expired OR price impact changed >0.5%
+  const staleQuote = useStaleQuote({
+    expiresAtMs: quote.data?.expires_at,
+    currentPriceImpact: quote.priceImpact,
+    isStale: quote.isStale,
+    lastQuotedAtMs: quote.lastQuotedAtMs,
+  });
 
   // Fetch ranked routes from /api/v1/routes
   const routesState = useRoutes(
@@ -587,7 +597,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       return 'insufficient_balance';
     if (quote.priceImpact > 10) return 'high_impact_warning';
     if (quote.loading) return 'refreshing_quote';
-    if (quote.isStale) return 'error';
+    if (staleQuote.isQuoteStale) return 'stale_quote';
     return 'ready';
   }, [
     fromAmount,
@@ -597,7 +607,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     capabilities,
     optimistic.submitLock,
     quote.error,
-    quote.isStale,
+    staleQuote.isQuoteStale,
     quote.loading,
     quote.priceImpact,
     requiresFreshQuote,
@@ -606,7 +616,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
 
   const displayButtonState = storyPresentation?.buttonState ?? buttonState;
   const displayQuoteLoading = storyPresentation?.quoteLoading ?? quote.loading;
-  const displayQuoteStale = storyPresentation?.quoteStale ?? quote.isStale;
+  const displayQuoteStale = storyPresentation?.quoteStale ?? staleQuote.isQuoteStale;
   const displayQuoteError = storyPresentation?.quoteError ?? quote.error;
   const displayQuotePriceImpact =
     storyPresentation?.quotePriceImpact ?? quote.priceImpact;
@@ -1267,12 +1277,22 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               .join('. ')}
           </div>
 
+          {/* Stale Quote Banner */}
+          {staleQuote.isQuoteStale && (
+            <StaleQuoteBanner
+              isStale={staleQuote.isQuoteStale}
+              onRefresh={quote.refresh}
+              isLoading={displayQuoteLoading}
+            />
+          )}
+
           {/* Action Button */}
           <div className="pt-2">
             <SwapButton
               state={displayButtonState}
               onSwap={handleSwap}
               onConnectWallet={() => connect('freighter')} // Connection managed by WalletProvider
+              onUpdateQuote={quote.refresh}
               isLoading={displayQuoteLoading}
             />
           </div>

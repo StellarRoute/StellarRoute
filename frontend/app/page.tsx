@@ -1,4 +1,4 @@
-import DemoSwap from "@/components/DemoSwap";
+import { DemoSwap } from "@/components/DemoSwap";
 
 export default function Home() {
   return (

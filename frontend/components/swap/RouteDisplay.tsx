@@ -14,6 +14,7 @@ export interface AlternativeRoute {
 }
 
 interface RouteDisplayProps {
+  route?: string[];
   amountOut: string;
   /** Route confidence score (0-100) */
   confidenceScore?: number;
@@ -65,6 +66,7 @@ function AlternativeRouteButton({ route }: { route: AlternativeRoute }) {
 }
 
 export function RouteDisplay({
+  route,
   amountOut,
   confidenceScore = 85,
   volatility = "low",

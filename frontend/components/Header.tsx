@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
-import { WalletButton } from "@/components/shared/WalletButton";
+import { WalletButton } from "@/components/shared/wallet-button";
 
 export function Header() {
   return (

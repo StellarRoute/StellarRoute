@@ -484,19 +484,47 @@ export interface ApiError {
 }
 
 /**
- * Machine-readable error codes returned by the StellarRoute API.
+ * Canonical error codes documented for the StellarRoute API backend.
+ *
+ * This array is the single source of truth checked against
+ * `crates/api/src/models/response.rs`'s `ApiErrorCode::ALL` and
+ * `docs/api/error_taxonomy.md`'s error catalog table by
+ * `crates/api/tests/openapi_swap_contract.rs` (issue #1051). Add a new code
+ * to all three places together, or that test fails the build.
+ */
+export const API_ERROR_CODES = [
+  'internal_error',
+  'bad_request',
+  'not_found',
+  'validation_error',
+  'rate_limit_exceeded',
+  'overloaded',
+  'unauthorized',
+  'invalid_asset',
+  'invalid_amount',
+  'invalid_slippage',
+  'invalid_asset_format',
+  'no_route',
+  'not_executable',
+  'stale_market_data',
+  'not_implemented',
+] as const;
+
+/** A documented backend error code (see {@link API_ERROR_CODES}). */
+export type BackendApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+/**
+ * Machine-readable error codes returned by the StellarRoute API, plus two
+ * codes the SDK itself synthesizes for transport-level failures that never
+ * reach the server (`network_error`, `unknown_error`).
+ *
+ * The trailing `(string & Record<never, never>)` branch keeps this type
+ * assignable from arbitrary server strings (forward-compatible with codes
+ * added server-side before the SDK updates) while `API_ERROR_CODES` still
+ * gives autocomplete and a closed list for the drift check above.
  */
 export type ApiErrorCode =
-  | 'internal_error'
-  | 'bad_request'
-  | 'not_found'
-  | 'validation_error'
-  | 'rate_limit_exceeded'
-  | 'overloaded'
-  | 'unauthorized'
-  | 'invalid_asset'
-  | 'no_route'
-  | 'stale_market_data'
+  | BackendApiErrorCode
   | 'network_error' // SDK specific
   | 'unknown_error' // SDK specific
   | (string & Record<never, never>);

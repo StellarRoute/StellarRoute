@@ -136,6 +136,11 @@ async fn main() {
         std::process::exit(1);
     }
 
+    if let Err(message) = stellarroute_api::middleware::validate_admin_auth_startup() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
     // Get database URL from environment
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://localhost/stellarroute".to_string());

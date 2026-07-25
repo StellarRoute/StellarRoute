@@ -37,7 +37,7 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
     }
 }
 
-fn extract_admin_token(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn extract_admin_token(headers: &HeaderMap) -> Option<String> {
     if let Some(value) = headers.get("x-admin-token").and_then(|v| v.to_str().ok()) {
         return Some(value.trim().to_string());
     }

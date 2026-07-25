@@ -44,6 +44,42 @@ Use this checklist when rotating database, Redis, or Soroban RPC credentials:
 
 Recommended order: database first, Redis second, Soroban RPC last.
 
+## API Production Security (M5)
+
+The `stellarroute-api` HTTP server has a hardened production posture gated
+behind `STELLARROUTE_ENV=production`. Set this (plus the vars below) for any
+internet-reachable deployment. Full details, defaults, and the break-glass
+override are documented in
+[`docs/development/environment-variables.md`](../development/environment-variables.md#deployment-profile--security-m5);
+the full endpoint-by-endpoint exposure inventory is in
+[`docs/api/production-exposure.md`](../api/production-exposure.md).
+
+Required production environment:
+
+```bash
+STELLARROUTE_ENV=production
+
+# Explicit allowlist of browser origins — no wildcard CORS in production.
+# Include the deployed frontend's Vercel production origin:
+CORS_ALLOWED_ORIGINS=https://stellarroute.vercel.app,https://app.stellarroute.io
+
+# API key(s) for integrators; REQUIRE_AUTH defaults to true in production.
+API_KEYS=<comma-separated integrator keys>
+
+# If browser clients call quote/orderbook endpoints directly without a key,
+# allowlist those specific GET routes rather than disabling auth globally:
+PUBLIC_GET_ROUTES=/api/v1/quote,/api/v1/pairs,/api/v1/markets,/api/v1/orderbook,/api/v1/routes,/api/v1/price-history
+
+# Required to reach /api/v1/admin/*, /api/v1/system/*, and (in production)
+# /metrics + /api/v1/replay/*.
+ADMIN_AUTH_TOKEN=<operator token>
+```
+
+The server refuses to start in production if `CORS_ALLOWED_ORIGINS` is empty,
+or if auth ends up disabled (`REQUIRE_AUTH=false`) without the explicit
+`ALLOW_INSECURE_PUBLIC_API=1` break-glass override — that override should
+never be set in a real production deployment.
+
 ### Unified Liquidity Migration and Rollback
 
 The unified liquidity path reads from `normalized_liquidity`, which combines SDEX offers and AMM reserves.

@@ -14,6 +14,7 @@ use stellarroute_api::{state::DatabasePools, Server, ServerConfig};
 use tower::ServiceExt;
 
 const KILL_SWITCH_PATH: &str = "/api/v1/admin/kill-switch";
+const ADMIN_TOKEN: &str = "test-admin-token";
 
 async fn setup_test_router() -> axum::Router {
     // Lazy pool: it only connects when a query runs, and the kill switch
@@ -23,7 +24,10 @@ async fn setup_test_router() -> axum::Router {
         .connect_lazy("postgres://localhost/unused")
         .expect("Failed to create lazy pool");
 
-    Server::new(ServerConfig::default(), DatabasePools::new(pool, None))
+    let mut config = ServerConfig::default();
+    config.admin_auth_token = Some(ADMIN_TOKEN.to_string());
+
+    Server::new(config, DatabasePools::new(pool, None))
         .await
         .into_router()
 }
@@ -70,6 +74,7 @@ async fn kill_switch_post_updates_in_memory_state() {
                 .method("POST")
                 .uri(KILL_SWITCH_PATH)
                 .header("content-type", "application/json")
+                .header("x-admin-token", ADMIN_TOKEN)
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
         )
@@ -111,6 +116,7 @@ async fn kill_switch_post_invalid_payload_returns_400() {
                 .method("POST")
                 .uri(KILL_SWITCH_PATH)
                 .header("content-type", "application/json")
+                .header("x-admin-token", ADMIN_TOKEN)
                 .body(Body::from("{ not valid json"))
                 .unwrap(),
         )
@@ -118,4 +124,28 @@ async fn kill_switch_post_invalid_payload_returns_400() {
         .expect("request failed");
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn kill_switch_post_without_admin_token_returns_401() {
+    let router = setup_test_router().await;
+
+    let payload = json!({
+        "sources": { "amm": "force_exclude" },
+        "venues": {},
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(KILL_SWITCH_PATH)
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

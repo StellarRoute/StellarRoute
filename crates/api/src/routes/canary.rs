@@ -2,7 +2,7 @@ use axum::{extract::State, Json};
 use serde_json::Value;
 use std::sync::Arc;
 
-use crate::{error::Result, state::AppState};
+use crate::{error::Result, middleware::AdminAuth, state::AppState};
 use stellarroute_routing::canary::CanaryConfig;
 
 /// GET /api/v1/system/canary/report
@@ -26,6 +26,7 @@ pub async fn get_report(State(state): State<Arc<AppState>>) -> Result<Json<Value
 /// Updates the current canary configuration.
 pub async fn update_config(
     State(state): State<Arc<AppState>>,
+    _admin: AdminAuth,
     Json(new_config): Json<CanaryConfig>,
 ) -> Result<Json<CanaryConfig>> {
     let mut config_guard = state.canary_config.write().await;

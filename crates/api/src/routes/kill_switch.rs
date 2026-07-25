@@ -1,7 +1,7 @@
 use crate::admin_audit::{build_admin_audit_entry, emit_admin_audit};
 use crate::error::{ApiError, Result};
 use crate::kill_switch::KillSwitchState;
-use crate::middleware::RequestId;
+use crate::middleware::{AdminAuth, RequestId};
 use crate::state::AppState;
 use axum::http::HeaderMap;
 use axum::{extract::State, Json};
@@ -41,6 +41,7 @@ pub async fn get_kill_switch(
 )]
 pub async fn update_kill_switch(
     State(state): State<Arc<AppState>>,
+    _admin: AdminAuth,
     headers: HeaderMap,
     request_id: RequestId,
     Json(payload): Json<KillSwitchState>,

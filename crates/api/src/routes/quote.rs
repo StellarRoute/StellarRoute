@@ -1584,6 +1584,43 @@ pub(crate) async fn get_quote_for_pair_dry_run(
     prepared.into_quote()
 }
 
+/// Identify the integrator consumer (if any) for quote-expiration webhook
+/// dispatch, using the same `api_key:<key>` scheme as webhook registration
+/// (see `integrator_webhooks::resolve_consumer_id`). Returns `None` when the
+/// caller didn't authenticate with an API key, since anonymous callers have
+/// no registered webhook to notify.
+fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-api-key")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("api_key:{value}"))
+}
+
+/// Build the payload dispatched to a consumer's registered webhook when
+/// their quote is expected to expire.
+fn build_quote_webhook_payload(
+    consumer_id: String,
+    base: &str,
+    quote: &str,
+    quote_resp: &QuoteResponse,
+) -> QuoteExpirationWebhookPayload {
+    QuoteExpirationWebhookPayload {
+        event_id: Uuid::new_v4().to_string(),
+        consumer_id,
+        quote_id: format!("{base}:{quote}:{}", quote_resp.timestamp),
+        pair: format!("{base}/{quote}"),
+        reason: "quote_expired".to_string(),
+        expired_at: quote_resp.expires_at.unwrap_or(quote_resp.timestamp),
+        event: "quote.expired".to_string(),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+        base_asset: base.to_string(),
+        quote_asset: quote.to_string(),
+        amount_in: quote_resp.amount.clone(),
+    }
+}
+
 /// Build an [`AuditSelected`] from a successful [`QuoteResponse`].
 fn build_audit_selected(quote: &QuoteResponse) -> AuditSelected {
     let (venue_type, venue_ref) = quote

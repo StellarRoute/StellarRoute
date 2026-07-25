@@ -73,15 +73,44 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 
 ---
 
+## Deployment profile & security (M5)
+
+Single switch that flips several hardened defaults on for public deployments. See
+[`docs/api/production-exposure.md`](../api/production-exposure.md) for the full
+endpoint-by-endpoint inventory.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `STELLARROUTE_ENV` | string | *(unset = dev)* | Optional | API | Set to `production` for public deployments. Flips `CORS_ALLOWED_ORIGINS` enforcement and the `REQUIRE_AUTH` default to `true`, and gates `/metrics` + `/api/v1/replay/*` behind `ADMIN_AUTH_TOKEN` |
+| `CORS_ALLOWED_ORIGINS` | string (comma-separated origins) | *(empty)* | **Required** when production/strict CORS | API | Explicit allowlist of browser origins permitted to call the API (e.g. `https://app.example.com`). Startup fails if empty while strict CORS is required |
+| `REQUIRE_STRICT_CORS` | boolean | `false` | Optional | API | Enforce the production CORS allowlist behavior without setting `STELLARROUTE_ENV=production` (e.g. an internet-facing staging environment) |
+| `API_KEYS` | string (comma-separated) | — | Optional | API | Integrator API keys accepted via `x-api-key` or `Authorization: Bearer <key>` |
+| `REQUIRE_AUTH` | boolean | `false` dev/test, `true` production | Optional | API | When `true`, reject requests without a valid API key. Explicit value always wins over the profile default |
+| `PUBLIC_GET_ROUTES` | string (comma-separated path prefixes) | *(empty)* | Optional | API | Explicit allowlist of routes that stay reachable via unauthenticated `GET` even when `REQUIRE_AUTH=true` (e.g. public quote/orderbook reads for a browser frontend). Never exempts non-GET methods, and never applies to `/api/v1/admin/*` or `/api/v1/system/*` |
+| `ALLOW_INSECURE_PUBLIC_API` | boolean | `false` | Optional | API | Break-glass override acknowledging `STELLARROUTE_ENV=production` with auth disabled. Without it, the API refuses to boot in that configuration; with it, it boots and logs a warning. Never set this in a real production deployment |
+| `ADMIN_AUTH_TOKEN` | string | — | Optional (required to use admin/operator endpoints) | API | Bearer/`x-admin-token` for `/api/v1/admin/*`, `/api/v1/system/*`, and (in production) `/metrics`, `/metrics/cache`, `/metrics/pool`, `/api/v1/replay/*`. Requests are denied when unset, even without a token |
+
+### Integrator API keys vs. browser public GETs
+
+There are two distinct read paths into the API, and they should not be conflated:
+
+- **Integrators** (server-to-server callers) authenticate with an API key from
+  `API_KEYS`, sent as `x-api-key` or `Authorization: Bearer <key>`. This is the
+  expected path when `REQUIRE_AUTH=true`.
+- **Browser-facing public reads** (e.g. the frontend calling `/api/v1/quote`
+  directly from the browser, where there's no key to keep secret) should be
+  exposed via `PUBLIC_GET_ROUTES` — an explicit, reviewed allowlist of GET
+  route prefixes — rather than by turning `REQUIRE_AUTH` off globally. Turning
+  auth off globally also exposes mutating routes that were never meant to be
+  public; `PUBLIC_GET_ROUTES` only ever exempts `GET` requests on the listed
+  prefixes.
+
 ## API server
 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
 | `API_HOST` | string | `127.0.0.1` | Optional | API | Bind address for the HTTP server |
 | `API_PORT` | integer | `3000` | Optional | API | Listen port for the HTTP server |
-| `ADMIN_AUTH_TOKEN` | string | — | Optional | API | Bearer token for protected admin/operator endpoints |
-| `API_KEYS` | string (comma-separated) | — | Optional | API | Valid API keys for authenticated requests |
-| `REQUIRE_AUTH` | boolean | `false` | Optional | API | When `true`, reject requests without a valid API key |
 | `STARTUP_CREDENTIAL_CHECK` | boolean | `false` | Optional | API, Indexer | When `true`, verify dependencies (DB, Redis, Horizon, Soroban) are reachable before serving |
 | `SHUTDOWN_DRAIN_TIMEOUT_S` | integer (seconds) | `30` | Optional | API, Indexer | Graceful shutdown drain window for in-flight work |
 | `RATE_LIMIT_WINDOW_SECS` | integer (seconds) | `60` | Optional | API | Sliding-window length for HTTP rate limiting |
@@ -240,8 +269,9 @@ Postgres is exposed on host port **5432**; Redis on **6379**.
 Variables above were verified against:
 
 - `crates/api/src/bin/stellarroute-api.rs`
+- `crates/api/src/server.rs`, `env_profile.rs`, `routes/mod.rs`
 - `crates/api/src/routes/ws/mod.rs`
-- `crates/api/src/middleware/rate_limit.rs`, `middleware/auth.rs`, `middleware/api_versioning.rs`
+- `crates/api/src/middleware/rate_limit.rs`, `middleware/auth.rs`, `middleware/admin.rs`, `middleware/api_versioning.rs`
 - `crates/api/src/tracing_config.rs`, `shutdown.rs`
 - `crates/api/src/replay/capture.rs`, `purger/config.rs`
 - `crates/api/src/regions/config.rs`, `state.rs`

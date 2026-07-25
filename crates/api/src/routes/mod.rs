@@ -22,23 +22,78 @@ pub mod simulation_route;
 pub mod ws;
 
 use axum::{
+    extract::{Request, State},
+    http::StatusCode,
+    middleware::Next,
+    response::{IntoResponse, Response},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use std::sync::Arc;
 
 use crate::middleware::legacy_route_deprecation;
+use crate::models::{ApiErrorCode, ErrorResponse};
 use crate::state::AppState;
+
+/// Middleware guarding operator-only surfaces (Prometheus metrics, pool/cache
+/// stats, replay artifacts and replay mutations) in production.
+///
+/// Outside of production these stay open for local Prometheus scraping and
+/// demos. When `STELLARROUTE_ENV=production`, the same `ADMIN_AUTH_TOKEN`
+/// used for `/api/v1/admin/*` is required (`x-admin-token` header, or
+/// `Authorization: Bearer <token>`). See
+/// `docs/api/production-exposure.md` for the full endpoint inventory.
+async fn production_admin_guard(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if !crate::env_profile::is_production() {
+        return next.run(request).await;
+    }
+
+    let unauthorized = |message: &str| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse::new(ApiErrorCode::Unauthorized, message)),
+        )
+            .into_response()
+    };
+
+    let Some(expected_token) = state.admin_auth_token.as_ref() else {
+        return unauthorized("Admin auth is not configured");
+    };
+
+    match crate::middleware::admin::extract_admin_token(request.headers()) {
+        Some(token) if token == *expected_token => next.run(request).await,
+        _ => unauthorized("Missing or invalid admin credentials"),
+    }
+}
 
 /// Create the main API router
 pub fn create_router(state: Arc<AppState>) -> Router {
+    // Operator-only surfaces: publicly reachable in dev/test for local
+    // Prometheus scraping and demos, but gated behind admin auth in
+    // production. See `production_admin_guard` and
+    // `docs/api/production-exposure.md`.
+    let operator_routes = Router::new()
+        .route("/metrics/cache", get(metrics::cache_metrics))
+        .route("/metrics/pool", get(metrics::pool_stats))
+        .route("/metrics", get(prometheus::prometheus_metrics))
+        .route("/api/v1/replay", get(replay::list_artifacts))
+        .route("/api/v1/replay/:id", get(replay::get_artifact))
+        .route("/api/v1/replay/:id/run", post(replay::run_replay))
+        .route("/api/v1/replay/:id/diff", post(replay::diff_replay))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            production_admin_guard,
+        ));
+
     Router::new()
         // Health check
         .route("/health", get(health::health_check))
         .route("/health/deps", get(health::dependency_health))
-        .route("/metrics/cache", get(metrics::cache_metrics))
-        .route("/metrics/pool", get(metrics::pool_stats))
-        .route("/metrics", get(prometheus::prometheus_metrics))
+        .merge(operator_routes)
         // API v1 routes
         .route("/api/v1/assets", get(assets::list_assets_metadata))
         .route("/api/v1/assets/:code", get(assets::get_asset_metadata))
@@ -71,11 +126,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/integrator/webhooks/quote-expiration",
             post(integrator_webhooks::upsert_quote_expiration_webhook),
         )
-        // Replay routes
-        .route("/api/v1/replay", get(replay::list_artifacts))
-        .route("/api/v1/replay/:id", get(replay::get_artifact))
-        .route("/api/v1/replay/:id/run", post(replay::run_replay))
-        .route("/api/v1/replay/:id/diff", post(replay::diff_replay))
+        // Replay routes are registered above via `operator_routes`.
         .route(
             "/api/v1/routes/:base/:quote",
             get(routes_endpoint::get_routes),

@@ -1,6 +1,9 @@
 //! API server setup and configuration
 
-use axum::{http::Request, Router};
+use axum::{
+    http::{HeaderValue, Request},
+    Router,
+};
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::{
     compression::CompressionLayer,
@@ -67,6 +70,75 @@ impl Default for ServerConfig {
             admin_auth_token: std::env::var("ADMIN_AUTH_TOKEN").ok(),
             quote_cache_ttl_seconds: 2,
         }
+    }
+}
+
+/// Parse `CORS_ALLOWED_ORIGINS` as a CSV allowlist of exact origin values
+/// (e.g. `https://app.example.com,https://staging.example.com`).
+pub fn cors_allowed_origins_from_env() -> Vec<String> {
+    std::env::var("CORS_ALLOWED_ORIGINS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Validate the CORS configuration at startup.
+///
+/// When a strict CORS policy is required (production, or
+/// `REQUIRE_STRICT_CORS=1`), `CORS_ALLOWED_ORIGINS` must resolve to a
+/// non-empty allowlist of valid origin values. Returns `Err` describing the
+/// problem so the caller can refuse to boot.
+pub fn validate_cors_config() -> std::result::Result<(), String> {
+    if !crate::env_profile::require_strict_cors() {
+        return Ok(());
+    }
+
+    let origins = cors_allowed_origins_from_env();
+    if origins.is_empty() {
+        return Err(
+            "CORS_ALLOWED_ORIGINS must be set to a non-empty comma-separated allowlist of \
+             origins when STELLARROUTE_ENV=production (or REQUIRE_STRICT_CORS=1). Wildcard \
+             CORS is not permitted in production."
+                .to_string(),
+        );
+    }
+
+    let invalid: Vec<&String> = origins
+        .iter()
+        .filter(|o| o.parse::<HeaderValue>().is_err())
+        .collect();
+    if !invalid.is_empty() {
+        return Err(format!(
+            "CORS_ALLOWED_ORIGINS contains invalid origin value(s): {:?}",
+            invalid
+        ));
+    }
+
+    Ok(())
+}
+
+/// Build the CORS layer for the API.
+///
+/// In production (or when `REQUIRE_STRICT_CORS=1`), origins are restricted to
+/// the explicit `CORS_ALLOWED_ORIGINS` allowlist. Outside of production,
+/// CORS remains permissive (`Any`) to preserve local developer experience.
+fn build_cors_layer() -> CorsLayer {
+    if crate::env_profile::require_strict_cors() {
+        let origins: Vec<HeaderValue> = cors_allowed_origins_from_env()
+            .iter()
+            .filter_map(|o| o.parse::<HeaderValue>().ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
     }
 }
 
@@ -192,11 +264,7 @@ impl Server {
 
         // Add CORS if enabled
         if config.enable_cors {
-            let cors = CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any);
-            app = app.layer(cors);
+            app = app.layer(build_cors_layer());
         }
 
         // Add rate limiting (innermost — runs before CORS/compression in the response path)
@@ -303,6 +371,31 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::DatabasePools;
+    use axum::{
+        body::Body,
+        http::{Method, Request as HttpRequest},
+    };
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Mutex;
+    use tower::ServiceExt;
+
+    // CORS behavior is driven by process-global env vars; serialize access
+    // across tests in this module so they don't race each other.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset_cors_env() {
+        std::env::remove_var("STELLARROUTE_ENV");
+        std::env::remove_var("REQUIRE_STRICT_CORS");
+        std::env::remove_var("CORS_ALLOWED_ORIGINS");
+    }
+
+    fn lazy_db_pools() -> DatabasePools {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .expect("failed to create lazy pool");
+        DatabasePools::new(pool, None)
+    }
 
     #[test]
     fn test_server_config_default() {
@@ -310,5 +403,109 @@ mod tests {
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 3000);
         assert!(config.enable_cors);
+    }
+
+    #[test]
+    fn cors_validate_fails_in_production_without_allowlist() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+
+        let result = validate_cors_config();
+
+        reset_cors_env();
+        assert!(result.is_err(), "expected production without an allowlist to fail startup validation");
+    }
+
+    #[test]
+    fn cors_validate_passes_in_production_with_allowlist() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let result = validate_cors_config();
+
+        reset_cors_env();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn cors_validate_passes_outside_production_without_allowlist() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+
+        let result = validate_cors_config();
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn cors_allows_allowlisted_origin_preflight_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let server = Server::new(ServerConfig::default(), lazy_db_pools()).await;
+        let router = server.router();
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/health")
+                    .header("origin", "https://app.example.com")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        reset_cors_env();
+
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("https://app.example.com"),
+            "allowlisted origin must be echoed back on preflight"
+        );
+    }
+
+    #[tokio::test]
+    async fn cors_denies_disallowed_origin_preflight_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let server = Server::new(ServerConfig::default(), lazy_db_pools()).await;
+        let router = server.router();
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/health")
+                    .header("origin", "https://evil.example.com")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        reset_cors_env();
+
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none(),
+            "disallowed origin must not receive an Access-Control-Allow-Origin header"
+        );
     }
 }

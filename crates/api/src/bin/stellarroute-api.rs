@@ -3,7 +3,20 @@
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use stellarroute_api::{state::DatabasePools, telemetry, PurgerConfig, Server, ServerConfig};
-use tracing::{error, info};
+use tracing::{error, info, warn};
+
+/// Check the production auth posture and either warn (break-glass override)
+/// or refuse to boot. See `middleware::auth::validate_auth_startup`.
+fn validate_auth_config() -> Result<(), String> {
+    match stellarroute_api::middleware::validate_auth_startup() {
+        Ok(Some(warning)) => {
+            warn!("{}", warning);
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(message) => Err(message),
+    }
+}
 
 fn parse_bool_env(name: &str) -> bool {
     std::env::var(name)
@@ -109,6 +122,16 @@ async fn main() {
     info!("Starting StellarRoute API Server");
 
     if let Err(message) = validate_required_env() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = stellarroute_api::server::validate_cors_config() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = validate_auth_config() {
         error!("{}", message);
         std::process::exit(1);
     }

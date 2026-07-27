@@ -15,11 +15,13 @@ use tracing::info;
     tag = "admin",
     responses(
         (status = 200, description = "Current kill switch state", body = KillSwitchState),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
     )
 )]
 pub async fn get_kill_switch(
     State(state): State<Arc<AppState>>,
+    _admin: AdminAuth,
     _headers: HeaderMap,
     _request_id: RequestId,
 ) -> Result<Json<KillSwitchState>> {

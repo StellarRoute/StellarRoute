@@ -55,6 +55,7 @@ async fn kill_switch_get_returns_state_shape() {
         .oneshot(
             Request::builder()
                 .uri(KILL_SWITCH_PATH)
+                .header("x-admin-token", ADMIN_TOKEN)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -71,6 +72,23 @@ async fn kill_switch_get_returns_state_shape() {
     // Fields documented in the OpenAPI `KillSwitchState` schema.
     assert!(json["sources"].is_object());
     assert!(json["venues"].is_object());
+}
+
+#[tokio::test]
+async fn kill_switch_get_without_admin_token_returns_401() {
+    let router = setup_test_router().await;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri(KILL_SWITCH_PATH)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -106,6 +124,7 @@ async fn kill_switch_post_updates_in_memory_state() {
         .oneshot(
             Request::builder()
                 .uri(KILL_SWITCH_PATH)
+                .header("x-admin-token", ADMIN_TOKEN)
                 .body(Body::empty())
                 .unwrap(),
         )

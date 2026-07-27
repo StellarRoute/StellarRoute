@@ -2,6 +2,19 @@
 
 This runbook describes how to use the API-level kill switches to disable unstable or problematic routing sources and venues without redeploying the application.
 
+## Authentication
+
+All kill switch endpoints require the `ADMIN_AUTH_TOKEN` secret. Pass it via the
+`x-admin-token` header (or as a `Bearer` token in `Authorization`).
+
+In every `curl` example below, set the token first:
+
+```bash
+ADMIN_TOKEN="<your-ADMIN_AUTH_TOKEN>"
+```
+
+See `docs/key_rotation.md` for how to rotate the token without downtime.
+
 ## Overview
 
 The kill switch allows operational control over which liquidity sources (SDEX, AMM) and specific venues (individual AMM pools or SDEX pairs) are used by the routing engine. Changes take effect within 5 seconds across all API instances via Redis synchronization.
@@ -45,9 +58,13 @@ Requests without a valid token receive `401 Unauthorized`.
 
 **Endpoint:** `GET /api/v1/admin/kill-switch`
 
-**Example Request (dev/test, no token needed):**
+Requires admin authentication. Returns the current set of forced-exclude
+overrides for sources and venues.
+
+**Example Request:**
 ```bash
-curl http://localhost:8080/api/v1/admin/kill-switch
+curl -H "x-admin-token: $ADMIN_TOKEN" \
+  http://localhost:8080/api/v1/admin/kill-switch
 ```
 
 **Example Request (production — token required):**
@@ -75,6 +92,7 @@ curl http://localhost:8080/api/v1/admin/kill-switch \
 **To disable all AMMs:**
 ```bash
 curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
+  -H "x-admin-token: $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
@@ -88,6 +106,7 @@ curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
 **To disable a specific venue:**
 ```bash
 curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
+  -H "x-admin-token: $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
@@ -100,10 +119,11 @@ curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
 
 ### 3. Re-enable a Source or Venue
 
-Send a `POST` request with an empty state or with the specific entry removed/set to `force_include` (though removing it is usually sufficient to return to default behavior).
+Send a `POST` request with an empty state or with the specific entry removed.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
+  -H "x-admin-token: $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
@@ -111,6 +131,17 @@ curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
     "venues": {}
   }'
 ```
+
+## Key Rotation During an Incident
+
+If you suspect the admin token has been compromised:
+
+1. Generate a new token: `openssl rand -hex 32`
+2. Set the new value in all instances' `ADMIN_AUTH_TOKEN` environment variable
+   (follow `docs/key_rotation.md` for zero-downtime rotation).
+3. Verify old token is rejected: send a request with the old token and confirm
+   you receive `401 Unauthorized`.
+4. Re-issue any in-flight kill switch commands with the new token.
 
 ## Monitoring & Observability
 
@@ -122,6 +153,7 @@ curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
 
 ## Troubleshooting
 
+- **401 Unauthorized:** Check that `ADMIN_AUTH_TOKEN` is set on the API instance and that you are using the correct value in `x-admin-token`.
 - **State not syncing:** Ensure Redis is reachable and all API instances have a connection to the same Redis cluster.
 - **Immediate effect not seen:** Propagation delay is up to 5 seconds. If longer, check API instance connectivity.
 - **`401 Unauthorized`:** Confirm `x-admin-token` (or `Authorization: Bearer`) matches the server's `ADMIN_AUTH_TOKEN` exactly. In production this now applies to `GET` as well as `POST`.

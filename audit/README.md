@@ -10,6 +10,9 @@ This directory contains all materials required for an external security audit of
 | [scope.md](scope.md) | Files and functions in scope for audit |
 | [assumptions.md](assumptions.md) | Security assumptions and trust boundaries |
 | [known-issues.md](known-issues.md) | Known limitations and accepted risks |
+| [threat-model.md](threat-model.md) | Quote manipulation, sandwich, and DoS threat scenarios with mitigations |
+| [dependency-exceptions.md](dependency-exceptions.md) | Accepted dependency CVE exceptions and review process |
+| [bug-bounty-scope.md](bug-bounty-scope.md) | Bug bounty scope draft: in/out of bounds, reward tiers, safe harbor |
 
 ## Quick Start for Auditors
 

@@ -8,17 +8,36 @@ pub enum HorizonMode {
     Sse,
 }
 
+/// Parse a comma-separated list of URLs from an env var, returning a `Vec<String>`.
+/// Trims whitespace and drops empty entries.
+pub fn parse_url_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[derive(Clone, Deserialize)]
 pub struct IndexerConfig {
-    /// Horizon base URL, e.g. `https://horizon.stellar.org` or `https://horizon-testnet.stellar.org`
+    /// Primary Horizon base URL.
     pub stellar_horizon_url: String,
+
+    /// Ordered failover Horizon URLs tried when the primary is unreachable.
+    /// Env: `STELLAR_HORIZON_FALLBACK_URLS` — comma-separated list.
+    #[serde(default)]
+    pub stellar_horizon_fallback_urls: String,
 
     /// Ingestion mode for SDEX offers
     #[serde(default)]
     pub horizon_mode: HorizonMode,
 
-    /// Soroban RPC base URL
+    /// Primary Soroban RPC base URL.
     pub soroban_rpc_url: String,
+
+    /// Ordered failover Soroban RPC URLs tried when the primary is unreachable.
+    /// Env: `SOROBAN_RPC_FALLBACK_URLS` — comma-separated list.
+    #[serde(default)]
+    pub soroban_rpc_fallback_urls: String,
 
     /// Router contract address for AMM pool discovery
     pub router_contract_address: String,
@@ -100,8 +119,13 @@ impl std::fmt::Debug for IndexerConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IndexerConfig")
             .field("stellar_horizon_url", &self.stellar_horizon_url)
+            .field(
+                "stellar_horizon_fallback_urls",
+                &self.stellar_horizon_fallback_urls,
+            )
             .field("horizon_mode", &self.horizon_mode)
             .field("soroban_rpc_url", &self.soroban_rpc_url)
+            .field("soroban_rpc_fallback_urls", &self.soroban_rpc_fallback_urls)
             .field("router_contract_address", &self.router_contract_address)
             .field("database_url", &"[REDACTED]")
             .field("poll_interval_secs", &self.poll_interval_secs)
@@ -187,6 +211,23 @@ fn default_hot_pair_window_secs() -> u64 {
 }
 
 impl IndexerConfig {
+    /// Returns all Horizon URLs to try in priority order: primary first, then fallbacks.
+    pub fn horizon_urls(&self) -> Vec<String> {
+        let mut urls = vec![self
+            .stellar_horizon_url
+            .trim_end_matches('/')
+            .to_string()];
+        urls.extend(parse_url_list(&self.stellar_horizon_fallback_urls));
+        urls
+    }
+
+    /// Returns all Soroban RPC URLs to try in priority order: primary first, then fallbacks.
+    pub fn soroban_rpc_urls(&self) -> Vec<String> {
+        let mut urls = vec![self.soroban_rpc_url.trim_end_matches('/').to_string()];
+        urls.extend(parse_url_list(&self.soroban_rpc_fallback_urls));
+        urls
+    }
+
     pub fn load() -> std::result::Result<Self, config::ConfigError> {
         let cfg = config::Config::builder()
             .add_source(config::Environment::default())

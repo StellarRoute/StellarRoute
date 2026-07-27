@@ -99,6 +99,33 @@ Rollback sequence:
 4. Keep the last known-good schema migration file and deployment artifact together.
 ## Testnet Deployment (From Clean Machine)
 
+### 0. Exact command order
+
+This is the canonical sequence for a clean testnet deployment:
+
+```bash
+# 1. Deploy router contract (writes config/deployment-testnet.json)
+./scripts/deploy.sh --network testnet
+
+# 2. Set ROUTER_CONTRACT_ADDRESS in your environment
+export ROUTER_CONTRACT_ADDRESS=$(jq -r '.contract_id' config/deployment-testnet.json)
+
+# 3. Register pools from config/pools-testnet.json (idempotent — safe to re-run)
+./scripts/register-pools.sh --network testnet
+
+# 4. Verify all configured pools are registered (CI gate — exits non-zero on failure)
+./scripts/verify-pools.sh --network testnet
+
+# 5. Start the indexer (reads ROUTER_CONTRACT_ADDRESS from env or .env file)
+cargo run -p stellarroute-indexer
+# or in Docker:
+# docker compose -f docker-compose.yml -f docker-compose.app.yml --profile indexer up -d
+```
+
+Re-running step 3 at any time is safe: pools that are already registered are
+skipped automatically (idempotent).  Step 4 will fail CI if any configured
+non-placeholder pool is missing from the live router state.
+
 ### 1. Setup
 ```bash
 # Clone and enter the repository
@@ -225,19 +252,39 @@ Any entry whose `address` starts with `PLACEHOLDER` is automatically skipped by 
 
 The script reads `config/pools-testnet.json`, skips placeholder entries, and calls the router contract's `register_pool` function for each real address.
 
-**Expected log output (successful run):**
+**The script is idempotent**: pools that are already registered are detected via `is_pool_registered` before each call and skipped without error. Re-running the script after a partial failure or a re-deploy is always safe.
+
+**Expected log output (successful first run):**
 
 ```
 [INFO]  Registering 2 pools on testnet (contract: C...ROUTER...)
-[INFO]  [1/2] Registering: XLM/USDC Testnet Pool (CBIELTK6...)
-[OK]    Verified: XLM/USDC Testnet Pool is registered
-[INFO]  [2/2] Registering: XLM/BTC Testnet Pool (CBEZJWFM...)
-[OK]    Verified: XLM/BTC Testnet Pool is registered
+[INFO]  [1/2] Checking: XLM/USDC Testnet Pool (CBIELTK6...)
+[OK]    Registered and verified: XLM/USDC Testnet Pool
+[INFO]  [2/2] Checking: XLM/BTC Testnet Pool (CBEZJWFM...)
+[OK]    Registered and verified: XLM/BTC Testnet Pool
 
 [OK]    ===== POOL REGISTRATION COMPLETE =====
-[OK]    Registered: 2
-[OK]    Failed:     0
-[OK]    Total on-chain pool count: 2
+[OK]    Registered (new):     2
+[OK]    Already registered:   0
+[OK]    Skipped (placeholder):0
+[OK]    Failed:               0
+[OK]    Total on-chain pools: 2
+```
+
+**Expected log output (re-run — idempotent):**
+
+```
+[INFO]  [1/2] Checking: XLM/USDC Testnet Pool (CBIELTK6...)
+[OK]    Already registered (no-op): XLM/USDC Testnet Pool
+[INFO]  [2/2] Checking: XLM/BTC Testnet Pool (CBEZJWFM...)
+[OK]    Already registered (no-op): XLM/BTC Testnet Pool
+
+[OK]    ===== POOL REGISTRATION COMPLETE =====
+[OK]    Registered (new):     0
+[OK]    Already registered:   2
+[OK]    Skipped (placeholder):0
+[OK]    Failed:               0
+[OK]    Total on-chain pools: 2
 ```
 
 **Expected log output (placeholder entries present):**
@@ -247,10 +294,25 @@ The script reads `config/pools-testnet.json`, skips placeholder entries, and cal
 [WARN]  Skipping placeholder pool: XLM/BTC Testnet Pool
 
 [OK]    ===== POOL REGISTRATION COMPLETE =====
-[OK]    Registered: 0
-[OK]    Failed:     0
-[OK]    Total on-chain pool count: 0
+[OK]    Registered (new):     0
+[OK]    Already registered:   0
+[OK]    Skipped (placeholder):2
+[OK]    Failed:               0
 ```
+
+The script also writes a machine-readable JSON summary to
+`logs/<network>-register-summary.json`.
+
+#### Step 4 — Verify pools (CI gate)
+
+```bash
+./scripts/verify-pools.sh --network testnet
+```
+
+This script queries `is_pool_registered` for every non-placeholder pool and
+exits non-zero if any pool is missing from the live router.  Use it as a CI/CD
+gate after `register-pools.sh`.  Output is also written as JSON to
+`logs/<network>-verify-pools-summary.json`.
 
 If `Registered: 0` is shown for a non-placeholder run, verify the router contract is deployed (`./scripts/deploy.sh` must have run first) and that `config/deployment-testnet.json` exists with a valid contract ID.
 

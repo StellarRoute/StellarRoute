@@ -1,6 +1,6 @@
-export type SupportedWallet = "freighter" | "xbull";
+export type SupportedWallet = 'freighter' | 'xbull' | 'albedo';
 
-export type WalletNetwork = "testnet" | "mainnet" | "futurenet" | string;
+export type WalletNetwork = 'testnet' | 'mainnet' | 'futurenet' | string;
 
 export type WalletSession = {
   walletId: SupportedWallet | null;
@@ -27,10 +27,10 @@ export type AccountSwitchState = {
 };
 
 export type Capability =
-  | "sign_transaction"
-  | "view_address"
-  | "view_network"
-  | "request_access";
+  | 'sign_transaction'
+  | 'view_address'
+  | 'view_network'
+  | 'request_access';
 
 export type CapabilityStatus = {
   capability: Capability;

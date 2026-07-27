@@ -4,7 +4,7 @@ This guide explains how StellarRoute's frontend integrates Stellar wallets, incl
 
 ## Supported wallets
 
-StellarRoute currently recognizes two browser wallet extensions:
+StellarRoute currently recognizes three browser wallets/signers:
 
 - **Freighter**
   - Detected via `@stellar/freighter-api`.
@@ -15,7 +15,12 @@ StellarRoute currently recognizes two browser wallet extensions:
 - **xBull**
   - Detected by checking `window.xbull` in the browser.
   - Connects via `window.xbull.connect()` and returns `publicKey`.
-  - Current implementation only supports connection. Transaction signing for xBull is not implemented today.
+  - Supports signing via `window.xbull.sign({ xdr, network, publicKey })`.
+
+- **Albedo**
+  - Detected as a browser-hosted intent wallet; uses `window.albedo` if injected and otherwise loads the Albedo intent UMD client on demand.
+  - Connects via the Albedo `public_key` intent and reads `pubkey`/`publicKey`.
+  - Supports signing via the Albedo `tx` intent and reads `signed_envelope_xdr`/`signedXdr`/`xdr`.
 
 ## Detection logic
 
@@ -24,6 +29,7 @@ Wallet availability is managed in `frontend/lib/wallet/index.ts`.
 - `getAvailableWallets()` returns an array of supported wallet objects.
 - Freighter is reported installed if `isAllowed()` returns `true`.
 - xBull is reported installed when a global `window.xbull` object exists.
+- Albedo is reported available in browser environments because it can open the hosted intent flow without requiring an extension.
 
 This list powers UI state in `frontend/components/shared/wallet-button.tsx` and the `WalletProvider`.
 
@@ -107,7 +113,8 @@ The default hook behavior uses stubs:
 Real wallet signing is handled by `frontend/lib/wallet/signTransactionWithWallet()`.
 
 - Freighter: supported via `@stellar/freighter-api` and returns a signed XDR.
-- xBull: currently not implemented for signing.
+- xBull: supported through `window.xbull.sign()`.
+- Albedo: supported through the hosted `tx` intent.
 
 A new adapter should implement signing in `signTransactionWithWallet()` and wire it into swap flows.
 
@@ -141,7 +148,7 @@ If these differ, UI components such as network mismatch banners can warn the use
 ### Wallet network handling
 
 - Freighter reports the wallet network via `getNetworkDetails()`.
-- xBull currently returns a hardcoded `testnet` network in this implementation.
+- xBull and Albedo currently use the app network fallback for session state; capability checks only allow Albedo on testnet/public and xBull on testnet.
 
 ### Local development configuration
 
@@ -154,13 +161,14 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 
 The wallet adapter itself does not use this env var, but backend/network alignment is still required for valid swaps.
 
-## Testing locally with Freighter and xBull
+## Testing locally with Freighter, xBull, and Albedo
 
 ### Recommended setup
 
 1. Install the browser extension:
    - Freighter: https://www.freighter.app/
    - xBull: https://wallet.xbull.app/
+   - Albedo: https://albedo.link/
 2. Open the app at `http://localhost:3000`.
 3. Unlock the wallet extension and grant site access.
 4. Connect using the wallet button in the UI.
@@ -170,6 +178,7 @@ The wallet adapter itself does not use this env var, but backend/network alignme
 - If no wallet is detected, the UI shows `No supported wallet found`.
 - Freighter requires site access and may prompt for permission approval.
 - xBull must expose `window.xbull` before it appears as available.
+- Albedo may open a popup/hosted intent window for account selection and signing.
 
 ### Debugging
 
@@ -218,8 +227,8 @@ To add a new wallet:
 
 ## Known limitations and UX expectations
 
-- **xBull signing is not implemented** in the current adapter. xBull can connect, but swap submission may not be functional until signing is wired in.
-- **Freighter is the only wallet with full signing support** today.
+- **xBull and Albedo signing are implemented** in the current adapters; swap submission still depends on the shared Horizon submission path.
+- **Freighter, xBull, and Albedo have signing support** today.
 - **Network mismatch** is detected and surfaced, but the app currently defaults to `testnet`.
 - **Wallet state is stored in localStorage**, so stale sessions can persist across tabs or reloads.
 - **Pending transactions lock wallet switching** to prevent mid-flight state changes.

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { signTransaction } from '@stellar/freighter-api';
 import {
   checkWalletCapabilities,
   connectWallet,
@@ -62,6 +63,32 @@ describe('connectWallet - Albedo', () => {
 
     expect(session.address).toBe(MOCK_PUBLIC_KEY);
     expect(mockPublicKey).toHaveBeenCalledOnce();
+  });
+});
+
+describe('signTransactionWithWallet - passphrases', () => {
+  beforeEach(() => {
+    vi.mocked(signTransaction).mockReset();
+    vi.mocked(signTransaction).mockResolvedValue({
+      signedTxXdr: 'signed_xdr',
+      signerAddress: MOCK_PUBLIC_KEY,
+    });
+  });
+
+  it('passes canonical testnet passphrase to Freighter', async () => {
+    await signTransactionWithWallet(MOCK_XDR, 'freighter', TEST_PASSPHRASE);
+
+    expect(signTransaction).toHaveBeenCalledWith(MOCK_XDR, {
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    });
+  });
+
+  it('passes canonical public passphrase to Freighter', async () => {
+    await signTransactionWithWallet(MOCK_XDR, 'freighter', PUBLIC_PASSPHRASE);
+
+    expect(signTransaction).toHaveBeenCalledWith(MOCK_XDR, {
+      networkPassphrase: 'Public Global Stellar Network ; September 2015',
+    });
   });
 });
 

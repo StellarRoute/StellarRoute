@@ -23,8 +23,8 @@ This document maps every wallet-related code path to its current status — **st
 | **Capability check**           | `refreshCapabilities()` / `checkWalletCapabilities()`                               | ⚠️ Mock             | `refreshCapabilities` in the provider sets `{ statuses: [] }` — wire to `checkWalletCapabilities` from `lib/wallet/index.ts` for Phase B                                        |
 | **Account switch detection**   | `accountSwitchState` in `WalletProvider`                                            | ✅ Production ready | Detects address change after `refreshAccount()`                                                                                                                                 |
 | **Sync mismatch / resync**     | `syncMismatch` + `resyncWallet()` in `WalletProvider`                               | ✅ Production ready | Calls `refreshAccount()` and clears the mismatch flag                                                                                                                           |
-| **Transaction lifecycle**      | `useTransactionLifecycle` hook                                                      | ⚠️ Partial          | Signs via `signTransactionWithWallet` but submit path (`submit.ts`) does not broadcast to Horizon yet — see Phase B checklist                                                   |
-| **Transaction broadcast**      | `lib/wallet/submit.ts`                                                              | 🔴 Stub             | `submitTransaction` is scaffolded but does not POST to Horizon. Phase B task.                                                                                                   |
+| **Transaction lifecycle**      | `useTransactionLifecycle` hook                                                      | ✅ Production ready | Prepares unsigned swap transactions, signs via `signTransactionWithWallet`, and broadcasts signed XDR through `submit.ts`                                                       |
+| **Transaction broadcast**      | `lib/wallet/submit.ts`                                                              | ✅ Production ready | POSTs signed XDR to network-aware Horizon `/transactions` and maps key Horizon failures to typed trader-facing errors.                                                          |
 
 ---
 
@@ -32,18 +32,16 @@ This document maps every wallet-related code path to its current status — **st
 
 ### 🔴 Stubs (must be replaced before mainnet)
 
-| Symbol                          | File                                       | What it does                 | Replace with                                                                   |
-| ------------------------------- | ------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------------ |
-| `signTransactionStub`           | `lib/wallet/index.ts`                      | Echoes XDR back, `ok: false` | Remove production call sites; always use `signTransactionWithWallet`           |
-| `submitTransaction` (stub body) | `lib/wallet/submit.ts`                     | Not yet posting to Horizon   | POST XDR to `https://horizon.stellar.org/transactions` (or testnet equivalent) |
-| `refreshCapabilities` mock      | `components/providers/wallet-provider.tsx` | Sets empty `statuses: []`    | Call `checkWalletCapabilities(walletId, network)` from `lib/wallet/index.ts`   |
+| Symbol                     | File                                       | What it does                 | Replace with                                                                 |
+| -------------------------- | ------------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------- |
+| `signTransactionStub`      | `lib/wallet/index.ts`                      | Echoes XDR back, `ok: false` | Remove production call sites; always use `signTransactionWithWallet`         |
+| `refreshCapabilities` mock | `components/providers/wallet-provider.tsx` | Sets empty `statuses: []`    | Call `checkWalletCapabilities(walletId, network)` from `lib/wallet/index.ts` |
 
 ### ⚠️ Partial implementations
 
-| Path                              | Gap                                                               | Action needed                                                                                               |
-| --------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| xBull/Albedo network detection    | Uses app network fallback instead of passive wallet network reads | Implement wallet-specific network APIs if exposed; keep capability checks constrained to supported networks |
-| Transaction lifecycle submit step | `useTransactionLifecycle` calls sign but not broadcast            | Wire the signed XDR into `submitTransaction` once it POSTs to Horizon                                       |
+| Path                           | Gap                                                               | Action needed                                                                                               |
+| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| xBull/Albedo network detection | Uses app network fallback instead of passive wallet network reads | Implement wallet-specific network APIs if exposed; keep capability checks constrained to supported networks |
 
 ---
 
@@ -52,11 +50,11 @@ This document maps every wallet-related code path to its current status — **st
 Before enabling real on-chain swaps (Phase B):
 
 - [x] **Replace `stubSpendableBalance`** — `useWalletBalance` fetches live balance from Horizon `accounts/{address}`; native MAX subtracts fee reserve (future: `buying_liabilities` / `selling_liabilities` for trustline holds)
-- [ ] **Implement `submitTransaction`** in `lib/wallet/submit.ts` — POST signed XDR to Horizon `/transactions`; handle `400 tx_bad_auth`, `400 op_underfunded`, and network timeouts
+- [x] **Implement `submitTransaction`** in `lib/wallet/submit.ts` — POST signed XDR to Horizon `/transactions`; handle `400 tx_bad_auth`, `400 op_underfunded`, and network timeouts
 - [ ] **Wire `refreshCapabilities`** in `WalletProvider` — replace mock with `checkWalletCapabilities(walletId, network)` so `WalletCapabilitiesBanner` reflects real status
 - [ ] **Fix xBull/Albedo passive network detection** — replace app network fallback with real wallet API calls if available so `networkMismatch` works independently of app settings
 - [ ] **Remove all `signTransactionWithWallet` call sites** — search for `signTransactionWithWallet` and ensure only `signTransactionWithWallet` is used in non-test code
-- [ ] **Validate network passphrase mapping** — ensure `networkPassphrase` passed to `signTransaction` matches Stellar's canonical values (`Test SDF Network ; September 2015` / `Public Global Stellar Network ; September 2015`)
+- [x] **Validate network passphrase mapping** — ensure `networkPassphrase` passed to `signTransaction` matches Stellar's canonical values (`Test SDF Network ; September 2015` / `Public Global Stellar Network ; September 2015`)
 - [ ] **Test Freighter + xBull on testnet end-to-end** — confirm sign → broadcast → Horizon confirmation flow with real wallets
 - [ ] **Add Horizon error taxonomy to `lib/api/trader-error-copy.ts`** — map `tx_bad_seq`, `op_no_trust`, `op_line_full`, etc. to user-facing messages
 

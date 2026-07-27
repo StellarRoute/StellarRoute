@@ -54,6 +54,19 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 
 ## Stellar / Horizon
 
+> **Mixed networks are unsupported.** `STELLAR_HORIZON_URL` and `SOROBAN_RPC_URL`
+> must resolve to the same Stellar network. Pairing (for example) mainnet Horizon
+> with testnet Soroban RPC makes the indexer write SDEX offers from one ledger and
+> AMM pools from another into the same tables — quotes then price against liquidity
+> that does not exist, and nothing in the pipeline errors. `.env.example` ships one
+> coherent block per network; copy a whole block rather than editing single URLs.
+> Canonical per-network URLs live in [`config/networks.json`](../../config/networks.json).
+
+| Network | `STELLAR_HORIZON_URL` | `SOROBAN_RPC_URL` | Network passphrase |
+|---------|-----------------------|-------------------|--------------------|
+| Testnet | `https://horizon-testnet.stellar.org` | `https://soroban-testnet.stellar.org:443` | `Test SDF Network ; September 2015` |
+| Mainnet | `https://horizon.stellar.org` | `https://soroban-rpc.mainnet.stellar.org:443` | `Public Global Stellar Network ; September 2015` |
+
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
 | `STELLAR_HORIZON_URL` | string (URL) | — | **Required** (indexer); optional (API health/lag) | Indexer, API | Stellar Horizon API base URL (e.g. `https://horizon.stellar.org` or `https://horizon-testnet.stellar.org`) |
@@ -71,6 +84,9 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 | `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
 | `SOROBAN_RPC_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Soroban RPC URLs tried if the primary is unreachable. Example: `https://soroban-rpc.stellar.org`. The first reachable URL wins. |
 | `ROUTER_CONTRACT_ADDRESS` | string (Stellar address) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery |
+| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `ROUTER_CONTRACT_ADDRESS` | string (Soroban contract ID) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery. Validated at indexer startup: must be a 56-character contract ID starting with `C`. Missing, empty, or malformed values abort startup with a non-zero exit before any SDEX/AMM loop runs. Read it from the committed deploy artifact: `jq -r .router_contract_id config/deployments/testnet.json` |
+| `ALLOW_EMPTY_ROUTER` | boolean | `false` | Optional (**dev only**) | Indexer | Escape hatch that lets the indexer boot with an unset/empty `ROUTER_CONTRACT_ADDRESS` (SDEX-only, no AMM discovery). Refused when `STELLARROUTE_ENV=production` — startup fails instead. Never set this in a deployed environment |
 | `AMM_POOLS` | string (comma-separated) | — | Optional | Indexer | Additional AMM pool addresses to index, appended to DB-discovered pools |
 
 ---

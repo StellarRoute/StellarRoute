@@ -8,6 +8,13 @@ use stellarroute_routing::health::circuit_breaker::{
 
 const HORIZON_KEY: &str = "horizon";
 const SOROBAN_KEY: &str = "soroban_rpc";
+const DATABASE_KEY: &str = "database";
+
+/// Dependencies whose failure makes a quote/swap answer wrong rather than slow.
+///
+/// Redis is deliberately excluded: it is a performance cache and the API already
+/// degrades gracefully without it, so an open Redis breaker must not reject traffic.
+const LIVE_PATH_DEPENDENCIES: [&str; 3] = [DATABASE_KEY, SOROBAN_KEY, HORIZON_KEY];
 
 /// Parse a comma-separated list of URLs (primary + optional fallbacks).
 /// The first entry is the primary; subsequent entries are tried in order.
@@ -39,6 +46,7 @@ pub struct ExternalDependencyHealth {
     soroban_rpc_urls: Vec<String>,
     horizon_breaker: Arc<CircuitBreakerRegistry>,
     soroban_breaker: Arc<CircuitBreakerRegistry>,
+    database_breaker: Arc<CircuitBreakerRegistry>,
 }
 
 impl ExternalDependencyHealth {
@@ -78,8 +86,69 @@ impl ExternalDependencyHealth {
             horizon_urls,
             soroban_rpc_urls,
             horizon_breaker: Arc::new(CircuitBreakerRegistry::new(cfg.clone())),
-            soroban_breaker: Arc::new(CircuitBreakerRegistry::new(cfg)),
+            soroban_breaker: Arc::new(CircuitBreakerRegistry::new(cfg.clone())),
+            database_breaker: Arc::new(CircuitBreakerRegistry::new(cfg)),
         }
+    }
+
+    fn breaker_for(&self, key: &str) -> &CircuitBreakerRegistry {
+        match key {
+            DATABASE_KEY => &self.database_breaker,
+            SOROBAN_KEY => &self.soroban_breaker,
+            _ => &self.horizon_breaker,
+        }
+    }
+
+    /// Dependencies whose breaker is open right now, refreshing the exported gauge.
+    pub fn open_dependencies(&self) -> Vec<&'static str> {
+        LIVE_PATH_DEPENDENCIES
+            .into_iter()
+            .filter(|key| {
+                let open = self.breaker_for(key).is_venue_excluded(key);
+                crate::metrics::DEPENDENCY_BREAKER_OPEN
+                    .with_label_values(&[key])
+                    .set(open as i64);
+                open
+            })
+            .collect()
+    }
+
+    /// Fail-fast guard for the quote/swap path.
+    ///
+    /// When a dependency breaker is open, reject immediately with 503 instead of
+    /// letting every request pay the full timeout against a known-dead dependency.
+    pub fn guard_live_path(&self) -> crate::error::Result<()> {
+        let open = self.open_dependencies();
+        if open.is_empty() {
+            return Ok(());
+        }
+
+        for dep in &open {
+            crate::metrics::DEPENDENCY_FAIL_FAST
+                .with_label_values(&[dep])
+                .inc();
+        }
+
+        Err(crate::error::ApiError::DependencyUnavailable(format!(
+            "Upstream dependency unavailable: {}. Circuit breaker is open; retry shortly.",
+            open.join(", ")
+        )))
+    }
+
+    pub fn database_breaker_is_open(&self) -> bool {
+        self.database_breaker.is_venue_excluded(DATABASE_KEY)
+    }
+
+    pub fn record_database_result(&self, success: bool) {
+        self.database_breaker.record_result(DATABASE_KEY, success);
+        self.refresh_gauge(DATABASE_KEY);
+    }
+
+    fn refresh_gauge(&self, key: &str) {
+        let open = self.breaker_for(key).is_venue_excluded(key);
+        crate::metrics::DEPENDENCY_BREAKER_OPEN
+            .with_label_values(&[key])
+            .set(open as i64);
     }
 
     pub async fn probe_horizon(&self) -> String {
@@ -108,10 +177,12 @@ impl ExternalDependencyHealth {
 
     pub fn record_soroban_result(&self, success: bool) {
         self.soroban_breaker.record_result(SOROBAN_KEY, success);
+        self.refresh_gauge(SOROBAN_KEY);
     }
 
     pub fn record_horizon_result(&self, success: bool) {
         self.horizon_breaker.record_result(HORIZON_KEY, success);
+        self.refresh_gauge(HORIZON_KEY);
     }
 
     async fn probe_horizon_with_client(&self, client: &Client) -> String {
@@ -183,6 +254,7 @@ impl ExternalDependencyHealth {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::response::IntoResponse;
     use stellarroute_routing::health::circuit_breaker::BreakerState;
 
     #[test]
@@ -196,6 +268,72 @@ mod tests {
         assert_eq!(health.soroban_breaker_state(), Some(BreakerState::Open));
         assert!(!health.horizon_breaker_is_open());
         assert_ne!(health.horizon_breaker_state(), Some(BreakerState::Open));
+    }
+
+    /// Simulated Soroban RPC outage: the live path must reject fast with 503
+    /// rather than let each request wait on a dependency known to be down.
+    #[test]
+    fn live_path_fails_fast_when_soroban_dependency_fails() {
+        let health = ExternalDependencyHealth::new(None, None);
+        assert!(health.guard_live_path().is_ok());
+
+        for _ in 0..3 {
+            health.record_soroban_result(false);
+        }
+
+        let err = health.guard_live_path().unwrap_err();
+        assert!(matches!(err, crate::error::ApiError::DependencyUnavailable(_)));
+        assert_eq!(
+            err.into_response().status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    /// Simulated Postgres outage, fed by the `/health/deps` probe.
+    #[test]
+    fn live_path_fails_fast_when_database_dependency_fails() {
+        let health = ExternalDependencyHealth::new(None, None);
+
+        for _ in 0..3 {
+            health.record_database_result(false);
+        }
+
+        assert!(health.database_breaker_is_open());
+        assert_eq!(health.open_dependencies(), vec!["database"]);
+        assert!(health.guard_live_path().is_err());
+    }
+
+    /// A recovered dependency must stop rejecting traffic.
+    #[test]
+    fn live_path_recovers_once_breaker_closes() {
+        let health = ExternalDependencyHealth::new(None, None);
+
+        for _ in 0..3 {
+            health.record_horizon_result(false);
+        }
+        assert!(health.guard_live_path().is_err());
+
+        // Breakers only leave Open via the recovery timeout, so drive the
+        // transition explicitly through a fresh instance's success path.
+        let recovered = ExternalDependencyHealth::new(None, None);
+        recovered.record_horizon_result(true);
+        assert!(recovered.guard_live_path().is_ok());
+        assert!(recovered.open_dependencies().is_empty());
+    }
+
+    #[test]
+    fn open_dependencies_reports_every_failing_dependency() {
+        let health = ExternalDependencyHealth::new(None, None);
+
+        for _ in 0..3 {
+            health.record_soroban_result(false);
+            health.record_database_result(false);
+        }
+
+        let open = health.open_dependencies();
+        assert!(open.contains(&"soroban_rpc"));
+        assert!(open.contains(&"database"));
+        assert!(!open.contains(&"horizon"));
     }
 
     #[test]

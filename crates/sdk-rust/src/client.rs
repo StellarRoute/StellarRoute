@@ -28,6 +28,7 @@ use crate::{
     types::{
         BatchQuoteRequest, BatchQuoteResponse, ErrorResponse, HealthResponse, OrderbookResponse,
         PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest, RoutesResponse,
+        SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse,
     },
 };
 
@@ -207,7 +208,7 @@ impl StellarRouteClient {
     /// ```no_run
     /// use stellarroute_sdk::{Client, RoutesRequest};
     ///
-    /// # async fn example() -> Result<(), stellarroute_sdk::ApiError> {
+    /// # async fn example() -> stellarroute_sdk::Result<()> {
     /// let client = Client::new("https://api.stellarroute.io")?;
     /// let response = client.routes(RoutesRequest {
     ///     base: "native",
@@ -232,7 +233,10 @@ impl StellarRouteClient {
         let quote_type = request.quote_type.map(|value| value.to_string());
 
         self.execute_with_retry(|| {
-            let mut req = self.http.get(base_url.clone()).query(&[("amount", amount.as_str())]);
+            let mut req = self
+                .http
+                .get(base_url.clone())
+                .query(&[("amount", amount.as_str())]);
             if let Some(ref slippage_bps) = slippage_bps {
                 req = req.query(&[("slippage_bps", slippage_bps.as_str())]);
             }
@@ -250,6 +254,76 @@ impl StellarRouteClient {
     /// request item is malformed or the batch is too large.
     pub async fn batch_quote(&self, request: BatchQuoteRequest) -> Result<BatchQuoteResponse> {
         let url = self.url("api/v1/batch/quote")?;
+        self.execute_with_retry(|| self.http.post(url.clone()).json(&request))
+            .await
+    }
+
+    /// `POST /api/v1/swap/prepare` — build an unsigned swap transaction.
+    ///
+    /// The server validates the route and returns a base64 XDR envelope. Sign it
+    /// with your own keys (the SDK never sees them), then hand it to
+    /// [`submit_swap`](Self::submit_swap).
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::NoRoute`] when the path is no
+    /// longer executable, or [`ApiErrorCode::ValidationError`] for a malformed request.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stellarroute_sdk::{Client, RoutesRequest, SwapPrepareRequest};
+    ///
+    /// # async fn example() -> stellarroute_sdk::Result<()> {
+    /// let client = Client::new("https://api.stellarroute.io")?;
+    ///
+    /// let routes = client.routes(RoutesRequest {
+    ///     base: "native",
+    ///     quote: "USDC",
+    ///     amount: 1_000_000,
+    ///     slippage_bps: Some(50),
+    ///     quote_type: None,
+    /// }).await?;
+    ///
+    /// let best = routes.routes.first().expect("at least one route");
+    /// let prepared = client
+    ///     .prepare_swap(SwapPrepareRequest::from_route(best, "100", "GABC...").slippage_bps(50))
+    ///     .await?;
+    ///
+    /// println!("sign this envelope: {}", prepared.xdr_envelope);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn prepare_swap(&self, request: SwapPrepareRequest) -> Result<SwapPrepareResponse> {
+        let url = self.url("api/v1/swap/prepare")?;
+        self.execute_with_retry(|| self.http.post(url.clone()).json(&request))
+            .await
+    }
+
+    /// `POST /api/v1/swap/submit` — broadcast a signed swap transaction.
+    ///
+    /// Takes the signed envelope produced from
+    /// [`prepare_swap`](Self::prepare_swap) and returns the transaction hash plus
+    /// submission status.
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] when the
+    /// envelope is malformed, unsigned, or has expired.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stellarroute_sdk::{Client, SwapSubmitRequest};
+    ///
+    /// # async fn example(signed_xdr: String) -> stellarroute_sdk::Result<()> {
+    /// let client = Client::new("https://api.stellarroute.io")?;
+    ///
+    /// let receipt = client.submit_swap(SwapSubmitRequest::new(signed_xdr)).await?;
+    /// if receipt.is_success() {
+    ///     println!("swap confirmed in tx {}", receipt.tx_hash);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn submit_swap(&self, request: SwapSubmitRequest) -> Result<SwapSubmitResponse> {
+        let url = self.url("api/v1/swap/submit")?;
         self.execute_with_retry(|| self.http.post(url.clone()).json(&request))
             .await
     }
@@ -301,18 +375,22 @@ impl StellarRouteClient {
 
             if !status.is_success() {
                 // SURFACE: ApiErrorCode::NoRoute — documented in OpenAPI as error_code "NO_ROUTE" on empty candidate set
-                if status == reqwest::StatusCode::NOT_FOUND
-                    || serde_json::from_str::<serde_json::Value>(&body)
-                        .ok()
-                        .and_then(|value| value.get("error_code").and_then(serde_json::Value::as_str))
-                        .map(|code| code.eq_ignore_ascii_case("NO_ROUTE"))
-                        .unwrap_or(false)
-                    || serde_json::from_str::<serde_json::Value>(&body)
-                        .ok()
-                        .and_then(|value| value.get("error").and_then(serde_json::Value::as_str))
-                        .map(|code| code.eq_ignore_ascii_case("no_route"))
-                        .unwrap_or(false)
-                {
+                let parsed_body = serde_json::from_str::<serde_json::Value>(&body).ok();
+                let body_error_code = parsed_body.as_ref().and_then(|value| {
+                    value
+                        .get("error_code")
+                        .or_else(|| value.get("error"))
+                        .and_then(serde_json::Value::as_str)
+                });
+
+                // A body that names its own error code wins; a bare 404 with no
+                // usable body is treated as "no route" for the routing endpoints.
+                let is_no_route = match body_error_code {
+                    Some(code) => code.eq_ignore_ascii_case("no_route"),
+                    None => status == reqwest::StatusCode::NOT_FOUND,
+                };
+
+                if is_no_route {
                     let message = serde_json::from_str::<ErrorResponse>(&body)
                         .map(|err| err.message)
                         .unwrap_or_else(|_| "No route found".to_string());
@@ -360,8 +438,8 @@ fn encode_path_segment(segment: &str) -> String {
     segment
         .bytes()
         .map(|byte| {
-            if (byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')) {
-                byte as char
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                (byte as char).to_string()
             } else {
                 format!("%{:02X}", byte)
             }

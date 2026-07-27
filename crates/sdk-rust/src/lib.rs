@@ -33,5 +33,5 @@ pub use error::{ApiErrorCode, RateLimitInfo, Result, SdkError};
 pub use types::{
     AssetInfo, HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, PathStep,
     QuoteRequest, QuoteResponse, QuoteType, Route, RouteHop, RoutesRequest, RoutesResponse,
-    TradingPair,
+    SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse, TradingPair,
 };

@@ -28,7 +28,10 @@ use tracing::{debug, warn};
 
 use super::{
     redactor::AuditRedactor,
-    schema::{AuditExclusion, AuditInputs, AuditOutcome, AuditSelected, RouteAuditEntry},
+    schema::{
+        AuditExclusion, AuditInputs, AuditOutcome, AuditSelected, RouteAuditEntry,
+        SwapSubmitAuditEntry, SwapSubmitOutcome,
+    },
     store::AuditStore,
 };
 
@@ -120,6 +123,64 @@ impl AuditWriter {
                         request_id = %entry.request_id,
                         error = %e,
                         "Audit log write failed — quote unaffected"
+                    );
+                }
+            }
+        });
+    }
+
+    /// Emit an audit entry for a swap prepare/submit attempt.
+    ///
+    /// This method is **synchronous and non-blocking**.  The account value is
+    /// redacted to a hash-prefix fingerprint before the entry is persisted;
+    /// the raw public key is never written to the database.
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_swap_submit(
+        &self,
+        quote_id: impl Into<String>,
+        tx_hash: Option<impl Into<String>>,
+        account: impl Into<String>,
+        request_id: impl Into<String>,
+        trace_id: impl Into<String>,
+        latency_ms: u64,
+        outcome: SwapSubmitOutcome,
+        error_class: impl Into<String>,
+        metadata: serde_json::Value,
+    ) {
+        if !self.enabled {
+            return;
+        }
+
+        let redacted_account = AuditRedactor::redact_account(&account.into());
+        let entry = SwapSubmitAuditEntry::new(
+            quote_id,
+            tx_hash,
+            redacted_account,
+            request_id,
+            trace_id,
+            latency_ms,
+            outcome,
+            error_class,
+            metadata,
+        );
+
+        let store = self.store.clone();
+
+        tokio::spawn(async move {
+            match store.insert_swap_submit(&entry).await {
+                Ok(id) => {
+                    debug!(
+                        audit_id = id,
+                        quote_id = %entry.quote_id,
+                        outcome = %entry.outcome,
+                        "Swap submit audit entry persisted"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        quote_id = %entry.quote_id,
+                        error = %e,
+                        "Swap submit audit log write failed"
                     );
                 }
             }

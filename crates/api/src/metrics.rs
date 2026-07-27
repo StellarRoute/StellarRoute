@@ -138,6 +138,26 @@ lazy_static! {
     )
     .expect("Can't create QUEUE_VIRTUAL_CLOCK gauge");
 
+    // ── Dependency circuit breaker metrics ────────────────────────────────
+
+    /// Whether a dependency's circuit breaker is currently open (1) or not (0).
+    /// Labels: dependency (horizon / soroban_rpc / database)
+    pub static ref DEPENDENCY_BREAKER_OPEN: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_dependency_breaker_open",
+        "Dependency circuit breaker state: 1 = open (failing fast), 0 = closed/half-open",
+        &["dependency"]
+    )
+    .expect("Can't create DEPENDENCY_BREAKER_OPEN gauge");
+
+    /// Requests rejected on the live path because a dependency breaker was open.
+    /// Labels: dependency (horizon / soroban_rpc / database)
+    pub static ref DEPENDENCY_FAIL_FAST: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_dependency_fail_fast_total",
+        "Requests rejected fast because a dependency circuit breaker was open",
+        &["dependency"]
+    )
+    .expect("Can't create DEPENDENCY_FAIL_FAST counter");
+
     // ── Indexer lag metrics ───────────────────────────────────────────────
 
     /// Indexer lag in ledger counts relative to Horizon.
@@ -369,13 +389,13 @@ pub fn update_indexer_lag(
 /// Record health score recomputation job duration.
 pub fn record_health_score_duration(duration: Duration) {
     HEALTH_SCORE_JOB_DURATION
-        .with_label_values(&[])
+        .with_label_values::<&str>(&[])
         .observe(duration.as_secs_f64());
 }
 
 /// Increment the health score recomputation failure counter.
 pub fn record_health_score_failure() {
-    HEALTH_SCORE_JOB_FAILURES.with_label_values(&[]).inc();
+    HEALTH_SCORE_JOB_FAILURES.with_label_values::<&str>(&[]).inc();
 }
 
 // ── Webhook metrics ───────────────────────────────────────────────────────────
@@ -448,13 +468,138 @@ pub fn record_webhook_delivery_attempt(integrator_id: &str, attempt: u32) {
 }
 
 pub fn update_webhook_pending_quotes(count: i64) {
-    WEBHOOK_PENDING_QUOTES.with_label_values(&[]).set(count);
+    WEBHOOK_PENDING_QUOTES.with_label_values::<&str>(&[]).set(count);
 }
 
 pub fn record_webhook_poll_cycle_duration(duration: Duration) {
     WEBHOOK_POLL_CYCLE_DURATION
-        .with_label_values(&[])
+        .with_label_values::<&str>(&[])
         .observe(duration.as_secs_f64());
+}
+
+// ── Swap prepare/submit metrics ─────────────────────────────────────────────
+
+lazy_static! {
+    /// Swap prepare request counter.
+    ///
+    /// Labels:
+    /// - `outcome`: "success" or "error"
+    /// - `error_class`: machine-readable error category (or "none" on success)
+    ///
+    /// Error classes:
+    /// - `none`                 — successful prepare
+    /// - `validation`           — request validation failed
+    /// - `quote_expired`        — the referenced quote is stale/expired
+    /// - `quote_not_found`      — referenced quote_id does not exist
+    /// - `simulation_failed`    — Soroban simulation failed
+    /// - `build_failed`         — transaction build failed
+    /// - `timeout`              — upstream Soroban/Horizon timeout
+    /// - `rpc_error`            — generic Soroban RPC error
+    /// - `internal`             — internal/unexpected error
+    pub static ref SWAP_PREPARE_REQUESTS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_swap_prepare_total",
+        "Total number of swap prepare requests",
+        &["outcome", "error_class"]
+    )
+    .expect("Can't create SWAP_PREPARE_REQUESTS counter");
+
+    /// Swap prepare latency histogram.
+    ///
+    /// Label: `outcome` ("success" or "error")
+    pub static ref SWAP_PREPARE_LATENCY: HistogramVec = register_histogram_vec!(
+        "stellarroute_swap_prepare_duration_seconds",
+        "Swap prepare request duration in seconds",
+        &["outcome"],
+        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+    )
+    .expect("Can't create SWAP_PREPARE_LATENCY histogram");
+
+    /// Swap submit request counter.
+    ///
+    /// Labels:
+    /// - `outcome`: "success" or "error"
+    /// - `error_class`: machine-readable error category (or "none" on success)
+    ///
+    /// Error classes:
+    /// - `none`                 — successful submission
+    /// - `validation`           — request validation failed
+    /// - `duplicate_quote`      — quote_id already submitted (idempotency violation)
+    /// - `bad_signature`        — supplied signature is invalid
+    /// - `insufficient_fee`     — transaction fee too low
+    /// - `insufficient_balance` — source account lacks funds
+    /// - `slippage_exceeded`    — on-chain execution exceeded slippage
+    /// - `timeout`              — upstream Soroban/Horizon timeout
+    /// - `rpc_error`            — generic RPC error
+    /// - `internal`             — internal/unexpected error
+    pub static ref SWAP_SUBMIT_REQUESTS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_swap_submit_total",
+        "Total number of swap submit requests",
+        &["outcome", "error_class"]
+    )
+    .expect("Can't create SWAP_SUBMIT_REQUESTS counter");
+
+    /// Swap submit latency histogram.
+    ///
+    /// Label: `outcome` ("success" or "error")
+    pub static ref SWAP_SUBMIT_LATENCY: HistogramVec = register_histogram_vec!(
+        "stellarroute_swap_submit_duration_seconds",
+        "Swap submit request duration in seconds",
+        &["outcome"],
+        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+    )
+    .expect("Can't create SWAP_SUBMIT_LATENCY histogram");
+
+    /// Number of swap requests currently in flight.
+    ///
+    /// Label: `phase` ("prepare" or "submit")
+    pub static ref SWAP_INFLIGHT: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_swap_inflight",
+        "Current number of in-flight swap requests by phase",
+        &["phase"]
+    )
+    .expect("Can't create SWAP_INFLIGHT gauge");
+}
+
+/// Record a swap prepare outcome.
+///
+/// `error_class` should be `"none"` for success; any other value maps to
+/// `outcome="error"` and the literal class is preserved as a label.
+pub fn record_swap_prepare(duration: Duration, error_class: &str) {
+    let outcome_label = if error_class == "none" { "success" } else { "error" };
+
+    SWAP_PREPARE_LATENCY
+        .with_label_values(&[outcome_label])
+        .observe(duration.as_secs_f64());
+
+    SWAP_PREPARE_REQUESTS
+        .with_label_values(&[outcome_label, error_class])
+        .inc();
+}
+
+/// Record a swap submit outcome.
+///
+/// `error_class` should be `"none"` for success; any other value maps to
+/// `outcome="error"` and the literal class is preserved as a label.
+pub fn record_swap_submit(duration: Duration, error_class: &str) {
+    let outcome_label = if error_class == "none" { "success" } else { "error" };
+
+    SWAP_SUBMIT_LATENCY
+        .with_label_values(&[outcome_label])
+        .observe(duration.as_secs_f64());
+
+    SWAP_SUBMIT_REQUESTS
+        .with_label_values(&[outcome_label, error_class])
+        .inc();
+}
+
+/// Increment the in-flight swap gauge for a phase.
+pub fn swap_inflight_inc(phase: &str) {
+    SWAP_INFLIGHT.with_label_values(&[phase]).inc();
+}
+
+/// Decrement the in-flight swap gauge for a phase.
+pub fn swap_inflight_dec(phase: &str) {
+    SWAP_INFLIGHT.with_label_values(&[phase]).dec();
 }
 
 /// Get cache hit ratio for a given cache type

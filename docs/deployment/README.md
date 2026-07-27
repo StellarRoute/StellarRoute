@@ -154,8 +154,48 @@ This will:
 2. Optimize the WASM binary
 3. Deploy router + adapter contracts to testnet
 4. Initialize router with deployer as admin, 30 bps fee rate
-5. Save contract IDs to `config/deployment-testnet.json`
-6. Verify router deployment by calling `get_admin()`
+5. Save contract IDs to `config/deployment-testnet.json` (gitignored, local detail)
+6. Save the reviewable, non-secret artifact to `config/deployments/testnet.json` (committed)
+7. Verify router deployment by calling `get_admin()`
+
+#### The committed deploy artifact
+
+`config/deployments/testnet.json` is the repo's reviewable record of what is live.
+It contains public data only — contract IDs, the public RPC URL, a UTC timestamp,
+and the git SHA of the build:
+
+```json
+{
+  "network": "testnet",
+  "router_contract_id": "C...",
+  "constant_product_adapter_contract_id": "C...",
+  "deployed_at": "2026-01-01T00:00:00Z",
+  "git_sha": "abc1234...",
+  "rpc_url": "https://soroban-testnet.stellar.org:443"
+}
+```
+
+Point the indexer at it:
+
+```bash
+export ROUTER_CONTRACT_ADDRESS="$(jq -r .router_contract_id config/deployments/testnet.json)"
+```
+
+Commit the updated artifact so the deployed address is reviewable in git history.
+See [`config/deployments/README.md`](../../config/deployments/README.md) for the
+full schema. Mainnet has no committed artifact: those deploys stay manually gated
+and `config/pools-mainnet.json` is never auto-populated.
+
+#### Keeping secrets out of artifacts and logs
+
+- The artifact writer emits only the fields above. Secret keys, seed phrases, and
+  deployer identities are never written to it.
+- In CI the deployer secret is piped to `soroban keys add --secret-key stdin`, so it
+  never appears in `argv` or the job log. GitHub additionally masks any value
+  registered as a repository secret.
+- `config/deployment-*.json` stays gitignored because it records local build paths.
+- Before sharing a run log, confirm no step echoes `SOROBAN_DEPLOYER_SECRET`; scripts
+  in `scripts/` log contract IDs and tx hashes only.
 
 Environment and runtime options:
 ```bash
@@ -346,6 +386,25 @@ After registration, run `./scripts/smoke-test-testnet.sh --network testnet` to v
 ./scripts/monitor.sh --network testnet
 ```
 
+## Load Testing
+
+Before launch, run the public quote/routes load test and record the results in
+the report template:
+
+```bash
+# Against a local dev server
+k6 run scripts/load-test-quote-routes.k6.js
+
+# Against a deployed environment
+k6 run -e BASE_URL=https://api.stellarroute.io \
+       -e VUS=250 \
+       -e DURATION=5m \
+       scripts/load-test-quote-routes.k6.js
+```
+
+See [`docs/deployment/load-test-report.md`](load-test-report.md) for the report
+template and pass/fail criteria (quote/routes p95 < 500 ms, error rate < 1%).
+
 ## Upgrade Process
 
 ### When to Upgrade
@@ -392,6 +451,21 @@ If a contract upgrade changes the storage schema (e.g., new `StorageKey` variant
 2. **Renamed keys**: Requires a migration function that reads old keys and writes new ones. This must be called once after upgrade.
 3. **Removed keys**: Old keys will remain in storage but become unused. They will naturally expire when their TTL runs out.
 4. **Changed value types**: Not supported without migration. Deploy a one-time migration entrypoint, call it, then upgrade again to remove the migration code.
+
+## Database Migrations (Zero-Downtime)
+
+Postgres schema changes for the API and indexer use the **expand/contract**
+pattern so the live DEX never takes a long outage.  See
+[`docs/deployment/migration-runbook.md`](migration-runbook.md) for the full
+runbook, including:
+
+- The five-phase expand → dual-write → backfill → flip-reads → contract flow.
+- Production and CI runbooks.
+- A complete backward-compatible migration example.
+- Anti-patterns to avoid (non-concurrent indexes, same-deploy schema+code flips,
+  dropping columns still read by the previous release).
+
+Migrations are ordered: indexer migrations run first, then API migrations.
 
 ## Communication Checklist for Upgrades
 
@@ -447,6 +521,10 @@ For planned upgrades, follow the testnet upgrade flow in [Upgrade Process](#upgr
 
 ### Manual Deploy (`deploy-testnet.yml`)
 - Trigger: GitHub Actions > "Deploy to Testnet" > Run workflow
+- Set the `deploy_router` input to deploy a fresh router; the job writes
+  `config/deployments/testnet.json`, smoke-checks the deployed ID with `get_admin`,
+  and **fails the run** if the contract does not answer (so a bad ID is never published)
+- The artifact is uploaded as `deployment-testnet` for review before committing
 - Supports dry-run mode (build + hash only, no deploy)
 - Requires `SOROBAN_DEPLOYER_SECRET` secret and `DEPLOY_ENABLED=true` variable
 - Automatically registers pools from `config/pools-testnet.json` after deployment

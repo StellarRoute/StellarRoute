@@ -284,6 +284,25 @@ After registration, run `./scripts/smoke-test-testnet.sh --network testnet` to v
 ./scripts/monitor.sh --network testnet
 ```
 
+## Load Testing
+
+Before launch, run the public quote/routes load test and record the results in
+the report template:
+
+```bash
+# Against a local dev server
+k6 run scripts/load-test-quote-routes.k6.js
+
+# Against a deployed environment
+k6 run -e BASE_URL=https://api.stellarroute.io \
+       -e VUS=250 \
+       -e DURATION=5m \
+       scripts/load-test-quote-routes.k6.js
+```
+
+See [`docs/deployment/load-test-report.md`](load-test-report.md) for the report
+template and pass/fail criteria (quote/routes p95 < 500 ms, error rate < 1%).
+
 ## Upgrade Process
 
 ### When to Upgrade

@@ -333,6 +333,107 @@ pub struct BatchQuoteRequest {
     pub quotes: Vec<QuoteRequestItem>,
 }
 
+// ── Swap execution ────────────────────────────────────────────────────────────
+
+/// Parameters for `POST /api/v1/swap/prepare`.
+///
+/// Prepare validates the route server-side and returns an unsigned Stellar XDR
+/// envelope. Signing happens on the caller's side — the SDK never handles keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapPrepareRequest {
+    /// Ordered hops to execute, normally taken from [`Route::path`].
+    pub path: Vec<RouteHop>,
+    /// Input amount as a decimal string.
+    pub amount: String,
+    /// G-address of the account submitting the swap.
+    pub sender: String,
+    /// Minimum acceptable output as a decimal string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_output: Option<String>,
+    /// Slippage tolerance in basis points (server default: 50).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slippage_bps: Option<u32>,
+}
+
+impl SwapPrepareRequest {
+    /// Build a prepare request from a ranked [`Route`].
+    pub fn from_route(route: &Route, amount: impl Into<String>, sender: impl Into<String>) -> Self {
+        Self {
+            path: route.path.clone(),
+            amount: amount.into(),
+            sender: sender.into(),
+            min_output: None,
+            slippage_bps: None,
+        }
+    }
+
+    /// Set the slippage tolerance in basis points.
+    pub fn slippage_bps(mut self, bps: u32) -> Self {
+        self.slippage_bps = Some(bps);
+        self
+    }
+
+    /// Set the minimum acceptable output amount.
+    pub fn min_output(mut self, min_output: impl Into<String>) -> Self {
+        self.min_output = Some(min_output.into());
+        self
+    }
+}
+
+/// Response from `POST /api/v1/swap/prepare`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapPrepareResponse {
+    /// Base64-encoded unsigned Stellar XDR transaction envelope.
+    pub xdr_envelope: String,
+    /// Simulated output amount for the prepared route.
+    #[serde(default)]
+    pub estimated_output: String,
+    /// Minimum output enforced by the built transaction.
+    #[serde(default)]
+    pub min_output: String,
+    /// Ledger sequence after which the envelope is no longer valid.
+    #[serde(default)]
+    pub valid_until_ledger: Option<u64>,
+}
+
+/// Parameters for `POST /api/v1/swap/submit`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapSubmitRequest {
+    /// Base64-encoded **signed** Stellar XDR transaction envelope.
+    pub signed_xdr: String,
+}
+
+impl SwapSubmitRequest {
+    /// Wrap a signed XDR envelope for submission.
+    pub fn new(signed_xdr: impl Into<String>) -> Self {
+        Self {
+            signed_xdr: signed_xdr.into(),
+        }
+    }
+}
+
+/// Response from `POST /api/v1/swap/submit`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapSubmitResponse {
+    /// Stellar transaction hash.
+    pub tx_hash: String,
+    /// Submission status: `"pending"`, `"success"`, or `"failed"`.
+    pub status: String,
+    /// Realized output amount, present once the transaction is finalized.
+    #[serde(default)]
+    pub output_amount: Option<String>,
+    /// Ledger the transaction was included in, when known.
+    #[serde(default)]
+    pub ledger: Option<u64>,
+}
+
+impl SwapSubmitResponse {
+    /// Returns `true` when the network has confirmed the swap.
+    pub fn is_success(&self) -> bool {
+        self.status == "success"
+    }
+}
+
 // ── Internal error response ───────────────────────────────────────────────────
 
 /// Wire format of the API error body — used internally by the client.

@@ -7,6 +7,9 @@ export type { TokenPairSelectorProps } from "./TokenPairSelector";
 export { SwapPresetTemplates } from "./SwapPresetTemplates";
 export type { SwapPresetTemplatesProps } from "./SwapPresetTemplates";
 
+export { SwapStatusLiveRegion } from "./SwapStatusLiveRegion";
+export type { SwapStatusLiveRegionProps, SwapStatus } from "./SwapStatusLiveRegion";
+
 export { QuoteStreamStatusIndicator } from "./QuoteStreamStatusIndicator";
 export type { QuoteStreamStatusIndicatorProps } from "./QuoteStreamStatusIndicator";
 

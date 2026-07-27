@@ -1561,6 +1561,60 @@ mod property_fuzz_tests {
                 prop_assert!(result.is_ok());
             }
         }
+
+        #[test]
+        fn execute_swap_output_is_bounded_and_slippage_enforced(
+            amount_in in 10i128..=10_000_000_i128,
+            fee_rate in 0u32..=1000u32,
+            slippage_factor in 0i128..20i128,
+        ) {
+            let env = setup_env();
+            let admin = Address::generate(&env);
+            let fee_to = Address::generate(&env);
+            let id = env.register_contract(None, StellarRoute);
+            let client = StellarRouteClient::new(&env, &id);
+            client.initialize(&admin, &fee_rate, &fee_to, &None, &None, &None, &None, &None);
+
+            let pool = deploy_mock_pool(&env);
+            client.register_pool(&pool);
+
+            let route = make_route(&env, &pool, 1);
+
+            // Compute expected output based on MockAmmPool returning 99% and router fee_rate
+            let pool_out = amount_in * 99 / 100;
+            let fee = pool_out * (fee_rate as i128) / 10000;
+            let expected_output = pool_out - fee;
+
+            // Scenario 1: min_amount_out is <= expected_output (should succeed)
+            let min_out_ok = expected_output - (expected_output * slippage_factor / 100);
+            let min_out_ok = min_out_ok.max(0);
+
+            let params_ok = swap_params_for(
+                &env,
+                route.clone(),
+                amount_in,
+                min_out_ok,
+                current_seq(&env) + 100,
+            );
+
+            let result = client.try_execute_swap(&Address::generate(&env), &params_ok);
+            prop_assert!(result.is_ok(), "Expected swap to succeed with min_out = {}, got error: {:?}", min_out_ok, result);
+            let swap_res = result.unwrap();
+            prop_assert!(swap_res.amount_out <= amount_in, "Output amount {} cannot exceed input amount {}", swap_res.amount_out, amount_in);
+            prop_assert_eq!(swap_res.amount_out, expected_output, "Output amount {} should match expected {}", swap_res.amount_out, expected_output);
+
+            // Scenario 2: min_amount_out is > expected_output (should fail with SlippageExceeded)
+            let min_out_fail = expected_output + 1;
+            let params_fail = swap_params_for(
+                &env,
+                route,
+                amount_in,
+                min_out_fail,
+                current_seq(&env) + 100,
+            );
+            let result_fail = client.try_execute_swap(&Address::generate(&env), &params_fail);
+            prop_assert_eq!(result_fail, Err(Ok(ContractError::SlippageExceeded)), "Expected SlippageExceeded error when min_out = {}", min_out_fail);
+        }
     }
 }
 

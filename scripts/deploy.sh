@@ -79,6 +79,7 @@ DEPLOYMENT_CONTRACTS_JSON=$(cat <<JSON
 JSON
 )
 save_deployment "${DEPLOYMENT_CONTRACTS_JSON}"
+save_public_deployment "${DEPLOYED_IDS[router]}" "${DEPLOYED_IDS[constant_product_adapter]}"
 
 # ── Step 5: Verify Deployment ─────────────────────────────────────────
 
@@ -105,3 +106,7 @@ log_ok "Admin:       ${ADMIN_ADDRESS}"
 log_ok "Fee Rate:    ${FEE_RATE} bps"
 log_ok "Dry Run:     ${DRY_RUN}"
 log_ok "Artifact:    $(deployment_file)"
+log_ok "Public:      $(public_deployment_file)"
+echo ""
+log_info "Set ROUTER_CONTRACT_ADDRESS from the committed artifact:"
+log_info "  export ROUTER_CONTRACT_ADDRESS=\"\$(jq -r .router_contract_id $(public_deployment_file))\""

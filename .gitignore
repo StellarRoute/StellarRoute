@@ -56,7 +56,9 @@ sdk-js/node_modules/
 tarpaulin-report.html
 coverage/
 
-# Deployment artifacts (generated at runtime)
+# Deployment artifacts (generated at runtime, may contain local build paths).
+# The reviewable, non-secret artifacts in config/deployments/ are tracked on
+# purpose — see config/deployments/README.md.
 config/deployment-*.json
 logs/
 

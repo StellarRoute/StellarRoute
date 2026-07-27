@@ -70,6 +70,23 @@ async fn production_admin_guard(
     }
 }
 
+/// Fail-fast guard for quote/swap traffic.
+///
+/// When a dependency circuit breaker (Postgres, Soroban RPC, Horizon) is open,
+/// reject with `503` immediately instead of letting every request queue behind a
+/// dependency that is already known to be down. Health endpoints stay reachable so
+/// operators can still see why, and so probes can close the breaker again.
+async fn dependency_breaker_guard(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    match state.external_dependency_health.guard_live_path() {
+        Ok(()) => next.run(request).await,
+        Err(err) => err.into_response(),
+    }
+}
+
 /// Create the main API router
 pub fn create_router(state: Arc<AppState>) -> Router {
     // Operator-only surfaces: publicly reachable in dev/test for local
@@ -89,11 +106,38 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             production_admin_guard,
         ));
 
+    // Quote/swap surfaces. These are the paths that price real trades against
+    // live dependencies, so they fail fast when a dependency breaker is open.
+    let live_path_routes = Router::new()
+        .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
+        .route("/api/v1/quote", post(idempotent_quote::post_quote))
+        .route(
+            "/api/v1/route/:base/:quote",
+            get(quote::get_route).route_layer(axum::middleware::from_fn(legacy_route_deprecation)),
+        )
+        .route(
+            "/api/v1/batch/quote",
+            axum::routing::post(quote::get_batch_quotes),
+        )
+        .route(
+            "/api/v1/routes/:base/:quote",
+            get(routes_endpoint::get_routes),
+        )
+        .route(
+            "/api/v1/simulate/route",
+            post(simulation_route::simulate_route_dry_run),
+        )
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            dependency_breaker_guard,
+        ));
+
     Router::new()
         // Health check
         .route("/health", get(health::health_check))
         .route("/health/deps", get(health::dependency_health))
         .merge(operator_routes)
+        .merge(live_path_routes)
         // API v1 routes
         .route("/api/v1/assets", get(assets::list_assets_metadata))
         .route("/api/v1/assets/:code", get(assets::get_asset_metadata))
@@ -108,16 +152,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/orderbook/:base/:quote",
             get(orderbook::get_orderbook),
         )
-        .route("/api/v1/quote/:base/:quote", get(quote::get_quote))
-        .route("/api/v1/quote", post(idempotent_quote::post_quote))
-        .route(
-            "/api/v1/route/:base/:quote",
-            get(quote::get_route).route_layer(axum::middleware::from_fn(legacy_route_deprecation)),
-        )
-        .route(
-            "/api/v1/batch/quote",
-            axum::routing::post(quote::get_batch_quotes),
-        )
         .route(
             "/api/v1/batch/orderbook",
             axum::routing::post(orderbook::get_batch_orderbooks),
@@ -127,10 +161,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(integrator_webhooks::upsert_quote_expiration_webhook),
         )
         // Replay routes are registered above via `operator_routes`.
-        .route(
-            "/api/v1/routes/:base/:quote",
-            get(routes_endpoint::get_routes),
-        )
         // Admin routes
         .route(
             "/api/v1/admin/cache/flush/:base/:quote",
@@ -148,10 +178,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Canary routes
         .route("/api/v1/system/canary/report", get(canary::get_report))
         .route("/api/v1/system/canary/config", post(canary::update_config))
-        .route(
-            "/api/v1/simulate/route",
-            post(simulation_route::simulate_route_dry_run),
-        )
+        // `/api/v1/simulate/route` is registered above via `live_path_routes`.
         // Contract registry routes
         .route(
             "/api/v1/contracts/registry",

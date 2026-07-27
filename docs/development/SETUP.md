@@ -335,6 +335,16 @@ cargo build
 
 Make sure `.env` exists in the project root (see `.env.example`). The API requires `DATABASE_URL`; the indexer additionally requires `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, and `ROUTER_CONTRACT_ADDRESS`. See the [Environment Variables Reference](./environment-variables.md) for required vs optional settings per service.
 
+`.env.example` ships one coherent block per network (testnet enabled, mainnet commented out). **Copy a whole block — never mix networks.** Pointing `STELLAR_HORIZON_URL` at mainnet while `SOROBAN_RPC_URL` points at testnet indexes SDEX and AMM liquidity from two different ledgers into the same tables, and no component errors on the mismatch.
+
+The indexer also validates `ROUTER_CONTRACT_ADDRESS` at startup and exits non-zero if it is missing, empty, or not a well-formed Soroban contract ID. Populate it from the committed deploy artifact:
+
+```bash
+export ROUTER_CONTRACT_ADDRESS="$(jq -r .router_contract_id config/deployments/testnet.json)"
+```
+
+For SDEX-only local development, set `ALLOW_EMPTY_ROUTER=1` instead (dev only; refused when `STELLARROUTE_ENV=production`).
+
 ---
 
 ## FAQ

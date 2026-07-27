@@ -1,0 +1,8 @@
+{
+  "network": "testnet",
+  "router_contract_id": "",
+  "constant_product_adapter_contract_id": "",
+  "deployed_at": "",
+  "git_sha": "",
+  "rpc_url": "https://soroban-testnet.stellar.org:443"
+}

@@ -72,6 +72,12 @@ deployment_file() {
     echo "${CONFIG_DIR}/deployment-${NETWORK}.json"
 }
 
+# Committed, reviewable, non-secret artifact. Contains contract IDs and public
+# metadata only — never keys, identities, or local filesystem paths.
+public_deployment_file() {
+    echo "${CONFIG_DIR}/deployments/${NETWORK}.json"
+}
+
 get_contract_id() {
     get_named_contract_id "router"
 }
@@ -108,6 +114,46 @@ save_deployment() {
 }
 ARTIFACT
     log_ok "Deployment artifact saved to ${file}"
+}
+
+# Write the committed, non-secret deploy artifact consumed by operators and by
+# ROUTER_CONTRACT_ADDRESS. Fields here are all public: contract IDs, the public
+# RPC URL, a UTC timestamp, and the git SHA that produced the build.
+save_public_deployment() {
+    local router_id="$1"
+    local adapter_id="${2:-}"
+    local file
+    file="$(public_deployment_file)"
+    mkdir -p "$(dirname "${file}")"
+
+    cat > "${file}" <<ARTIFACT
+{
+  "network": "${NETWORK}",
+  "router_contract_id": "${router_id}",
+  "constant_product_adapter_contract_id": "${adapter_id}",
+  "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "git_sha": "$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo 'unknown')",
+  "rpc_url": "$(get_rpc_url)"
+}
+ARTIFACT
+
+    log_ok "Public deployment artifact saved to ${file}"
+}
+
+# Post-deploy smoke call: prove the ID actually resolves on-chain before the
+# artifact is trusted. Fails (non-zero) if the contract does not answer.
+smoke_check_router() {
+    local router_id="$1"
+    log_info "Smoke-checking router ${router_id} via get_admin()..."
+    if ! soroban_cmd contract invoke \
+        --id "${router_id}" \
+        --source "${IDENTITY}" \
+        --network "${NETWORK}" \
+        -- get_admin; then
+        log_error "Smoke check FAILED: router ${router_id} did not respond to get_admin on ${NETWORK}"
+        return 1
+    fi
+    log_ok "Smoke check passed for ${router_id}"
 }
 
 # ── Soroban Helpers ───────────────────────────────────────────────────

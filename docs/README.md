@@ -40,6 +40,7 @@ This directory is the documentation hub for StellarRoute. It organizes design, d
 ### Deployment
 
 - [Deployment overview](deployment/README.md) — deployment and production guides.
+- [Gradual rollout plan](deployment/gradual-rollout-plan.md) — limited pairs → full markets, metric gates, rollback, status-page templates.
 - [DB pool tuning](deployment/db-pool-tuning.md) — PostgreSQL pool sizing and tuning.
 - [Database timeout guardrails](deployment/database-timeout-guardrails.md) — runtime timeout strategies.
 - [Tracing troubleshooting](deployment/tracing-troubleshooting.md) — observability and tracing guidance.

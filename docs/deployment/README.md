@@ -2,6 +2,13 @@
 
 This guide covers everything needed to deploy, verify, upgrade, and monitor StellarRoute contracts on Stellar Testnet and Mainnet.
 
+## Launch & gradual rollout
+
+For public launch, use the staged **limited pairs → full markets** plan (metrics gates, rollback criteria, and status-page communication templates):
+
+- **[Gradual rollout plan](./gradual-rollout-plan.md)** — Stage 0–4, allowlists, promotion gates, and rollback triggers for the first 24–48 hours and beyond.
+- Related: [Routing canary](../routing_canary.md), [Kill switch runbook](../RUNBOOK_KILL_SWITCH.md).
+
 ## Prerequisites
 
 - Rust 1.75+ with `wasm32-unknown-unknown` target

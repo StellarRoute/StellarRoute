@@ -350,6 +350,21 @@ If a contract upgrade changes the storage schema (e.g., new `StorageKey` variant
 3. **Removed keys**: Old keys will remain in storage but become unused. They will naturally expire when their TTL runs out.
 4. **Changed value types**: Not supported without migration. Deploy a one-time migration entrypoint, call it, then upgrade again to remove the migration code.
 
+## Database Migrations (Zero-Downtime)
+
+Postgres schema changes for the API and indexer use the **expand/contract**
+pattern so the live DEX never takes a long outage.  See
+[`docs/deployment/migration-runbook.md`](migration-runbook.md) for the full
+runbook, including:
+
+- The five-phase expand → dual-write → backfill → flip-reads → contract flow.
+- Production and CI runbooks.
+- A complete backward-compatible migration example.
+- Anti-patterns to avoid (non-concurrent indexes, same-deploy schema+code flips,
+  dropping columns still read by the previous release).
+
+Migrations are ordered: indexer migrations run first, then API migrations.
+
 ## Communication Checklist for Upgrades
 
 Before deploying an upgrade to mainnet:

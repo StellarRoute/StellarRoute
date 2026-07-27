@@ -454,6 +454,14 @@ Returns current database health metrics.
 sqlx migrate run --database-url postgresql://user:pass@localhost/stellarroute
 ```
 
+## Schema Evolution
+
+All Postgres schema changes must follow the zero-downtime expand/contract
+pattern documented in
+[`docs/deployment/migration-runbook.md`](../deployment/migration-runbook.md).
+Migrations live in `crates/api/migrations` and `crates/indexer/migrations` and
+are applied with `sqlx migrate run`.
+
 ---
 
 ## Performance Considerations

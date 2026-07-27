@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -44,8 +43,11 @@ import { WalletCapabilitiesBanner } from '@/components/shared/WalletCapabilities
 import { DiagnosticsPanel } from '@/components/shared/DiagnosticsPanel';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { signTransactionWithWallet } from '@/lib/wallet';
-import { submitToHorizon, getNetworkPassphrase, getHorizonUrl } from '@/lib/wallet/submit';
-import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
+import {
+  submitToHorizon,
+  getNetworkPassphrase,
+  prepareSwapTransaction,
+} from '@/lib/wallet/submit';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
@@ -53,7 +55,10 @@ import { useRoutes } from '@/hooks/useApi';
 import { emitRouteEvent } from '@/lib/telemetry';
 import { SwapWarningCenter, type SwapWarning } from './SwapWarningCenter';
 import { quoteExportToCsv, type QuoteExportPayload } from '@/lib/quote-export';
-import { getTraderErrorCopy, toTraderErrorLine } from '@/lib/api/trader-error-copy';
+import {
+  getTraderErrorCopy,
+  toTraderErrorLine,
+} from '@/lib/api/trader-error-copy';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import {
   Dialog,
@@ -74,7 +79,10 @@ export interface SwapCardProps {
   storyFixture?: SwapCardStoryFixture;
 }
 
-export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProps = {}) {
+export function SwapCard({
+  storyFixture,
+  showRoutePicker = false,
+}: SwapCardProps = {}) {
   const storyPresentation = storyFixture
     ? getSwapCardStoryPresentation(storyFixture)
     : null;
@@ -145,7 +153,9 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
         list.push({
           id: alt.id,
           venue: alt.venue,
-          expectedAmount: alt.expectedAmount.startsWith('≈') ? alt.expectedAmount : `≈ ${alt.expectedAmount}`,
+          expectedAmount: alt.expectedAmount.startsWith('≈')
+            ? alt.expectedAmount
+            : `≈ ${alt.expectedAmount}`,
           hops: [],
         });
       });
@@ -166,21 +176,31 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
           }
           return source;
         });
-        const uniqueHopVenues = hopVenues.filter((v, i) => i === 0 || v !== hopVenues[i - 1]);
+        const uniqueHopVenues = hopVenues.filter(
+          (v, i) => i === 0 || v !== hopVenues[i - 1]
+        );
         const venueName = uniqueHopVenues.join(' + ');
 
         const hops = candidate.path.map((hop, hopIndex) => {
-          const fromSymbol = hop.from_asset.asset_type === 'native' ? 'XLM' : (hop.from_asset.asset_code || 'UNK');
-          const toSymbol = hop.to_asset.asset_type === 'native' ? 'XLM' : (hop.to_asset.asset_code || 'UNK');
-          
+          const fromSymbol =
+            hop.from_asset.asset_type === 'native'
+              ? 'XLM'
+              : hop.from_asset.asset_code || 'UNK';
+          const toSymbol =
+            hop.to_asset.asset_type === 'native'
+              ? 'XLM'
+              : hop.to_asset.asset_code || 'UNK';
+
           let sourceName = hop.source;
           if (sourceName === 'sdex') sourceName = 'SDEX';
           else if (sourceName.startsWith('amm:')) {
             const name = sourceName.substring(4);
             if (name.toLowerCase() === 'aqua') sourceName = 'AQUA Pool';
-            else if (name.toLowerCase() === 'phoenix') sourceName = 'Phoenix AMM';
+            else if (name.toLowerCase() === 'phoenix')
+              sourceName = 'Phoenix AMM';
             else if (name.toLowerCase() === 'blend') sourceName = 'Blend Pool';
-            else sourceName = name.charAt(0).toUpperCase() + sourceName.slice(1);
+            else
+              sourceName = name.charAt(0).toUpperCase() + sourceName.slice(1);
           }
 
           const feeXLM = ((hop.fee_bps || 30) / 100000).toFixed(5) + ' XLM';
@@ -212,14 +232,19 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     return list;
   }, [quote.data, routesState.data]);
 
-  const handleRouteSelect = useCallback((route: AlternativeRoute) => {
-    setSelectedRoute(route);
-    // Trigger re-quote
-    quote.refresh();
-    
-    const hopCount = route.rawPath ? route.rawPath.length : (quote.data?.path.length ?? 1);
-    emitRouteEvent(route.venue, hopCount);
-  }, [quote, setSelectedRoute]);
+  const handleRouteSelect = useCallback(
+    (route: AlternativeRoute) => {
+      setSelectedRoute(route);
+      // Trigger re-quote
+      quote.refresh();
+
+      const hopCount = route.rawPath
+        ? route.rawPath.length
+        : (quote.data?.path.length ?? 1);
+      emitRouteEvent(route.venue, hopCount);
+    },
+    [quote, setSelectedRoute]
+  );
 
   const isRoutesLoading = quote.loading || routesState.loading;
 
@@ -481,19 +506,9 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const productionSwapDeps = useMemo(() => {
     if (!walletReady || !walletId || !walletAddress) return null;
     const networkPassphrase = getNetworkPassphrase(walletAppNetwork);
-    const horizonUrl = getHorizonUrl(walletAppNetwork);
     return {
       buildXdr: (params: TradeParams) =>
-        buildPathPaymentXdr({
-          walletAddress: params.walletAddress || walletAddress,
-          fromAsset: params.fromAsset,
-          fromAmount: params.fromAmount,
-          toAsset: params.toAsset,
-          minReceived: params.minReceived,
-          routePath: params.routePath,
-          networkPassphrase,
-          horizonUrl,
-        }),
+        prepareSwapTransaction(params, walletAppNetwork),
       signTransaction: (xdr: string) =>
         signTransactionWithWallet(xdr, walletId, networkPassphrase),
       submitTransaction: (signedXdr: string) =>
@@ -546,7 +561,9 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       reset();
       setSelectedRoute(null);
     } else if (optimistic.status === 'failed') {
-      const errorObj = optimistic.errorMessage ? new Error(optimistic.errorMessage) : new Error('Unknown error');
+      const errorObj = optimistic.errorMessage
+        ? new Error(optimistic.errorMessage)
+        : new Error('Unknown error');
       const copy = getTraderErrorCopy(errorObj);
       toast.error(toTraderErrorLine(copy), {
         id: 'swap-toast',
@@ -668,7 +685,13 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     }
     setRecoveryRequestedAt(null);
     closeRecoveryModal();
-  }, [closeRecoveryModal, discardPending, recoveryReason, reset, setSelectedRoute]);
+  }, [
+    closeRecoveryModal,
+    discardPending,
+    recoveryReason,
+    reset,
+    setSelectedRoute,
+  ]);
 
   const handleRestoreRecovery = useCallback(async () => {
     setSelectedRoute(null);
@@ -691,7 +714,13 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     } finally {
       setIsRecoveringSession(false);
     }
-  }, [closeRecoveryModal, quote, recoveryReason, restorePending, setSelectedRoute]);
+  }, [
+    closeRecoveryModal,
+    quote,
+    recoveryReason,
+    restorePending,
+    setSelectedRoute,
+  ]);
 
   // Handle "Swap Again" action: close modal but keep form state intact
   const handleSwapAgain = useCallback(() => {
@@ -796,8 +825,8 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       const target = event.target as HTMLElement | null;
       const isEditable = target
         ? target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable
         : false;
 
       if (event.key === '?' && !isEditable) {
@@ -1152,11 +1181,11 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <span className="text-xs text-blue-500 font-medium">
                 {quote.hasPendingRetry
                   ? t('swap.card.recoveringQuoteCountdown', {
-                    seconds: Math.max(
-                      1,
-                      Math.ceil(quote.pendingRetryRemainingMs / 1000)
-                    ),
-                  })
+                      seconds: Math.max(
+                        1,
+                        Math.ceil(quote.pendingRetryRemainingMs / 1000)
+                      ),
+                    })
                   : t('swap.card.recoveringQuote')}
               </span>
               {quote.hasPendingRetry && (

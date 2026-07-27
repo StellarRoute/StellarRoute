@@ -60,11 +60,34 @@ Focus must remain on the control the user is editing (amount field, refresh butt
 2. Attempt to refresh the quote.
 3. **Pass**: Assertive failure mentioning offline/reconnect guidance.
 
+## Swap status announcements (issue #1007)
+
+`SwapStatusLiveRegion` covers the submission lifecycle after a quote is accepted.
+
+| Status | Region | Priority | Expected announcement |
+| --- | --- | --- | --- |
+| `pending` | `role="status"` | polite | “Swap submitted. Waiting for confirmation.” |
+| `finalized` | `role="status"` | polite | “Swap confirmed. {tx detail}” |
+| `error` | `role="alert"` | assertive | “Swap failed. {message} Update the quote and try again.” |
+
+### Test steps
+
+1. Open `/swap`, connect a wallet, and enter a valid amount.
+2. **Keyboard path**: without touching the mouse, `Tab` to **Update quote**, press `Enter`
+   (a fresh quote is fetched), then `Tab` to **Confirm swap** and press `Enter`.
+   **Pass**: both controls are reachable and activate on `Enter`/`Space`.
+3. While the transaction is in flight, **Pass**: a polite “Swap submitted…” is announced and
+   both action buttons report as *dimmed/unavailable*.
+4. On success, **Pass**: a polite “Swap confirmed…” is announced; focus has not moved.
+5. Force a failure (reject in wallet, or point the API at an unreachable host).
+   **Pass**: an assertive “Swap failed…” interrupts, and the **Update quote** control is
+   immediately reachable with a single `Tab` from where focus already sits.
+
 ## Automated coverage
 
 ```bash
 cd frontend
-npm test -- lib/quote-refresh-announcements.test.ts hooks/useQuoteRefreshAnnouncements.test.ts components/swap/QuoteRefreshLiveRegion.test.tsx
+npm test -- lib/quote-refresh-announcements.test.ts hooks/useQuoteRefreshAnnouncements.test.ts components/swap/QuoteRefreshLiveRegion.test.tsx components/swap/SwapStatusLiveRegion.test.tsx
 ```
 
 ## Sign-off checklist
@@ -73,3 +96,5 @@ npm test -- lib/quote-refresh-announcements.test.ts hooks/useQuoteRefreshAnnounc
 - [ ] Assertive announcement on hard failure
 - [ ] No duplicate announcements during debounce
 - [ ] Focus never moves to the live region
+- [ ] Polite pending / finalized and assertive error announcements on swap submission
+- [ ] Confirm and update-quote reachable by keyboard alone

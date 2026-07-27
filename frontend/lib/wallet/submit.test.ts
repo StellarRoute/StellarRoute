@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getHorizonUrl, getNetworkPassphrase, submitToHorizon } from './submit';
+import {
+  HorizonSubmitError,
+  getHorizonUrl,
+  getNetworkPassphrase,
+  submitToHorizon,
+} from './submit';
 
 describe('getHorizonUrl', () => {
   it('returns testnet URL for testnet', () => {
-    expect(getHorizonUrl('testnet')).toBe('https://horizon-testnet.stellar.org');
+    expect(getHorizonUrl('testnet')).toBe(
+      'https://horizon-testnet.stellar.org'
+    );
   });
 
   it('returns mainnet URL for mainnet', () => {
@@ -11,7 +18,9 @@ describe('getHorizonUrl', () => {
   });
 
   it('defaults to testnet for unknown network', () => {
-    expect(getHorizonUrl('futurenet')).toBe('https://horizon-testnet.stellar.org');
+    expect(getHorizonUrl('futurenet')).toBe(
+      'https://horizon-testnet.stellar.org'
+    );
   });
 
   it('defaults to testnet for null', () => {
@@ -21,7 +30,9 @@ describe('getHorizonUrl', () => {
 
 describe('getNetworkPassphrase', () => {
   it('returns testnet passphrase', () => {
-    expect(getNetworkPassphrase('testnet')).toBe('Test SDF Network ; September 2015');
+    expect(getNetworkPassphrase('testnet')).toBe(
+      'Test SDF Network ; September 2015'
+    );
   });
 
   it('returns mainnet passphrase', () => {
@@ -62,19 +73,64 @@ describe('submitToHorizon', () => {
       }),
     } as Response);
 
-    await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toThrow(
-      'Transaction failed: tx_bad_auth'
-    );
+    await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toMatchObject({
+      code: 'tx_bad_auth',
+      transactionCode: 'tx_bad_auth',
+    });
+  });
+
+  it('throws typed op_underfunded errors', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        extras: {
+          result_codes: {
+            transaction: 'tx_failed',
+            operations: ['op_underfunded'],
+          },
+        },
+      }),
+    } as Response);
+
+    await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toMatchObject({
+      code: 'op_underfunded',
+      operationCodes: ['op_underfunded'],
+    });
   });
 
   it('throws with HTTP status when no JSON body', async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 503,
-      json: async () => { throw new Error('not json'); },
+      json: async () => {
+        throw new Error('not json');
+      },
     } as Response);
 
-    await expect(submitToHorizon('xdr', 'testnet')).rejects.toThrow('HTTP 503');
+    await expect(submitToHorizon('xdr', 'testnet')).rejects.toMatchObject({
+      code: 'horizon_error',
+      message: 'HTTP 503: Transaction submission failed',
+    });
+  });
+
+  it('throws typed timeout errors', async () => {
+    global.fetch = vi.fn(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = (init as RequestInit).signal as AbortSignal;
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError'))
+          );
+        })
+    ) as typeof fetch;
+
+    await expect(
+      submitToHorizon('xdr', 'testnet', { timeoutMs: 1 })
+    ).rejects.toBeInstanceOf(HorizonSubmitError);
+    await expect(
+      submitToHorizon('xdr', 'testnet', { timeoutMs: 1 })
+    ).rejects.toMatchObject({ code: 'timeout' });
   });
 
   it('posts signed XDR to correct Horizon endpoint', async () => {

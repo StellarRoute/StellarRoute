@@ -292,6 +292,50 @@ Remediation:
 3. Restart indexer if ingestion does not recover.
 4. Use reconciliation diagnostics for deeper drift analysis.
 
+## 7b. Verify AMM ingestion
+
+The queries above tell you *whether* reserves look stale. This test proves the AMM loop
+actually populates `amm_pool_reserves` end-to-end for a registered router on **testnet** —
+useful before declaring a router live, and as a nightly CI gate.
+
+It is `#[ignore]`d by default (it needs network + a live database) and refuses to run
+against anything that looks like mainnet.
+
+```bash
+export DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
+export ROUTER_CONTRACT_ADDRESS=C...                      # required — the router under test
+export SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+
+cargo test -p stellarroute-indexer amm_ingest -- --ignored --nocapture
+```
+
+Tunables:
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `AMM_INGEST_TIMEOUT_SECS` | `600` (10 min) | Give up after this long |
+| `AMM_INGEST_POLL_SECS` | `15` | Delay between aggregation cycles |
+
+**What it asserts.** It records the *database* clock at start (not the test host's, so
+clock skew cannot fake a pass), then runs `AmmAggregator::aggregate_once()` on a loop.
+It passes as soon as at least one row in `amm_pool_reserves` has `reserve_selling > 0`,
+`reserve_buying > 0`, and `updated_at` newer than that start timestamp.
+
+**On failure** it prints the router contract ID, the Soroban RPC URL, every pool address
+currently tracked in `amm_pool_reserves`, and the last error returned by the RPC — enough
+to tell "the router has no registered pools" apart from "the RPC is rejecting our calls".
+
+Typical causes of a failure:
+
+1. The router genuinely has no registered pools — check the registry fallback and
+   `PoolRegistered` events.
+2. Discovery never reached the ledger where pools were registered — inspect
+   `soroban_sync_cursors`.
+3. The RPC rejected `getEvents` / `simulateTransaction` — the printed last error will
+   carry the JSON-RPC code.
+
+Source: [`crates/indexer/tests/amm_ingest.rs`](../../crates/indexer/tests/amm_ingest.rs).
+
 ## 8. Health Verification Checklist
 
 After startup or incident recovery, verify:

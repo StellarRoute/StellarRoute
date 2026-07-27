@@ -284,6 +284,25 @@ After registration, run `./scripts/smoke-test-testnet.sh --network testnet` to v
 ./scripts/monitor.sh --network testnet
 ```
 
+## Load Testing
+
+Before launch, run the public quote/routes load test and record the results in
+the report template:
+
+```bash
+# Against a local dev server
+k6 run scripts/load-test-quote-routes.k6.js
+
+# Against a deployed environment
+k6 run -e BASE_URL=https://api.stellarroute.io \
+       -e VUS=250 \
+       -e DURATION=5m \
+       scripts/load-test-quote-routes.k6.js
+```
+
+See [`docs/deployment/load-test-report.md`](load-test-report.md) for the report
+template and pass/fail criteria (quote/routes p95 < 500 ms, error rate < 1%).
+
 ## Upgrade Process
 
 ### When to Upgrade
@@ -330,6 +349,21 @@ If a contract upgrade changes the storage schema (e.g., new `StorageKey` variant
 2. **Renamed keys**: Requires a migration function that reads old keys and writes new ones. This must be called once after upgrade.
 3. **Removed keys**: Old keys will remain in storage but become unused. They will naturally expire when their TTL runs out.
 4. **Changed value types**: Not supported without migration. Deploy a one-time migration entrypoint, call it, then upgrade again to remove the migration code.
+
+## Database Migrations (Zero-Downtime)
+
+Postgres schema changes for the API and indexer use the **expand/contract**
+pattern so the live DEX never takes a long outage.  See
+[`docs/deployment/migration-runbook.md`](migration-runbook.md) for the full
+runbook, including:
+
+- The five-phase expand → dual-write → backfill → flip-reads → contract flow.
+- Production and CI runbooks.
+- A complete backward-compatible migration example.
+- Anti-patterns to avoid (non-concurrent indexes, same-deploy schema+code flips,
+  dropping columns still read by the previous release).
+
+Migrations are ordered: indexer migrations run first, then API migrations.
 
 ## Communication Checklist for Upgrades
 

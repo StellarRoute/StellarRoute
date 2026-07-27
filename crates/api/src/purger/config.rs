@@ -31,6 +31,14 @@ pub struct PurgerConfig {
     #[serde(default = "default_audit_log_batch_size")]
     pub audit_log_batch_size: i32,
 
+    /// Retention for swap_submit_audit_log in days (default: 30)
+    #[serde(default = "default_swap_audit_log_retention_days")]
+    pub swap_audit_log_retention_days: i32,
+
+    /// Maximum rows to delete per batch for swap audit log (default: 5000)
+    #[serde(default = "default_swap_audit_log_batch_size")]
+    pub swap_audit_log_batch_size: i32,
+
     /// Maximum number of delete iterations before rate-limiting (default: 100)
     /// Prevents purger from running indefinitely if table has millions of rows
     #[serde(default = "default_max_iterations")]
@@ -43,6 +51,10 @@ pub struct PurgerConfig {
     /// Enable purging of route_audit_log (default: true)
     #[serde(default = "default_purge_audit_log")]
     pub purge_audit_log: bool,
+
+    /// Enable purging of swap_submit_audit_log (default: true)
+    #[serde(default = "default_purge_swap_audit_log")]
+    pub purge_swap_audit_log: bool,
 
     /// Log purge metrics to tracing (default: true)
     #[serde(default = "default_log_metrics")]
@@ -82,6 +94,14 @@ fn default_audit_log_batch_size() -> i32 {
     5000
 }
 
+fn default_swap_audit_log_retention_days() -> i32 {
+    30
+}
+
+fn default_swap_audit_log_batch_size() -> i32 {
+    5000
+}
+
 fn default_max_iterations() -> i32 {
     100
 }
@@ -91,6 +111,10 @@ fn default_purge_replay_artifacts() -> bool {
 }
 
 fn default_purge_audit_log() -> bool {
+    true
+}
+
+fn default_purge_swap_audit_log() -> bool {
     true
 }
 
@@ -115,9 +139,12 @@ impl Default for PurgerConfig {
             audit_log_retention_days: default_audit_log_retention_days(),
             replay_artifacts_batch_size: default_replay_batch_size(),
             audit_log_batch_size: default_audit_log_batch_size(),
+            swap_audit_log_retention_days: default_swap_audit_log_retention_days(),
+            swap_audit_log_batch_size: default_swap_audit_log_batch_size(),
             max_iterations: default_max_iterations(),
             purge_replay_artifacts: default_purge_replay_artifacts(),
             purge_audit_log: default_purge_audit_log(),
+            purge_swap_audit_log: default_purge_swap_audit_log(),
             log_metrics: default_log_metrics(),
             slow_purge_threshold_secs: default_slow_purge_threshold_secs(),
             alert_deletion_threshold: default_alert_deletion_threshold(),
@@ -164,6 +191,18 @@ impl PurgerConfig {
             }
         }
 
+        if let Ok(v) = std::env::var("QUOTE_PURGER_SWAP_AUDIT_LOG_RETENTION_DAYS") {
+            if let Ok(days) = v.parse() {
+                config.swap_audit_log_retention_days = days;
+            }
+        }
+
+        if let Ok(v) = std::env::var("QUOTE_PURGER_SWAP_AUDIT_LOG_BATCH_SIZE") {
+            if let Ok(size) = v.parse() {
+                config.swap_audit_log_batch_size = size;
+            }
+        }
+
         if let Ok(v) = std::env::var("QUOTE_PURGER_MAX_ITERATIONS") {
             if let Ok(iterations) = v.parse() {
                 config.max_iterations = iterations;
@@ -176,6 +215,10 @@ impl PurgerConfig {
 
         if let Ok(v) = std::env::var("QUOTE_PURGER_PURGE_AUDIT_LOG") {
             config.purge_audit_log = v.trim().eq_ignore_ascii_case("true");
+        }
+
+        if let Ok(v) = std::env::var("QUOTE_PURGER_PURGE_SWAP_AUDIT_LOG") {
+            config.purge_swap_audit_log = v.trim().eq_ignore_ascii_case("true");
         }
 
         if let Ok(v) = std::env::var("QUOTE_PURGER_LOG_METRICS") {
@@ -209,6 +252,8 @@ mod tests {
         assert_eq!(cfg.interval_secs, 3600);
         assert_eq!(cfg.replay_artifacts_retention_days, 30);
         assert_eq!(cfg.audit_log_retention_days, 30);
+        assert_eq!(cfg.swap_audit_log_retention_days, 30);
+        assert!(cfg.purge_swap_audit_log);
     }
 
     #[test]

@@ -212,6 +212,93 @@ CREATE TABLE route_audit_log (
 
 ---
 
+## Swap Submit Audit Log
+
+The `swap_submit_audit_log` table records every swap prepare/submit attempt for
+post-trade analysis, incident response, and compliance.  It is separate from
+`route_audit_log` because the two flows have different lifecycles and different
+PII considerations.
+
+### Required fields
+
+| Field       | Type     | Purpose                                              |
+|-------------|----------|------------------------------------------------------|
+| `quote_id`  | TEXT     | Client-provided quote identifier                     |
+| `tx_hash`   | TEXT     | On-chain transaction hash (NULL on prepare/failure)  |
+| `account`   | TEXT     | Redacted account fingerprint (never the raw key)     |
+| `logged_at` | TIMESTAMPTZ | Timestamp of the prepare/submit event             |
+
+### Schema
+
+```sql
+CREATE TABLE swap_submit_audit_log (
+    id              BIGSERIAL   PRIMARY KEY,
+    quote_id        TEXT        NOT NULL,
+    tx_hash         TEXT,                                   -- NULL until submitted
+    account         TEXT        NOT NULL,                   -- redacted fingerprint
+    request_id      TEXT        NOT NULL,                   -- x-request-id header
+    trace_id        TEXT        NOT NULL DEFAULT '',        -- W3C trace ID
+    logged_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    latency_ms      INTEGER     NOT NULL DEFAULT 0,
+    outcome         TEXT        NOT NULL                    -- prepared|submitted|failed
+                    CHECK (outcome IN ('prepared', 'submitted', 'failed')),
+    error_class     TEXT        NOT NULL DEFAULT '',        -- empty on success
+    metadata        JSONB       NOT NULL DEFAULT '{}',      -- route, amount, fee, etc.
+    retained_until  TIMESTAMPTZ NOT NULL                    -- logged_at + 30 days
+                    GENERATED ALWAYS AS (logged_at + INTERVAL '30 days') STORED
+);
+```
+
+### Indexes
+
+| Index                                    | Purpose                                      |
+|------------------------------------------|----------------------------------------------|
+| `idx_swap_submit_audit_quote_id`         | Idempotency and prepare/submit correlation   |
+| `idx_swap_submit_audit_tx_hash`          | On-chain transaction lookup                  |
+| `idx_swap_submit_audit_logged_at`        | Time-range queries                           |
+| `idx_swap_submit_audit_retention`        | Fast pruning                                 |
+| `idx_swap_submit_audit_outcome_time`     | Failed-submit investigations                 |
+
+### PII & Minimization
+
+The raw Stellar account public key is **never stored**.  Before insertion the
+application transforms it with [`AuditRedactor::redact_account`] into a
+non-reversible fingerprint:
+
+```text
+GABCD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+  -> GABC...LA5#<sha256-prefix>
+```
+
+- The first 4 and last 4 characters are kept for visual grouping.
+- The middle is replaced with `...`.
+- An 8-character prefix of the SHA-256 hash of the raw key is appended after `#`.
+
+This preserves the ability to group audit rows by account for analytics and
+correlation, while making it computationally infeasible to recover the original
+public key from the stored value.  Secret keys are never accepted by the API and
+therefore never reach the redactor.
+
+| Field     | Treatment                                           |
+|-----------|-----------------------------------------------------|
+| `account` | Redacted to hash-prefix fingerprint                 |
+| `tx_hash` | Not redacted — public on-chain data                 |
+| `quote_id`| Not redacted — opaque server-generated identifier   |
+
+### Retention and pruning
+
+Default retention is **30 days**, enforced by the `retained_until` generated
+column.  Pruning can be performed by the application purger (configured through
+`PurgerConfig`) or by a `pg_cron` job:
+
+```sql
+SELECT cron.schedule(
+    'prune-swap-submit-audit-log',
+    '0 3 * * *',
+    $$DELETE FROM swap_submit_audit_log WHERE retained_until <= NOW()$$
+);
+```
+
 ## Environment Variables
 
 | Variable            | Default | Description                                      |

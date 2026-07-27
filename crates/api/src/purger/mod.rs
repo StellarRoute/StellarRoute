@@ -121,6 +121,22 @@ impl QuoteArtifactPurger {
             }
         }
 
+        if self.config.purge_swap_audit_log {
+            match self.purge_swap_submit_audit_log().await {
+                Ok(result) => {
+                    self.log_purge_result(&result);
+                    results.push(result);
+                }
+                Err(e) => {
+                    error!(
+                        target: "stellarroute.api.purger",
+                        error = %e,
+                        "Failed to purge swap_submit_audit_log"
+                    );
+                }
+            }
+        }
+
         Ok(results)
     }
 
@@ -221,6 +237,61 @@ impl QuoteArtifactPurger {
 
         Ok(PurgeResult {
             purge_type: "route_audit_log".to_string(),
+            deleted_count: result.0,
+            scanned_count: result.1,
+            rows_retained: result.2,
+            age_min_days: result.3,
+            age_max_days: result.4,
+            age_p50_days: result.5,
+            age_p95_days: result.6,
+            age_p99_days: result.7,
+            was_rate_limited: result.8,
+            duration_ms: result.9,
+        })
+    }
+
+    /// Purge stale swap_submit_audit_log entries
+    async fn purge_swap_submit_audit_log(&self) -> Result<PurgeResult> {
+        let _start = Instant::now();
+
+        info!(
+            target: "stellarroute.api.purger",
+            retention_days = self.config.swap_audit_log_retention_days,
+            batch_size = self.config.swap_audit_log_batch_size,
+            "Starting swap_submit_audit_log purge"
+        );
+
+        let result = sqlx::query_as::<
+            _,
+            (
+                i64,
+                i64,
+                i64,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                bool,
+                i32,
+            ),
+        >(
+            r#"
+            SELECT * FROM purge_swap_submit_audit_log_older_than(
+                $1::INTEGER,
+                $2::INTEGER,
+                $3::INTEGER
+            )
+            "#,
+        )
+        .bind(self.config.swap_audit_log_retention_days)
+        .bind(self.config.swap_audit_log_batch_size)
+        .bind(self.config.max_iterations)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(PurgeResult {
+            purge_type: "swap_submit_audit_log".to_string(),
             deleted_count: result.0,
             scanned_count: result.1,
             rows_retained: result.2,

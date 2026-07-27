@@ -138,6 +138,26 @@ lazy_static! {
     )
     .expect("Can't create QUEUE_VIRTUAL_CLOCK gauge");
 
+    // ── Dependency circuit breaker metrics ────────────────────────────────
+
+    /// Whether a dependency's circuit breaker is currently open (1) or not (0).
+    /// Labels: dependency (horizon / soroban_rpc / database)
+    pub static ref DEPENDENCY_BREAKER_OPEN: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_dependency_breaker_open",
+        "Dependency circuit breaker state: 1 = open (failing fast), 0 = closed/half-open",
+        &["dependency"]
+    )
+    .expect("Can't create DEPENDENCY_BREAKER_OPEN gauge");
+
+    /// Requests rejected on the live path because a dependency breaker was open.
+    /// Labels: dependency (horizon / soroban_rpc / database)
+    pub static ref DEPENDENCY_FAIL_FAST: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_dependency_fail_fast_total",
+        "Requests rejected fast because a dependency circuit breaker was open",
+        &["dependency"]
+    )
+    .expect("Can't create DEPENDENCY_FAIL_FAST counter");
+
     // ── Indexer lag metrics ───────────────────────────────────────────────
 
     /// Indexer lag in ledger counts relative to Horizon.
@@ -369,13 +389,13 @@ pub fn update_indexer_lag(
 /// Record health score recomputation job duration.
 pub fn record_health_score_duration(duration: Duration) {
     HEALTH_SCORE_JOB_DURATION
-        .with_label_values(&[])
+        .with_label_values::<&str>(&[])
         .observe(duration.as_secs_f64());
 }
 
 /// Increment the health score recomputation failure counter.
 pub fn record_health_score_failure() {
-    HEALTH_SCORE_JOB_FAILURES.with_label_values(&[]).inc();
+    HEALTH_SCORE_JOB_FAILURES.with_label_values::<&str>(&[]).inc();
 }
 
 // ── Webhook metrics ───────────────────────────────────────────────────────────
@@ -448,12 +468,12 @@ pub fn record_webhook_delivery_attempt(integrator_id: &str, attempt: u32) {
 }
 
 pub fn update_webhook_pending_quotes(count: i64) {
-    WEBHOOK_PENDING_QUOTES.with_label_values(&[]).set(count);
+    WEBHOOK_PENDING_QUOTES.with_label_values::<&str>(&[]).set(count);
 }
 
 pub fn record_webhook_poll_cycle_duration(duration: Duration) {
     WEBHOOK_POLL_CYCLE_DURATION
-        .with_label_values(&[])
+        .with_label_values::<&str>(&[])
         .observe(duration.as_secs_f64());
 }
 

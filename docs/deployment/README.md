@@ -127,8 +127,48 @@ This will:
 2. Optimize the WASM binary
 3. Deploy router + adapter contracts to testnet
 4. Initialize router with deployer as admin, 30 bps fee rate
-5. Save contract IDs to `config/deployment-testnet.json`
-6. Verify router deployment by calling `get_admin()`
+5. Save contract IDs to `config/deployment-testnet.json` (gitignored, local detail)
+6. Save the reviewable, non-secret artifact to `config/deployments/testnet.json` (committed)
+7. Verify router deployment by calling `get_admin()`
+
+#### The committed deploy artifact
+
+`config/deployments/testnet.json` is the repo's reviewable record of what is live.
+It contains public data only — contract IDs, the public RPC URL, a UTC timestamp,
+and the git SHA of the build:
+
+```json
+{
+  "network": "testnet",
+  "router_contract_id": "C...",
+  "constant_product_adapter_contract_id": "C...",
+  "deployed_at": "2026-01-01T00:00:00Z",
+  "git_sha": "abc1234...",
+  "rpc_url": "https://soroban-testnet.stellar.org:443"
+}
+```
+
+Point the indexer at it:
+
+```bash
+export ROUTER_CONTRACT_ADDRESS="$(jq -r .router_contract_id config/deployments/testnet.json)"
+```
+
+Commit the updated artifact so the deployed address is reviewable in git history.
+See [`config/deployments/README.md`](../../config/deployments/README.md) for the
+full schema. Mainnet has no committed artifact: those deploys stay manually gated
+and `config/pools-mainnet.json` is never auto-populated.
+
+#### Keeping secrets out of artifacts and logs
+
+- The artifact writer emits only the fields above. Secret keys, seed phrases, and
+  deployer identities are never written to it.
+- In CI the deployer secret is piped to `soroban keys add --secret-key stdin`, so it
+  never appears in `argv` or the job log. GitHub additionally masks any value
+  registered as a repository secret.
+- `config/deployment-*.json` stays gitignored because it records local build paths.
+- Before sharing a run log, confirm no step echoes `SOROBAN_DEPLOYER_SECRET`; scripts
+  in `scripts/` log contract IDs and tx hashes only.
 
 Environment and runtime options:
 ```bash
@@ -419,6 +459,10 @@ For planned upgrades, follow the testnet upgrade flow in [Upgrade Process](#upgr
 
 ### Manual Deploy (`deploy-testnet.yml`)
 - Trigger: GitHub Actions > "Deploy to Testnet" > Run workflow
+- Set the `deploy_router` input to deploy a fresh router; the job writes
+  `config/deployments/testnet.json`, smoke-checks the deployed ID with `get_admin`,
+  and **fails the run** if the contract does not answer (so a bad ID is never published)
+- The artifact is uploaded as `deployment-testnet` for review before committing
 - Supports dry-run mode (build + hash only, no deploy)
 - Requires `SOROBAN_DEPLOYER_SECRET` secret and `DEPLOY_ENABLED=true` variable
 - Automatically registers pools from `config/pools-testnet.json` after deployment

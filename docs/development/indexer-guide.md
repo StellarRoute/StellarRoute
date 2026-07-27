@@ -39,8 +39,32 @@ The indexer requires these variables:
 - `SOROBAN_RPC_URL`
 - `ROUTER_CONTRACT_ADDRESS`
 
+`STELLAR_HORIZON_URL` and `SOROBAN_RPC_URL` must point at the **same** network.
+Mixing them (mainnet Horizon with testnet Soroban, say) writes SDEX offers and AMM
+pools from two different ledgers into the same tables. Copy a whole network block
+from `.env.example` instead of editing individual URLs.
+
+### `ROUTER_CONTRACT_ADDRESS` is validated at startup
+
+The indexer refuses to start when `ROUTER_CONTRACT_ADDRESS` is missing, empty,
+whitespace-only, or not shaped like a Soroban contract ID (56 base32 characters
+beginning with `C`). It exits non-zero with a message naming the variable, and no
+SDEX or AMM loop is started. This prevents the confusing half-running state where
+the process looks healthy but the AMM side is silently empty.
+
+Read the value from the committed deploy artifact:
+
+```bash
+export ROUTER_CONTRACT_ADDRESS="$(jq -r .router_contract_id config/deployments/testnet.json)"
+```
+
+For SDEX-only local work you can set `ALLOW_EMPTY_ROUTER=1`, which permits an empty
+router and disables AMM discovery. It is a **development-only** hatch: when
+`STELLARROUTE_ENV=production` it is refused and startup still fails.
+
 Optional operational variables:
 
+- `ALLOW_EMPTY_ROUTER=1` — dev-only; boot SDEX-only with no router (refused in production)
 - `STARTUP_CREDENTIAL_CHECK=true` to run startup reachability checks for DB/Horizon/Soroban
 - `RUST_LOG=stellarroute_indexer=info` (or `debug`) for log verbosity
 - `LOG_FORMAT=json` for structured JSON logs
@@ -50,7 +74,7 @@ PowerShell example:
 ```powershell
 $env:DATABASE_URL = "postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute"
 $env:STELLAR_HORIZON_URL = "https://horizon-testnet.stellar.org"
-$env:SOROBAN_RPC_URL = "https://soroban-rpc.testnet.stellar.org"
+$env:SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org:443"
 $env:ROUTER_CONTRACT_ADDRESS = "<your-router-contract-address>"
 $env:STARTUP_CREDENTIAL_CHECK = "true"
 ```
@@ -60,7 +84,7 @@ Bash example:
 ```bash
 export DATABASE_URL="postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute"
 export STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org"
-export SOROBAN_RPC_URL="https://soroban-rpc.testnet.stellar.org"
+export SOROBAN_RPC_URL="https://soroban-testnet.stellar.org:443"
 export ROUTER_CONTRACT_ADDRESS="<your-router-contract-address>"
 export STARTUP_CREDENTIAL_CHECK=true
 ```

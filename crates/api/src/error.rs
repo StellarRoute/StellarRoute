@@ -34,6 +34,10 @@ pub enum ApiError {
     #[error("System overloaded: {0}")]
     Overloaded(String),
 
+    /// A dependency circuit breaker is open — reject fast instead of cascading latency.
+    #[error("Dependency unavailable: {0}")]
+    DependencyUnavailable(String),
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -92,6 +96,11 @@ impl IntoResponse for ApiError {
             ApiError::Overloaded(msg) => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 ApiErrorCode::Overloaded,
+                msg,
+            ),
+            ApiError::DependencyUnavailable(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::DependencyUnavailable,
                 msg,
             ),
             ApiError::Unauthorized(msg) => {

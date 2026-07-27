@@ -638,6 +638,8 @@ pub enum ApiErrorCode {
     RateLimitExceeded,
     /// Server is temporarily overloaded
     Overloaded,
+    /// An upstream dependency's circuit breaker is open
+    DependencyUnavailable,
     /// Request lacks valid credentials
     Unauthorized,
     /// Invalid Stellar asset identifier
@@ -665,6 +667,7 @@ impl ApiErrorCode {
             Self::ValidationError => "validation_error",
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::Overloaded => "overloaded",
+            Self::DependencyUnavailable => "dependency_unavailable",
             Self::Unauthorized => "unauthorized",
             Self::InvalidAsset => "invalid_asset",
             Self::InvalidAmount => "invalid_amount",

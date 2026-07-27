@@ -3,7 +3,7 @@
 //! Main entry point for the SDEX orderbook indexer service.
 
 use std::process;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use std::time::Duration;
 use stellarroute_indexer::amm::{AmmAggregator, AmmConfig};
@@ -139,7 +139,10 @@ async fn main() {
     let partition_manager = stellarroute_indexer::partition::PartitionManager::from_config(&config);
     let sdex_indexer = SdexIndexer::with_mode(horizon, db.clone(), sdex_mode, partition_manager);
 
-    // Create AMM aggregator
+    // Create AMM aggregator. An empty router here means `ALLOW_EMPTY_ROUTER` was
+    // honored (dev only — `from_env` rejects it otherwise), so run SDEX-only
+    // rather than starting an aggregation loop against no contract.
+    let amm_enabled = !config.router_contract_address.trim().is_empty();
     let amm_config = AmmConfig {
         router_contract: config.router_contract_address.clone(),
         poll_interval_secs: config.amm_poll_interval_secs,
@@ -162,6 +165,13 @@ async fn main() {
 
     let amm_shutdown = shutdown.clone();
     let amm_handle = tokio::spawn(async move {
+        if !amm_enabled {
+            warn!(
+                "ALLOW_EMPTY_ROUTER is set and ROUTER_CONTRACT_ADDRESS is empty — \
+                 running SDEX-only, AMM pool discovery is disabled"
+            );
+            return;
+        }
         info!("Starting AMM aggregation loop");
         if let Err(e) = amm_aggregator.start_aggregation().await {
             if !amm_shutdown.is_stopping() {

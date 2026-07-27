@@ -1383,6 +1383,16 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <kbd className="font-mono">Alt+2</kbd>
             </li>
           </ul>
+          <p className="mt-4 text-sm text-muted-foreground">
+            New here?{" "}
+            <a
+              href="/guide"
+              className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              First live swap guide
+            </a>
+            {" "}(wallet, trustline, slippage).
+          </p>
           <IconographyLegend embedded className="mt-4" />
         </DialogContent>
       </Dialog>

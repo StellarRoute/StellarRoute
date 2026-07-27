@@ -164,6 +164,8 @@ pub struct AppState {
     pub timeout_controller: Arc<TimeoutController>,
     /// Non-blocking audit log writer for route decisions
     pub audit_writer: Arc<AuditWriter>,
+    /// Non-blocking audit log writer for swap prepare/submit attempts
+    pub swap_submit_audit_writer: Arc<AuditWriter>,
     /// Indexer lag monitor for sync drift detection
     pub indexer_lag: Arc<IndexerLagMonitor>,
     /// Idempotency ledger for POST /api/v1/quote deduplication
@@ -193,6 +195,7 @@ impl AppState {
 
         let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(None));
         let audit_writer = Arc::new(AuditWriter::from_env(db.write_pool().clone()));
+        let swap_submit_audit_writer = audit_writer.clone();
         let indexer_lag = Arc::new(IndexerLagMonitor::from_env(db.write_pool().clone()));
         indexer_lag
             .clone()
@@ -243,6 +246,7 @@ impl AppState {
             )),
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
+            swap_submit_audit_writer,
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,
@@ -275,6 +279,7 @@ impl AppState {
             cache_arc.clone(),
         )));
         let audit_writer = Arc::new(AuditWriter::from_env(db.write_pool().clone()));
+        let swap_submit_audit_writer = audit_writer.clone();
         let indexer_lag = Arc::new(IndexerLagMonitor::from_env(db.write_pool().clone()));
         indexer_lag
             .clone()
@@ -332,6 +337,7 @@ impl AppState {
             )),
             timeout_controller: Arc::new(TimeoutController::new(Default::default())),
             audit_writer,
+            swap_submit_audit_writer,
             indexer_lag,
             idempotency_ledger,
             external_dependency_health,

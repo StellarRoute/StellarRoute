@@ -283,7 +283,7 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 **Phase 3.7: Audit Preparation**
 - [ ] Complete security self-audit
 - [ ] Document all contract functions
-- [ ] Create audit checklist
+- [x] Create audit checklist (see `audit/internal-security-review.md`)
 - [ ] Prepare for external security audit
 
 #### Deliverables

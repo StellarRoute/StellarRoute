@@ -41,6 +41,12 @@ describe("OnboardingChecklist", () => {
     expect(screen.getByLabelText(/connect your wallet \(completed\)/i)).toBeInTheDocument();
   });
 
+  it("links to the first swap guide from the checklist", () => {
+    render(<OnboardingChecklist />);
+    const guideLink = screen.getByRole("link", { name: /first swap guide/i });
+    expect(guideLink).toHaveAttribute("href", "/guide");
+  });
+
   it("has accessible section label", () => {
     render(<OnboardingChecklist />);
     expect(screen.getByRole("region", { name: /getting started checklist/i })).toBeInTheDocument();

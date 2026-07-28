@@ -45,4 +45,24 @@ describe('WalletConnectionOnboarding', () => {
     await user.click(screen.getByRole('button', { name: /mainnet/i }));
     expect(onNetworkSelection).toHaveBeenCalledWith('mainnet');
   });
+
+  it('wallet connect dialog uses mobile clip-safe layout classes (#1006)', () => {
+    render(
+      <WalletConnectionOnboarding
+        open
+        onOpenChange={vi.fn()}
+        availableWallets={[]}
+        isLoading={false}
+        error={null}
+        onConnect={vi.fn()}
+        appNetwork="testnet"
+        walletNetwork={null}
+      />,
+    );
+
+    const dialog = screen.getByTestId('wallet-connect-dialog');
+    expect(dialog.className).toMatch(/90vw/);
+    expect(dialog.className).toMatch(/90dvh|90vh/);
+    expect(dialog.className).toMatch(/overflow-hidden/);
+  });
 });

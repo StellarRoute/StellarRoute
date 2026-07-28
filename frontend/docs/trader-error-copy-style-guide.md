@@ -51,6 +51,24 @@ Mapped API codes:
 - network_error
 - unknown_error (safe fallback)
 
+Mapped Horizon transaction/operation and Soroban codes (inferred from raw
+error messages via `inferHorizonError`, e.g. Horizon's
+`extras.result_codes` text or a Soroban `InvokeHostFunctionResultCode`):
+- tx_bad_seq
+- tx_insufficient_balance
+- tx_insufficient_fee
+- tx_too_late
+- op_no_trust
+- op_underfunded
+- op_line_full
+- op_low_reserve
+- op_no_issuer
+- op_no_destination
+- invoke_host_function_trapped
+- invoke_host_function_resource_limit_exceeded
+- invoke_host_function_entry_archived
+- generic transaction timeout (fallback when no specific code is present)
+
 ## Example Library (12+)
 These examples are canonical samples for design review and QA.
 
@@ -118,6 +136,76 @@ These examples are canonical samples for design review and QA.
 - Headline: We could not refresh this quote
 - Explanation: Something unexpected happened while preparing your trade details.
 - Recovery action: Refresh the quote, then try again.
+
+14. tx_bad_seq
+- Headline: Account sequence is out of date
+- Explanation: Your wallet account changed while this swap was being prepared.
+- Recovery action: Refresh the quote and submit the swap again.
+
+15. op_no_trust
+- Headline: Missing trustline for this asset
+- Explanation: Your account cannot receive the destination asset yet.
+- Recovery action: Add the required trustline in your wallet, then retry.
+
+16. op_underfunded
+- Headline: Insufficient funds for this swap
+- Explanation: Your account balance cannot cover the trade amount and network fees.
+- Recovery action: Lower the amount or add funds, then try again.
+
+17. op_line_full
+- Headline: Trustline limit reached for this asset
+- Explanation: Receiving this amount would exceed your account's trust limit for the destination asset.
+- Recovery action: Increase your trustline limit or reduce the trade size, then try again.
+
+18. op_low_reserve
+- Headline: Minimum account reserve required
+- Explanation: Completing this trade would leave your account below the minimum XLM reserve.
+- Recovery action: Add XLM to your account or reduce the trade size, then try again.
+
+19. op_no_issuer
+- Headline: Asset issuer could not be found
+- Explanation: The issuing account for this asset is missing or no longer valid.
+- Recovery action: Choose a different asset pair and try again.
+
+20. op_no_destination
+- Headline: Destination account does not exist
+- Explanation: The receiving account for this trade has not been created on the network.
+- Recovery action: Confirm the destination account, then try again.
+
+21. tx_insufficient_balance
+- Headline: Not enough balance to cover this trade
+- Explanation: Your account balance cannot cover the trade amount plus the required minimum reserve.
+- Recovery action: Lower the amount or add funds, then try again.
+
+22. tx_insufficient_fee
+- Headline: Network fee was too low
+- Explanation: The transaction fee did not meet the network's current minimum requirement.
+- Recovery action: Refresh the quote to get an updated fee, then resubmit.
+
+23. tx_too_late
+- Headline: This quote expired before it was submitted
+- Explanation: The transaction's submission window closed before the network could process it.
+- Recovery action: Refresh the quote to get a new submission window, then try again.
+
+24. invoke_host_function_trapped
+- Headline: The swap contract could not complete this trade
+- Explanation: The contract stopped unexpectedly while executing this swap.
+- Recovery action: Try a different amount or pair, then submit again.
+
+25. invoke_host_function_resource_limit_exceeded
+- Headline: This trade is too complex to execute right now
+- Explanation: The swap needs more computing resources than the network currently allows in one transaction.
+- Recovery action: Try a smaller trade or a simpler route, then try again.
+
+26. invoke_host_function_entry_archived
+- Headline: Contract data needs to be restored first
+- Explanation: Some contract data required for this swap is archived and was not restored.
+- Recovery action: Refresh the quote so it can include the restore step, then try again.
+
+27. Transaction timed out (generic fallback when no specific code matches)
+- Headline: Transaction timed out
+- Explanation: Horizon did not confirm your transaction within 60 seconds.
+- Recovery action: You can resubmit the swap or dismiss and refresh the quote.
 
 ## UI Integration Notes
 Current trader-facing usages now route through shared mapping in:

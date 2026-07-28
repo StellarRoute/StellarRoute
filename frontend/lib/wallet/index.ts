@@ -41,6 +41,74 @@ function getWindowRecord(): Record<string, unknown> | null {
     : (window as unknown as Record<string, unknown>);
 }
 
+type XBullClient = {
+  connect: () => Promise<{ publicKey: string }>;
+  sign?: (opts: {
+    xdr: string;
+    network?: string;
+    publicKey?: string;
+  }) => Promise<string>;
+  getNetwork?: () => Promise<
+    | { network: string; networkPassphrase?: string; error?: undefined }
+    | { error: { message?: string; code?: number }; network?: undefined }
+  >;
+};
+
+/** Resolve the injected xBull client (`window.xbull` or SEP-43 `window.xBullSDK`). */
+function getXBullClient(): XBullClient | undefined {
+  const win = getWindowRecord();
+  if (!win) return undefined;
+  const client = (win.xbull ?? win.xBullSDK) as XBullClient | undefined;
+  return client?.connect ? client : undefined;
+}
+
+/**
+ * Map xBull network identifiers (PUBLIC/TESTNET, public/testnet, passphrases)
+ * onto Freighter-compatible session network strings.
+ */
+function normalizeXbullNetworkName(
+  network: string,
+  networkPassphrase?: string
+): string {
+  const key = network.trim().toLowerCase();
+  if (
+    key === 'public' ||
+    key === 'pubnet' ||
+    key === 'mainnet' ||
+    key === 'production'
+  ) {
+    return 'public';
+  }
+  if (key === 'testnet' || key === 'test') {
+    return 'testnet';
+  }
+  if (networkPassphrase?.includes('Public Global Stellar Network')) {
+    return 'public';
+  }
+  if (networkPassphrase?.includes('Test SDF Network')) {
+    return 'testnet';
+  }
+  return key;
+}
+
+/**
+ * Read the wallet's currently selected network via getNetwork when available.
+ * Falls back to the app-configured network only when the API is missing.
+ */
+async function resolveXbullNetwork(xbull: XBullClient): Promise<string> {
+  if (typeof xbull.getNetwork === 'function') {
+    try {
+      const res = await xbull.getNetwork();
+      if (res && !res.error && res.network) {
+        return normalizeXbullNetworkName(res.network, res.networkPassphrase);
+      }
+    } catch {
+      // Fall through to app network fallback.
+    }
+  }
+  return process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+}
+
 function getInjectedAlbedo(): AlbedoClient | null {
   if (typeof window === 'undefined') return null;
   return window.albedo ?? null;
@@ -100,9 +168,8 @@ export async function getAvailableWallets(): Promise<AvailableWallet[]> {
     wallets.push({ id: 'freighter', label: 'Freighter', installed: false });
   }
 
-  // xBull — detected via window.xbull
-  const xbullInstalled =
-    typeof window !== 'undefined' && !!(getWindowRecord() ?? {}).xbull;
+  // xBull — detected via window.xbull or SEP-43 window.xBullSDK
+  const xbullInstalled = !!getXBullClient();
   wallets.push({ id: 'xbull', label: 'xBull', installed: xbullInstalled });
 
   // Albedo works as a hosted intent wallet and may also inject window.albedo.
@@ -144,19 +211,18 @@ export async function connectWallet(
   }
 
   if (walletId === 'xbull') {
-    const xbull = (getWindowRecord() ?? {}).xbull as
-      | { connect: () => Promise<{ publicKey: string }> }
-      | undefined;
+    const xbull = getXBullClient();
 
     if (!xbull) {
       throw new Error('xBull not installed');
     }
 
     const result = await xbull.connect();
+    const network = await resolveXbullNetwork(xbull);
     return {
       walletId,
       address: result.publicKey,
-      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
+      network,
       isConnected: true,
     };
   }
@@ -279,25 +345,71 @@ export async function checkWalletCapabilities(
           : undefined,
     });
   } else if (walletId === 'xbull') {
+    const xbull = getXBullClient();
+    const installed = !!xbull;
     statuses.push({
       capability: 'request_access',
-      allowed: true,
+      allowed: installed,
+      reason: installed ? undefined : 'xBull not installed',
+      resolution: installed ? undefined : 'Install the xBull extension',
     });
     statuses.push({
       capability: 'view_address',
-      allowed: true,
+      allowed: installed,
+      reason: installed ? undefined : 'xBull not installed',
+      resolution: installed
+        ? undefined
+        : getCapabilityResolution('view_address'),
     });
+
+    let walletNetwork: string | null = null;
+    if (xbull && typeof xbull.getNetwork === 'function') {
+      try {
+        const res = await xbull.getNetwork();
+        if (res && !res.error && res.network) {
+          walletNetwork = normalizeXbullNetworkName(
+            res.network,
+            res.networkPassphrase
+          );
+        }
+      } catch {
+        walletNetwork = null;
+      }
+    }
+
+    const supportedNetwork =
+      network === 'testnet' || network === 'mainnet' || network === 'public';
+    const normalizedExpected =
+      network === 'mainnet' || network === 'public' ? 'public' : network;
+    const networkMatch =
+      walletNetwork !== null
+        ? normalizeXbullNetworkName(walletNetwork) === normalizedExpected
+        : supportedNetwork;
+
     statuses.push({
       capability: 'view_network',
-      allowed: true,
-      reason: network === 'testnet' ? undefined : 'xBull only supports testnet',
-      resolution: network !== 'testnet' ? 'Switch app to testnet' : undefined,
+      allowed: networkMatch,
+      reason: networkMatch
+        ? undefined
+        : walletNetwork
+          ? `Wallet on ${walletNetwork}, expected ${network}`
+          : `xBull supports testnet/public, expected ${network}`,
+      resolution: networkMatch
+        ? undefined
+        : 'Switch wallet network to match the app',
     });
     statuses.push({
       capability: 'sign_transaction',
-      allowed: network === 'testnet',
-      reason: network === 'testnet' ? undefined : 'xBull only supports testnet',
-      resolution: network !== 'testnet' ? 'Switch app to testnet' : undefined,
+      allowed: Boolean(installed && networkMatch),
+      reason: !installed
+        ? 'xBull not installed'
+        : !networkMatch
+          ? 'Network mismatch'
+          : undefined,
+      resolution:
+        !installed || !networkMatch
+          ? getCapabilityResolution('sign_transaction')
+          : undefined,
     });
   } else if (walletId === 'albedo') {
     const supportedNetwork =
@@ -375,17 +487,9 @@ export async function signTransactionWithWallet(
   }
 
   if (walletId === 'xbull') {
-    const xbull = (getWindowRecord() ?? {}).xbull as
-      | {
-          sign: (opts: {
-            xdr: string;
-            network?: string;
-            publicKey?: string;
-          }) => Promise<string>;
-        }
-      | undefined;
+    const xbull = getXBullClient();
 
-    if (!xbull) {
+    if (!xbull?.sign) {
       throw new Error('xBull not installed');
     }
 
@@ -483,19 +587,18 @@ export async function refreshWalletSession(
   }
 
   if (walletId === 'xbull') {
-    const xbull = (getWindowRecord() ?? {}).xbull as
-      | { connect: () => Promise<{ publicKey: string }> }
-      | undefined;
+    const xbull = getXBullClient();
 
     if (!xbull) {
       throw new Error('xBull not installed');
     }
 
     const result = await xbull.connect();
+    const network = await resolveXbullNetwork(xbull);
     return {
       walletId,
       address: result.publicKey,
-      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
+      network,
       isConnected: true,
     };
   }

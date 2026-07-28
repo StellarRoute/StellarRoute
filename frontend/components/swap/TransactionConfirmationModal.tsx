@@ -173,7 +173,8 @@ export function TransactionConfirmationModal({
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-[420px] p-0 overflow-hidden border-border/40 bg-background/95 backdrop-blur-xl rounded-[32px] shadow-2xl"
+        data-testid="swap-confirm-dialog"
+        className="flex w-[min(100%,90vw)] max-h-[min(90dvh,90vh)] flex-col gap-0 overflow-hidden p-0 border-border/40 bg-background/95 backdrop-blur-xl rounded-2xl sm:rounded-[32px] shadow-2xl sm:max-w-[420px]"
         aria-describedby="tcm-state-desc"
       >
         {/* Visually hidden state description for aria-describedby */}
@@ -186,7 +187,7 @@ export function TransactionConfirmationModal({
           {config.announcement}
         </div>
 
-        <div className="p-8 space-y-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-8 space-y-6">
           <DialogHeader>
             <div
               className={cn(
@@ -206,7 +207,7 @@ export function TransactionConfirmationModal({
             <DialogTitle className="text-2xl font-bold text-center tracking-tight">
               {config.heading}
             </DialogTitle>
-            <DialogDescription className="text-center text-muted-foreground pt-2">
+            <DialogDescription className="text-center text-muted-foreground pt-2 break-words">
               {status === 'failed' && failedCopy ? (
                 <span className="space-y-1 block">
                   <span className="block font-medium text-foreground">
@@ -233,21 +234,21 @@ export function TransactionConfirmationModal({
           {/* Trade summary (shown in review and confirmed states) */}
           {tradeParams && (status === 'review' || status === 'confirmed') && (
             <div className="bg-muted/30 rounded-2xl p-4 border border-border/20 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('swap.confirm.summary.youPay')}</span>
-                <span className="font-medium">
+              <div className="flex justify-between gap-3 min-w-0">
+                <span className="text-muted-foreground shrink-0">{t('swap.confirm.summary.youPay')}</span>
+                <span className="font-medium text-right break-words min-w-0">
                   {tradeParams.fromAmount} {tradeParams.fromAsset}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('swap.confirm.summary.youReceive')}</span>
-                <span className="font-medium">
+              <div className="flex justify-between gap-3 min-w-0">
+                <span className="text-muted-foreground shrink-0">{t('swap.confirm.summary.youReceive')}</span>
+                <span className="font-medium text-right break-words min-w-0">
                   {tradeParams.toAmount} {tradeParams.toAsset}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('swap.confirm.summary.minReceived')}</span>
-                <span className="font-medium">{tradeParams.minReceived}</span>
+              <div className="flex justify-between gap-3 min-w-0">
+                <span className="text-muted-foreground shrink-0">{t('swap.confirm.summary.minReceived')}</span>
+                <span className="font-medium text-right break-words min-w-0">{tradeParams.minReceived}</span>
               </div>
             </div>
           )}
@@ -263,20 +264,20 @@ export function TransactionConfirmationModal({
           )}
         </div>
 
-        <DialogFooter className="flex flex-col sm:flex-row gap-3 p-8 bg-muted/10 border-t border-border/20">
+        <DialogFooter className="shrink-0 flex flex-col sm:flex-row gap-3 p-4 sm:p-8 bg-muted/10 border-t border-border/20 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-8">
           {status === 'review' && (
             <>
               <Button
                 ref={primaryActionRef}
                 onClick={onConfirm}
-                className="flex-1 h-12 rounded-xl font-bold shadow-lg"
+                className="flex-1 min-h-[48px] h-12 rounded-xl font-bold shadow-lg"
               >
                 {t('swap.confirm.cta.confirmSwap')}
               </Button>
               <Button
                 variant="outline"
                 onClick={onCancel}
-                className="flex-1 h-12 rounded-xl font-bold"
+                className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
               >
                 {t('swap.confirm.cta.cancel')}
               </Button>
@@ -288,7 +289,7 @@ export function TransactionConfirmationModal({
               ref={primaryActionRef}
               variant="outline"
               onClick={onCancel}
-              className="flex-1 h-12 rounded-xl font-bold"
+              className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
             >
               {t('swap.confirm.cta.cancel')}
             </Button>
@@ -299,7 +300,7 @@ export function TransactionConfirmationModal({
               ref={primaryActionRef}
               variant="outline"
               disabled
-              className="flex-1 h-12 rounded-xl font-bold opacity-50"
+              className="flex-1 min-h-[48px] h-12 rounded-xl font-bold opacity-50"
             >
               {t('swap.confirm.cta.processing')}
             </Button>
@@ -309,7 +310,7 @@ export function TransactionConfirmationModal({
             <Button
               ref={primaryActionRef}
               onClick={onDone}
-              className="flex-1 h-12 rounded-xl font-bold shadow-lg shadow-green-500/20"
+              className="flex-1 min-h-[48px] h-12 rounded-xl font-bold shadow-lg shadow-green-500/20"
             >
               {t('swap.confirm.cta.done')}
             </Button>
@@ -320,14 +321,14 @@ export function TransactionConfirmationModal({
               <Button
                 ref={primaryActionRef}
                 onClick={onTryAgain}
-                className="flex-1 h-12 rounded-xl font-bold"
+                className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
               >
                 {t('swap.confirm.cta.tryAgain')}
               </Button>
               <Button
                 variant="outline"
                 onClick={onDismiss}
-                className="flex-1 h-12 rounded-xl font-bold"
+                className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
               >
                 {t('swap.confirm.cta.dismiss')}
               </Button>
@@ -339,14 +340,14 @@ export function TransactionConfirmationModal({
               <Button
                 ref={primaryActionRef}
                 onClick={onResubmit}
-                className="flex-1 h-12 rounded-xl font-bold"
+                className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
               >
                 {t('swap.confirm.cta.resubmit')}
               </Button>
               <Button
                 variant="outline"
                 onClick={onDismiss}
-                className="flex-1 h-12 rounded-xl font-bold"
+                className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
               >
                 {t('swap.confirm.cta.dismiss')}
               </Button>

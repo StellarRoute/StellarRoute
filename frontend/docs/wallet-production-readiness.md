@@ -13,13 +13,13 @@ This document maps every wallet-related code path to its current status — **st
 | **Connect (Albedo)**           | `connectWallet("albedo")` in `lib/wallet/index.ts`                                  | ✅ Production ready | Uses the Albedo `public_key` intent through `window.albedo` or the hosted intent client                                                                                         |
 | **Detect installed wallets**   | `getAvailableWallets()` in `lib/wallet/index.ts`                                    | ✅ Production ready | Freighter: `isAllowed()` API; xBull: `window.xbull` presence check; Albedo: browser-hosted intent client                                                                        |
 | **View address**               | `getAddress()` (Freighter) / `connect().publicKey` (xBull) / `publicKey()` (Albedo) | ✅ Production ready | Called during `connectWallet` and `refreshWalletSession`                                                                                                                        |
-| **View network**               | `getNetworkDetails()` (Freighter) / app network fallback (xBull, Albedo)            | ⚠️ Partial          | xBull and Albedo do not expose passive network checks in this adapter; app network fallback is used for session state                                                           |
+| **View network**               | `getNetworkDetails()` (Freighter) / `getNetwork()` (xBull) / app network fallback (Albedo) | ✅ Production ready | xBull reports the selected network via `getNetwork()` (window.xbull or xBullSDK); Albedo still uses app network fallback for session state |
 | **Sign transaction**           | `signTransactionWithWallet(xdr, walletId)` in `lib/wallet/index.ts`                 | ✅ Production ready | Freighter: `signTransaction()`; xBull: `window.xbull.sign()`; Albedo: `tx` intent returning signed envelope XDR                                                                 |
 | **Sign transaction stub**      | `signTransactionStub(xdr)` in `lib/wallet/index.ts`                                 | 🔴 Stub only        | Returns `{ ok: false }` — used in tests and out-of-scope flows. **Never call in production.**                                                                                   |
 | **Spendable balance**          | `useWalletBalance` in `hooks/useWalletBalance.ts`                                   | ✅ Production ready | Fetches `GET /accounts/{address}` from Horizon; native spendable balance subtracts `XLM_FEE_RESERVE`; consumed by `SwapCard` for balance display, loading/error states, and MAX |
 | **Auto-reconnect**             | `WalletProvider` effect in `wallet-provider.tsx`                                    | ✅ Production ready | Reads `stellarroute.wallet.lastWalletId` from `localStorage`, respects `autoReconnectPreferred` flag                                                                            |
 | **Reconnect on focus/online**  | `WalletProvider` window event listeners                                             | ✅ Production ready | Throttled to 5 s to avoid hammering the wallet extension                                                                                                                        |
-| **Network mismatch detection** | `networkMismatch` in `WalletProvider`                                               | ✅ Production ready | Compares app `network` state with `walletNetwork` returned by wallet                                                                                                            |
+| **Network mismatch detection** | `networkMismatch` in `WalletProvider`                                               | ✅ Production ready | Compares app `network` state with `walletNetwork` returned by wallet (Freighter + xBull real network; Albedo app fallback)                                                      |
 | **Capability check**           | `refreshCapabilities()` / `checkWalletCapabilities()`                               | ⚠️ Mock             | `refreshCapabilities` in the provider sets `{ statuses: [] }` — wire to `checkWalletCapabilities` from `lib/wallet/index.ts` for Phase B                                        |
 | **Account switch detection**   | `accountSwitchState` in `WalletProvider`                                            | ✅ Production ready | Detects address change after `refreshAccount()`                                                                                                                                 |
 | **Sync mismatch / resync**     | `syncMismatch` + `resyncWallet()` in `WalletProvider`                               | ✅ Production ready | Calls `refreshAccount()` and clears the mismatch flag                                                                                                                           |
@@ -42,7 +42,7 @@ This document maps every wallet-related code path to its current status — **st
 
 | Path                              | Gap                                                               | Action needed                                                                                               |
 | --------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| xBull/Albedo network detection    | Uses app network fallback instead of passive wallet network reads | Implement wallet-specific network APIs if exposed; keep capability checks constrained to supported networks |
+| Albedo network detection          | Uses app network fallback instead of passive wallet network reads | Implement wallet-specific network APIs if exposed; keep capability checks constrained to supported networks |
 | Transaction lifecycle submit step | `useTransactionLifecycle` calls sign but not broadcast            | Wire the signed XDR into `submitTransaction` once it POSTs to Horizon                                       |
 
 ---
@@ -54,7 +54,7 @@ Before enabling real on-chain swaps (Phase B):
 - [x] **Replace `stubSpendableBalance`** — `useWalletBalance` fetches live balance from Horizon `accounts/{address}`; native MAX subtracts fee reserve (future: `buying_liabilities` / `selling_liabilities` for trustline holds)
 - [ ] **Implement `submitTransaction`** in `lib/wallet/submit.ts` — POST signed XDR to Horizon `/transactions`; handle `400 tx_bad_auth`, `400 op_underfunded`, and network timeouts
 - [ ] **Wire `refreshCapabilities`** in `WalletProvider` — replace mock with `checkWalletCapabilities(walletId, network)` so `WalletCapabilitiesBanner` reflects real status
-- [ ] **Fix xBull/Albedo passive network detection** — replace app network fallback with real wallet API calls if available so `networkMismatch` works independently of app settings
+- [x] **Fix xBull passive network detection** — `connectWallet`/`refreshWalletSession` call xBull `getNetwork()` so `networkMismatch` works for public + testnet; Albedo still uses app fallback
 - [ ] **Remove all `signTransactionWithWallet` call sites** — search for `signTransactionWithWallet` and ensure only `signTransactionWithWallet` is used in non-test code
 - [ ] **Validate network passphrase mapping** — ensure `networkPassphrase` passed to `signTransaction` matches Stellar's canonical values (`Test SDF Network ; September 2015` / `Public Global Stellar Network ; September 2015`)
 - [ ] **Test Freighter + xBull on testnet end-to-end** — confirm sign → broadcast → Horizon confirmation flow with real wallets
@@ -81,11 +81,12 @@ return res.signedTxXdr;
 
 ### xBull
 
-xBull injects `window.xbull`. There is no npm package — detect via `typeof window !== "undefined" && !!window.xbull`.
+xBull injects `window.xbull` and/or SEP-43 `window.xBullSDK`. Detect via either client.
 
 ```ts
-const xbull = (window as any).xbull;
+const xbull = (window as any).xbull ?? (window as any).xBullSDK;
 const { publicKey } = await xbull.connect();
+const networkRes = await xbull.getNetwork?.(); // { network, networkPassphrase }
 const signedXdr = await xbull.sign({ xdr, network: 'testnet' });
 ```
 

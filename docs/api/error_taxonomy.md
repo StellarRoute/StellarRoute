@@ -77,6 +77,16 @@ WebSocket endpoints use the same error codes as REST endpoints, plus additional 
 
 See [WebSocket Quote Stream API](websocket.md) for complete WebSocket protocol documentation and error handling guidance.
 
+## Freshness SLO & Configuration Knobs
+
+To prevent execution on stale rates, the StellarRoute API implements strict freshness checks:
+- **SLO**: Market quotes/routes are rejected if the underlying data sources (SDEX offers or Soroban pool reserves) have not been updated within configured thresholds.
+- **Error**: Rejections return HTTP 422 with the code `stale_market_data` containing details about the stale vs. fresh inputs.
+- **Config Knobs**:
+  - `freshness_threshold_secs.sdex`: Maximum age of SDEX offer data (default: 60s) before it is considered stale.
+  - `freshness_threshold_secs.amm`: Maximum age of Soroban AMM state (default: 30s) before it is considered stale.
+  - `staleness_threshold_secs`: Ultimate cutoff beyond which any source is rejected (default: 300s).
+
 ## Integration guidance
 
 For practical retry semantics, backoff guidance, SDK helper examples, and frontend messaging recommendations, see [API Integrator Error Guide](integrator-error-guide.md).

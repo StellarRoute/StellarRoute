@@ -586,3 +586,96 @@ Fund the deployer account:
 curl "https://friendbot.stellar.org/?addr=$(soroban keys address deployer)"
 # Mainnet: transfer XLM from an exchange or wallet
 ```
+
+
+---
+
+## Hosting Blueprint (Issue #1035)
+
+The following sections document the concrete hosting blueprint that satisfies
+M5 (Live hosting). A single-region Render deployment and a Docker Compose
+production overlay are both provided.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `render.yaml` | Render Blueprint — managed Postgres, Redis, API web service, indexer worker |
+| `deploy/docker-compose.prod.yml` | Compose production overlay (hardened, no host ports for DB/Redis) |
+| `deploy/secrets.checklist.md` | Operator checklist — work through before first deploy |
+
+### Dry-run / validate commands
+
+**Render Blueprint:**
+```bash
+python3 -c "import yaml, sys; yaml.safe_load(open('render.yaml'))" && echo "render.yaml OK"
+```
+Use the Render dashboard → **Blueprint → Validate** for full schema validation.
+
+**Docker Compose production overlay:**
+```bash
+docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml config
+# Exits 0 and prints the merged config if the YAML is valid.
+```
+
+### Environment variable mapping
+
+The table below maps every env var key used in `render.yaml` and
+`deploy/docker-compose.prod.yml` to its purpose, source, and which service
+requires it. It is kept 1:1 with the blueprint keys — if you add a variable
+to the blueprint, add a row here.
+
+| Key | Required by | Source in Render | Description |
+|---|---|---|---|
+| `DATABASE_URL` | API, Indexer | Auto-wired from `stellarroute-postgres` | Primary PostgreSQL connection string |
+| `REDIS_URL` | API | Auto-wired from `stellarroute-redis` | Redis connection string for quote cache + rate limiting |
+| `API_PORT` | API | Set to `3000` in blueprint | HTTP listen port |
+| `RUST_LOG` | API, Indexer | Set to `info,warn` in blueprint | Log level directive |
+| `SOROBAN_RPC_URL` | API (optional), Indexer (**required**) | Secret — set in Render dashboard | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`) |
+| `STELLAR_HORIZON_URL` | Indexer (**required**) | Secret — set in Render dashboard | Stellar Horizon endpoint |
+| `ROUTER_CONTRACT_ADDRESS` | Indexer (**required**) | Secret — set in Render dashboard | Deployed router contract ID |
+| `ENABLE_ADMIN_ROUTES` | API | Hardcoded `false` in blueprint | Enable/disable admin kill-switch routes (see §Security) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | API, Indexer | Optional secret | OTLP collector URL; unset disables trace export |
+| `POSTGRES_USER` | Compose only | `.env.prod` | PostgreSQL superuser (not used in Render managed DB) |
+| `POSTGRES_PASSWORD` | Compose only | `.env.prod` | PostgreSQL password |
+| `POSTGRES_DB` | Compose only | `.env.prod` | PostgreSQL database name |
+| `REDIS_PASSWORD` | Compose only | `.env.prod` | Redis `requirepass` value |
+
+### Health checks
+
+| Endpoint | Type | Used by |
+|---|---|---|
+| `GET /health` | Liveness — is the process alive? | Render web service health check; Docker Compose healthcheck |
+| `GET /health/deps` | Readiness — are Postgres and Redis reachable? | Post-deploy verification |
+
+Both endpoints are wired in `render.yaml` via `healthCheckPath: /health`.
+The production Compose overlay additionally runs a `curl -sf` healthcheck
+against `/health` at 15 s intervals with 3 retries.
+
+### Security
+
+⚠️  **Admin routes are disabled by default.**
+
+`ENABLE_ADMIN_ROUTES` is set to `"false"` in both blueprints. Do **not**
+change this to `"true"` until the kill-switch security issues have been
+reviewed and merged. Relevant tracking: see `docs/RUNBOOK_KILL_SWITCH.md`
+and the issue tracker for open security issues tagged `[security]`.
+
+The blueprint also:
+- Removes host-port exposure for Postgres and Redis in the Compose overlay
+  so those services are only reachable from within the Docker network.
+- Uses `ipAllowList: []` in `render.yaml` so managed databases only accept
+  connections from Render-internal services.
+
+### Deploying to staging (no tribal knowledge required)
+
+1. Fork/clone the repo.
+2. Work through `deploy/secrets.checklist.md`.
+3. Connect the repo to Render → **Blueprints → New Blueprint** → select `render.yaml`.
+4. Render will create the Postgres database, Redis instance, API web service, and indexer worker.
+5. In the Render dashboard, add the secret env vars listed in `deploy/secrets.checklist.md`.
+6. Trigger a deploy and verify:
+   ```bash
+   curl -sf https://<your-render-url>/health && echo "liveness OK"
+   curl -sf https://<your-render-url>/health/deps && echo "readiness OK"
+   ```

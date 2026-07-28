@@ -59,6 +59,24 @@ cargo test -p stellarroute-contracts
 
 ---
 
+## Input-Validation Fuzz Targets
+
+Fuzz coverage for `validate_route` and `execute_swap` lives in
+`crates/contracts/src/fuzz_targets.rs` (proptest). Full overnight instructions are in
+[`audit/fuzzing.md`](../../audit/fuzzing.md).
+
+```bash
+# CI / local (default 64 cases per property)
+cargo test -p stellarroute-contracts fuzz_ -- --nocapture
+
+# Overnight
+PROPTEST_CASES=500000 cargo test -p stellarroute-contracts fuzz_ -- --nocapture
+# or:
+./scripts/fuzz-contracts-overnight.sh
+```
+
+---
+
 ## Example Test Function
 
 Here's an example of the pattern used in the migration tests, showing the `// ARRANGE // ACT // ASSERT` structure:

@@ -165,7 +165,11 @@ export function WalletConnectionOnboarding({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px] md:max-w-[600px]">
+      <DialogContent
+        data-testid="wallet-connect-dialog"
+        className="flex w-[min(100%,90vw)] max-h-[min(90dvh,90vh)] flex-col gap-0 overflow-hidden p-4 sm:p-6 sm:max-w-[425px] md:max-w-[600px] pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {step === 'welcome' && (
           <>
             <DialogHeader>
@@ -443,6 +447,7 @@ export function WalletConnectionOnboarding({
             </div>
           </>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );

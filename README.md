@@ -286,7 +286,20 @@ We're currently building M1 (Prototype Indexer & API) and need help with:
 3. **Start local services**
 
    ```bash
+   # Deps only (Postgres + Redis):
    docker-compose up -d
+
+   # Full stack (Postgres + Redis + API):
+   docker compose -f docker-compose.yml -f docker-compose.app.yml up -d
+
+   # Full stack with indexer (requires ROUTER_CONTRACT_ADDRESS in .env):
+   docker compose -f docker-compose.yml -f docker-compose.app.yml --profile indexer up -d
+   ```
+
+   Wait for services to be ready:
+   ```bash
+   ./scripts/wait-for-services.sh        # deps only
+   ./scripts/wait-for-services.sh --api  # deps + API
    ```
 
 4. **Build the project**

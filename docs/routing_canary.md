@@ -17,13 +17,42 @@ The Canary Validation Pipeline allows operators to safely test new routing algor
 6. The `CanaryEvaluator` detects violations if drift thresholds are exceeded.
 7. The evaluation is saved into an in-memory history buffer (up to 1,000 evaluations).
 
+## Authentication (issue #1055)
+
+Both endpoints require the admin token (`ADMIN_AUTH_TOKEN`), sent as either
+the `x-admin-token` header or `Authorization: Bearer <token>`:
+
+| Method | Dev/test default | Production default |
+|---|---|---|
+| `GET /api/v1/system/canary/report` | Public — no token required | Requires `ADMIN_AUTH_TOKEN` |
+| `POST /api/v1/system/canary/config` | Requires `ADMIN_AUTH_TOKEN` | Requires `ADMIN_AUTH_TOKEN` |
+
+`GET` is left public in dev/test so the canary report can be inspected
+locally without configuring a token, but is gated the same as `POST`
+whenever `STELLARROUTE_ENV=production` — the pipeline's config and drift
+history are operationally sensitive (they reveal live routing-trust
+signals), so production prefers auth over open access. See
+[`docs/api/production-exposure.md`](api/production-exposure.md) for the
+full inventory alongside the kill switch and metrics/replay surfaces, which
+share the same guard.
+
+Requests without a valid token receive `401 Unauthorized`. If
+`STELLARROUTE_ENV=production` and `ADMIN_AUTH_TOKEN` is unset, the API
+refuses to start entirely rather than boot with these routes silently
+denying every request.
+
 ## Operator API
 
 ### 1. View Canary Report
 Fetch the current pipeline configuration and recent evaluations.
 
 ```bash
+# Dev/test (no token needed)
 curl -X GET http://localhost:3000/api/v1/system/canary/report
+
+# Production
+curl -X GET http://localhost:3000/api/v1/system/canary/report \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN"
 ```
 
 **Response includes:**
@@ -37,6 +66,7 @@ Enable/disable the pipeline or adjust thresholds.
 ```bash
 curl -X POST http://localhost:3000/api/v1/system/canary/config \
   -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
     "enabled": true,
     "baseline_policy": "production",
@@ -66,6 +96,7 @@ If you detect severe anomalies in the candidate policy, you can instantly turn o
 ```bash
 curl -X POST http://localhost:3000/api/v1/system/canary/config \
   -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
     "enabled": false,
     "baseline_policy": "production",

@@ -90,6 +90,28 @@ describe('TransactionConfirmationModal — reduced-motion', () => {
   });
 });
 
+describe('TransactionConfirmationModal — mobile layout (#1006)', () => {
+  it('uses viewport-bounded dialog classes for 375px usability', () => {
+    render(<TransactionConfirmationModal {...BASE_PROPS} status="review" />);
+    const dialog = screen.getByTestId('swap-confirm-dialog');
+    expect(dialog.className).toMatch(/90vw/);
+    expect(dialog.className).toMatch(/90dvh|90vh/);
+    expect(dialog.className).toMatch(/overflow-hidden/);
+  });
+
+  it('confirm and cancel buttons meet 48px min height', () => {
+    render(<TransactionConfirmationModal {...BASE_PROPS} status="review" />);
+    const confirm = screen.getByRole('button', {
+      name: '[swap.confirm.cta.confirmSwap]',
+    });
+    const cancel = screen.getByRole('button', {
+      name: '[swap.confirm.cta.cancel]',
+    });
+    expect(confirm.className).toMatch(/min-h-\[48px\]/);
+    expect(cancel.className).toMatch(/min-h-\[48px\]/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Property-based tests
 // ---------------------------------------------------------------------------

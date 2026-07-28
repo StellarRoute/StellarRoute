@@ -19,6 +19,33 @@ See `docs/key_rotation.md` for how to rotate the token without downtime.
 
 The kill switch allows operational control over which liquidity sources (SDEX, AMM) and specific venues (individual AMM pools or SDEX pairs) are used by the routing engine. Changes take effect within 5 seconds across all API instances via Redis synchronization.
 
+## Authentication (issue #1053)
+
+Both endpoints live under `/api/v1/admin/kill-switch` and require the admin
+token (`ADMIN_AUTH_TOKEN`), sent as either the `x-admin-token` header or
+`Authorization: Bearer <token>`:
+
+| Method | Dev/test default | Production default |
+|---|---|---|
+| `GET` (view state) | Public — no token required | Requires `ADMIN_AUTH_TOKEN` |
+| `POST` (update state) | Requires `ADMIN_AUTH_TOKEN` | Requires `ADMIN_AUTH_TOKEN` |
+
+`GET` is intentionally left public in dev/test so operators can inspect
+state locally without configuring a token, but is gated the same as `POST`
+whenever `STELLARROUTE_ENV=production`. This is a deliberate policy
+decision, not an oversight — see
+[`docs/api/production-exposure.md`](api/production-exposure.md) for the
+full inventory alongside `/metrics` and `/api/v1/replay/*`, which share the
+same guard.
+
+**Misconfiguration guard:** if `STELLARROUTE_ENV=production` and
+`ADMIN_AUTH_TOKEN` is unset, the API refuses to start (rather than booting
+into a state where the kill switch — and every other admin/system route —
+silently denies every request, including legitimate operators). Set
+`ADMIN_AUTH_TOKEN` before starting in production.
+
+Requests without a valid token receive `401 Unauthorized`.
+
 ## Scenarios
 
 - **Unstable AMM Protocol:** If a specific AMM protocol is experiencing issues (e.g., Soroban RPC latency, contract bugs), disable the entire `amm` source.
@@ -38,6 +65,12 @@ overrides for sources and venues.
 ```bash
 curl -H "x-admin-token: $ADMIN_TOKEN" \
   http://localhost:8080/api/v1/admin/kill-switch
+```
+
+**Example Request (production — token required):**
+```bash
+curl http://localhost:8080/api/v1/admin/kill-switch \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN"
 ```
 
 **Example Response:**
@@ -61,6 +94,7 @@ curl -H "x-admin-token: $ADMIN_TOKEN" \
 curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
   -H "x-admin-token: $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
     "sources": {
       "amm": "force_exclude"
@@ -74,6 +108,7 @@ curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
 curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
   -H "x-admin-token: $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
     "sources": {},
     "venues": {
@@ -90,6 +125,7 @@ Send a `POST` request with an empty state or with the specific entry removed.
 curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
   -H "x-admin-token: $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_AUTH_TOKEN" \
   -d '{
     "sources": {},
     "venues": {}
@@ -120,3 +156,5 @@ If you suspect the admin token has been compromised:
 - **401 Unauthorized:** Check that `ADMIN_AUTH_TOKEN` is set on the API instance and that you are using the correct value in `x-admin-token`.
 - **State not syncing:** Ensure Redis is reachable and all API instances have a connection to the same Redis cluster.
 - **Immediate effect not seen:** Propagation delay is up to 5 seconds. If longer, check API instance connectivity.
+- **`401 Unauthorized`:** Confirm `x-admin-token` (or `Authorization: Bearer`) matches the server's `ADMIN_AUTH_TOKEN` exactly. In production this now applies to `GET` as well as `POST`.
+- **API won't start in production:** If logs show a refusal to boot citing `ADMIN_AUTH_TOKEN`, set that variable — production requires it unconditionally (see Authentication section above).

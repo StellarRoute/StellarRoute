@@ -120,8 +120,22 @@ On tablets (768px–1024px, i.e. `md` breakpoint range), the following rules app
 | `frontend/components/swap/MobileRouteBottomSheet.tsx` | Mobile bottom-sheet for route details |
 | `frontend/components/swap/RouteDisplay.tsx` | Route panel content |
 | `frontend/components/swap/OrderbookDepthPanel.tsx` | In-swap compact orderbook |
+| `frontend/components/swap/TransactionConfirmationModal.tsx` | Swap confirm dialog — 90vw / max-h 90dvh, scrollable body, 48px CTAs |
+| `frontend/components/modals/WalletConnectionOnboarding.tsx` | Wallet connect dialog — same mobile width/height guards so content is not clipped |
 | `frontend/app/swap/SwapPageClient.tsx` | Swap page entry point with lazy-loaded components |
 | `frontend/app/orderbook/OrderbookPageClient.tsx` | Full orderbook page |
 | `frontend/components/layout/app-shell.tsx` | Root layout shell |
 | `frontend/hooks/useMediaQuery.ts` | Media query hook for JS-driven responsive behavior |
 | `frontend/hooks/useSplitView.ts` | Split view toggle state + localStorage persistence |
+| `frontend/e2e/mobile-swap.spec.ts` | Playwright smoke: confirm + wallet connect at 375px |
+
+---
+
+## Swap Confirm & Wallet Connect (Mobile)
+
+At 375px (and down to 320px):
+
+| Surface | Layout rules |
+|---------|--------------|
+| **Swap confirm modal** | `w-[min(100%,90vw)]`, `max-h-[min(90dvh,90vh)]`, scrollable body, sticky footer with safe-area padding, primary actions `min-h-[48px]` |
+| **Wallet connect dialog** | Same width/height budget; inner scroll container so long onboarding steps are not clipped by the viewport |

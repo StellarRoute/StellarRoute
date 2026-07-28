@@ -656,9 +656,35 @@ pub enum ApiErrorCode {
     NotExecutable,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
+    /// The requested operation is documented but not yet available
+    NotImplemented,
 }
 
 impl ApiErrorCode {
+    /// Every documented error code. This is the single source of truth
+    /// consumed by the sdk-js drift test (issue #1051) and
+    /// `docs/api/error_taxonomy.md` — adding a new `ApiErrorCode` variant
+    /// without adding it here, to the taxonomy doc, and to
+    /// `sdk-js/src/types.ts`'s `API_ERROR_CODES` will fail
+    /// `crates/api/tests/openapi_swap_contract.rs`.
+    pub const ALL: &'static [ApiErrorCode] = &[
+        Self::InternalError,
+        Self::BadRequest,
+        Self::NotFound,
+        Self::ValidationError,
+        Self::RateLimitExceeded,
+        Self::Overloaded,
+        Self::Unauthorized,
+        Self::InvalidAsset,
+        Self::InvalidAmount,
+        Self::InvalidSlippage,
+        Self::InvalidAssetFormat,
+        Self::NoRoute,
+        Self::NotExecutable,
+        Self::StaleMarketData,
+        Self::NotImplemented,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::InternalError => "internal_error",
@@ -676,6 +702,7 @@ impl ApiErrorCode {
             Self::NoRoute => "no_route",
             Self::NotExecutable => "not_executable",
             Self::StaleMarketData => "stale_market_data",
+            Self::NotImplemented => "not_implemented",
         }
     }
 }

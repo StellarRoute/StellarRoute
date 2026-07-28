@@ -46,21 +46,53 @@ async fn run_startup_reachability_checks(
         .build()
         .map_err(|_| "Startup check failed: unable to create HTTP client".to_string())?;
 
-    let horizon = format!("{}/", config.stellar_horizon_url.trim_end_matches('/'));
-    let horizon_status =
-        http.get(&horizon).send().await.map_err(|_| {
-            "Startup check failed: STELLAR_HORIZON_URL is not reachable".to_string()
-        })?;
-    if !horizon_status.status().is_success() {
-        return Err(
-            "Startup check failed: STELLAR_HORIZON_URL returned non-success status".to_string(),
-        );
+    // Try each Horizon URL in order; succeed as soon as one responds.
+    let horizon_urls = config.horizon_urls();
+    let mut horizon_ok = false;
+    for url in &horizon_urls {
+        let probe = format!("{}/", url.trim_end_matches('/'));
+        if let Ok(resp) = http.get(&probe).send().await {
+            if resp.status().is_success() {
+                horizon_ok = true;
+                break;
+            }
+        }
+    }
+    if !horizon_ok {
+        return Err(format!(
+            "Startup check failed: none of the Horizon URL(s) are reachable ({} tried)",
+            horizon_urls.len()
+        ));
     }
 
-    soroban
-        .get_latest_ledger()
-        .await
-        .map_err(|_| "Startup check failed: SOROBAN_RPC_URL is not reachable".to_string())?;
+    // Try each Soroban RPC URL in order; succeed as soon as one responds.
+    let soroban_urls = config.soroban_rpc_urls();
+    let mut soroban_ok = false;
+    for url in &soroban_urls {
+        let tmp_client = SorobanRpcClient::new(SorobanRpcConfig {
+            base_url: url.clone(),
+            timeout_secs: 5,
+            retry: RetryPolicy {
+                max_retries: 0,
+                ..RetryPolicy::default()
+            },
+        });
+        if let Ok(client) = tmp_client {
+            if client.get_latest_ledger().await.is_ok() {
+                soroban_ok = true;
+                break;
+            }
+        }
+    }
+    if !soroban_ok {
+        return Err(format!(
+            "Startup check failed: none of the Soroban RPC URL(s) are reachable ({} tried)",
+            soroban_urls.len()
+        ));
+    }
+
+    // The provided primary soroban client is already warmed up — keep using it.
+    let _ = soroban;
 
     Ok(())
 }
@@ -98,6 +130,16 @@ async fn main() {
 
     // Initialize Horizon client
     let horizon = HorizonClient::new(&config.stellar_horizon_url);
+    {
+        let fallbacks = config.horizon_urls();
+        if fallbacks.len() > 1 {
+            info!(
+                primary = %config.stellar_horizon_url,
+                fallback_count = fallbacks.len() - 1,
+                "Horizon failover URLs configured"
+            );
+        }
+    }
 
     // Initialize Soroban RPC client
     let soroban = match SorobanRpcClient::new(SorobanRpcConfig {
@@ -111,6 +153,16 @@ async fn main() {
             process::exit(1);
         }
     };
+    {
+        let fallbacks = config.soroban_rpc_urls();
+        if fallbacks.len() > 1 {
+            info!(
+                primary = %config.soroban_rpc_url,
+                fallback_count = fallbacks.len() - 1,
+                "Soroban RPC failover URLs configured"
+            );
+        }
+    }
 
     if parse_bool_env("STARTUP_CREDENTIAL_CHECK") {
         info!("Running startup dependency reachability checks");

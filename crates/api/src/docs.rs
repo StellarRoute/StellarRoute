@@ -34,6 +34,8 @@ use crate::models::{
         crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
         crate::routes::kill_switch::get_kill_switch,
         crate::routes::kill_switch::update_kill_switch,
+        crate::routes::swap::prepare_swap,
+        crate::routes::swap::submit_swap,
     ),
     components(schemas(
         HealthResponse,
@@ -75,6 +77,12 @@ use crate::models::{
         crate::models::response::BatchOrderbookItemResult,
         crate::models::request::QuoteType,
         crate::models::request::QuoteExpirationWebhookRegistrationRequest,
+        crate::routes::swap::SwapPrepareRequest,
+        crate::routes::swap::SwapPrepareResponse,
+        crate::routes::swap::SwapSubmitRequest,
+        crate::routes::swap::SwapSubmitResponse,
+        crate::routes::simulation_route::RouteDryRunPath,
+        crate::routes::simulation_route::RouteDryRunHop,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
@@ -83,6 +91,7 @@ use crate::models::{
         (name = "trading", description = "Trading and market data endpoints"),
         (name = "admin", description = "Administrative endpoints"),
         (name = "integrator", description = "Integrator configuration and webhook endpoints"),
+        (name = "swap", description = "Live swap path: prepare an unsigned transaction from a route, then submit a signed transaction on-chain"),
     ),
     info(
         title = "StellarRoute API",

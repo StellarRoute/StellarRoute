@@ -77,10 +77,14 @@ This directory is the documentation hub for StellarRoute. It organizes design, d
 - [Performance budget](performance_budget.md) — frontend and API performance targets.
 - [Readiness](readiness/M2_GUIDE.md) — readiness and runbook content.
 
+### User guides
+
+- [First live swap](user-guide-first-live-swap.md) — wallet, trustline, slippage, and confirm for non-developer traders (also `/guide` in the app).
+
 ### Design
 
 - [Information architecture](design/information-architecture.md) — sitemap, navigation hierarchy, and UX structure.
-- [Empty states spec](design/empty-states-spec.md) — design specification for empty and error states.
+- [Empty states spec](design/empty-states-spec.md) — design specification for empty and error states (links the first-swap guide from swap empty state).
 - [Accessibility contrast audit](design/accessibility-contrast-audit.md) — WCAG colour contrast audit results.
 
 ### Frontend documentation

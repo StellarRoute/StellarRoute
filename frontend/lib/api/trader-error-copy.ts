@@ -115,6 +115,96 @@ function inferHorizonError(errorMessage: string): TraderErrorCopy | null {
     };
   }
 
+  if (text.includes('op_line_full')) {
+    return {
+      headline: 'Trustline limit reached for this asset',
+      explanation: "Receiving this amount would exceed your account's trust limit for the destination asset.",
+      recoveryAction: 'Increase your trustline limit or reduce the trade size, then try again.',
+      ctaLabel: 'Adjust trustline or amount',
+    };
+  }
+
+  if (text.includes('op_low_reserve')) {
+    return {
+      headline: 'Minimum account reserve required',
+      explanation: 'Completing this trade would leave your account below the minimum XLM reserve.',
+      recoveryAction: 'Add XLM to your account or reduce the trade size, then try again.',
+      ctaLabel: 'Add funds and retry',
+    };
+  }
+
+  if (text.includes('op_no_issuer')) {
+    return {
+      headline: 'Asset issuer could not be found',
+      explanation: 'The issuing account for this asset is missing or no longer valid.',
+      recoveryAction: 'Choose a different asset pair and try again.',
+      ctaLabel: 'Select another pair',
+    };
+  }
+
+  if (text.includes('op_no_destination')) {
+    return {
+      headline: 'Destination account does not exist',
+      explanation: 'The receiving account for this trade has not been created on the network.',
+      recoveryAction: 'Confirm the destination account, then try again.',
+      ctaLabel: 'Check destination and retry',
+    };
+  }
+
+  if (text.includes('tx_insufficient_balance')) {
+    return {
+      headline: 'Not enough balance to cover this trade',
+      explanation: 'Your account balance cannot cover the trade amount plus the required minimum reserve.',
+      recoveryAction: 'Lower the amount or add funds, then try again.',
+      ctaLabel: 'Adjust amount',
+    };
+  }
+
+  if (text.includes('tx_insufficient_fee')) {
+    return {
+      headline: 'Network fee was too low',
+      explanation: "The transaction fee did not meet the network's current minimum requirement.",
+      recoveryAction: 'Refresh the quote to get an updated fee, then resubmit.',
+      ctaLabel: 'Refresh and resubmit',
+    };
+  }
+
+  if (text.includes('tx_too_late')) {
+    return {
+      headline: 'This quote expired before it was submitted',
+      explanation: "The transaction's submission window closed before the network could process it.",
+      recoveryAction: 'Refresh the quote to get a new submission window, then try again.',
+      ctaLabel: 'Refresh quote',
+    };
+  }
+
+  if (text.includes('invoke_host_function_trapped')) {
+    return {
+      headline: 'The swap contract could not complete this trade',
+      explanation: 'The contract stopped unexpectedly while executing this swap.',
+      recoveryAction: 'Try a different amount or pair, then submit again.',
+      ctaLabel: 'Adjust trade and retry',
+    };
+  }
+
+  if (text.includes('invoke_host_function_resource_limit_exceeded')) {
+    return {
+      headline: 'This trade is too complex to execute right now',
+      explanation: 'The swap needs more computing resources than the network currently allows in one transaction.',
+      recoveryAction: 'Try a smaller trade or a simpler route, then try again.',
+      ctaLabel: 'Simplify trade',
+    };
+  }
+
+  if (text.includes('invoke_host_function_entry_archived')) {
+    return {
+      headline: 'Contract data needs to be restored first',
+      explanation: 'Some contract data required for this swap is archived and was not restored.',
+      recoveryAction: 'Refresh the quote so it can include the restore step, then try again.',
+      ctaLabel: 'Refresh quote',
+    };
+  }
+
   if (text.includes('transaction timed out') || text.includes('timed out')) {
     return {
       headline: 'Transaction timed out',

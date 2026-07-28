@@ -401,6 +401,18 @@ For the complete development roadmap with detailed milestones, phases, and techn
 
 ---
 
+## 🔐 Security & Audits
+
+Security is a launch gate for StellarRoute — the mainnet flag is not flipped until the external Soroban contract audit is complete and all Critical/High findings are remediated.
+
+- **Audit package**: [audit/](audit/) — architecture, scope, assumptions, threat model, and known issues handed to auditors
+- **External audit engagement & remediation tracking**: [audit/external-audit.md](audit/external-audit.md) — auditor selection, frozen audit commit/hash, findings status, and launch gate
+- **Published audit reports**: none yet — the final report link will be published here and in [audit/external-audit.md](audit/external-audit.md) when the engagement closes
+
+To report a vulnerability, please open a GitHub issue labelled `security` (or use GitHub private vulnerability reporting) rather than disclosing publicly.
+
+---
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

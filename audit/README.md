@@ -14,6 +14,7 @@ This directory contains all materials required for an external security audit of
 | [dependency-exceptions.md](dependency-exceptions.md) | Accepted dependency CVE exceptions and review process |
 | [bug-bounty-scope.md](bug-bounty-scope.md) | Bug bounty scope draft: in/out of bounds, reward tiers, safe harbor |
 | [fuzzing.md](fuzzing.md) | Fuzz targets for `validate_route` / `execute_swap` and overnight runbook |
+| [external-audit.md](external-audit.md) | External audit engagement: auditor selection, commit freeze, findings remediation, report publication |
 
 ## Quick Start for Auditors
 

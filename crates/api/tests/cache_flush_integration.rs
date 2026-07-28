@@ -9,9 +9,9 @@ use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
 use stellarroute_api::{
     cache::{self, CacheManager},
-    models::{AssetInfo, OrderbookResponse, QuoteResponse},
+    models::{AssetInfo, OrderbookResponse, QuoteResponse, OrderbookSummary},
     routes,
-    state::{AppState, CachePolicy},
+    state::{AppState, CachePolicy, DatabasePools},
 };
 use tower::ServiceExt;
 
@@ -34,8 +34,10 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         .connect_lazy("postgres://localhost/postgres")
         .expect("failed to create lazy DB pool");
 
+    let db_pools = DatabasePools::new(pool, None);
+
     let state = Arc::new(
-        AppState::with_cache_and_policy(pool, cache.clone(), CachePolicy::default())
+        AppState::with_cache_and_policy(db_pools, cache.clone(), CachePolicy::default())
             .with_admin_auth_token("test-secret"),
     );
     let router = routes::create_router(state.clone());
@@ -59,6 +61,9 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         price_impact: None,
         exclusion_diagnostics: None,
         data_freshness: None,
+        degraded: false,
+        midpoint: None,
+        spread_bps: None,
     };
 
     let orderbook_value = OrderbookResponse {
@@ -67,6 +72,12 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         bids: Vec::new(),
         asks: Vec::new(),
         timestamp: 0,
+        summary: OrderbookSummary {
+            bid: None,
+            ask: None,
+            spread_bps: None,
+            midpoint: None,
+        },
     };
 
     {
@@ -111,3 +122,126 @@ async fn admin_cache_flush_removes_cached_pair_entries() {
         .is_none());
     assert!(cache_lock.get::<QuoteResponse>(&quote_key).await.is_none());
 }
+
+#[tokio::test]
+#[ignore = "requires a Redis instance available at REDIS_URL or localhost:6379"]
+async fn admin_cache_flush_global_unauthenticated_returns_unauthorized() {
+    let pool = PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/postgres")
+        .expect("failed to create lazy DB pool");
+
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let cache = match CacheManager::new(&redis_url).await {
+        Ok(cache) => cache,
+        Err(_) => return,
+    };
+
+    let db_pools = DatabasePools::new(pool, None);
+
+    let state = Arc::new(
+        AppState::with_cache_and_policy(db_pools, cache, CachePolicy::default())
+            .with_admin_auth_token("test-secret"),
+    );
+    let router = routes::create_router(state);
+
+    let payload = serde_json::json!({
+        "base": "XLM",
+        "quote": "USDC"
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/admin/cache/flush")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[ignore = "requires a Redis instance available at REDIS_URL or localhost:6379"]
+async fn admin_cache_flush_global_authenticated_works() {
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let cache = match CacheManager::new(&redis_url).await {
+        Ok(cache) => cache,
+        Err(_) => return,
+    };
+
+    let pool = PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/postgres")
+        .expect("failed to create lazy DB pool");
+
+    let db_pools = DatabasePools::new(pool, None);
+
+    let state = Arc::new(
+        AppState::with_cache_and_policy(db_pools, cache.clone(), CachePolicy::default())
+            .with_admin_auth_token("test-secret"),
+    );
+    let router = routes::create_router(state.clone());
+
+    let quote_key = cache::keys::quote("XLM", "USDC", "1", 50, "sell", false);
+    let quote_value = QuoteResponse {
+        base_asset: AssetInfo::native(),
+        quote_asset: AssetInfo::credit("USDC".to_string(), None),
+        amount: "1".to_string(),
+        price: "0.5".to_string(),
+        total: "0.5".to_string(),
+        quote_type: "sell".to_string(),
+        path: Vec::new(),
+        timestamp: 0,
+        expires_at: None,
+        source_timestamp: None,
+        ttl_seconds: None,
+        rationale: None,
+        price_impact: None,
+        exclusion_diagnostics: None,
+        data_freshness: None,
+        degraded: false,
+        midpoint: None,
+        spread_bps: None,
+    };
+
+    {
+        let mut cache_lock = state.cache.as_ref().unwrap().lock().await;
+        cache_lock
+            .set(&quote_key, &quote_value, Duration::from_secs(30))
+            .await
+            .expect("failed to set quote cache");
+    }
+
+    let payload = serde_json::json!({
+        "base": "XLM",
+        "quote": "USDC"
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/admin/cache/flush")
+                .header("Authorization", "Bearer test-secret")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Body read failed");
+    let json: Value = serde_json::from_slice(&body).expect("Invalid JSON");
+    assert_eq!(json["status"], "ok");
+
+    let mut cache_lock = state.cache.as_ref().unwrap().lock().await;
+    assert!(cache_lock.get::<QuoteResponse>(&quote_key).await.is_none());
+}
+

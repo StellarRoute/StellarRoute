@@ -27,6 +27,10 @@ use crate::{
         (status = 200, description = "Cache flush completed", body = CacheFlushResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
+    ),
+    security(
+        ("admin_token" = []),
+        ("admin_bearer" = [])
     )
 )]
 pub async fn flush_cache(

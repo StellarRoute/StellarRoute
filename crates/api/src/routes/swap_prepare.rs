@@ -26,6 +26,7 @@ use stellar_xdr::curr::{
 
 use crate::{
     error::{ApiError, Result},
+    middleware::RequestId,
     models::response::{
         ApiResponse, AssetInfo, ExecutionMode, QuoteResponse, SwapPrepareResponse,
     },
@@ -65,6 +66,7 @@ fn default_slippage() -> u32 {
 /// Builds an unsigned transaction XDR from the best quote for the given pair.
 pub async fn swap_prepare(
     State(state): State<Arc<AppState>>,
+    request_id: RequestId,
     Json(body): Json<SwapPrepareRequest>,
 ) -> Result<Json<ApiResponse<SwapPrepareResponse>>> {
     // 1. Determine execution mode from the quote's best venue.
@@ -100,15 +102,15 @@ pub async fn swap_prepare(
         None
     };
 
-    Ok(Json(ApiResponse {
-        v: 1,
-        data: SwapPrepareResponse {
+    Ok(Json(ApiResponse::new(
+        SwapPrepareResponse {
             execution_mode,
             unsigned_xdr,
             router_contract,
             quote,
         },
-    }))
+        request_id.as_str(),
+    )))
 }
 
 // ---------------------------------------------------------------------------

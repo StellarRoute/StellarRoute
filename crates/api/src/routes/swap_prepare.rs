@@ -18,18 +18,15 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use stellar_xdr::curr::{
-    self as xdr, Asset as XdrAsset, Hash, Int128Parts, InvokeContractArgs,
-    InvokeHostFunctionOp, Limits, MuxedAccount, Operation, OperationBody,
-    PathPaymentStrictSendOp, ScAddress, ScSymbol, ScVal, Uint256, VecM, WriteXdr,
-    HostFunction,
+    self as xdr, Asset as XdrAsset, Hash, HostFunction, Int128Parts, InvokeContractArgs,
+    InvokeHostFunctionOp, Limits, MuxedAccount, Operation, OperationBody, PathPaymentStrictSendOp,
+    ScAddress, ScSymbol, ScVal, Uint256, VecM, WriteXdr,
 };
 
 use crate::{
     error::{ApiError, Result},
     middleware::RequestId,
-    models::response::{
-        ApiResponse, AssetInfo, ExecutionMode, QuoteResponse, SwapPrepareResponse,
-    },
+    models::response::{ApiResponse, AssetInfo, ExecutionMode, QuoteResponse, SwapPrepareResponse},
     state::AppState,
 };
 
@@ -77,9 +74,7 @@ pub async fn swap_prepare(
     let execution_mode = determine_execution_mode(&quote);
 
     // 2. Guard: Soroban mode requires a configured router address.
-    if execution_mode == ExecutionMode::SorobanRouter
-        && state.router_contract_address.is_none()
-    {
+    if execution_mode == ExecutionMode::SorobanRouter && state.router_contract_address.is_none() {
         return Err(ApiError::BadRequest(
             "Soroban router contract address is not configured. \
              Set ROUTER_CONTRACT_ADDRESS to use AMM routes."
@@ -120,7 +115,10 @@ pub async fn swap_prepare(
 /// Inspect the quote's path to determine whether the route goes through an
 /// AMM pool (Soroban router) or pure SDEX orderbook (classic path payment).
 pub(crate) fn determine_execution_mode(quote: &QuoteResponse) -> ExecutionMode {
-    let is_amm = quote.path.iter().any(|step| step.source.starts_with("amm:"));
+    let is_amm = quote
+        .path
+        .iter()
+        .any(|step| step.source.starts_with("amm:"));
     if is_amm {
         ExecutionMode::SorobanRouter
     } else {
@@ -170,11 +168,9 @@ fn build_soroban_xdr(
 
     // Build ScVal arguments matching the router contract's execute_swap signature:
     // execute_swap(sender: Address, params: SwapParams)
-    let sender_scval = ScVal::Address(ScAddress::Account(
-        xdr::AccountId(xdr::PublicKey::PublicKeyTypeEd25519(
-            decode_stellar_key(&body.sender_address)?,
-        )),
-    ));
+    let sender_scval = ScVal::Address(ScAddress::Account(xdr::AccountId(
+        xdr::PublicKey::PublicKeyTypeEd25519(decode_stellar_key(&body.sender_address)?),
+    )));
 
     let amount_in_scval = i128_to_scval(amount_in as i128);
     let min_out_scval = i128_to_scval(min_amount_out as i128);
@@ -196,9 +192,7 @@ fn build_soroban_xdr(
             },
         ]
         .try_into()
-        .map_err(|_| {
-            ApiError::Internal(Arc::new(anyhow::anyhow!("ScMap construction error")))
-        })?,
+        .map_err(|_| ApiError::Internal(Arc::new(anyhow::anyhow!("ScMap construction error"))))?,
     )));
 
     let op = Operation {
@@ -212,9 +206,7 @@ fn build_soroban_xdr(
                 args: vec![sender_scval, swap_params_scval]
                     .try_into()
                     .map_err(|_| {
-                        ApiError::Internal(Arc::new(anyhow::anyhow!(
-                            "args vec construction error"
-                        )))
+                        ApiError::Internal(Arc::new(anyhow::anyhow!("args vec construction error")))
                     })?,
             }),
             auth: VecM::default(),
@@ -244,9 +236,9 @@ fn asset_info_to_xdr(info: &AssetInfo) -> XdrAsset {
 
 /// Parse a decimal amount string into stroops (i64, 7 decimal places).
 fn parse_stroops(amount: &str) -> Result<i64> {
-    let val: f64 = amount.parse().map_err(|_| {
-        ApiError::BadRequest(format!("Invalid amount: {amount}"))
-    })?;
+    let val: f64 = amount
+        .parse()
+        .map_err(|_| ApiError::BadRequest(format!("Invalid amount: {amount}")))?;
     Ok((val * 10_000_000.0) as i64)
 }
 

@@ -1,6 +1,6 @@
 //! OpenAPI documentation
 
-use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme, Http, HttpAuthScheme};
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme};
 use utoipa::Modify;
 use utoipa::OpenApi;
 

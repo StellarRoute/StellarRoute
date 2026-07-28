@@ -9,7 +9,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
 use stellarroute_api::{
     cache::{self, CacheManager},
-    models::{AssetInfo, OrderbookResponse, QuoteResponse, OrderbookSummary},
+    models::{AssetInfo, OrderbookResponse, OrderbookSummary, QuoteResponse},
     routes,
     state::{AppState, CachePolicy, DatabasePools},
 };
@@ -244,4 +244,3 @@ async fn admin_cache_flush_global_authenticated_works() {
     let mut cache_lock = state.cache.as_ref().unwrap().lock().await;
     assert!(cache_lock.get::<QuoteResponse>(&quote_key).await.is_none());
 }
-

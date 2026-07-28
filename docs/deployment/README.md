@@ -80,7 +80,77 @@ or if auth ends up disabled (`REQUIRE_AUTH=false`) without the explicit
 `ALLOW_INSECURE_PUBLIC_API=1` break-glass override — that override should
 never be set in a real production deployment.
 
-### Unified Liquidity Migration and Rollback
+## Container images (API + Indexer)
+
+### Build locally
+
+```bash
+docker build -f Dockerfile.api -t stellarroute-api:local .
+docker build -f Dockerfile.indexer -t stellarroute-indexer:local .
+```
+
+### Registry (GHCR)
+
+On every push to `main` (and on `v*` tags), GitHub Actions builds both images and
+publishes them to GitHub Container Registry using `GITHUB_TOKEN` (OIDC / short-lived
+credentials — **no** long-lived registry passwords):
+
+| Image | Repository |
+|-------|------------|
+| API | `ghcr.io/<owner>/stellarroute-api` |
+| Indexer | `ghcr.io/<owner>/stellarroute-indexer` |
+
+Tags:
+
+- Git SHA (short) on every publish
+- `latest` on `main`
+- Semver (`1.2.3`, `1.2`) when pushing a `v*` tag
+
+PRs that touch Dockerfiles or the API/indexer crate graph run a **build-only**
+job (no push) via `.github/workflows/docker-images.yml`.
+
+### Pull and run examples
+
+```bash
+OWNER=stellarroute   # or your fork owner (lowercase)
+SHA=<git-sha>
+
+# API — requires reachable DATABASE_URL; PORT binds 0.0.0.0
+docker pull ghcr.io/${OWNER}/stellarroute-api:latest
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  -e DATABASE_URL='postgresql://stellarroute:stellarroute_dev@host.docker.internal:5432/stellarroute' \
+  ghcr.io/${OWNER}/stellarroute-api:latest
+
+# Pin a specific SHA
+docker pull ghcr.io/${OWNER}/stellarroute-api:${SHA}
+
+# Indexer — required env vars
+docker pull ghcr.io/${OWNER}/stellarroute-indexer:latest
+docker run --rm \
+  -e DATABASE_URL='postgresql://stellarroute:stellarroute_dev@host.docker.internal:5432/stellarroute' \
+  -e STELLAR_HORIZON_URL='https://horizon-testnet.stellar.org' \
+  -e SOROBAN_RPC_URL='https://soroban-testnet.stellar.org' \
+  -e ROUTER_CONTRACT_ADDRESS='C...' \
+  ghcr.io/${OWNER}/stellarroute-indexer:latest
+```
+
+### Health / env notes
+
+- **API** `GET /health` is readiness (needs Postgres). Process exits if `DATABASE_URL` is unreachable.
+- **API** `GET /health/deps` probes DB + Horizon + Soroban when configured.
+- **Indexer** has no HTTP health endpoint; missing required env vars causes a non-zero exit.
+- Indexer required: `DATABASE_URL`, `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, `ROUTER_CONTRACT_ADDRESS`.
+- Images run as non-root UID 10001; do not bake `.env` into layers.
+
+Compose:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.app.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.app.yml --profile indexer up -d
+```
+
+## Unified Liquidity Migration and Rollback
 
 The unified liquidity path reads from `normalized_liquidity`, which combines SDEX offers and AMM reserves.
 

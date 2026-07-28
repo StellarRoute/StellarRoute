@@ -34,6 +34,11 @@ pub struct IndexerConfig {
     /// Primary Soroban RPC base URL.
     pub soroban_rpc_url: String,
 
+    /// Ordered failover Soroban RPC URLs tried when the primary is unreachable.
+    /// Env: `SOROBAN_RPC_FALLBACK_URLS` — comma-separated list.
+    #[serde(default)]
+    pub soroban_rpc_fallback_urls: String,
+
     /// Router contract address for AMM pool discovery.
     ///
     /// Enforced by [`check_router_contract_address`] in [`IndexerConfig::from_env`]

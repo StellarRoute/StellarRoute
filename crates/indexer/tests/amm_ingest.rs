@@ -64,8 +64,10 @@ fn assert_not_mainnet(rpc_url: &str) {
 fn test_config(database_url: String, soroban_rpc_url: String, router: String) -> IndexerConfig {
     IndexerConfig {
         stellar_horizon_url: "https://horizon-testnet.stellar.org".to_string(),
+        stellar_horizon_fallback_urls: String::new(),
         horizon_mode: HorizonMode::Poll,
         soroban_rpc_url,
+        soroban_rpc_fallback_urls: String::new(),
         router_contract_address: router,
         database_url,
         poll_interval_secs: 5,
@@ -160,6 +162,7 @@ async fn amm_ingest_populates_reserves_for_registered_pools() {
 
     let soroban = SorobanRpcClient::new(SorobanRpcConfig {
         base_url: soroban_rpc_url.clone(),
+        soroban_rpc_fallback_urls: String::new(),
         ..SorobanRpcConfig::for_network(StellarNetwork::Testnet)
     })
     .expect("soroban rpc client");
@@ -175,6 +178,7 @@ async fn amm_ingest_populates_reserves_for_registered_pools() {
 
     println!(
         "amm_ingest: router={router} rpc={soroban_rpc_url} timeout={}s poll={}s start={started_at}",
+        soroban_rpc_fallback_urls: String::new(),
         timeout.as_secs(),
         poll.as_secs(),
     );

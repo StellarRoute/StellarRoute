@@ -8,7 +8,7 @@
 # No HTTP server — health is process exit code / orchestrator restarts.
 # Secrets are never COPY'd.
 
-ARG RUST_VERSION=1.85
+ARG RUST_VERSION=1.88
 
 FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /app

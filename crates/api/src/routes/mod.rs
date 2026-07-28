@@ -19,6 +19,7 @@ pub mod quote;
 pub mod replay;
 pub mod routes_endpoint;
 pub mod simulation_route;
+pub mod swap;
 pub mod ws;
 
 use axum::{
@@ -36,7 +37,8 @@ use crate::models::{ApiErrorCode, ErrorResponse};
 use crate::state::AppState;
 
 /// Middleware guarding operator-only surfaces (Prometheus metrics, pool/cache
-/// stats, replay artifacts and replay mutations) in production.
+/// stats, replay artifacts and replay mutations, and the kill-switch /
+/// canary state reads) in production.
 ///
 /// Outside of production these stay open for local Prometheus scraping and
 /// demos. When `STELLARROUTE_ENV=production`, the same `ADMIN_AUTH_TOKEN`
@@ -101,6 +103,17 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/replay/:id", get(replay::get_artifact))
         .route("/api/v1/replay/:id/run", post(replay::run_replay))
         .route("/api/v1/replay/:id/diff", post(replay::diff_replay))
+        // Read-only state for the kill switch and canary config: open in
+        // dev/test, admin-token-gated in production (issues #1053, #1055).
+        // The mutating counterparts (POST kill-switch, POST canary/config)
+        // always require AdminAuth regardless of environment — see
+        // `routes::kill_switch::update_kill_switch` and
+        // `routes::canary::update_config`.
+        .route(
+            "/api/v1/admin/kill-switch",
+            get(kill_switch::get_kill_switch),
+        )
+        .route("/api/v1/system/canary/report", get(canary::get_report))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             production_admin_guard,
@@ -160,6 +173,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/integrator/webhooks/quote-expiration",
             post(integrator_webhooks::upsert_quote_expiration_webhook),
         )
+        // Swap prepare/submit (issue #1051): OpenAPI contract for the live
+        // swap path. Transaction building/submission are not implemented
+        // yet — see `routes::swap` module docs.
+        .route("/api/v1/swap/prepare", post(swap::prepare_swap))
+        .route("/api/v1/swap/submit", post(swap::submit_swap))
         // Replay routes are registered above via `operator_routes`.
         // Admin routes
         .route(
@@ -167,16 +185,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             axum::routing::post(admin::flush_cache),
         )
         .route("/api/v1/admin/cache/flush", post(admin_cache::flush_cache))
-        .route(
-            "/api/v1/admin/kill-switch",
-            get(kill_switch::get_kill_switch),
-        )
+        // GET /api/v1/admin/kill-switch is registered above via
+        // `operator_routes`.
         .route(
             "/api/v1/admin/kill-switch",
             post(kill_switch::update_kill_switch),
         )
-        // Canary routes
-        .route("/api/v1/system/canary/report", get(canary::get_report))
+        // GET /api/v1/system/canary/report is registered above via
+        // `operator_routes`.
         .route("/api/v1/system/canary/config", post(canary::update_config))
         // `/api/v1/simulate/route` is registered above via `live_path_routes`.
         // Contract registry routes

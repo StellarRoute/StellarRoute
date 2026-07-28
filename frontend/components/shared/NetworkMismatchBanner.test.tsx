@@ -134,4 +134,20 @@ describe('NetworkMismatchBanner', () => {
     const link = screen.getByRole('link', { name: /how to switch network/i });
     expect(link).toHaveAttribute('href', 'https://xbull.app/docs');
   });
+
+  it('renders mismatch banner for xBull public vs app testnet', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'public',
+      walletId: 'xbull',
+      disconnect: vi.fn(),
+      setNetwork: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    expect(screen.getByText(/network mismatch detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/public/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'assertive');
+  });
 });

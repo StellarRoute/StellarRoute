@@ -9,6 +9,24 @@ import {
   type NotificationPreference,
 } from "@/lib/notifications";
 import { XdrBuildError } from "@/lib/wallet/xdr-builder";
+import {
+  emitSwapFunnelEvent,
+  getPriceImpactTier,
+  type SwapFunnelPayload,
+} from "@/lib/telemetry";
+
+function funnelPayloadFromTrade(
+  params: TradeParams,
+  extra: Partial<SwapFunnelPayload> = {},
+): SwapFunnelPayload {
+  return {
+    fromAssetCode: params.fromAsset,
+    toAssetCode: params.toAsset,
+    hopCount: params.routePath?.length || 1,
+    priceImpactTier: getPriceImpactTier(params.priceImpact),
+    ...extra,
+  };
+}
 
 export interface TradeParams {
   fromAsset: string;
@@ -152,16 +170,28 @@ export function useTransactionLifecycle(
             "Transaction could not be built. Please refresh and try again."
           );
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "config" }),
+          );
           return;
         }
         if (isDefaultSignTransaction(signTransaction)) {
           setErrorMessage("Wallet not ready for signing.");
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "config" }),
+          );
           return;
         }
         if (isDefaultSubmitTransaction(submitTransaction)) {
           setErrorMessage("Transaction submission is not configured.");
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "config" }),
+          );
           return;
         }
       }
@@ -199,6 +229,10 @@ export function useTransactionLifecycle(
             : err instanceof Error ? err.message : 'Failed to build transaction';
           setErrorMessage(msg);
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "build" }),
+          );
           updateTransactionStatus(tempId, "failed", { errorMessage: msg });
           dispatchTransactionNotification(
             {
@@ -232,6 +266,10 @@ export function useTransactionLifecycle(
           : msg;
         setErrorMessage(userFacingMsg);
         setStatus("failed");
+        emitSwapFunnelEvent(
+          "swap_failed",
+          funnelPayloadFromTrade(params, { failureStage: "sign" }),
+        );
         updateTransactionStatus(tempId, "failed", {
           errorMessage: userFacingMsg,
         });
@@ -253,6 +291,7 @@ export function useTransactionLifecycle(
 
       // Step 2: Submit
       setStatus("submitted");
+      emitSwapFunnelEvent("swap_submitted", funnelPayloadFromTrade(params));
       updateTransactionStatus(tempId, "submitted");
 
       // Start deadline timer
@@ -286,6 +325,7 @@ export function useTransactionLifecycle(
         const hash = result.hash;
         setTxHash(hash);
         setStatus("confirmed");
+        emitSwapFunnelEvent("swap_finalized", funnelPayloadFromTrade(params));
         updateTransactionStatus(tempId, "confirmed", { hash });
         dispatchTransactionNotification(
           {
@@ -307,6 +347,10 @@ export function useTransactionLifecycle(
           err instanceof Error ? err.message : "Transaction submission failed";
         setErrorMessage(msg);
         setStatus("failed");
+        emitSwapFunnelEvent(
+          "swap_failed",
+          funnelPayloadFromTrade(params, { failureStage: "submit" }),
+        );
         updateTransactionStatus(tempId, "failed", { errorMessage: msg });
         dispatchTransactionNotification(
           {

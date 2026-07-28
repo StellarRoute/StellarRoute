@@ -62,6 +62,9 @@ pub enum ApiError {
         threshold_secs_sdex: u64,
         threshold_secs_amm: u64,
     },
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 impl From<anyhow::Error> for ApiError {
@@ -155,6 +158,9 @@ impl IntoResponse for ApiError {
                 ApiErrorCode::InternalError,
                 "An internal error occurred".to_string(),
             ),
+            ApiError::NotImplemented(msg) => {
+                (StatusCode::NOT_IMPLEMENTED, ApiErrorCode::NotImplemented, msg)
+            }
         };
 
         let payload = ErrorResponse::new(error_type, message);
@@ -257,6 +263,14 @@ mod tests {
         let (status, json) = response_parts(err).await;
         assert_eq!(status, 500);
         assert_eq!(json["error"], "internal_error");
+    }
+
+    #[tokio::test]
+    async fn not_implemented_mapping() {
+        let err = ApiError::NotImplemented("swap prepare is not yet available".to_string());
+        let (status, json) = response_parts(err).await;
+        assert_eq!(status, 501);
+        assert_eq!(json["error"], "not_implemented");
     }
 
     #[tokio::test]

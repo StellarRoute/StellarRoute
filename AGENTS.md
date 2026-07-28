@@ -14,10 +14,18 @@ StellarRoute is a Rust-first Stellar DEX aggregator with:
 Use these commands from repo root unless noted.
 
 ### Local dependencies
-- Start Postgres + Redis:
+- Start Postgres + Redis (deps only):
   - `docker-compose up -d`
-- Wait for service health before running API/indexer:
+- Start full stack (Postgres + Redis + API):
+  - `docker compose -f docker-compose.yml -f docker-compose.app.yml up -d`
+- Start full stack with indexer (requires `ROUTER_CONTRACT_ADDRESS` in `.env`):
+  - `docker compose -f docker-compose.yml -f docker-compose.app.yml --profile indexer up -d`
+- Start full stack with frontend UI:
+  - `docker compose -f docker-compose.yml -f docker-compose.app.yml --profile ui up -d`
+- Wait for service health (deps only):
   - `./scripts/wait-for-services.sh`
+- Wait for service health (deps + API):
+  - `./scripts/wait-for-services.sh --api`
 - Wait for databases to be healthy:
   - `./scripts/wait-for-dbs.sh`
 - Check service health:

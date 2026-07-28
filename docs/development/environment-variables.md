@@ -70,6 +70,7 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
 | `STELLAR_HORIZON_URL` | string (URL) | — | **Required** (indexer); optional (API health/lag) | Indexer, API | Stellar Horizon API base URL (e.g. `https://horizon.stellar.org` or `https://horizon-testnet.stellar.org`) |
+| `STELLAR_HORIZON_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Horizon URLs tried if the primary is unreachable. Example: `https://horizon-testnet.stellar.org,https://horizon.stellar.org`. The first reachable URL wins. |
 | `HORIZON_MODE` | string | `poll` | Optional | Indexer | SDEX ingestion mode: `poll` or `sse` |
 | `HORIZON_LIMIT` | integer | `200` | Optional | Indexer | Maximum records per Horizon API page request |
 | `POLL_INTERVAL_SECS` | integer (seconds) | `2` | Optional | Indexer | Poll interval when Horizon streaming is not used |
@@ -80,6 +81,9 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
+| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `SOROBAN_RPC_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Soroban RPC URLs tried if the primary is unreachable. Example: `https://soroban-rpc.stellar.org`. The first reachable URL wins. |
+| `ROUTER_CONTRACT_ADDRESS` | string (Stellar address) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery |
 | `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
 | `ROUTER_CONTRACT_ADDRESS` | string (Soroban contract ID) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery. Validated at indexer startup: must be a 56-character contract ID starting with `C`. Missing, empty, or malformed values abort startup with a non-zero exit before any SDEX/AMM loop runs. Read it from the committed deploy artifact: `jq -r .router_contract_id config/deployments/testnet.json` |
 | `ALLOW_EMPTY_ROUTER` | boolean | `false` | Optional (**dev only**) | Indexer | Escape hatch that lets the indexer boot with an unset/empty `ROUTER_CONTRACT_ADDRESS` (SDEX-only, no AMM discovery). Refused when `STELLARROUTE_ENV=production` — startup fails instead. Never set this in a deployed environment |
@@ -123,8 +127,9 @@ There are two distinct read paths into the API, and they should not be conflated
 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
-| `API_HOST` | string | `127.0.0.1` | Optional | API | Bind address for the HTTP server |
-| `API_PORT` | integer | `3000` | Optional | API | Listen port for the HTTP server |
+| `API_HOST` | string | `127.0.0.1` (local) / `0.0.0.0` (when `PORT` is set) | Optional | API | Bind address for the HTTP server. Explicit value always wins. |
+| `API_PORT` | integer | `3000` | Optional | API | Listen port (used when `PORT` env is absent) |
+| `PORT` | integer | — | Optional (set by PaaS) | API | PaaS standard port variable (Render, Fly, Railway, K8s). When present, overrides `API_PORT` and defaults `API_HOST` to `0.0.0.0` so the platform health-check router can reach the process. Set `API_HOST` explicitly if a different bind address is required. |
 | `STARTUP_CREDENTIAL_CHECK` | boolean | `false` | Optional | API, Indexer | When `true`, verify dependencies (DB, Redis, Horizon, Soroban) are reachable before serving |
 | `SHUTDOWN_DRAIN_TIMEOUT_S` | integer (seconds) | `30` | Optional | API, Indexer | Graceful shutdown drain window for in-flight work |
 | `RATE_LIMIT_WINDOW_SECS` | integer (seconds) | `60` | Optional | API | Sliding-window length for HTTP rate limiting |

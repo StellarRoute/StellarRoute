@@ -20,6 +20,8 @@ import type {
   QuoteType,
   ApiErrorCode,
   RoutesResponse,
+  SwapActivityItem,
+  SwapActivityResponse,
 } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -328,6 +330,23 @@ export class StellarRouteClient {
   /** GET /api/v1/pairs — list all trading pairs */
   getPairs(opts?: FetchOptions): Promise<PairsResponse> {
     return this.request<PairsResponse>('/api/v1/pairs', opts);
+  }
+
+  /** GET /api/v1/activity/swaps — list recent swap activity */
+  async getSwapActivity(
+    params?: { limit?: number; before_ledger?: number },
+    opts?: FetchOptions,
+  ): Promise<SwapActivityResponse> {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.before_ledger !== undefined) query.set('before_ledger', String(params.before_ledger));
+    const qs = query.toString();
+    const path = `/api/v1/activity/swaps${qs ? `?${qs}` : ''}`;
+    const body = await this.request<ApiResponse<SwapActivityResponse> | SwapActivityResponse>(
+      path,
+      opts,
+    );
+    return unwrapEnvelope<SwapActivityResponse>(body);
   }
 
   /**

@@ -131,6 +131,22 @@ mod tests {
     }
 
     #[test]
+    fn kill_switch_update_audit_entry_emits_on_success() {
+        // Mirrors the entry built by routes::kill_switch::update_kill_switch
+        // on a successful update (issue #1053: audit log must still fire).
+        std::env::remove_var("ADMIN_AUDIT_ENABLED");
+        let mut hm = HeaderMap::new();
+        hm.insert("authorization", "Bearer test-admin-token".parse().unwrap());
+        let entry =
+            build_admin_audit_entry("kill_switch.update", "req-ks-1", &hm, "kill_switch", "success");
+        let json = emit_admin_audit(&entry).expect("kill switch audit entry must emit");
+        assert!(json.contains("\"event\":\"kill_switch.update\""));
+        assert!(json.contains("\"outcome\":\"success\""));
+        // The admin token itself must never be leaked into the audit log.
+        assert!(!json.contains("test-admin-token"));
+    }
+
+    #[test]
     fn actor_falls_back_to_ip() {
         let mut hm = HeaderMap::new();
         hm.insert("x-forwarded-for", "10.0.0.1, 1.2.3.4".parse().unwrap());

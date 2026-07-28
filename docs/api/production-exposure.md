@@ -25,20 +25,36 @@ for the underlying environment variables.
 |---|---|---|
 | All `/api/v1/*` routes not in `PUBLIC_GET_ROUTES` | No API key required (`REQUIRE_AUTH=false`) | API key required (`REQUIRE_AUTH=true`); routes listed in `PUBLIC_GET_ROUTES` remain public for `GET` only |
 
-## Admin / system mutations (issue #1058)
+`/health*`, `/metrics*`, `/api/v1/replay*`, `/api/v1/admin/*`, and
+`/api/v1/system/*` are always exempt from this global API-key gate — they
+either carry no sensitive data (`/health*`) or already have their own
+dedicated `AdminAuth` protection (the rest), so they never need both an API
+key *and* an admin token.
+
+## Admin / system mutations (issues #1053, #1055, #1058)
 
 | Endpoint | Method | Public? (dev) | Public? (prod) | Auth |
 |---|---|---|---|---|
-| `/api/v1/admin/cache/flush/:base/:quote` | POST | No | No | `AdminAuth` |
-| `/api/v1/admin/cache/flush` | POST | No | No | `AdminAuth` |
-| `/api/v1/admin/kill-switch` | GET | Yes | Yes | — (read-only state) |
-| `/api/v1/admin/kill-switch` | POST | No | No | `AdminAuth` |
-| `/api/v1/system/canary/report` | GET | Yes | Yes | — (read-only state) |
-| `/api/v1/system/canary/config` | POST | No | No | `AdminAuth` |
+| `/api/v1/admin/cache/flush/:base/:quote` | POST | No | No | `AdminAuth` (always) |
+| `/api/v1/admin/cache/flush` | POST | No | No | `AdminAuth` (always) |
+| `/api/v1/admin/kill-switch` | GET | Yes | No | `AdminAuth` in production only |
+| `/api/v1/admin/kill-switch` | POST | No | No | `AdminAuth` (always) |
+| `/api/v1/system/canary/report` | GET | Yes | No | `AdminAuth` in production only |
+| `/api/v1/system/canary/config` | POST | No | No | `AdminAuth` (always) |
 
-All of the above deny by default: if `ADMIN_AUTH_TOKEN` isn't configured at
-all, every `AdminAuth`-gated route returns `401` regardless of environment —
-there is no way to reach them by simply omitting a token.
+The `POST` routes above always require `AdminAuth`, in every environment —
+that's a deliberate, stricter-than-necessary default since they're
+mutations. The two `GET` routes are read-only state and are intentionally
+left public in dev/test for local operational visibility, but are gated the
+same way in production (see `docs/RUNBOOK_KILL_SWITCH.md` and
+`docs/routing_canary.md`).
+
+All `AdminAuth`-gated requests deny by default: if `ADMIN_AUTH_TOKEN` isn't
+configured at all, every one of these routes returns `401` regardless of
+environment — there is no way to reach them by simply omitting a token. In
+production specifically, the API refuses to **start** at all if
+`ADMIN_AUTH_TOKEN` is unset, rather than booting into a state where these
+routes silently deny every request.
 
 ## Metrics / replay (issue #1059)
 

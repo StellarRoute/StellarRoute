@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+#
+# Multi-stage production image for stellarroute-api.
+# Build from repo root:
+#   docker build -f Dockerfile.api -t stellarroute-api:local .
+#
+# Runtime rationale: debian:bookworm-slim (not distroless) because the API uses
+# sqlx with native-tls / OpenSSL and compose healthchecks require curl. The
+# final stage has no Rust toolchain — only the release binary + CA certs +
+# OpenSSL + curl. Secrets (.env / keys) are never COPY'd.
+
+ARG RUST_VERSION=1.85
+
+FROM rust:${RUST_VERSION}-bookworm AS builder
+WORKDIR /app
+
+# Copy the full workspace needed to compile stellarroute-api and its path deps.
+# .dockerignore excludes .env, target/, frontend/, secrets, etc.
+COPY Cargo.toml ./
+COPY crates ./crates
+
+RUN cargo build -p stellarroute-api --release --bin stellarroute-api \
+    && strip target/release/stellarroute-api
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home --home-dir /nonexistent \
+         --shell /usr/sbin/nologin stellarroute
+
+COPY --from=builder /app/target/release/stellarroute-api /usr/local/bin/stellarroute-api
+
+USER 10001
+WORKDIR /home/stellarroute
+
+# PaaS-style bind: PORT present ⇒ listen on 0.0.0.0:$PORT (see resolve_bind_address).
+ENV PORT=8080 \
+    RUST_LOG=info
+
+EXPOSE 8080
+
+# /health is readiness (requires reachable DATABASE_URL). The process exits at
+# startup if Postgres is unreachable — see docs/deployment/README.md.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD curl -sf "http://127.0.0.1:${PORT}/health" || exit 1
+
+ENTRYPOINT ["stellarroute-api"]

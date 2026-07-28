@@ -18,6 +18,7 @@ pub mod quote;
 pub mod replay;
 pub mod routes_endpoint;
 pub mod simulation_route;
+pub mod swap_prepare;
 pub mod ws;
 
 use axum::{
@@ -92,6 +93,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/v1/simulate/route",
             post(simulation_route::simulate_route_dry_run),
+        )
+        // Swap prepare (issue #1046)
+        .route(
+            "/api/v1/swap/prepare",
+            post(swap_prepare::swap_prepare),
         )
         // Contract registry routes
         .route(

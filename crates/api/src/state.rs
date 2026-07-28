@@ -174,6 +174,9 @@ pub struct AppState {
     pub liquidity_thinness_alerts: Arc<LiquidityThinnessAlerts>,
     /// Quote expiration webhook dispatcher.
     pub quote_expiration_webhooks: Arc<QuoteExpirationWebhookService>,
+    /// Soroban router contract address (C… string). Required for AMM swap prepare.
+    /// Loaded from `ROUTER_CONTRACT_ADDRESS` env var.
+    pub router_contract_address: Option<String>,
 }
 
 impl AppState {
@@ -233,6 +236,7 @@ impl AppState {
             external_dependency_health,
             liquidity_thinness_alerts,
             quote_expiration_webhooks,
+            router_contract_address: std::env::var("ROUTER_CONTRACT_ADDRESS").ok(),
         }
     }
 
@@ -307,6 +311,7 @@ impl AppState {
             external_dependency_health,
             liquidity_thinness_alerts,
             quote_expiration_webhooks,
+            router_contract_address: std::env::var("ROUTER_CONTRACT_ADDRESS").ok(),
         };
 
         // Start cache prewarm job if configured via env `PREWARM_PAIRS`.

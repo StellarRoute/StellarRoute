@@ -299,6 +299,12 @@ mod tests {
                     total: "0".to_string(),
                 })
                 .collect(),
+            summary: OrderbookSummary {
+                bid: None,
+                ask: None,
+                spread_bps: None,
+                midpoint: None,
+            },
             timestamp: 1_717_171_717,
         }
     }

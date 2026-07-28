@@ -53,6 +53,9 @@ brotli = "8"
 stellarroute-indexer = { path = "../indexer" }
 stellarroute-routing = { path = "../routing" }
 
+# Stellar SDK
+stellar-xdr = { version = "21.2.0", features = ["std", "base64"] }
+
 # API documentation
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "6", features = ["axum"] }

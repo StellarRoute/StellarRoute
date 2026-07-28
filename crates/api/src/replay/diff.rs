@@ -206,6 +206,8 @@ mod tests {
                 to_asset: AssetInfo::native(),
                 price: price.to_string(),
                 source: source.to_string(),
+                fee_bps: None,
+                liquidity_depth: None,
             }],
             compared_venues: vec![],
             is_deterministic: true,

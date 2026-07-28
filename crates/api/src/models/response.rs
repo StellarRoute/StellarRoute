@@ -857,3 +857,31 @@ pub struct QuoteExpirationWebhookPayload {
     pub quote_asset: String,
     pub amount_in: String,
 }
+
+// ---------------------------------------------------------------------------
+// Swap prepare types (issue #1046)
+// ---------------------------------------------------------------------------
+
+/// How a prepared swap transaction should be executed on-chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    /// Execute through the Soroban router contract (AMM / aggregator routes).
+    SorobanRouter,
+    /// Execute via a classic Stellar `PathPaymentStrictSend` operation (SDEX routes).
+    ClassicPathPayment,
+}
+
+/// Response from `POST /api/v1/swap/prepare`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SwapPrepareResponse {
+    /// Discriminator telling the frontend which signing flow to use.
+    pub execution_mode: ExecutionMode,
+    /// Base64-encoded unsigned transaction envelope XDR.
+    pub unsigned_xdr: String,
+    /// Soroban router contract address (present only when `execution_mode == soroban_router`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub router_contract: Option<String>,
+    /// The quote used to build this transaction.
+    pub quote: QuoteResponse,
+}

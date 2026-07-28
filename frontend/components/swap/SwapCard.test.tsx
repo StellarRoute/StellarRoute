@@ -1,14 +1,11 @@
-import { signTransactionWithWallet } from "@/lib/wallet";
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, Mock } from 'vitest';
 import { SwapCard } from './SwapCard';
 import { fireEvent } from '@testing-library/react';
 import * as useSwapStateModule from '@/hooks/useSwapState';
-import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
 import { signTransactionWithWallet } from '@/lib/wallet';
-import { submitToHorizon } from '@/lib/wallet/submit';
+import { prepareSwapTransaction, submitToHorizon } from '@/lib/wallet/submit';
 
 import { WalletProvider } from '@/components/providers/wallet-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
@@ -43,7 +40,9 @@ const defaultAllowedCapabilities = {
 };
 
 vi.mock('./ShareQuoteButton', () => ({
-  ShareQuoteButton: () => <button data-testid="mock-share-quote-button">Share</button>,
+  ShareQuoteButton: () => (
+    <button data-testid="mock-share-quote-button">Share</button>
+  ),
 }));
 
 vi.mock('@/hooks/useQuoteRefresh', () => ({
@@ -60,11 +59,7 @@ vi.mock('@/hooks/useApi', async (importOriginal) => {
       error: null,
       wsAvailable: false,
     }),
-    useRoutes: (
-      base: string,
-      quote: string,
-      amount?: number,
-    ) => {
+    useRoutes: (base: string, quote: string, amount?: number) => {
       const skip =
         !base ||
         !quote ||
@@ -109,7 +104,9 @@ vi.mock('@/components/providers/wallet-provider', () => {
 
       const connect = React.useCallback(async (walletId: string) => {
         setConnected(true);
-        setAddress('GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+        setAddress(
+          'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        );
       }, []);
 
       const disconnect = React.useCallback(() => {
@@ -131,7 +128,11 @@ vi.mock('@/components/providers/wallet-provider', () => {
         setAutoReconnectPreferred: React.useCallback(() => {}, []),
         refreshWallets: React.useCallback(async () => {}, []),
         refreshAccount: React.useCallback(async () => {}, []),
-        accountSwitchState: { isDetecting: false, hasChanged: false, previousAddress: null },
+        accountSwitchState: {
+          isDetecting: false,
+          hasChanged: false,
+          previousAddress: null,
+        },
         isTransactionPending: false,
         setTransactionPending: React.useCallback(() => {}, []),
         capabilities: mockWalletState.capabilities,
@@ -152,22 +153,11 @@ vi.mock('@/lib/wallet', () => ({
   signTransactionWithWallet: vi.fn(),
 }));
 
-vi.mock('@/lib/wallet/xdr-builder', () => ({
-  buildPathPaymentXdr: vi.fn().mockResolvedValue('AAAAtest_unsigned_xdr'),
-  XdrBuildError: class XdrBuildError extends Error {
-    code: string;
-    constructor(code: string, message: string) {
-      super(message);
-      this.code = code;
-      this.name = 'XdrBuildError';
-    }
-  },
-}));
-
 vi.mock('@/lib/wallet/submit', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/wallet/submit')>();
   return {
     ...actual,
+    prepareSwapTransaction: vi.fn().mockResolvedValue('AAAAtest_unsigned_xdr'),
     submitToHorizon: vi.fn().mockResolvedValue({ hash: 'test_submit_hash' }),
   };
 });
@@ -189,9 +179,10 @@ function setNavigatorOnline(value: boolean) {
 
 function mockQuoteRefreshState(
   amount?: number,
-  options?: { total?: string; priceImpact?: string },
+  options?: { total?: string; priceImpact?: string }
 ) {
-  const hasAmount = amount !== undefined && Number.isFinite(amount) && amount > 0;
+  const hasAmount =
+    amount !== undefined && Number.isFinite(amount) && amount > 0;
   const quote = hasAmount
     ? {
         base_asset: { asset_type: 'native' },
@@ -230,17 +221,18 @@ function mockQuoteRefreshState(
   };
 }
 
-function configureQuoteRefresh(
-  options?: { total?: string; priceImpact?: string },
-) {
+function configureQuoteRefresh(options?: {
+  total?: string;
+  priceImpact?: string;
+}) {
   mockQuoteRefresh.mockImplementation(
     (_base: string, _quote: string, amount?: number) =>
-      mockQuoteRefreshState(amount, options),
+      mockQuoteRefreshState(amount, options)
   );
 }
 
 async function connectWalletAndWaitForBalance(
-  user: ReturnType<typeof userEvent.setup>,
+  user: ReturnType<typeof userEvent.setup>
 ) {
   await user.click(screen.getByRole('button', { name: /connect wallet/i }));
   await waitFor(() => {
@@ -318,7 +310,9 @@ describe('SwapCard network resilience and states', () => {
     fireEvent.change(payInput, { target: { value: '10' } });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /review swap/i })).toBeEnabled();
+      expect(
+        screen.getByRole('button', { name: /review swap/i })
+      ).toBeEnabled();
     });
   });
 
@@ -374,7 +368,11 @@ describe('SwapCard network resilience and states', () => {
       statuses: [
         { capability: 'request_access', allowed: true },
         { capability: 'view_address', allowed: true },
-        { capability: 'view_network', allowed: false, reason: 'xBull only supports testnet' },
+        {
+          capability: 'view_network',
+          allowed: false,
+          reason: 'xBull only supports testnet',
+        },
         {
           capability: 'sign_transaction',
           allowed: false,
@@ -623,7 +621,8 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
       const state = originalUseSwapState();
       return {
         ...state,
-        fromToken: 'USDC:GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCH',
+        fromToken:
+          'USDC:GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCH',
       };
     });
 
@@ -820,7 +819,9 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
 
     // Swap button should be disabled with insufficient balance message
     await waitFor(() => {
-      const swapButton = screen.getByRole('button', { name: /insufficient balance/i });
+      const swapButton = screen.getByRole('button', {
+        name: /insufficient balance/i,
+      });
       expect(swapButton).toBeDisabled();
     });
   });
@@ -889,8 +890,12 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
     }) as Mock;
 
   beforeEach(() => {
-    vi.mocked(buildPathPaymentXdr).mockResolvedValue('AAAAtest_unsigned_xdr');
-    vi.mocked(signTransactionWithWallet).mockResolvedValue('AAAAtest_signed_xdr');
+    vi.mocked(prepareSwapTransaction).mockResolvedValue(
+      'AAAAtest_unsigned_xdr'
+    );
+    vi.mocked(signTransactionWithWallet).mockResolvedValue(
+      'AAAAtest_signed_xdr'
+    );
     vi.mocked(submitToHorizon).mockResolvedValue({ hash: 'test_submit_hash' });
     configureQuoteRefresh();
     global.fetch = horizonFetchMock();
@@ -901,7 +906,7 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
     vi.clearAllMocks();
   });
 
-  it('calls buildPathPaymentXdr and signTransactionWithWallet when swap is confirmed', async () => {
+  it('runs prepare, sign, and submit when swap is confirmed', async () => {
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
 
@@ -919,11 +924,15 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
     await user.click(screen.getByRole('button', { name: /review swap/i }));
 
     await waitFor(() => {
-      expect(buildPathPaymentXdr).toHaveBeenCalled();
+      expect(prepareSwapTransaction).toHaveBeenCalled();
       expect(signTransactionWithWallet).toHaveBeenCalledWith(
         'AAAAtest_unsigned_xdr',
         'freighter',
-        expect.any(String)
+        'Test SDF Network ; September 2015'
+      );
+      expect(submitToHorizon).toHaveBeenCalledWith(
+        'AAAAtest_signed_xdr',
+        'testnet'
       );
     });
   });
@@ -935,6 +944,6 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
       screen.getByRole('button', { name: /connect wallet/i })
     ).toBeInTheDocument();
     expect(signTransactionWithWallet).not.toHaveBeenCalled();
-    expect(buildPathPaymentXdr).not.toHaveBeenCalled();
+    expect(prepareSwapTransaction).not.toHaveBeenCalled();
   });
 });

@@ -45,11 +45,22 @@ export function useProgressiveLoadingTransition(
       enterTimerRef.current = null;
     }
 
+    const clearTimers = () => {
+      if (revealTimerRef.current) {
+        clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
+      if (enterTimerRef.current) {
+        clearTimeout(enterTimerRef.current);
+        enterTimerRef.current = null;
+      }
+    };
+
     if (isLoading) {
       loadingStartedAtRef.current = Date.now();
       setShowSkeleton(true);
       setIsEntering(false);
-      return;
+      return clearTimers;
     }
 
     if (!showSkeleton) {
@@ -57,7 +68,7 @@ export function useProgressiveLoadingTransition(
       enterTimerRef.current = setTimeout(() => {
         setIsEntering(false);
       }, enterDurationMs);
-      return;
+      return clearTimers;
     }
 
     const loadingStartedAt = loadingStartedAtRef.current ?? Date.now();
@@ -72,16 +83,7 @@ export function useProgressiveLoadingTransition(
       }, enterDurationMs);
     }, waitMs);
 
-    return () => {
-      if (revealTimerRef.current) {
-        clearTimeout(revealTimerRef.current);
-        revealTimerRef.current = null;
-      }
-      if (enterTimerRef.current) {
-        clearTimeout(enterTimerRef.current);
-        enterTimerRef.current = null;
-      }
-    };
+    return clearTimers;
   }, [isLoading, showSkeleton, minimumSkeletonMs, enterDurationMs]);
 
   return {

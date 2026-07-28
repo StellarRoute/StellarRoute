@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
 import { useRoutes } from '@/hooks/useApi';
-import { emitRouteEvent } from '@/lib/telemetry';
+import { emitRouteEvent, emitSwapFunnelEvent, getPriceImpactTier } from '@/lib/telemetry';
 import { SwapWarningCenter, type SwapWarning } from './SwapWarningCenter';
 import { quoteExportToCsv, type QuoteExportPayload } from '@/lib/quote-export';
 import { getTraderErrorCopy, toTraderErrorLine } from '@/lib/api/trader-error-copy';
@@ -717,6 +717,14 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     const finalToAmount = selectedRoute?.expectedAmount
       ? selectedRoute.expectedAmount.replace('≈ ', '')
       : toAmount;
+    emitSwapFunnelEvent('confirm_clicked', {
+      quoteId: quote.requestId ?? undefined,
+      routeId: selectedRoute?.id,
+      fromAssetCode: fromToken,
+      toAssetCode: toToken,
+      hopCount: selectedRoute?.rawPath?.length ?? quote.data?.path?.length ?? 1,
+      priceImpactTier: getPriceImpactTier(quote.priceImpact),
+    });
     optimistic.initiateSwap({
       fromAsset: fromToken,
       fromAmount,
@@ -1383,6 +1391,16 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <kbd className="font-mono">Alt+2</kbd>
             </li>
           </ul>
+          <p className="mt-4 text-sm text-muted-foreground">
+            New here?{" "}
+            <a
+              href="/guide"
+              className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              First live swap guide
+            </a>
+            {" "}(wallet, trustline, slippage).
+          </p>
           <IconographyLegend embedded className="mt-4" />
         </DialogContent>
       </Dialog>

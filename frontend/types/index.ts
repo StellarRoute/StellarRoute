@@ -231,4 +231,23 @@ export interface PoolStatsResponse {
   replica?: PoolStats;
 }
 
+export interface SwapActivityItem {
+  event_id: string;
+  contract_id: string;
+  ledger: number;
+  ledger_closed_at?: string;
+  paging_token: string;
+  sender: string;
+  amount_in: string;
+  amount_out: string;
+  fee_amount: string;
+  route: unknown;
+  source_asset?: string;
+  destination_asset?: string;
+}
+
+export interface SwapActivityResponse {
+  swaps: SwapActivityItem[];
+}
+
 export * from './route';

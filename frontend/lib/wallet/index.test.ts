@@ -119,6 +119,70 @@ describe('signTransactionWithWallet - Albedo', () => {
   });
 });
 
+describe('connectWallet - xBull', () => {
+  const mockConnect = vi.fn();
+  const mockGetNetwork = vi.fn();
+
+  beforeEach(() => {
+    mockConnect.mockReset();
+    mockGetNetwork.mockReset();
+    (window as unknown as Record<string, unknown>).xbull = {
+      connect: mockConnect,
+      sign: vi.fn(),
+      getNetwork: mockGetNetwork,
+    };
+  });
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).xbull;
+    delete (window as unknown as Record<string, unknown>).xBullSDK;
+  });
+
+  it('returns the real public network from getNetwork for mismatch checks', async () => {
+    mockConnect.mockResolvedValue({ publicKey: MOCK_PUBLIC_KEY });
+    mockGetNetwork.mockResolvedValue({
+      network: 'PUBLIC',
+      networkPassphrase: PUBLIC_PASSPHRASE,
+    });
+
+    const session = await connectWallet('xbull');
+
+    expect(session).toMatchObject({
+      walletId: 'xbull',
+      address: MOCK_PUBLIC_KEY,
+      network: 'public',
+      isConnected: true,
+    });
+    expect(mockGetNetwork).toHaveBeenCalledOnce();
+  });
+
+  it('returns testnet when xBull reports TESTNET', async () => {
+    mockConnect.mockResolvedValue({ publicKey: MOCK_PUBLIC_KEY });
+    mockGetNetwork.mockResolvedValue({
+      network: 'TESTNET',
+      networkPassphrase: TEST_PASSPHRASE,
+    });
+
+    const session = await connectWallet('xbull');
+
+    expect(session.network).toBe('testnet');
+  });
+
+  it('reads getNetwork from xBullSDK when window.xbull is absent', async () => {
+    delete (window as unknown as Record<string, unknown>).xbull;
+    (window as unknown as Record<string, unknown>).xBullSDK = {
+      connect: mockConnect,
+      getNetwork: mockGetNetwork,
+    };
+    mockConnect.mockResolvedValue({ publicKey: MOCK_PUBLIC_KEY });
+    mockGetNetwork.mockResolvedValue({ network: 'public' });
+
+    const session = await connectWallet('xbull');
+
+    expect(session.network).toBe('public');
+  });
+});
+
 describe('signTransactionWithWallet - xBull', () => {
   const mockSign = vi.fn();
 
@@ -175,18 +239,55 @@ describe('signTransactionWithWallet - xBull', () => {
 });
 
 describe('checkWalletCapabilities - xBull', () => {
-  it('denies sign_transaction on mainnet with testnet resolution', async () => {
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).xbull;
+  });
+
+  it('flags network mismatch when wallet is on public and app expects testnet', async () => {
+    (window as unknown as Record<string, unknown>).xbull = {
+      connect: vi.fn(),
+      sign: vi.fn(),
+      getNetwork: vi.fn().mockResolvedValue({
+        network: 'PUBLIC',
+        networkPassphrase: PUBLIC_PASSPHRASE,
+      }),
+    };
+
+    const caps = await checkWalletCapabilities('xbull', 'testnet');
+    const netCap = caps.statuses.find((s) => s.capability === 'view_network');
+    const signCap = caps.statuses.find(
+      (s) => s.capability === 'sign_transaction'
+    );
+
+    expect(netCap?.allowed).toBe(false);
+    expect(netCap?.reason).toMatch(/Wallet on public/i);
+    expect(signCap?.allowed).toBe(false);
+    expect(signCap?.reason).toBe('Network mismatch');
+  });
+
+  it('allows sign_transaction on mainnet when wallet reports public', async () => {
+    (window as unknown as Record<string, unknown>).xbull = {
+      connect: vi.fn(),
+      sign: vi.fn(),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'public' }),
+    };
+
     const caps = await checkWalletCapabilities('xbull', 'mainnet');
     const signCap = caps.statuses.find(
       (s) => s.capability === 'sign_transaction'
     );
 
-    expect(signCap?.allowed).toBe(false);
-    expect(signCap?.reason).toBe('xBull only supports testnet');
-    expect(signCap?.resolution).toBe('Switch app to testnet');
+    expect(signCap?.allowed).toBe(true);
+    expect(signCap?.reason).toBeUndefined();
   });
 
-  it('allows sign_transaction on testnet', async () => {
+  it('allows sign_transaction on testnet when networks match', async () => {
+    (window as unknown as Record<string, unknown>).xbull = {
+      connect: vi.fn(),
+      sign: vi.fn(),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'testnet' }),
+    };
+
     const caps = await checkWalletCapabilities('xbull', 'testnet');
     const signCap = caps.statuses.find(
       (s) => s.capability === 'sign_transaction'

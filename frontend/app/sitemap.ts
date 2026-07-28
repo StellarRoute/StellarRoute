@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 const DEFAULT_SITE_URL = "https://stellarroute.app";
 
-const PUBLIC_MARKETING_ROUTES = ["/", "/swap", "/orderbook", "/status"] as const;
+const PUBLIC_MARKETING_ROUTES = ["/", "/swap", "/orderbook", "/status", "/guide", "/docs"] as const;
 
 function getSiteUrl(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();

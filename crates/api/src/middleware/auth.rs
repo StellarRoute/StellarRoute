@@ -62,9 +62,21 @@ pub fn validate_auth_startup() -> Result<Option<String>, String> {
 ///   reachable for load balancers / orchestrators in every profile.
 /// - `/metrics`, `/api/v1/replay` (list/get/run/diff) — gated by
 ///   `production_admin_guard` (`ADMIN_AUTH_TOKEN`) in production instead;
-///   see `docs/api/production-exposure.md`. Without this exemption they'd
-///   need both an API key *and* an admin token in production.
-const ALWAYS_EXEMPT_PREFIXES: &[&str] = &["/health", "/metrics", "/api/v1/replay"];
+///   see `docs/api/production-exposure.md`.
+/// - `/api/v1/admin/*`, `/api/v1/system/*` — every route under these
+///   prefixes already requires `AdminAuth` directly (mutations, always) or
+///   via `production_admin_guard` (read-only state, production only); see
+///   issues #1053, #1055, #1058.
+///
+/// Without this exemption, these routes would need both an API key *and* an
+/// admin token in production, which none of the above tickets ask for.
+const ALWAYS_EXEMPT_PREFIXES: &[&str] = &[
+    "/health",
+    "/metrics",
+    "/api/v1/replay",
+    "/api/v1/admin",
+    "/api/v1/system",
+];
 
 fn is_always_exempt(path: &str) -> bool {
     ALWAYS_EXEMPT_PREFIXES.iter().any(|p| path.starts_with(p))
@@ -248,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn always_exempt_covers_health_metrics_and_replay() {
+    fn always_exempt_covers_health_metrics_replay_admin_and_system() {
         assert!(is_always_exempt("/health"));
         assert!(is_always_exempt("/health/deps"));
         assert!(is_always_exempt("/metrics"));
@@ -256,8 +268,11 @@ mod tests {
         assert!(is_always_exempt("/metrics/pool"));
         assert!(is_always_exempt("/api/v1/replay"));
         assert!(is_always_exempt("/api/v1/replay/abc/run"));
+        assert!(is_always_exempt("/api/v1/admin/kill-switch"));
+        assert!(is_always_exempt("/api/v1/admin/cache/flush"));
+        assert!(is_always_exempt("/api/v1/system/canary/report"));
+        assert!(is_always_exempt("/api/v1/system/canary/config"));
         assert!(!is_always_exempt("/api/v1/quote/XLM/USDC"));
-        assert!(!is_always_exempt("/api/v1/admin/kill-switch"));
     }
 
     #[test]

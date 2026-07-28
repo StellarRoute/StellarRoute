@@ -54,7 +54,8 @@ interface ViewStateProps {
 
 **CTA:** 
 - **Primary:** "Browse pairs" → Opens token selector for base asset
-- **Secondary:** Link to docs: "Learn about asset formats"
+- **Secondary:** Link to first-swap user guide: "First live swap guide" → `/guide` (see [docs/user-guide-first-live-swap.md](../user-guide-first-live-swap.md))
+- **Also:** Swap onboarding checklist and keyboard help drawer (`?`) link to the same guide
 
 **Variant:** `empty`
 
@@ -65,9 +66,14 @@ interface ViewStateProps {
   title="Select a trading pair"
   description="Choose from available base and quote assets to get started."
   action={
-    <Button onClick={openPairSelector} variant="default">
-      Browse pairs
-    </Button>
+    <>
+      <Button onClick={openPairSelector} variant="default">
+        Browse pairs
+      </Button>
+      <a href="/guide" className="text-sm text-muted-foreground underline">
+        First live swap guide
+      </a>
+    </>
   }
 />
 ```

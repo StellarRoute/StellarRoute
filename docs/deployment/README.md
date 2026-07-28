@@ -99,6 +99,33 @@ Rollback sequence:
 4. Keep the last known-good schema migration file and deployment artifact together.
 ## Testnet Deployment (From Clean Machine)
 
+### 0. Exact command order
+
+This is the canonical sequence for a clean testnet deployment:
+
+```bash
+# 1. Deploy router contract (writes config/deployment-testnet.json)
+./scripts/deploy.sh --network testnet
+
+# 2. Set ROUTER_CONTRACT_ADDRESS in your environment
+export ROUTER_CONTRACT_ADDRESS=$(jq -r '.contract_id' config/deployment-testnet.json)
+
+# 3. Register pools from config/pools-testnet.json (idempotent — safe to re-run)
+./scripts/register-pools.sh --network testnet
+
+# 4. Verify all configured pools are registered (CI gate — exits non-zero on failure)
+./scripts/verify-pools.sh --network testnet
+
+# 5. Start the indexer (reads ROUTER_CONTRACT_ADDRESS from env or .env file)
+cargo run -p stellarroute-indexer
+# or in Docker:
+# docker compose -f docker-compose.yml -f docker-compose.app.yml --profile indexer up -d
+```
+
+Re-running step 3 at any time is safe: pools that are already registered are
+skipped automatically (idempotent).  Step 4 will fail CI if any configured
+non-placeholder pool is missing from the live router state.
+
 ### 1. Setup
 ```bash
 # Clone and enter the repository
@@ -265,19 +292,39 @@ Any entry whose `address` starts with `PLACEHOLDER` is automatically skipped by 
 
 The script reads `config/pools-testnet.json`, skips placeholder entries, and calls the router contract's `register_pool` function for each real address.
 
-**Expected log output (successful run):**
+**The script is idempotent**: pools that are already registered are detected via `is_pool_registered` before each call and skipped without error. Re-running the script after a partial failure or a re-deploy is always safe.
+
+**Expected log output (successful first run):**
 
 ```
 [INFO]  Registering 2 pools on testnet (contract: C...ROUTER...)
-[INFO]  [1/2] Registering: XLM/USDC Testnet Pool (CBIELTK6...)
-[OK]    Verified: XLM/USDC Testnet Pool is registered
-[INFO]  [2/2] Registering: XLM/BTC Testnet Pool (CBEZJWFM...)
-[OK]    Verified: XLM/BTC Testnet Pool is registered
+[INFO]  [1/2] Checking: XLM/USDC Testnet Pool (CBIELTK6...)
+[OK]    Registered and verified: XLM/USDC Testnet Pool
+[INFO]  [2/2] Checking: XLM/BTC Testnet Pool (CBEZJWFM...)
+[OK]    Registered and verified: XLM/BTC Testnet Pool
 
 [OK]    ===== POOL REGISTRATION COMPLETE =====
-[OK]    Registered: 2
-[OK]    Failed:     0
-[OK]    Total on-chain pool count: 2
+[OK]    Registered (new):     2
+[OK]    Already registered:   0
+[OK]    Skipped (placeholder):0
+[OK]    Failed:               0
+[OK]    Total on-chain pools: 2
+```
+
+**Expected log output (re-run — idempotent):**
+
+```
+[INFO]  [1/2] Checking: XLM/USDC Testnet Pool (CBIELTK6...)
+[OK]    Already registered (no-op): XLM/USDC Testnet Pool
+[INFO]  [2/2] Checking: XLM/BTC Testnet Pool (CBEZJWFM...)
+[OK]    Already registered (no-op): XLM/BTC Testnet Pool
+
+[OK]    ===== POOL REGISTRATION COMPLETE =====
+[OK]    Registered (new):     0
+[OK]    Already registered:   2
+[OK]    Skipped (placeholder):0
+[OK]    Failed:               0
+[OK]    Total on-chain pools: 2
 ```
 
 **Expected log output (placeholder entries present):**
@@ -287,10 +334,25 @@ The script reads `config/pools-testnet.json`, skips placeholder entries, and cal
 [WARN]  Skipping placeholder pool: XLM/BTC Testnet Pool
 
 [OK]    ===== POOL REGISTRATION COMPLETE =====
-[OK]    Registered: 0
-[OK]    Failed:     0
-[OK]    Total on-chain pool count: 0
+[OK]    Registered (new):     0
+[OK]    Already registered:   0
+[OK]    Skipped (placeholder):2
+[OK]    Failed:               0
 ```
+
+The script also writes a machine-readable JSON summary to
+`logs/<network>-register-summary.json`.
+
+#### Step 4 — Verify pools (CI gate)
+
+```bash
+./scripts/verify-pools.sh --network testnet
+```
+
+This script queries `is_pool_registered` for every non-placeholder pool and
+exits non-zero if any pool is missing from the live router.  Use it as a CI/CD
+gate after `register-pools.sh`.  Output is also written as JSON to
+`logs/<network>-verify-pools-summary.json`.
 
 If `Registered: 0` is shown for a non-placeholder run, verify the router contract is deployed (`./scripts/deploy.sh` must have run first) and that `config/deployment-testnet.json` exists with a valid contract ID.
 
@@ -524,3 +586,96 @@ Fund the deployer account:
 curl "https://friendbot.stellar.org/?addr=$(soroban keys address deployer)"
 # Mainnet: transfer XLM from an exchange or wallet
 ```
+
+
+---
+
+## Hosting Blueprint (Issue #1035)
+
+The following sections document the concrete hosting blueprint that satisfies
+M5 (Live hosting). A single-region Render deployment and a Docker Compose
+production overlay are both provided.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `render.yaml` | Render Blueprint — managed Postgres, Redis, API web service, indexer worker |
+| `deploy/docker-compose.prod.yml` | Compose production overlay (hardened, no host ports for DB/Redis) |
+| `deploy/secrets.checklist.md` | Operator checklist — work through before first deploy |
+
+### Dry-run / validate commands
+
+**Render Blueprint:**
+```bash
+python3 -c "import yaml, sys; yaml.safe_load(open('render.yaml'))" && echo "render.yaml OK"
+```
+Use the Render dashboard → **Blueprint → Validate** for full schema validation.
+
+**Docker Compose production overlay:**
+```bash
+docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml config
+# Exits 0 and prints the merged config if the YAML is valid.
+```
+
+### Environment variable mapping
+
+The table below maps every env var key used in `render.yaml` and
+`deploy/docker-compose.prod.yml` to its purpose, source, and which service
+requires it. It is kept 1:1 with the blueprint keys — if you add a variable
+to the blueprint, add a row here.
+
+| Key | Required by | Source in Render | Description |
+|---|---|---|---|
+| `DATABASE_URL` | API, Indexer | Auto-wired from `stellarroute-postgres` | Primary PostgreSQL connection string |
+| `REDIS_URL` | API | Auto-wired from `stellarroute-redis` | Redis connection string for quote cache + rate limiting |
+| `API_PORT` | API | Set to `3000` in blueprint | HTTP listen port |
+| `RUST_LOG` | API, Indexer | Set to `info,warn` in blueprint | Log level directive |
+| `SOROBAN_RPC_URL` | API (optional), Indexer (**required**) | Secret — set in Render dashboard | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`) |
+| `STELLAR_HORIZON_URL` | Indexer (**required**) | Secret — set in Render dashboard | Stellar Horizon endpoint |
+| `ROUTER_CONTRACT_ADDRESS` | Indexer (**required**) | Secret — set in Render dashboard | Deployed router contract ID |
+| `ENABLE_ADMIN_ROUTES` | API | Hardcoded `false` in blueprint | Enable/disable admin kill-switch routes (see §Security) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | API, Indexer | Optional secret | OTLP collector URL; unset disables trace export |
+| `POSTGRES_USER` | Compose only | `.env.prod` | PostgreSQL superuser (not used in Render managed DB) |
+| `POSTGRES_PASSWORD` | Compose only | `.env.prod` | PostgreSQL password |
+| `POSTGRES_DB` | Compose only | `.env.prod` | PostgreSQL database name |
+| `REDIS_PASSWORD` | Compose only | `.env.prod` | Redis `requirepass` value |
+
+### Health checks
+
+| Endpoint | Type | Used by |
+|---|---|---|
+| `GET /health` | Liveness — is the process alive? | Render web service health check; Docker Compose healthcheck |
+| `GET /health/deps` | Readiness — are Postgres and Redis reachable? | Post-deploy verification |
+
+Both endpoints are wired in `render.yaml` via `healthCheckPath: /health`.
+The production Compose overlay additionally runs a `curl -sf` healthcheck
+against `/health` at 15 s intervals with 3 retries.
+
+### Security
+
+⚠️  **Admin routes are disabled by default.**
+
+`ENABLE_ADMIN_ROUTES` is set to `"false"` in both blueprints. Do **not**
+change this to `"true"` until the kill-switch security issues have been
+reviewed and merged. Relevant tracking: see `docs/RUNBOOK_KILL_SWITCH.md`
+and the issue tracker for open security issues tagged `[security]`.
+
+The blueprint also:
+- Removes host-port exposure for Postgres and Redis in the Compose overlay
+  so those services are only reachable from within the Docker network.
+- Uses `ipAllowList: []` in `render.yaml` so managed databases only accept
+  connections from Render-internal services.
+
+### Deploying to staging (no tribal knowledge required)
+
+1. Fork/clone the repo.
+2. Work through `deploy/secrets.checklist.md`.
+3. Connect the repo to Render → **Blueprints → New Blueprint** → select `render.yaml`.
+4. Render will create the Postgres database, Redis instance, API web service, and indexer worker.
+5. In the Render dashboard, add the secret env vars listed in `deploy/secrets.checklist.md`.
+6. Trigger a deploy and verify:
+   ```bash
+   curl -sf https://<your-render-url>/health && echo "liveness OK"
+   curl -sf https://<your-render-url>/health/deps && echo "readiness OK"
+   ```

@@ -21,6 +21,7 @@ import {
   type QuoteRetryRequestContext,
   type QuoteRetryTelemetryEvent,
 } from '@/lib/quote-retry';
+import { emitSwapFunnelEvent } from '@/lib/telemetry';
 import {
   isQuoteStale,
   QUOTE_AMOUNT_DEBOUNCE_MS,
@@ -233,6 +234,11 @@ export function useQuoteRefresh(
     // Same pattern as `useFetch` in useApi.ts: set loading before starting the request.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional loading transition before async getQuote
     setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    emitSwapFunnelEvent('quote_requested', {
+      fromAssetCode: base,
+      toAssetCode: quoteAsset,
+    });
 
     client
       .getQuote(base, quoteAsset, debouncedAmount, type, {

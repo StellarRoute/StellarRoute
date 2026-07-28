@@ -1,17 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  checkWalletCapabilities,
-  connectWallet,
-  getAvailableWallets,
-  refreshWalletSession,
-  signTransactionWithWallet,
-} from './index';
+import { signTransactionWithWallet, checkWalletCapabilities } from './index';
 
 const TEST_PASSPHRASE = 'Test SDF Network ; September 2015';
 const PUBLIC_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
 const MOCK_PUBLIC_KEY =
   'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MOCK_XDR = 'AAAAAgAAAABmockTransactionXdrBase64';
+
+
 
 describe('wallet availability', () => {
   it('includes Albedo as a browser-hosted intent wallet', async () => {
@@ -182,6 +178,7 @@ describe('connectWallet - xBull', () => {
     expect(session.network).toBe('public');
   });
 });
+
 
 describe('signTransactionWithWallet - xBull', () => {
   const mockSign = vi.fn();

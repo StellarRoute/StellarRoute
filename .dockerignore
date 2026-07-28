@@ -1,0 +1,36 @@
+# Build context hygiene for API / indexer images.
+# Secrets must never be baked into layers.
+
+.git
+.github
+.cursor
+.kiro
+.env
+.env.*
+!.env.example
+**/*.secret-key
+**/identity.toml
+.soroban
+
+target
+**/target
+frontend/node_modules
+frontend/.next
+sdk-js/node_modules
+**/node_modules
+
+**/.DS_Store
+**/*.swp
+**/*~
+.vscode
+.idea
+
+audit
+docs
+examples
+monitoring
+scripts
+frontend
+sdk-js
+*.md
+!crates/**/*.md

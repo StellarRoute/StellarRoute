@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+#
+# Multi-stage production image for stellarroute-indexer.
+# Build from repo root:
+#   docker build -f Dockerfile.indexer -t stellarroute-indexer:local .
+#
+# Runtime: debian:bookworm-slim with CA certs + OpenSSL (sqlx native-tls).
+# No HTTP server — health is process exit code / orchestrator restarts.
+# Secrets are never COPY'd.
+
+ARG RUST_VERSION=1.85
+
+FROM rust:${RUST_VERSION}-bookworm AS builder
+WORKDIR /app
+
+COPY Cargo.toml ./
+COPY crates ./crates
+
+RUN cargo build -p stellarroute-indexer --release --bin stellarroute-indexer \
+    && strip target/release/stellarroute-indexer
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home --home-dir /nonexistent \
+         --shell /usr/sbin/nologin stellarroute
+
+COPY --from=builder /app/target/release/stellarroute-indexer /usr/local/bin/stellarroute-indexer
+
+USER 10001
+WORKDIR /home/stellarroute
+
+ENV RUST_LOG=info
+
+ENTRYPOINT ["stellarroute-indexer"]

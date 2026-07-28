@@ -18,6 +18,12 @@ For public launch, use the staged **limited pairs → full markets** plan (metri
 
 ## Key Management
 
+The complete production secret inventory — every secret, its store, its
+consumer, and its rotation procedure — is documented in
+[`docs/deployment/secrets-management.md`](./secrets-management.md).
+Step-by-step rotation procedures for API keys, admin tokens, and webhook
+signing secrets are in [`docs/key_rotation.md`](../key_rotation.md).
+
 ### Local Development
 ```bash
 # Generate a new identity (stored in ~/.config/soroban/identity/)

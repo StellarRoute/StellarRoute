@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as freighter from '@stellar/freighter-api';
 import {
   checkWalletCapabilities,
   connectWallet,
@@ -127,6 +128,42 @@ describe('signTransactionWithWallet - Albedo', () => {
     await expect(
       signTransactionWithWallet(MOCK_XDR, 'albedo', TEST_PASSPHRASE)
     ).rejects.toThrow('User declined transaction signing');
+  });
+});
+
+describe('signTransactionWithWallet - Freighter passphrases', () => {
+  afterEach(() => {
+    vi.mocked(freighter.signTransaction).mockClear();
+  });
+
+  it('passes the canonical testnet passphrase to Freighter', async () => {
+    vi.mocked(freighter.signTransaction).mockResolvedValueOnce({
+      signedTxXdr: 'signed_testnet_xdr',
+      signerAddress: MOCK_PUBLIC_KEY,
+    });
+
+    await expect(
+      signTransactionWithWallet(MOCK_XDR, 'freighter', TEST_PASSPHRASE)
+    ).resolves.toBe('signed_testnet_xdr');
+
+    expect(freighter.signTransaction).toHaveBeenCalledWith(MOCK_XDR, {
+      networkPassphrase: TEST_PASSPHRASE,
+    });
+  });
+
+  it('passes the canonical public network passphrase to Freighter', async () => {
+    vi.mocked(freighter.signTransaction).mockResolvedValueOnce({
+      signedTxXdr: 'signed_public_xdr',
+      signerAddress: MOCK_PUBLIC_KEY,
+    });
+
+    await expect(
+      signTransactionWithWallet(MOCK_XDR, 'freighter', PUBLIC_PASSPHRASE)
+    ).resolves.toBe('signed_public_xdr');
+
+    expect(freighter.signTransaction).toHaveBeenCalledWith(MOCK_XDR, {
+      networkPassphrase: PUBLIC_PASSPHRASE,
+    });
   });
 });
 

@@ -1,11 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import { useWallet as useWalletContext } from '@/components/providers/wallet-provider';
+import type { SupportedWallet } from '@/lib/wallet/types';
 
 /**
  * Legacy useWallet hook wrapper for backward compatibility.
  */
 export function useWallet() {
   const context = useWalletContext();
+  const { connect: connectContext } = context;
 
   const session = useMemo(() => ({
     isConnected: context.isConnected,
@@ -28,13 +30,26 @@ export function useWallet() {
     }
   }, [context.address]);
 
+  const connect = useCallback(
+    async (walletId: SupportedWallet) => {
+      try {
+        await connectContext(walletId);
+      } catch {
+        // The legacy hook exposed connection failures through `error` state
+        // rather than rejecting from connect(). Preserve that contract for
+        // older callers while WalletProvider remains free to throw.
+      }
+    },
+    [connectContext],
+  );
+
   return {
     session,
     availableWallets: context.availableWallets,
     loading: context.isLoading,
     error: context.error ? context.error.message : null,
     shortAddress,
-    connect: context.connect,
+    connect,
     disconnect: context.disconnect,
     copyAddress,
   };

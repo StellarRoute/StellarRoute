@@ -2,10 +2,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
 use tracing::{info, warn};
-
-use crate::load_test::{percentile, LoadTestMetrics, LoadTestResults};
+use crate::load_test::{percentile, LoadTestMetrics};
 
 /// Traffic mix configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -195,11 +193,10 @@ impl LoadTestHarness {
     {
         info!("Starting load test harness: {}", self.config.name);
         let start_time = Instant::now();
-        let (tx, rx) = mpsc::channel::<LoadTestMetrics>(self.config.concurrent_users * 2);
 
         // Spawn workers
         let mut workers = vec![];
-        for i in 0..self.config.concurrent_users {
+        for _ in 0..self.config.concurrent_users {
             let config = self.config.clone();
             let metrics = self.metrics.clone();
             let request_gen = request_gen.clone();
@@ -278,7 +275,7 @@ impl LoadTestHarness {
         .await;
 
         let duration = start_time.elapsed();
-        let (successful, failed, rejected, mut latencies) = self.metrics.snapshot().await;
+        let (successful, failed, _rejected, mut latencies) = self.metrics.snapshot().await;
 
         latencies.sort();
 

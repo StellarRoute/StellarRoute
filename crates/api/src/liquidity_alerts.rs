@@ -278,6 +278,7 @@ fn timestamp_from_orderbook(orderbook: &OrderbookResponse) -> Option<DateTime<Ut
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::OrderbookSummary;
 
     fn orderbook(bids: Vec<(&str, &str)>, asks: Vec<(&str, &str)>) -> OrderbookResponse {
         OrderbookResponse {

@@ -9,7 +9,7 @@
 pub mod config;
 
 use sqlx::PgPool;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 pub use config::PurgerConfig;
@@ -126,8 +126,6 @@ impl QuoteArtifactPurger {
 
     /// Purge stale replay_artifacts
     async fn purge_replay_artifacts(&self) -> Result<PurgeResult> {
-        let start = Instant::now();
-
         info!(
             target: "stellarroute.api.purger",
             retention_days = self.config.replay_artifacts_retention_days,
@@ -181,8 +179,6 @@ impl QuoteArtifactPurger {
 
     /// Purge stale route_audit_log entries
     async fn purge_route_audit_log(&self) -> Result<PurgeResult> {
-        let start = Instant::now();
-
         info!(
             target: "stellarroute.api.purger",
             retention_days = self.config.audit_log_retention_days,
@@ -241,11 +237,6 @@ impl QuoteArtifactPurger {
         }
 
         let alert_reason = result.alert_reason(&self.config);
-        let level = if alert_reason.is_some() {
-            "warn"
-        } else {
-            "info"
-        };
 
         info!(
             target: "stellarroute.api.purger",

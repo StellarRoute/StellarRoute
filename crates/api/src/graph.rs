@@ -209,6 +209,8 @@ impl GraphManager {
                             liquidity: (a * 1e7) as i128,
                             price: p,
                             fee_bps: fee_bps_u32,
+                            anomaly_score: 0.0,
+                            anomaly_reasons: vec![],
                         });
                     }
                 }
@@ -245,6 +247,8 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }];
 
         // Set initial state
@@ -266,6 +270,8 @@ mod tests {
             liquidity: 200,
             price: 0.99,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }];
         manager
             .edges
@@ -294,6 +300,8 @@ mod tests {
             liquidity: 100,
             price: 1.0,
             fee_bps: 30,
+            anomaly_score: 0.0,
+            anomaly_reasons: vec![],
         }];
         manager
             .edges
@@ -322,6 +330,8 @@ mod tests {
                     liquidity: 100,
                     price: 1.0,
                     fee_bps: 30,
+                    anomaly_score: 0.0,
+                    anomaly_reasons: vec![],
                 }];
                 m2.edges.store(Arc::new(CompactedGraph::from_edges(edges)));
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;

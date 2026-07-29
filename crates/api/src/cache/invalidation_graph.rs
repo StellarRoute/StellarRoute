@@ -11,7 +11,7 @@
  *   - Fallback: if graph insertion fails, fall back to full cache clear
  */
 use dashmap::DashMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Represents a trading pair (asset_a, asset_b)
@@ -70,15 +70,17 @@ impl CacheKey {
             CacheKey::Orderbook { base, quote } => Pair::new(base.clone(), quote.clone()),
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CacheKey::Quote {
                 base,
                 quote,
                 amount,
             } => {
-                format!("quote:{}:{}:{}", base, quote, amount)
+                write!(f, "quote:{}:{}:{}", base, quote, amount)
             }
             CacheKey::Route {
                 base,
@@ -86,10 +88,10 @@ impl CacheKey {
                 amount,
                 route_hash,
             } => {
-                format!("route:{}:{}:{}:{}", base, quote, amount, route_hash)
+                write!(f, "route:{}:{}:{}:{}", base, quote, amount, route_hash)
             }
             CacheKey::Orderbook { base, quote } => {
-                format!("orderbook:{}:{}", base, quote)
+                write!(f, "orderbook:{}:{}", base, quote)
             }
         }
     }
@@ -100,6 +102,7 @@ impl CacheKey {
 ///   - pair → affected route cache keys
 ///   - pair → child pairs (pairs that depend on this pair)
 ///   - pair → parent pairs (pairs that contain this pair as intermediate)
+#[derive(Clone, Default)]
 pub struct PairInvalidationGraph {
     /// Maps pair → set of quote cache keys
     pair_to_quotes: Arc<DashMap<Pair, HashSet<String>>>,
@@ -131,16 +134,16 @@ impl PairInvalidationGraph {
         let key = cache_key.into();
         self.pair_to_quotes
             .entry(pair.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(key);
     }
-
+ 
     /// Register a route cache key for a pair
     pub fn register_route(&self, pair: &Pair, cache_key: impl Into<String>) {
         let key = cache_key.into();
         self.pair_to_routes
             .entry(pair.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(key);
     }
 
@@ -161,13 +164,13 @@ impl PairInvalidationGraph {
                         // downstream: other depends on hop
                         self.pair_to_children
                             .entry(hop.clone())
-                            .or_insert_with(HashSet::new)
+                            .or_default()
                             .insert(other.clone());
                     } else {
                         // upstream: other is a parent of hop
                         self.pair_to_parents
                             .entry(hop.clone())
-                            .or_insert_with(HashSet::new)
+                            .or_default()
                             .insert(other.clone());
                     }
                 }

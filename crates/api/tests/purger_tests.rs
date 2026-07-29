@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use stellarroute_api::purger::{PurgeResult, PurgerConfig, QuoteArtifactPurger};
+    use stellarroute_api::purger::{PurgeResult, PurgerConfig};
 
     #[test]
     fn test_purger_config_default() {

@@ -5,15 +5,13 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
-use crate::cache::CacheManager;
 use crate::error::Result;
-use crate::models::QuoteResponse;
 use crate::state::AppState;
 
 lazy_static::lazy_static! {
@@ -120,7 +118,7 @@ pub struct ReconciliationSummary {
 /// Background reconciliation job manager
 pub struct ReconciliationJob {
     config: ReconciliationConfig,
-    state: Arc<AppState>,
+    _state: Arc<AppState>,
     running: Arc<std::sync::atomic::AtomicBool>,
     last_run: Arc<RwLock<Option<DateTime<Utc>>>>,
     summary: Arc<RwLock<Option<ReconciliationSummary>>>,
@@ -130,7 +128,7 @@ impl ReconciliationJob {
     pub fn new(config: ReconciliationConfig, state: Arc<AppState>) -> Self {
         Self {
             config,
-            state,
+            _state: state,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             last_run: Arc::new(RwLock::new(None)),
             summary: Arc::new(RwLock::new(None)),
@@ -214,7 +212,7 @@ impl ReconciliationJob {
     /// Check a single cached quote against live computation
     async fn check_single_quote(
         &self,
-        sample: &CachedQuoteSample,
+        _sample: &CachedQuoteSample,
     ) -> Result<Option<ReconciliationResult>> {
         // This would:
         // 1. Parse the cached quote
@@ -289,6 +287,7 @@ impl ReconciliationJob {
 }
 
 /// Sample of a cached quote for reconciliation
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct CachedQuoteSample {
     key: String,

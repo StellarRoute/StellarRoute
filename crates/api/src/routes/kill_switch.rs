@@ -47,7 +47,11 @@ pub async fn update_kill_switch(
 ) -> Result<Json<serde_json::Value>> {
     info!("Admin updating kill switch state: {:?}", payload);
 
-    state.kill_switch.update_state(payload).await;
+    state
+        .kill_switch
+        .update_state(payload)
+        .await
+        .map_err(|e| crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!("{}", e))))?;
 
     // Emit admin audit entry
     let entry = build_admin_audit_entry(

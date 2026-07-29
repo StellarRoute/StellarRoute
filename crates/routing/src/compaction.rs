@@ -56,7 +56,7 @@ impl CompactedGraph {
                 liquidity: edge.liquidity,
                 price: edge.price,
                 fee_bps: edge.fee_bps,
-                anomaly_score: 0.0_f32,
+                anomaly_score: edge.anomaly_score as f32,
             };
             grouped_edges.entry(from_idx).or_default().push(c_edge);
         }
@@ -131,6 +131,8 @@ impl CompactedGraph {
                     liquidity: compact_edge.liquidity,
                     price: compact_edge.price,
                     fee_bps: compact_edge.fee_bps,
+                    anomaly_score: compact_edge.anomaly_score as f64,
+                    anomaly_reasons: vec![],
                 });
             }
         }

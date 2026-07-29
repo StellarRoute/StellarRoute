@@ -385,7 +385,8 @@ mod tests {
     #[test]
     fn test_lag_fallback_to_zero_on_error() {
         // query_replica_lag_secs returns None on error; callers unwrap_or(0)
-        let result: Option<u32> = None;
+        let get_none = || -> Option<u32> { None };
+        let result = get_none();
         assert_eq!(result.unwrap_or(0), 0);
     }
 

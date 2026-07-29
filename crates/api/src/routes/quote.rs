@@ -10,12 +10,11 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, info_span, warn, Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -44,6 +43,7 @@ use crate::{
     state::AppState,
 };
 
+#[allow(dead_code)]
 fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
     headers
         .get("x-api-key")
@@ -53,6 +53,7 @@ fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
         .map(|value| format!("api_key:{value}"))
 }
 
+#[allow(dead_code)]
 fn build_quote_webhook_payload(
     consumer_id: String,
     base: &str,
@@ -1859,8 +1860,8 @@ mod tests {
     fn mixed_freshness_with_sufficient_fresh_liquidity_succeeds() {
         // Stale candidate already filtered out; only these fresh candidates remain.
         let fresh_candidates = vec![
-            candidate("amm", "pool_fresh", 1.05, 200.0),
-            candidate("sdex", "offer_fresh", 1.02, 150.0),
+            candidate("amm", "pool_fresh", 1.05, 200.0, 30),
+            candidate("sdex", "offer_fresh", 1.02, 150.0, 0),
         ];
         let amount = 100.0;
 

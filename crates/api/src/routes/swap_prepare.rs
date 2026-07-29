@@ -13,7 +13,7 @@
 //! Ref: issue #1046
 
 use axum::{extract::State, Json};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 

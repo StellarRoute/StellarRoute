@@ -23,6 +23,7 @@ enum ResponseEncoding {
 }
 
 impl ResponseEncoding {
+    #[allow(dead_code)]
     fn label(self) -> &'static str {
         match self {
             Self::Brotli => "br",

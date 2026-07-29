@@ -168,8 +168,8 @@ pub async fn simulate_route_dry_run(
     let mut path_steps = Vec::with_capacity(body.route.hops.len());
     let mut exclusion_diagnostics: Option<ExclusionDiagnostics> = None;
 
-    let mut base_asset = &body.route.hops[0].from_asset;
-    let mut last_to_asset = &body.route.hops[body.route.hops.len() - 1].to_asset;
+    let base_asset = &body.route.hops[0].from_asset;
+    let last_to_asset = &body.route.hops[body.route.hops.len() - 1].to_asset;
 
     // Default slippage
     let default_slippage_bps = body.slippage_bps.unwrap_or(50);
@@ -214,7 +214,7 @@ pub async fn simulate_route_dry_run(
 
         // Mirror quote path diagnostics using first (and only) path step from quote.
         // The existing quote pipeline may return a single-hop path step.
-        if let Some(step) = quote_resp.path.get(0) {
+        if let Some(step) = quote_resp.path.first() {
             // Keep fee_bps and venue info mirrored when present.
             path_steps.push(step.clone());
         }

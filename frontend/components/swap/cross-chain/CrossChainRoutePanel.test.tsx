@@ -30,4 +30,22 @@ describe('CrossChainRoutePanel', () => {
     );
     expect(screen.getByTestId('cctp-route-rail')).toBeInTheDocument();
   });
+
+  it('describes same-chain Stellar routes without CCTP unavailable copy', () => {
+    render(
+      <CrossChainRoutePanel
+        sourceChainId="stellar"
+        destChainId="stellar"
+        protocol="stellar-native"
+        executable
+        bridgeUnavailable
+      />
+    );
+    expect(
+      screen.getByText(/Same-chain Stellar swap/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/CCTP corridor is listed but not executable/i)
+    ).not.toBeInTheDocument();
+  });
 });

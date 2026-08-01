@@ -14,6 +14,7 @@ import type {
   CapabilityStatus,
 } from './types';
 import { resolveFreighterApi, type FreighterApi } from './freighter-api';
+import { normalizeAppNetwork } from '@/lib/network-policy';
 
 let freighterApiCache: FreighterApi | null = null;
 
@@ -22,6 +23,11 @@ function freighterApi(): FreighterApi {
     freighterApiCache = resolveFreighterApi(freighterModule);
   }
   return freighterApiCache;
+}
+
+/** Freighter reports `TESTNET` / `PUBLIC`; app policy uses lowercase `testnet` / `mainnet`. */
+function normalizeFreighterNetwork(network: string): string {
+  return normalizeAppNetwork(network) ?? network.trim().toLowerCase();
 }
 
 type AlbedoClient = {
@@ -285,7 +291,7 @@ export async function connectWallet(
     return {
       walletId,
       address: addressRes.address,
-      network: networkRes.network,
+      network: normalizeFreighterNetwork(networkRes.network),
       isConnected: true,
     };
   }
@@ -410,7 +416,14 @@ export async function checkWalletCapabilities(
     try {
       const networkRes = await freighterApi().getNetworkDetails();
       const hasNetwork = !networkRes.error && !!networkRes.network;
-      const networkMatch = hasNetwork && networkRes.network === network;
+      const walletNetwork = hasNetwork
+        ? normalizeAppNetwork(networkRes.network)
+        : null;
+      const expectedNetwork = normalizeAppNetwork(network);
+      const networkMatch =
+        walletNetwork !== null &&
+        expectedNetwork !== null &&
+        walletNetwork === expectedNetwork;
       statuses.push({
         capability: 'view_network',
         allowed: networkMatch,
@@ -754,7 +767,7 @@ export async function refreshWalletSession(
     return {
       walletId,
       address: addressRes.address,
-      network: networkRes.network,
+      network: normalizeFreighterNetwork(networkRes.network),
       isConnected: true,
     };
   }

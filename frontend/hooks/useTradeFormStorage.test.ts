@@ -22,9 +22,7 @@ describe("useTradeFormStorage", () => {
     expect(result.current.amount).toBe("");
     expect(result.current.slippage).toBe(0.5);
     expect(result.current.deadline).toBe(30);
-    expect(result.current.fromToken).toBe(
-      "BTC:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS"
-    );
+    expect(result.current.fromToken).toBe("native");
     expect(result.current.toToken).toBe(DEFAULT_TO_TOKEN);
     expect(result.current.side).toBe("sell");
     expect(result.current.pendingRecovery).toBeNull();

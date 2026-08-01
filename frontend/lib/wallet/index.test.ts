@@ -286,6 +286,41 @@ describe('signTransactionWithWallet - xBull', () => {
   });
 });
 
+describe('checkWalletCapabilities - Freighter', () => {
+  // vitest.setup calls vi.restoreAllMocks() after each test, which strips the
+  // shared Freighter mock implementations. Re-seed them for this suite.
+  beforeEach(() => {
+    vi.mocked(freighter.requestAccess).mockResolvedValue({
+      address: MOCK_PUBLIC_KEY,
+    });
+    vi.mocked(freighter.getAddress).mockResolvedValue({
+      address: MOCK_PUBLIC_KEY,
+    });
+    vi.mocked(freighter.getNetworkDetails).mockResolvedValue({
+      network: 'TESTNET',
+      networkUrl: 'https://horizon-testnet.stellar.org',
+      networkPassphrase: TEST_PASSPHRASE,
+    });
+  });
+
+  it('treats Freighter TESTNET as matching app testnet', async () => {
+    const caps = await checkWalletCapabilities('freighter', 'testnet');
+    const netCap = caps.statuses.find((s) => s.capability === 'view_network');
+    const signCap = caps.statuses.find(
+      (s) => s.capability === 'sign_transaction'
+    );
+
+    expect(netCap?.allowed).toBe(true);
+    expect(signCap?.allowed).toBe(true);
+    expect(signCap?.reason).toBeUndefined();
+  });
+
+  it('normalizes Freighter TESTNET onto the session network', async () => {
+    const session = await connectWallet('freighter');
+    expect(session.network).toBe('testnet');
+  });
+});
+
 describe('checkWalletCapabilities - xBull', () => {
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).xbull;

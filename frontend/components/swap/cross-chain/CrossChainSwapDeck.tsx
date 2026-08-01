@@ -297,10 +297,17 @@ export function CrossChainSwapDeck({
             sourceChainId={state.sourceChainId}
             destChainId={state.destChainId}
             protocol={state.corridor?.protocol ?? null}
-            executable={state.executable && readiness.cctpGloballyReady}
+            executable={
+              state.isStellarNativeExecutable ||
+              (state.executable && readiness.cctpGloballyReady)
+            }
             uncatalogued={state.isUncatalogued}
             quote={saga.quote}
-            bridgeUnavailable={readiness.loaded && !readiness.cctpGloballyReady}
+            bridgeUnavailable={
+              !state.isStellarNativeExecutable &&
+              readiness.loaded &&
+              !readiness.cctpGloballyReady
+            }
             sagaStatus={saga.transferStatus?.status}
           />
           <RouteDisclosurePanel />

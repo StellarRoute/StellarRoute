@@ -73,11 +73,13 @@ export function CrossChainRoutePanel({
         </p>
         <h2 className="brand-wordmark text-lg text-foreground">{pairLabel}</h2>
         <p className="text-sm text-muted-foreground">
-          {executable
-            ? 'Circle CCTP — server-prepared payloads, wallet sign, hash-only submit.'
-            : bridgeUnavailable
-              ? 'CCTP corridor is listed but not executable on this API yet.'
-              : 'Protocol preview — quotes and execution are not available for this corridor yet.'}
+          {protocol === 'stellar-native'
+            ? 'Same-chain Stellar swap — SDEX and Soroban venues via the existing swap path.'
+            : executable
+              ? 'Circle CCTP — server-prepared payloads, wallet sign, hash-only submit.'
+              : bridgeUnavailable
+                ? 'CCTP corridor is listed but not executable on this API yet.'
+                : 'Protocol preview — quotes and execution are not available for this corridor yet.'}
         </p>
       </div>
 

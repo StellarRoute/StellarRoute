@@ -7,10 +7,15 @@ export const STORAGE_KEY = "stellar-route-trade-form";
 export const DEFAULT_AMOUNT = "";
 export const DEFAULT_SLIPPAGE = 0.5;
 export const DEFAULT_DEADLINE = 30;
-/** Staging default pair present in Wave 0 indexed SDEX offers (quotes successfully). */
-export const DEFAULT_FROM_TOKEN =
-  "BTC:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS";
+/** Prefer native XLM so users with testnet funds land on a spendable asset. */
+export const DEFAULT_FROM_TOKEN = "native";
+/** Common testnet/mainnet USDC issuer; SwapCard falls back to indexed pairs if absent. */
 export const DEFAULT_TO_TOKEN =
+  "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+/** Previous staging default — migrate away when a native pair is indexed. */
+export const LEGACY_DEFAULT_FROM_TOKEN =
+  "BTC:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS";
+export const LEGACY_DEFAULT_TO_TOKEN =
   "EXT:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS";
 export const DEFAULT_SIDE: QuoteType = "sell";
 export const SESSION_RECOVERY_THRESHOLD_MS = 60_000;

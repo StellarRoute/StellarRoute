@@ -30,6 +30,8 @@ import {
   DEFAULT_FROM_TOKEN,
   DEFAULT_SLIPPAGE,
   DEFAULT_TO_TOKEN,
+  LEGACY_DEFAULT_FROM_TOKEN,
+  LEGACY_DEFAULT_TO_TOKEN,
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
 } from '@/hooks/useTradeFormStorage';
@@ -135,14 +137,33 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
 
   const { data: indexedPairs } = usePairs();
 
-  // Staging often only has BTC/EXT liquidity. Reset stale localStorage pairs
-  // (e.g. XLM→USDC) that cannot quote against the indexed market set.
+  // Prefer an indexed native (XLM) pair; migrate off the old BTC/EXT default.
+  // Fall back to defaults, then the first indexed pair when liquidity is sparse.
   useEffect(() => {
     if (!indexedPairs?.length) return;
     const assets = new Set(
       indexedPairs.flatMap((pair) => [pair.base_asset, pair.counter_asset])
     );
-    if (assets.has(fromToken) && assets.has(toToken)) return;
+    const isLegacyDefaultPair =
+      fromToken === LEGACY_DEFAULT_FROM_TOKEN &&
+      toToken === LEGACY_DEFAULT_TO_TOKEN;
+
+    if (assets.has(fromToken) && assets.has(toToken) && !isLegacyDefaultPair) {
+      return;
+    }
+
+    const nativePair = indexedPairs.find(
+      (pair) =>
+        pair.base_asset === 'native' || pair.counter_asset === 'native'
+    );
+    if (nativePair) {
+      if (nativePair.base_asset === 'native') {
+        setTokenPair(nativePair.base_asset, nativePair.counter_asset);
+      } else {
+        setTokenPair('native', nativePair.base_asset);
+      }
+      return;
+    }
 
     if (assets.has(DEFAULT_FROM_TOKEN) && assets.has(DEFAULT_TO_TOKEN)) {
       setTokenPair(DEFAULT_FROM_TOKEN, DEFAULT_TO_TOKEN);

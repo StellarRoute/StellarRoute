@@ -1,10 +1,4 @@
-import {
-  requestAccess,
-  getAddress,
-  getNetworkDetails,
-  isConnected,
-  signTransaction,
-} from '@stellar/freighter-api';
+import * as freighterModule from '@stellar/freighter-api';
 import {
   isConnected as isLobstrConnected,
   getPublicKey as getLobstrPublicKey,
@@ -19,6 +13,16 @@ import type {
   Capability,
   CapabilityStatus,
 } from './types';
+import { resolveFreighterApi, type FreighterApi } from './freighter-api';
+
+let freighterApiCache: FreighterApi | null = null;
+
+function freighterApi(): FreighterApi {
+  if (!freighterApiCache) {
+    freighterApiCache = resolveFreighterApi(freighterModule);
+  }
+  return freighterApiCache;
+}
 
 type AlbedoClient = {
   publicKey: () => Promise<{ pubkey?: string; publicKey?: string }>;
@@ -194,8 +198,9 @@ async function detectFreighterInstalled(): Promise<boolean> {
   if (isFreighterInjected()) return true;
 
   try {
+    // Freighter's isConnected() means "extension present" (not app authorization).
     const res = await withTimeout(
-      isConnected(),
+      freighterApi().isConnected(),
       FREIGHTER_DETECT_TIMEOUT_MS,
       { isConnected: false }
     );
@@ -261,18 +266,18 @@ export async function connectWallet(
   walletId: SupportedWallet
 ): Promise<WalletSession> {
   if (walletId === 'freighter') {
-    const access = await requestAccess();
+    const access = await freighterApi().requestAccess();
 
     if (access.error) {
       throw new Error(access.error.message ?? 'Freighter access denied');
     }
 
-    const addressRes = await getAddress();
+    const addressRes = await freighterApi().getAddress();
     if (addressRes.error) {
       throw new Error(addressRes.error.message ?? 'Failed to get address');
     }
 
-    const networkRes = await getNetworkDetails();
+    const networkRes = await freighterApi().getNetworkDetails();
     if (networkRes.error) {
       throw new Error(networkRes.error.message ?? 'Failed to get network');
     }
@@ -364,7 +369,7 @@ export async function checkWalletCapabilities(
 
   if (walletId === 'freighter') {
     try {
-      const accessRes = await requestAccess();
+      const accessRes = await freighterApi().requestAccess();
       statuses.push({
         capability: 'request_access',
         allowed: !accessRes.error,
@@ -383,7 +388,7 @@ export async function checkWalletCapabilities(
     }
 
     try {
-      const addressRes = await getAddress();
+      const addressRes = await freighterApi().getAddress();
       const hasAddress = !addressRes.error && !!addressRes.address;
       statuses.push({
         capability: 'view_address',
@@ -403,7 +408,7 @@ export async function checkWalletCapabilities(
     }
 
     try {
-      const networkRes = await getNetworkDetails();
+      const networkRes = await freighterApi().getNetworkDetails();
       const hasNetwork = !networkRes.error && !!networkRes.network;
       const networkMatch = hasNetwork && networkRes.network === network;
       statuses.push({
@@ -629,7 +634,7 @@ export async function signTransactionWithWallet(
   publicKey?: string
 ): Promise<string> {
   if (walletId === 'freighter') {
-    const res = await signTransaction(xdr, { networkPassphrase });
+    const res = await freighterApi().signTransaction(xdr, { networkPassphrase });
     if (res.error) {
       throw new Error(
         normalizeWalletSignError(
@@ -715,7 +720,7 @@ export async function checkAddressChange(
 
   try {
     if (walletId === 'freighter') {
-      const addressRes = await getAddress();
+      const addressRes = await freighterApi().getAddress();
       if (addressRes.error) return null;
       return addressRes.address !== currentAddress ? addressRes.address : null;
     }
@@ -736,12 +741,12 @@ export async function refreshWalletSession(
   walletId: SupportedWallet
 ): Promise<WalletSession> {
   if (walletId === 'freighter') {
-    const addressRes = await getAddress();
+    const addressRes = await freighterApi().getAddress();
     if (addressRes.error) {
       throw new Error(addressRes.error.message ?? 'Failed to get address');
     }
 
-    const networkRes = await getNetworkDetails();
+    const networkRes = await freighterApi().getNetworkDetails();
     if (networkRes.error) {
       throw new Error(networkRes.error.message ?? 'Failed to get network');
     }

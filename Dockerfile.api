@@ -9,7 +9,7 @@
 # final stage has no Rust toolchain — only the release binary + CA certs +
 # OpenSSL + curl. Secrets (.env / keys) are never COPY'd.
 
-ARG RUST_VERSION=1.88
+ARG RUST_VERSION=1.90
 
 FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /app

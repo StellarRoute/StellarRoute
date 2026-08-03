@@ -7,6 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TF_DIR="${ROOT}/deploy/aws/terraform"
 IMAGE_TAG="${IMAGE_TAG:-$(git -C "${ROOT}" rev-parse --short HEAD)}"
 PUSH_LATEST="${PUSH_LATEST:-1}"
+DOCKER_PLATFORMS="${DOCKER_PLATFORMS:-linux/amd64}"
 
 AWS_REGION="${AWS_REGION:-}"
 if [[ -z "${AWS_REGION}" && -f "${TF_DIR}/terraform.tfvars" ]]; then
@@ -23,24 +24,30 @@ echo "==> Logging into ECR ${ACCOUNT_ID} (${AWS_REGION})"
 aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
+docker buildx inspect >/dev/null 2>&1 || docker buildx create --use
+
 echo "==> Building API → ${API_REPO}:${IMAGE_TAG}"
-docker build -f "${ROOT}/Dockerfile.api" -t "${API_REPO}:${IMAGE_TAG}" "${ROOT}"
-docker push "${API_REPO}:${IMAGE_TAG}"
+docker buildx build \
+  --platform "${DOCKER_PLATFORMS}" \
+  -f "${ROOT}/Dockerfile.api" \
+  -t "${API_REPO}:${IMAGE_TAG}" \
+  $( [[ "${PUSH_LATEST}" == "1" ]] && printf '%s ' -t "${API_REPO}:latest" ) \
+  --push \
+  "${ROOT}"
 
 echo "==> Building indexer → ${INDEXER_REPO}:${IMAGE_TAG}"
-docker build -f "${ROOT}/Dockerfile.indexer" -t "${INDEXER_REPO}:${IMAGE_TAG}" "${ROOT}"
-docker push "${INDEXER_REPO}:${IMAGE_TAG}"
-
-if [[ "${PUSH_LATEST}" == "1" ]]; then
-  docker tag "${API_REPO}:${IMAGE_TAG}" "${API_REPO}:latest"
-  docker tag "${INDEXER_REPO}:${IMAGE_TAG}" "${INDEXER_REPO}:latest"
-  docker push "${API_REPO}:latest"
-  docker push "${INDEXER_REPO}:latest"
-fi
+docker buildx build \
+  --platform "${DOCKER_PLATFORMS}" \
+  -f "${ROOT}/Dockerfile.indexer" \
+  -t "${INDEXER_REPO}:${IMAGE_TAG}" \
+  $( [[ "${PUSH_LATEST}" == "1" ]] && printf '%s ' -t "${INDEXER_REPO}:latest" ) \
+  --push \
+  "${ROOT}"
 
 echo "==> Done"
 echo "    API:     ${API_REPO}:${IMAGE_TAG}"
 echo "    Indexer: ${INDEXER_REPO}:${IMAGE_TAG}"
+echo "    Platforms: ${DOCKER_PLATFORMS}"
 echo
 CLUSTER="$(terraform output -raw ecs_cluster_name)"
 API_SVC="$(terraform output -raw api_service_name)"

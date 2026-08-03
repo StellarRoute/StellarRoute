@@ -87,7 +87,11 @@ jobs:
             echo "Missing ECR repository variable for ${{ matrix.name }}"
             exit 1
           fi
-          docker build -f "${{ matrix.file }}" -t "${REPO}:${TAG}" -t "${REPO}:latest" .
-          docker push "${REPO}:${TAG}"
-          docker push "${REPO}:latest"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f "${{ matrix.file }}" \
+            -t "${REPO}:${TAG}" \
+            -t "${REPO}:latest" \
+            --push \
+            .
           echo "Pushed ${REPO}:${TAG}"

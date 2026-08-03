@@ -60,7 +60,7 @@ output "rds_endpoint" {
 }
 
 output "redis_endpoint" {
-  value = aws_elasticache_replication_group.main.primary_endpoint_address
+  value = var.enable_redis ? aws_elasticache_replication_group.main[0].primary_endpoint_address : null
 }
 
 output "cloudwatch_api_log_group" {

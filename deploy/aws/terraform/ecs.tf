@@ -9,6 +9,18 @@ resource "aws_ecs_cluster" "main" {
   tags = { Name = local.name }
 }
 
+# FARGATE_SPOT is opt-in per service via indexer_use_fargate_spot; always
+# registering both providers here keeps the cluster ready without cost impact.
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name       = aws_ecs_cluster.main.name
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+
+  default_capacity_provider_strategy {
+    capacity_provider = "FARGATE"
+    weight            = 1
+  }
+}
+
 locals {
   secret_arn = aws_secretsmanager_secret.app.arn
 
@@ -56,6 +68,11 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = var.cpu_architecture
+  }
+
   container_definitions = jsonencode([
     {
       name      = "api"
@@ -99,6 +116,11 @@ resource "aws_ecs_task_definition" "indexer" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = var.cpu_architecture
+  }
+
   container_definitions = jsonencode([
     {
       name      = "indexer"
@@ -128,9 +150,9 @@ resource "aws_ecs_service" "api" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = var.ecs_use_public_subnets ? aws_subnet.public[*].id : aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false
+    assign_public_ip = var.ecs_use_public_subnets
   }
 
   load_balancer {
@@ -155,12 +177,20 @@ resource "aws_ecs_service" "indexer" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.indexer.arn
   desired_count   = var.indexer_desired_count
-  launch_type     = "FARGATE"
+  launch_type     = var.indexer_use_fargate_spot ? null : "FARGATE"
+
+  dynamic "capacity_provider_strategy" {
+    for_each = var.indexer_use_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE_SPOT"
+      weight            = 100
+    }
+  }
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = var.ecs_use_public_subnets ? aws_subnet.public[*].id : aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false
+    assign_public_ip = var.ecs_use_public_subnets
   }
 
   deployment_minimum_healthy_percent = 0
@@ -168,6 +198,7 @@ resource "aws_ecs_service" "indexer" {
 
   depends_on = [
     aws_secretsmanager_secret_version.app,
+    aws_ecs_cluster_capacity_providers.main,
   ]
 
   tags = { Name = "${local.name}-indexer" }

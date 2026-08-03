@@ -33,11 +33,13 @@ resource "aws_db_instance" "main" {
 }
 
 resource "aws_elasticache_subnet_group" "main" {
+  count      = var.enable_redis ? 1 : 0
   name       = "${local.name}-redis"
   subnet_ids = aws_subnet.private[*].id
 }
 
 resource "aws_elasticache_replication_group" "main" {
+  count                      = var.enable_redis ? 1 : 0
   replication_group_id       = "${local.name}-redis"
   description                = "StellarRoute quote cache / rate limits"
   engine                     = "redis"
@@ -46,7 +48,7 @@ resource "aws_elasticache_replication_group" "main" {
   num_cache_clusters         = 1
   port                       = 6379
   parameter_group_name       = "default.redis7"
-  subnet_group_name          = aws_elasticache_subnet_group.main.name
+  subnet_group_name          = aws_elasticache_subnet_group.main[0].name
   security_group_ids         = [aws_security_group.redis.id]
   at_rest_encryption_enabled = true
   # Transit encryption + AUTH require a TLS-capable redis client (rediss://).
@@ -69,9 +71,9 @@ locals {
     var.db_name,
   )
 
-  redis_url = format(
+  redis_url = var.enable_redis ? format(
     "redis://%s:%d",
-    aws_elasticache_replication_group.main.primary_endpoint_address,
-    aws_elasticache_replication_group.main.port,
-  )
+    aws_elasticache_replication_group.main[0].primary_endpoint_address,
+    aws_elasticache_replication_group.main[0].port,
+  ) : ""
 }

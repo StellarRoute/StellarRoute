@@ -28,3 +28,14 @@ redis_node_type = "cache.t4g.micro"
 
 enable_nat_gateway = true
 single_nat_gateway = true
+
+# ── Lowest-cost staging profile (see docs/deployment/aws.md#cost-sketch) ─────
+# Uncomment to cut the ~$32+/mo NAT Gateway and ~$12+/mo ElastiCache node:
+# ecs_use_public_subnets  = true   # tasks get public IPs; SGs still block all inbound except ALB->API
+# enable_nat_gateway      = false  # only safe once ecs_use_public_subnets = true
+# enable_redis            = false  # REDIS_URL is optional at the app layer
+# indexer_use_fargate_spot = true  # ~70% cheaper; indexer is a single restart-safe worker
+# api_cpu    = 256
+# api_memory = 512
+# indexer_cpu    = 256
+# indexer_memory = 512

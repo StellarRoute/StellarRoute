@@ -110,7 +110,7 @@ variable "redis_node_type" {
 
 variable "enable_nat_gateway" {
   type        = bool
-  description = "Required for Fargate tasks in private subnets to reach Horizon/Soroban/ECR."
+  description = "Required for Fargate tasks in private subnets to reach Horizon/Soroban/ECR. Set to false (and set ecs_use_public_subnets=true) to eliminate the ~$32+/mo NAT Gateway cost entirely for staging."
   default     = true
 }
 
@@ -118,4 +118,32 @@ variable "single_nat_gateway" {
   type        = bool
   description = "One NAT for all private subnets (cheaper staging)."
   default     = true
+}
+
+variable "ecs_use_public_subnets" {
+  type        = bool
+  description = "Run ECS tasks directly in public subnets with public IPs instead of NAT-routed private subnets. Security groups still block all inbound traffic except ALB->API, so this is safe for staging and removes the need for a NAT Gateway. Pair with enable_nat_gateway=false for the lowest-cost setup."
+  default     = false
+}
+
+variable "indexer_use_fargate_spot" {
+  type        = bool
+  description = "Run the indexer task on Fargate Spot (~70% cheaper than on-demand). Safe for the indexer because it is a single, restart-safe worker; not recommended for the user-facing API service."
+  default     = false
+}
+
+variable "enable_redis" {
+  type        = bool
+  description = "Provision ElastiCache Redis. REDIS_URL is optional at the application layer (quote caching/rate limiting degrade gracefully without it) — set to false to skip ElastiCache entirely and save its node + data-transfer cost for early staging."
+  default     = true
+}
+
+variable "cpu_architecture" {
+  type        = string
+  description = "Fargate CPU architecture. ARM64 (Graviton) is ~20% cheaper per vCPU/GB-hour than X86_64, but requires multi-arch Docker images (docker buildx --platform linux/amd64,linux/arm64). Verify Dockerfile.api/Dockerfile.indexer build cleanly for arm64 before switching."
+  default     = "X86_64"
+  validation {
+    condition     = contains(["X86_64", "ARM64"], var.cpu_architecture)
+    error_message = "cpu_architecture must be X86_64 or ARM64."
+  }
 }

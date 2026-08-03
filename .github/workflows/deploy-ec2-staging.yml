@@ -97,10 +97,12 @@ jobs:
             "commands": [
               "set -euo pipefail",
               "cd /opt/stellarroute",
+              "git config --global --add safe.directory /opt/stellarroute",
               "git fetch --all --prune",
               "git checkout ${DEPLOY_REF}",
               "git pull --ff-only origin ${DEPLOY_REF}",
               "bash deploy/aws/scripts/deploy-ec2-staging.sh",
+              "for i in $(seq 1 60); do if curl -fsS http://127.0.0.1:8080/health >/dev/null && curl -fsS http://127.0.0.1:8080/health/deps >/dev/null; then echo 'API is healthy'; break; fi; echo 'Waiting for API health...'; sleep 5; done",
               "bash deploy/aws/scripts/ec2-postdeploy-smoke.sh ${DEPLOY_URL}"
             ]
           }

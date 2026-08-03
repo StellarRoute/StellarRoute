@@ -1557,10 +1557,18 @@ async fn find_asset_id(state: &AppState, asset: &AssetPath) -> Result<uuid::Uuid
     let asset_type = asset.to_asset_type();
 
     let row = if asset.asset_code == "native" {
+        // Native rows were historically inserted with NULL code/issuer, so the
+        // unique constraint does not dedupe them. Prefer the asset id that
+        // actually backs live SDEX offers.
         sqlx::query(
             r#"
-            select id from assets
-            where asset_type = $1
+            select a.id
+            from assets a
+            left join sdex_offers o
+              on o.selling_asset_id = a.id or o.buying_asset_id = a.id
+            where a.asset_type = $1
+            group by a.id, a.created_at
+            order by count(o.offer_id) desc, a.created_at asc
             limit 1
             "#,
         )

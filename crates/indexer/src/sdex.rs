@@ -6,7 +6,7 @@ use tracing::{debug, error, info, warn};
 use crate::db::Database;
 use crate::error::{IndexerError, Result};
 use crate::horizon::HorizonClient;
-use crate::models::{asset::Asset, horizon::HorizonOffer, offer::Offer};
+use crate::models::{asset::Asset, offer::Offer};
 use crate::telemetry::TraceContext;
 
 /// Indexing mode
@@ -257,57 +257,83 @@ impl SdexIndexer {
     async fn index_offers(&self) -> Result<usize> {
         debug!("Fetching offers from Horizon");
 
-        let horizon_offers: Vec<HorizonOffer> = self.horizon.get_offers(None, None, None).await?;
-        debug!("Fetched {} offers from Horizon", horizon_offers.len());
-
         let pool = self.db.pool();
         let mut indexed = 0;
+        let page_limit = 200u32;
+        let mut cursor: Option<String> = None;
 
-        for horizon_offer in horizon_offers {
-            // Convert Horizon offer to our Offer model
-            let offer = match Offer::try_from(horizon_offer) {
-                Ok(o) => o,
-                Err(e) => {
-                    warn!("Failed to parse offer: {}", e);
-                    continue;
-                }
-            };
-
-            // Determine market pair identifier for partitioning
-            let pair_key = pair_key(&offer.selling, &offer.buying);
-            if !self.partition_manager.should_process(&pair_key) {
-                debug!(
-                    "Skipping pair {} on partition {}",
-                    pair_key, self.partition_manager.partition_id
-                );
-                continue;
+        // Horizon returns offers in pages; polling only the first page misses most
+        // of testnet/mainnet liquidity (including native/XLM sell offers).
+        for _ in 0..100 {
+            let horizon_offers = self
+                .horizon
+                .get_offers(Some(page_limit), cursor.as_deref(), None)
+                .await?;
+            let batch_len = horizon_offers.len();
+            if batch_len == 0 {
+                break;
             }
 
-            // Extract and upsert assets
-            let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
-                Ok(id) => id,
-                Err(e) => {
-                    warn!("Failed to upsert selling asset: {}", e);
-                    continue;
-                }
-            };
-            let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
-                Ok(id) => id,
-                Err(e) => {
-                    warn!("Failed to upsert buying asset: {}", e);
-                    continue;
-                }
-            };
+            debug!("Fetched {} offers from Horizon", batch_len);
+            let next_cursor = horizon_offers
+                .last()
+                .and_then(|offer| offer.paging_token.clone());
 
-            // Upsert offer
-            match self
-                .upsert_offer(pool, &offer, selling_asset_id, buying_asset_id)
-                .await
-            {
-                Ok(_) => indexed += 1,
-                Err(e) => {
-                    warn!("Failed to upsert offer {}: {}", offer.id, e);
+            for horizon_offer in horizon_offers {
+                // Convert Horizon offer to our Offer model
+                let offer = match Offer::try_from(horizon_offer) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        warn!("Failed to parse offer: {}", e);
+                        continue;
+                    }
+                };
+
+                // Determine market pair identifier for partitioning
+                let pair_key = pair_key(&offer.selling, &offer.buying);
+                if !self.partition_manager.should_process(&pair_key) {
+                    debug!(
+                        "Skipping pair {} on partition {}",
+                        pair_key, self.partition_manager.partition_id
+                    );
+                    continue;
                 }
+
+                // Extract and upsert assets
+                let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!("Failed to upsert selling asset: {}", e);
+                        continue;
+                    }
+                };
+                let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!("Failed to upsert buying asset: {}", e);
+                        continue;
+                    }
+                };
+
+                // Upsert offer
+                match self
+                    .upsert_offer(pool, &offer, selling_asset_id, buying_asset_id)
+                    .await
+                {
+                    Ok(_) => indexed += 1,
+                    Err(e) => {
+                        warn!("Failed to upsert offer {}: {}", offer.id, e);
+                    }
+                }
+            }
+
+            if batch_len < page_limit as usize {
+                break;
+            }
+
+            cursor = next_cursor;
+            if cursor.is_none() {
+                break;
             }
         }
 
@@ -318,6 +344,23 @@ impl SdexIndexer {
     #[tracing::instrument(skip(self, pool, asset), fields(asset_type = %asset.key().0))]
     async fn upsert_asset(&self, pool: &PgPool, asset: &Asset) -> Result<uuid::Uuid> {
         let (asset_type, asset_code, asset_issuer) = asset.key();
+
+        if asset_type == "native" {
+            if let Some(id) = sqlx::query_scalar::<_, uuid::Uuid>(
+                r#"
+                select id from assets
+                where asset_type = 'native'
+                order by created_at asc
+                limit 1
+                "#,
+            )
+            .fetch_optional(pool)
+            .await
+            .map_err(IndexerError::DatabaseQuery)?
+            {
+                return Ok(id);
+            }
+        }
 
         sqlx::query_scalar(
             r#"

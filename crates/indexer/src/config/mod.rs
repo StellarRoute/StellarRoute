@@ -203,7 +203,7 @@ fn default_partition_id() -> usize {
 
 // New defaults for partitioning and hot‑pair detection
 fn default_partition_count() -> usize {
-    4
+    1
 }
 fn default_hot_pair_allowlist() -> String {
     String::new()

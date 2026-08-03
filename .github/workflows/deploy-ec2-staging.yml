@@ -95,6 +95,7 @@ jobs:
           cat > /tmp/ssm-commands.json <<'EOF'
           {
             "commands": [
+              "export HOME=/root",
               "cd /opt/stellarroute",
               "git config --global --add safe.directory /opt/stellarroute",
               "git fetch --all --prune",

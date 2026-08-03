@@ -24,6 +24,7 @@ Related files:
 - `deploy/aws/scripts/ec2-postdeploy-smoke.sh`
 - `deploy/aws/scripts/ec2-health-check.sh`
 - `deploy/aws/scripts/install-caddy.sh`
+- `.github/workflows/deploy-ec2-staging.yml`
 - `deploy/aws/scripts/postgres-backup.sh`
 - `deploy/aws/scripts/postgres-restore.sh`
 - `deploy/aws/systemd/stellarroute-healthcheck.timer`
@@ -356,3 +357,51 @@ Move to ECS/RDS later if any of these become true:
 - you want managed Postgres durability and easier restores
 - you need cleaner service isolation
 - one VM becomes an operational bottleneck
+
+## 11. Auto-update EC2 from GitHub (main branch)
+
+This repo now includes:
+
+- `.github/workflows/deploy-ec2-staging.yml`
+
+What it does:
+
+- triggers on pushes to `main` (for backend/deploy path changes)
+- can also run manually from Actions via `workflow_dispatch`
+- uses AWS Systems Manager (SSM) Run Command to execute deploy steps on EC2
+- runs:
+  - `git fetch` + `git checkout` + `git pull --ff-only`
+  - `bash deploy/aws/scripts/deploy-ec2-staging.sh`
+  - `bash deploy/aws/scripts/ec2-postdeploy-smoke.sh <staging-url>`
+
+Why SSM instead of SSH from Actions:
+
+- no inbound port `22` required for GitHub runners
+- avoids dynamic GitHub runner IP allowlist maintenance
+
+Required GitHub repository secrets:
+
+- `AWS_ROLE_ARN` (IAM role assumed by OIDC)
+- `STAGING_INSTANCE_ID` (for example, `i-073051e6b1dccd329`)
+- optional `AWS_REGION` (defaults to `us-east-1`)
+- one of:
+  - `STAGING_API_BASE_URL` (recommended, for example `https://34.224.110.144.sslip.io`)
+  - or `STAGING_EC2_HOST` (workflow will derive `https://<host>.sslip.io`)
+
+IAM role policy must allow at least:
+
+- `ssm:SendCommand`
+- `ssm:GetCommandInvocation`
+- `ssm:ListCommandInvocations`
+- `ec2:DescribeInstances`
+
+The EC2 instance must be managed by SSM:
+
+- SSM Agent installed/running (Ubuntu AMIs usually include this)
+- instance IAM role/profile allowing SSM agent registration (for example `AmazonSSMManagedInstanceCore`)
+
+Manual run:
+
+1. Open GitHub Actions.
+2. Run workflow `Deploy EC2 Staging`.
+3. (Optional) set `git_ref`.

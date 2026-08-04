@@ -43,6 +43,7 @@ COMMENT ON TABLE swap_prepared_quotes IS
     'Server-side swap prepare/submit lifecycle keyed by quote_id for expiry and idempotency.';
 
 -- Privacy-safe prepare/submit audit log (API writes; table must exist with quotes).
+-- Avoid GENERATED (timestamptz + interval) — not IMMUTABLE on PG 16+ and breaks deploy.
 CREATE TABLE IF NOT EXISTS swap_submit_audit_log (
     id              BIGSERIAL   PRIMARY KEY,
     quote_id        TEXT        NOT NULL,
@@ -56,8 +57,7 @@ CREATE TABLE IF NOT EXISTS swap_submit_audit_log (
                     CHECK (outcome IN ('prepared', 'submitted', 'failed')),
     error_class     TEXT        NOT NULL DEFAULT '',
     metadata        JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    retained_until  TIMESTAMPTZ NOT NULL
-                    GENERATED ALWAYS AS (logged_at + INTERVAL '30 days') STORED
+    retained_until  TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')
 );
 
 CREATE INDEX IF NOT EXISTS idx_swap_submit_audit_quote_id

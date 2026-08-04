@@ -89,8 +89,12 @@ export function useQuote({ fromToken, toToken, amount, type = 'sell' }: UseQuote
   // Prefer WS data when the socket is healthy, otherwise fall back to polling.
   const data = wsConnected && wsData ? wsData : pollingData;
 
-  // Only surface WS errors when polling has no data path of its own and WS is up.
-  const error = pollingError ?? (wsConnected && wsError ? wsError : null);
+  // Soft-fail background refresh: if we still have a displayable quote, do not
+  // surface a hard error (that raced into "Error fetching quote" over good numbers).
+  // First-load / no-data failures still propagate so the empty state can recover.
+  const error = data
+    ? null
+    : pollingError ?? (wsConnected && wsError ? wsError : null);
 
   const result = useMemo(() => {
     if (!data) {

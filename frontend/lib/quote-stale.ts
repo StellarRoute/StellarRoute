@@ -1,9 +1,10 @@
 /**
  * Quote freshness / stale UI timing.
  *
- * Backend caches GET /api/v1/quote responses for **5 seconds**
- * (see docs/api/openapi.yaml). After that window, displayed numbers may
- * diverge from the next server response — show a stale indicator.
+ * API `expires_at` / `ttl_seconds` track the **server cache TTL** (often 2s via
+ * `QUOTE_CACHE_TTL_SECONDS`), not a trading safety window. UI stale detection
+ * therefore uses a client receive-time floor so a 2s cache expiry cannot brick
+ * the swap CTA between auto-refresh ticks.
  */
 export const QUOTE_STALE_AFTER_MS = 5500;
 
@@ -22,13 +23,16 @@ export const QUOTE_AUTO_REFRESH_INTERVAL_MS = 20_000;
 export const QUOTE_MANUAL_REFRESH_COOLDOWN_MS = 2000;
 
 /**
- * Returns true when a successful quote is older than `staleAfterMs` relative to `nowMs`.
- * If `expiresAtMs` is provided **and is still in the future relative to when we
- * received the quote**, it takes precedence over `staleAfterMs`.
+ * Returns true when a successful quote is older than the UI stale window.
  *
- * Cached API responses can arrive with an already-past `expires_at`; treating
- * those as immediately stale bricks the swap CTA ("Session restored" forever).
- * In that case fall back to the client receive-time window.
+ * Uses the **later** of:
+ * - client receive-time + `staleAfterMs`
+ * - server `expires_at` (when still ahead of receive time)
+ *
+ * So a short cache TTL (2s) cannot mark a quote stale before the client floor,
+ * while a longer server expiry can keep the quote fresh. Already-past
+ * `expires_at` values are ignored (cached responses) and fall back to the
+ * client window — otherwise the CTA stays bricked after session restore.
  */
 export function isQuoteStale(
   lastSuccessTimeMs: number | null,
@@ -38,13 +42,15 @@ export function isQuoteStale(
 ): boolean {
   if (lastSuccessTimeMs == null) return false;
 
+  const clientStaleAtMs = lastSuccessTimeMs + staleAfterMs;
+
   if (
     expiresAtMs != null &&
     Number.isFinite(expiresAtMs) &&
     expiresAtMs > lastSuccessTimeMs
   ) {
-    return nowMs >= expiresAtMs;
+    return nowMs >= Math.max(expiresAtMs, clientStaleAtMs);
   }
 
-  return nowMs - lastSuccessTimeMs >= staleAfterMs;
+  return nowMs >= clientStaleAtMs;
 }

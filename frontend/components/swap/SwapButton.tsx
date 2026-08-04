@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, Wallet, ShieldOff } from "lucide-react";
+import { AlertCircle, Wallet, ShieldOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -21,6 +21,7 @@ export type SwapButtonState =
   | "high_impact_warning"
   | "slippage_ack_required"
   | "refreshing_quote"
+  | "stale_quote"
   | "ready"
   | "executing"
   | "error"
@@ -30,6 +31,7 @@ interface SwapButtonProps {
   state: SwapButtonState;
   onSwap: () => void;
   onConnectWallet?: () => void;
+  onRefreshQuote?: () => void;
   isLoading?: boolean;
   className?: string;
 }
@@ -38,6 +40,7 @@ export function SwapButton({
   state,
   onSwap,
   onConnectWallet,
+  onRefreshQuote,
   isLoading = false,
   className,
 }: SwapButtonProps) {
@@ -119,6 +122,18 @@ export function SwapButton({
           variant: "outline" as const,
           icon: <Spinner className="mr-2" label={t("swap.cta.loadingQuote")} />,
           className: "border-primary/40 text-primary",
+        };
+      case "stale_quote":
+        return {
+          label: t("swap.card.refreshQuote"),
+          onClick: onRefreshQuote,
+          disabled: isLoading || !onRefreshQuote,
+          disabledReason: isLoading
+            ? "Fetching a fresh quote."
+            : "Quote expired — refresh to continue.",
+          variant: "default" as const,
+          icon: <RefreshCw className={cn("mr-2 h-5 w-5", isLoading && "animate-spin")} />,
+          className: "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20",
         };
       case "error":
         return {

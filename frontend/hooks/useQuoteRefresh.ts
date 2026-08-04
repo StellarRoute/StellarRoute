@@ -403,6 +403,30 @@ export function useQuoteRefresh(
     return () => clearInterval(id);
   }, [autoRefreshEnabled, autoRefreshIntervalMs, canRequest]);
 
+  // Refresh shortly before the client stale floor so a short API cache TTL
+  // cannot leave the CTA on "outdated" until the next 15–20s interval tick.
+  useEffect(() => {
+    if (!autoRefreshEnabled || !canRequest || lastQuotedAtMs == null) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
+
+    const refreshLeadMs = 750;
+    const dueAtMs = lastQuotedAtMs + Math.max(0, staleAfterMs - refreshLeadMs);
+    const delayMs = dueAtMs - Date.now();
+    // Already past the lead window — leave refresh to the interval / manual CTA.
+    if (delayMs <= 0) return;
+
+    const id = setTimeout(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      setTick((n) => n + 1);
+    }, delayMs);
+
+    return () => clearTimeout(id);
+  }, [autoRefreshEnabled, canRequest, lastQuotedAtMs, staleAfterMs]);
+
   const manualRefreshCoolingDown =
     manualCooldownUntil > 0 && nowMs < manualCooldownUntil;
 

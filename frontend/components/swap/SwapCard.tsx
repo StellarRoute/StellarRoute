@@ -44,6 +44,7 @@ import {
 import { useBatchQuote, usePairs, useRoutes } from '@/hooks/useApi';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import type { QuoteRequestItem } from '@/lib/api/client';
+import { StellarRouteApiError } from '@/lib/api/client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
 import { useQuoteRefreshAnnouncements } from '@/hooks/useQuoteRefreshAnnouncements';
@@ -722,16 +723,23 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     if (signBlocked) return 'permission_blocked';
     if (memoError) return 'error'; // Block swap if there is a memo validation error
     if (!fromAmount || parseFloat(fromAmount) === 0) return 'no_amount';
-    if (quote.error) return 'error';
-    if (requiresFreshQuote) return 'refreshing_quote';
+    if (requiresFreshQuote || quote.loading || quote.isRecovering) {
+      return 'refreshing_quote';
+    }
+    const refreshableQuoteError =
+      quote.error instanceof StellarRouteApiError &&
+      (quote.error.code === 'stale_market_data' ||
+        quote.error.code === 'quote_expired');
+    // Stale / refreshable expiry → clickable refresh, never "Error fetching quote".
+    if (quote.isStale || refreshableQuoteError) return 'stale_quote';
+    // Hard quote errors only when there is nothing usable on screen.
+    if (quote.error && !quote.data) return 'error';
     if (
       !balanceState.error &&
       parseFloat(fromAmount) > parseFloat(fromBalance)
     )
       return 'insufficient_balance';
     if (quote.priceImpact > 10) return 'high_impact_warning';
-    if (quote.loading) return 'refreshing_quote';
-    if (quote.isStale) return 'error';
     // One-hop classic preflight always applies — AMM/multi-hop never bypass gates.
     if (!classicPreflight.ok) return 'error';
     if (swapExecutionMode.mode === 'disabled') return 'error';
@@ -743,7 +751,9 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     networkMismatch,
     capabilities,
     optimistic.submitLock,
+    quote.data,
     quote.error,
+    quote.isRecovering,
     quote.isStale,
     quote.loading,
     quote.priceImpact,
@@ -757,7 +767,10 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const displayButtonState = storyPresentation?.buttonState ?? buttonState;
   const displayQuoteLoading = storyPresentation?.quoteLoading ?? quote.loading;
   const displayQuoteStale = storyPresentation?.quoteStale ?? quote.isStale;
-  const displayQuoteError = storyPresentation?.quoteError ?? quote.error;
+  // Soft-fail: keep numbers, hide hard error copy while a quote is still shown.
+  const displayQuoteError =
+    storyPresentation?.quoteError ??
+    (quote.data ? null : quote.error);
   const displayQuotePriceImpact =
     storyPresentation?.quotePriceImpact ?? quote.priceImpact;
   const displayToAmount = storyPresentation?.toAmount ?? toAmount;
@@ -1522,6 +1535,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               state={displayButtonState}
               onSwap={handleSwap}
               onConnectWallet={() => connect('freighter')} // Connection managed by WalletProvider
+              onRefreshQuote={() => quote.refresh({ force: true })}
               isLoading={displayQuoteLoading}
             />
           </div>

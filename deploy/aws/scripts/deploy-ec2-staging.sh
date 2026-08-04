@@ -38,6 +38,16 @@ echo "Deploying git SHA ${GIT_SHA}"
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod config >/dev/null
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod up -d --build
 
+# API does not migrate on boot. Ensure classic swap prepare/submit tables exist
+# even if the indexer profile is slow/offline (idempotent DDL).
+echo "Applying swap_prepared_quotes DDL (idempotent)..."
+POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${ENV_FILE}" | head -1 | cut -d= -f2-)"
+POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${ENV_FILE}" | head -1 | cut -d= -f2-)"
+docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+  < "${ROOT}/crates/indexer/migrations/0015_swap_prepared_quotes.sql"
+echo " - swap_prepared_quotes ready"
+
 echo "Local health checks:"
 # API may still be booting; do not fail the whole deploy on a racing curl here.
 # Post-deploy smoke waits for readiness separately.

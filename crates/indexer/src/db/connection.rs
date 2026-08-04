@@ -126,6 +126,10 @@ impl Database {
                 "0014_assets_native_singleton.sql",
                 include_str!("../../migrations/0014_assets_native_singleton.sql"),
             ),
+            (
+                "0015_swap_prepared_quotes.sql",
+                include_str!("../../migrations/0015_swap_prepared_quotes.sql"),
+            ),
         ];
 
         for (name, sql) in migrations {

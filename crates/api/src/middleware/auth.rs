@@ -92,6 +92,17 @@ fn is_public_v2_metadata(method: &axum::http::Method, path: &str) -> bool {
 const CCTP_BRIDGE_PREFIX: &str = "/api/v2/bridge/cctp/";
 const CCTP_QUOTE_PATH: &str = "/api/v2/bridge/cctp/quote";
 
+/// Classic browser swap flow: prepare returns unsigned XDR; submit requires a
+/// wallet-signed envelope bound to `quote_id`. No integrator API key is used by
+/// the public frontend — authorization is the Stellar signature + sender lock.
+const CLASSIC_SWAP_PREPARE_PATH: &str = "/api/v1/swap/prepare";
+const CLASSIC_SWAP_SUBMIT_PATH: &str = "/api/v1/swap/submit";
+
+fn is_classic_swap_exempt(method: &axum::http::Method, path: &str) -> bool {
+    *method == axum::http::Method::POST
+        && (path == CLASSIC_SWAP_PREPARE_PATH || path == CLASSIC_SWAP_SUBMIT_PATH)
+}
+
 fn is_valid_uuid(segment: &str) -> bool {
     if segment.len() != 36 {
         return false;
@@ -244,6 +255,12 @@ where
         let config = self.config.clone();
 
         Box::pin(async move {
+            // CORS preflight must reach the CORS layer. Auth sits outside CORS in
+            // some deployments; never 401 OPTIONS or browsers report "Failed to fetch".
+            if req.method() == axum::http::Method::OPTIONS {
+                return inner.call(req).await;
+            }
+
             if is_always_exempt(req.uri().path()) {
                 return inner.call(req).await;
             }
@@ -253,6 +270,10 @@ where
             }
 
             if is_cctp_bridge_exempt(req.method(), req.uri().path()) {
+                return inner.call(req).await;
+            }
+
+            if is_classic_swap_exempt(req.method(), req.uri().path()) {
                 return inner.call(req).await;
             }
 
@@ -476,5 +497,27 @@ mod tests {
         assert!(!is_public_v2_metadata(&Method::POST, "/api/v2"));
         assert!(!is_public_v2_metadata(&Method::GET, "/api/v2/"));
         assert!(!is_public_v2_metadata(&Method::GET, "/api/v2/assets"));
+    }
+
+    #[test]
+    fn classic_swap_prepare_and_submit_are_auth_exempt() {
+        use axum::http::Method;
+        assert!(is_classic_swap_exempt(
+            &Method::POST,
+            "/api/v1/swap/prepare"
+        ));
+        assert!(is_classic_swap_exempt(
+            &Method::POST,
+            "/api/v1/swap/submit"
+        ));
+        assert!(!is_classic_swap_exempt(
+            &Method::GET,
+            "/api/v1/swap/prepare"
+        ));
+        assert!(!is_classic_swap_exempt(
+            &Method::POST,
+            "/api/v1/swap/prepare/extra"
+        ));
+        assert!(!is_classic_swap_exempt(&Method::POST, "/api/v1/quote"));
     }
 }

@@ -285,16 +285,14 @@ impl Server {
             info!("✅ Response compression enabled");
         }
 
-        // Add CORS if enabled
+        // Rate limit closest to the router, then auth, then CORS outside auth so
+        // preflight/OPTIONS and auth error responses still get ACAO headers.
+        // (Last `.layer` is outermost: Trace → CORS → Auth → RateLimit → Router.)
+        app = app.layer(rate_limit);
+        app = app.layer(AuthLayer::default());
         if config.enable_cors {
             app = app.layer(build_cors_layer());
         }
-
-        // Add rate limiting (innermost — runs before CORS/compression in the response path)
-        app = app.layer(rate_limit);
-
-        // Add API key authentication
-        app = app.layer(AuthLayer::default());
 
         // Add request logging — each request gets a unique span with method, URI, status, and latency.
         app = app.layer(

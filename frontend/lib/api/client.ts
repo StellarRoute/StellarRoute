@@ -198,9 +198,14 @@ export class StellarRouteClient {
 
   constructor(baseUrlOrOptions?: string | StellarRouteClientOptions) {
     const proxyEnabled = process.env.NEXT_PUBLIC_API_PROXY === 'true';
+    // Static NEXT_PUBLIC_* access only — dynamic process.env[key] is not inlined
+    // on Vercel. Prefer shared URL, then testnet staging URL, never leave prod
+    // on localhost when only NEXT_PUBLIC_API_URL_TESTNET is configured.
     const defaultBaseUrl = proxyEnabled
       ? ''
-      : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080');
+      : (process.env.NEXT_PUBLIC_API_URL?.trim() ||
+          process.env.NEXT_PUBLIC_API_URL_TESTNET?.trim() ||
+          'http://localhost:8080');
 
     let baseUrl = defaultBaseUrl;
     let retries = 2;

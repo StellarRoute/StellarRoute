@@ -43,6 +43,7 @@ import {
 } from '@/lib/trading-pairs';
 import { useBatchQuote, usePairs, useRoutes } from '@/hooks/useApi';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
 import type { QuoteRequestItem } from '@/lib/api/client';
 import { StellarRouteApiError } from '@/lib/api/client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -393,6 +394,10 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     setTransactionPending,
   } = useWallet();
 
+  // Same network-aware origin as quotes — never fall back to the singleton's
+  // localhost default when only NEXT_PUBLIC_API_URL_TESTNET is set.
+  const apiClient = useStellarRouteClient();
+
   // Horizon lookup must follow the wallet's network (where funds live), not
   // only the app toggle — otherwise balances show Unavailable / zero.
   const balanceHorizonNetwork = walletNetwork ?? walletAppNetwork;
@@ -599,6 +604,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     // No client-built XDR / direct-Horizon product path — fail closed when unavailable.
     if (swapExecutionMode.mode === 'api_prepare_submit') {
       const apiDeps = createApiSwapExecution({
+        client: apiClient,
         sender: walletAddress,
         slippageBps: Math.round(slippage * 100),
         network: walletAppNetwork,
@@ -623,6 +629,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       getPreparedAmounts: () => null,
     };
   }, [
+    apiClient,
     walletReady,
     walletId,
     walletAddress,

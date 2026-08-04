@@ -24,6 +24,9 @@ import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import { PostSwapSuccessScreen } from './PostSwapSuccessScreen';
 import { useSwapI18n } from '@/lib/swap-i18n';
 import { getTraderErrorCopy } from '@/lib/api/trader-error-copy';
+import { isLifecycleError } from '@/lib/swap/lifecycle-error';
+import { conflictStatusFromDetails } from '@/lib/swap/api-execution';
+import { StellarRouteApiError } from '@/lib/api/client';
 
 export interface TransactionConfirmationModalProps {
   isOpen: boolean;
@@ -145,6 +148,10 @@ export function TransactionConfirmationModal({
     status === 'failed' && (error || errorMessage)
       ? getTraderErrorCopy(error ?? { message: errorMessage! })
       : null;
+  const isPendingReconcile =
+    (isLifecycleError(error) && error.status === 'pending_reconcile') ||
+    (error instanceof StellarRouteApiError &&
+      conflictStatusFromDetails(error.details) === 'pending_reconcile');
   const droppedCopy =
     status === 'dropped'
       ? getTraderErrorCopy(new Error('Transaction timed out'))
@@ -323,10 +330,12 @@ export function TransactionConfirmationModal({
             <>
               <Button
                 ref={primaryActionRef}
-                onClick={onTryAgain}
+                onClick={isPendingReconcile ? onResubmit : onTryAgain}
                 className="flex-1 min-h-[48px] h-12 rounded-xl font-bold"
               >
-                {t('swap.confirm.cta.tryAgain')}
+                {isPendingReconcile
+                  ? t('swap.confirm.cta.resubmit')
+                  : t('swap.confirm.cta.tryAgain')}
               </Button>
               <Button
                 variant="outline"

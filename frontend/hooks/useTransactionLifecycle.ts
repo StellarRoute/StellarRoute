@@ -168,6 +168,8 @@ export function useTransactionLifecycle(
   );
   // Ref to allow cancel() to abort an in-progress signing
   const cancelledRef = useRef(false);
+  /** Preserved after Freighter signs so pending_reconcile can retry submit only. */
+  const lastSignedXdrRef = useRef<string | null>(null);
 
   const { addTransaction, updateTransactionStatus } = useTransactionHistory(
     tradeParams?.walletAddress ?? null
@@ -183,6 +185,7 @@ export function useTransactionLifecycle(
   const initiateSwap = useCallback(
     async (params: TradeParams) => {
       cancelledRef.current = false;
+      lastSignedXdrRef.current = null;
       setTradeParams(params);
       setTxHash(undefined);
       clearError();
@@ -285,8 +288,10 @@ export function useTransactionLifecycle(
       let signedXdr: string;
       try {
         signedXdr = await signTransaction(xdrToSign);
+        lastSignedXdrRef.current = signedXdr;
       } catch (err: unknown) {
         if (cancelledRef.current) return;
+        lastSignedXdrRef.current = null;
         const rawMsg =
           err instanceof Error ? err.message : "Signature failed";
         const userFacingMsg = isRejectionError(rawMsg)
@@ -317,7 +322,7 @@ export function useTransactionLifecycle(
 
       if (cancelledRef.current) return;
 
-      // Step 2: Submit
+      // Step 3: Submit
       setStatus("submitted");
       emitSwapFunnelEvent("swap_submitted", funnelPayloadFromTrade(params));
       updateTransactionStatus(tempId, "submitted");
@@ -415,18 +420,79 @@ export function useTransactionLifecycle(
   }, [status, clearDeadlineTimer, clearError]);
 
   const resubmit = useCallback(async () => {
+    // After Horizon broadcast ambiguity the quote stays `submitting` server-side.
+    // Retry the same signed envelope — never prepare/sign again.
+    if (
+      status === "failed" &&
+      error?.status === "pending_reconcile" &&
+      tradeParams &&
+      lastSignedXdrRef.current
+    ) {
+      cancelledRef.current = false;
+      clearError();
+      clearDeadlineTimer();
+      const tempId = txIdRef.current ?? `pending_${Date.now()}`;
+      txIdRef.current = tempId;
+      setStatus("submitted");
+      updateTransactionStatus(tempId, "submitted");
+      deadlineTimerRef.current = setTimeout(() => {
+        setStatus((current) => {
+          if (current === "submitted") {
+            updateTransactionStatus(tempId, "dropped");
+            return "dropped";
+          }
+          return current;
+        });
+      }, deadlineMs);
+      try {
+        const result = await submitTransaction(lastSignedXdrRef.current);
+        clearDeadlineTimer();
+        if (cancelledRef.current) return;
+        setTxHash(result.hash);
+        setStatus("confirmed");
+        updateTransactionStatus(tempId, "confirmed", { hash: result.hash });
+      } catch (err: unknown) {
+        clearDeadlineTimer();
+        if (cancelledRef.current) return;
+        const msg = failWith(err);
+        setStatus("failed");
+        updateTransactionStatus(tempId, "failed", { errorMessage: msg });
+      }
+      return;
+    }
+
     if (status === "dropped" && tradeParams) {
       await initiateSwap(tradeParams);
     }
-  }, [status, tradeParams, initiateSwap]);
+  }, [
+    status,
+    error?.status,
+    tradeParams,
+    initiateSwap,
+    submitTransaction,
+    clearError,
+    clearDeadlineTimer,
+    updateTransactionStatus,
+    deadlineMs,
+    failWith,
+  ]);
 
   const tryAgain = useCallback(() => {
+    // Prefer reconcile retry when we still hold the signed envelope.
+    if (
+      status === "failed" &&
+      error?.status === "pending_reconcile" &&
+      lastSignedXdrRef.current
+    ) {
+      void resubmit();
+      return;
+    }
     clearDeadlineTimer();
     setStatus("review");
     clearError();
     setTxHash(undefined);
     // tradeParams is preserved so the modal can pre-populate
-  }, [clearDeadlineTimer, clearError]);
+  }, [status, error?.status, resubmit, clearDeadlineTimer, clearError]);
 
   const dismiss = useCallback(() => {
     clearDeadlineTimer();
@@ -434,6 +500,7 @@ export function useTransactionLifecycle(
     clearError();
     setTxHash(undefined);
     setTradeParams(undefined);
+    lastSignedXdrRef.current = null;
   }, [clearDeadlineTimer, clearError]);
 
   return {

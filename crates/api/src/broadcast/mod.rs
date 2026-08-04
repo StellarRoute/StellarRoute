@@ -149,8 +149,10 @@ impl HorizonTransactionBroadcaster {
     }
 
     pub fn from_env() -> Self {
+        // Path payments can take longer than a simple /health probe under load;
+        // 10s was racing Horizon accept → false dependency_unavailable / stuck submitting.
         let client = Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
             .build()
             .unwrap_or_default();
 

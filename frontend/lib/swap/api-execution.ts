@@ -257,7 +257,14 @@ export function userCopyForSwapExecutionError(err: unknown): string {
     return 'Confirmation timed out. Your submission may still reconcile on-chain — check wallet activity before preparing again.';
   }
   if (code === 'dependency_unavailable' || conflictStatus === 'pending_reconcile') {
-    return 'Network dependency is unavailable. Your prior submit may still be pending — wait and reconcile before trying again.';
+    return 'Horizon did not confirm the broadcast yet. Use Retry submit (same signed transaction) — do not prepare a new swap.';
+  }
+  if (
+    code === 'not_executable' &&
+    err instanceof StellarRouteApiError &&
+    /op_no_trust/i.test(err.message)
+  ) {
+    return 'Your wallet needs a USDy trustline before this swap can settle. Add USDy in Freighter (Manage assets), then refresh and try again.';
   }
   if (code === 'duplicate_quote' || conflictStatus === 'active_prepare_exists') {
     if (conflictStatus === 'active_prepare_exists') {
@@ -283,7 +290,7 @@ export interface ApiSwapExecutionOptions {
   slippageBps: number;
   network: WalletNetwork | null;
   signTransaction: (xdr: string) => Promise<string>;
-  /** Max ambiguous submit retries after the first attempt (default: 2). */
+  /** Max ambiguous submit retries after the first attempt (default: 4). */
   ambiguousSubmitRetries?: number;
   confirmOnHorizon?: boolean;
   confirmTimeoutMs?: number;
@@ -473,7 +480,7 @@ export function createApiSwapExecution(
         signed_xdr: envelope,
       };
 
-      const maxAmbiguous = options.ambiguousSubmitRetries ?? 2;
+      const maxAmbiguous = options.ambiguousSubmitRetries ?? 4;
       let submitted: SwapSubmitResponse | undefined;
       let lastErr: unknown;
 

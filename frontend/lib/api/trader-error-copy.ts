@@ -134,9 +134,11 @@ const API_ERROR_COPY: Record<ApiErrorCode, TraderErrorCopy> = {
   },
   dependency_unavailable: {
     headline: 'Network dependency unavailable',
-    explanation: 'Horizon or another upstream dependency is temporarily unreachable.',
-    recoveryAction: 'Wait briefly and reconcile before preparing a new swap.',
-    ctaLabel: 'Retry shortly',
+    explanation:
+      'Horizon did not confirm the broadcast yet. Your signed swap may still be pending on-chain.',
+    recoveryAction:
+      'Tap Retry submit to send the same signed transaction again. Do not prepare a new swap.',
+    ctaLabel: 'Retry submit',
   },
   unsupported_execution_mode: {
     headline: 'AMM and Soroban swaps are not supported yet',
@@ -514,6 +516,20 @@ export function getTraderErrorCopy(error: unknown): TraderErrorCopy {
       lifecycleStatusFromApiError(error),
     );
     if (conflictCopy) return conflictCopy;
+
+    if (
+      error.code === 'not_executable' &&
+      /op_no_trust/i.test(error.message)
+    ) {
+      return {
+        headline: 'Missing asset trustline',
+        explanation:
+          'Your wallet has not trusted the destination asset yet, so Horizon rejected the swap.',
+        recoveryAction:
+          'In Freighter → Manage assets, add USDy (issuer …FYDDGS), then refresh and swap again.',
+        ctaLabel: 'Add trustline',
+      };
+    }
 
     const byCode = copyFromApiCode(error.code);
     if (byCode) return byCode;

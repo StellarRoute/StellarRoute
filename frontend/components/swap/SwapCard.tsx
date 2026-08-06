@@ -126,8 +126,6 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     fromAmount,
     setFromAmount,
     toAmount,
-    side,
-    setSide,
     slippage,
     setSlippage,
     deadline,

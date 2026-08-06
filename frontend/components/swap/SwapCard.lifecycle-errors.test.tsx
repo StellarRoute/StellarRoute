@@ -63,13 +63,16 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
 
 vi.mock('@/lib/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api/client')>();
+  const makeMockClient = () => {
+    const client = actual.createStellarRouteClient();
+    client.prepareSwap = (...args: unknown[]) => prepareSwapMock(...args);
+    client.submitSwap = vi.fn();
+    return client;
+  };
   return {
     ...actual,
-    stellarRouteClient: {
-      ...actual.stellarRouteClient,
-      prepareSwap: (...args: unknown[]) => prepareSwapMock(...args),
-      submitSwap: vi.fn(),
-    },
+    createStellarRouteClient: makeMockClient,
+    stellarRouteClient: makeMockClient(),
   };
 });
 

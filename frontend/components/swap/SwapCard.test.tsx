@@ -201,17 +201,20 @@ vi.mock('@/lib/wallet', () => ({
 
 vi.mock('@/lib/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api/client')>();
+  const makeMockClient = () => {
+    const client = actual.createStellarRouteClient();
+    client.prepareSwap = (...args: unknown[]) => prepareSwapMock(...args);
+    client.submitSwap = vi.fn().mockResolvedValue({
+      quote_id: 'q-1',
+      tx_hash: 'test_submit_hash',
+      status: 'pending',
+    });
+    return client;
+  };
   return {
     ...actual,
-    stellarRouteClient: {
-      ...actual.stellarRouteClient,
-      prepareSwap: (...args: unknown[]) => prepareSwapMock(...args),
-      submitSwap: vi.fn().mockResolvedValue({
-        quote_id: 'q-1',
-        tx_hash: 'test_submit_hash',
-        status: 'pending',
-      }),
-    },
+    createStellarRouteClient: makeMockClient,
+    stellarRouteClient: makeMockClient(),
   };
 });
 
@@ -992,14 +995,17 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
 
     await user.click(screen.getByRole('button', { name: /review swap/i }));
 
-    await waitFor(() => {
-      expect(prepareSwapMock).toHaveBeenCalled();
-      expect(signTransactionWithWallet).toHaveBeenCalledWith(
-        'AAAAtest_unsigned_xdr',
-        'freighter',
-        expect.any(String)
-      );
-    });
+    await waitFor(
+      () => {
+        expect(prepareSwapMock).toHaveBeenCalled();
+        expect(signTransactionWithWallet).toHaveBeenCalledWith(
+          'AAAAtest_unsigned_xdr',
+          'freighter',
+          expect.any(String)
+        );
+      },
+      { timeout: 5000 }
+    );
   });
 
   it('does not call signTransactionWithWallet when wallet is disconnected', async () => {

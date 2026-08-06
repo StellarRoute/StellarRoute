@@ -373,18 +373,11 @@ pub async fn cctp_submit_burn(
     gate_for_direction(&state, transfer.direction).await?;
 
     let ctx = require_cctp(&state)?;
-    let updated = if transfer.burn_prepare_step.as_deref() == Some("approval")
-        && transfer.source_approval_verified_at.is_none()
-    {
-        ctx.service
-            .record_approval_submission(transfer_id, &body.tx_hash)
-            .await
-    } else {
-        ctx.service
-            .record_burn_submission(transfer_id, &body.tx_hash)
-            .await
-    }
-    .map_err(|e| map_service_error(e, Some(transfer_id)))?;
+    let updated = ctx
+        .service
+        .record_source_submission(transfer_id, &body.tx_hash)
+        .await
+        .map_err(|e| map_service_error(e, Some(transfer_id)))?;
 
     metrics::record_cctp_endpoint_outcome("submit_burn", "success");
     Ok(Json(ApiResponse::with_version(

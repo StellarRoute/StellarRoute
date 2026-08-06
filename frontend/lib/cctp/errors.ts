@@ -133,6 +133,56 @@ export function mapCctpError(err: unknown): CctpTraderError {
           action: 'Wait and retry',
         };
       default:
+        if (
+          err.message?.includes('USDC approval, not a burn') ||
+          err.message?.includes('Prepare the burn')
+        ) {
+          return {
+            kind: 'nonretryable',
+            title: 'Approval recorded — burn is next',
+            message: err.message,
+            requestId,
+            action: 'Prepare burn',
+          };
+        }
+        if (
+          err.message?.includes('quote has expired') ||
+          err.message?.includes('request a new quote')
+        ) {
+          return {
+            kind: 'quote_expired',
+            title: 'Quote expired',
+            message: 'Request a fresh quote before preparing or signing.',
+            requestId,
+            action: 'Refresh quote',
+          };
+        }
+        if (
+          err.message?.includes('Could not prepare source transaction') ||
+          err.message?.includes('Insufficient USDC balance') ||
+          err.message?.includes('active prepare already exists')
+        ) {
+          return {
+            kind: 'nonretryable',
+            title: 'Could not prepare transaction',
+            message: err.message,
+            requestId,
+            action: 'Check balance and retry',
+          };
+        }
+        if (
+          err.message?.includes('not yet available for verification') ||
+          err.message?.includes('On-chain verification failed')
+        ) {
+          return {
+            kind: 'retryable',
+            title: 'Confirming on-chain transaction',
+            message:
+              'Your transaction was submitted but the API has not confirmed it yet. Wait a few seconds and try again.',
+            requestId,
+            action: 'Retry',
+          };
+        }
         if (err.status === 409) {
           return {
             kind: 'nonretryable',

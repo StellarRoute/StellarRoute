@@ -253,10 +253,12 @@ impl CctpQuoteRequest {
                 if !is_valid_evm_address(&self.recipient) {
                     return Err(CctpValidationError::InvalidRecipient);
                 }
-                if let Some(sender) = &self.sender {
-                    if !is_valid_stellar_account(sender) {
-                        return Err(CctpValidationError::InvalidSender);
-                    }
+                let sender = self
+                    .sender
+                    .as_deref()
+                    .ok_or(CctpValidationError::InvalidSender)?;
+                if !is_valid_stellar_account(sender) {
+                    return Err(CctpValidationError::InvalidSender);
                 }
                 if self.finality == CctpFinality::Fast {
                     return Err(CctpValidationError::InvalidFinality);
@@ -266,10 +268,12 @@ impl CctpQuoteRequest {
                 if !is_valid_stellar_recipient(&self.recipient) {
                     return Err(CctpValidationError::InvalidRecipient);
                 }
-                if let Some(sender) = &self.sender {
-                    if !is_valid_evm_address(sender) {
-                        return Err(CctpValidationError::InvalidSender);
-                    }
+                let sender = self
+                    .sender
+                    .as_deref()
+                    .ok_or(CctpValidationError::InvalidSender)?;
+                if !is_valid_evm_address(sender) {
+                    return Err(CctpValidationError::InvalidSender);
                 }
                 let submitter = self
                     .mint_submitter
@@ -641,14 +645,21 @@ mod tests {
     }
 
     #[test]
-    fn validates_optional_sender_per_direction() {
+    fn requires_valid_sender_per_direction() {
         let mut to_evm = base_quote(CctpDirection::StellarToEvm, CctpFinality::Standard);
+        to_evm.sender = None;
+        assert_eq!(to_evm.validate(), Err(CctpValidationError::InvalidSender));
         to_evm.sender = Some(VALID_EVM.into());
         assert_eq!(to_evm.validate(), Err(CctpValidationError::InvalidSender));
         to_evm.sender = Some(VALID_STELLAR.into());
         assert!(to_evm.validate().is_ok());
 
         let mut to_stellar = base_quote(CctpDirection::EvmToStellar, CctpFinality::Standard);
+        to_stellar.sender = None;
+        assert_eq!(
+            to_stellar.validate(),
+            Err(CctpValidationError::InvalidSender)
+        );
         to_stellar.sender = Some(VALID_STELLAR.into());
         assert_eq!(
             to_stellar.validate(),

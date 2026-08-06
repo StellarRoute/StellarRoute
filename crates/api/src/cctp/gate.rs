@@ -3,7 +3,7 @@
 use uuid::Uuid;
 
 use crate::cctp::access::{hash_access_token, validate_access_token_format};
-use crate::cctp::builders::BurnPrepareStep;
+use crate::cctp::builders::{BuilderError, BurnPrepareStep};
 use crate::cctp::config::CctpConfig;
 use crate::cctp::readiness::CctpRuntime;
 use crate::cctp::service::{CctpService, CctpServiceError};
@@ -329,9 +329,11 @@ pub fn map_service_error(err: CctpServiceError, transfer_id: Option<Uuid>) -> Ap
         CctpServiceError::InvalidState => {
             ApiError::Validation("Transfer is not in a valid state for this operation".into())
         }
-        CctpServiceError::QuoteExpired => {
-            ApiError::Validation("CCTP quote has expired; request a new quote".into())
-        }
+        CctpServiceError::QuoteExpired => ApiError::QuoteExpired {
+            quote_id: transfer_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "unknown".into()),
+        },
         CctpServiceError::FeeExpired => {
             ApiError::FeeQuoteUnavailable("CCTP fee quote has expired; request a new quote".into())
         }
@@ -362,11 +364,20 @@ pub fn map_service_error(err: CctpServiceError, transfer_id: Option<Uuid>) -> Ap
         CctpServiceError::Iris(_) => ApiError::DependencyUnavailable(
             "Circle attestation service is temporarily unavailable".into(),
         ),
-        CctpServiceError::Verifier(VerifierError::Transient(_)) => ApiError::DependencyUnavailable(
-            "On-chain verification dependency is temporarily unavailable".into(),
+        CctpServiceError::Verifier(VerifierError::Transient(_))
+        | CctpServiceError::Verifier(VerifierError::TxNotFound) => ApiError::DependencyUnavailable(
+            "Submitted transaction is not yet available for verification; retry shortly".into(),
         ),
+        CctpServiceError::Builder(err) => map_builder_error(err),
+        CctpServiceError::Verifier(VerifierError::Failed(msg))
+            if msg.contains("wrong function") || msg.contains("unsupported stellar invoke") =>
+        {
+            ApiError::Validation(
+                "Submitted transaction is a USDC approval, not a burn. Click Prepare source transaction, then sign the burn."
+                    .into(),
+            )
+        }
         CctpServiceError::Verifier(_)
-        | CctpServiceError::Builder(_)
         | CctpServiceError::InvalidMessage
         | CctpServiceError::IrisTxHashMismatch
         | CctpServiceError::MintPayloadHashMismatch => {
@@ -375,6 +386,48 @@ pub fn map_service_error(err: CctpServiceError, transfer_id: Option<Uuid>) -> Ap
         CctpServiceError::Store(_) => ApiError::Internal(std::sync::Arc::new(anyhow::anyhow!(
             "CCTP persistence error"
         ))),
+    }
+}
+
+fn map_builder_error(err: BuilderError) -> ApiError {
+    match err {
+        BuilderError::NotReady => ApiError::CctpNotEnabled(
+            "Circle CCTP transaction builder is not ready on this deployment".into(),
+        ),
+        BuilderError::QuoteExpired => ApiError::QuoteExpired {
+            quote_id: "cctp-transfer".into(),
+        },
+        BuilderError::FeeExpired => ApiError::FeeQuoteUnavailable(
+            "CCTP fee quote has expired; request a new quote".into(),
+        ),
+        BuilderError::Validation(msg) => {
+            if msg.contains("sender required") {
+                ApiError::Validation(
+                    "Connect your source wallet and request a new quote before preparing the burn"
+                        .into(),
+                )
+            } else {
+                ApiError::Validation(msg)
+            }
+        }
+        BuilderError::SimulationFailed(msg) => {
+            let lower = msg.to_ascii_lowercase();
+            if lower.contains("insufficient") || lower.contains("balance") {
+                ApiError::Validation(
+                    "Insufficient USDC balance on Stellar for this burn amount".into(),
+                )
+            } else {
+                ApiError::Validation(format!(
+                    "Could not prepare source transaction: Soroban simulation failed ({msg})"
+                ))
+            }
+        }
+        BuilderError::AccountLookup(msg) => ApiError::DependencyUnavailable(format!(
+            "Stellar account lookup failed while preparing the burn: {msg}"
+        )),
+        BuilderError::Encoding(msg) => ApiError::Validation(format!(
+            "Could not encode CCTP source transaction: {msg}"
+        )),
     }
 }
 
@@ -841,5 +894,35 @@ mod tests {
         assert!(!exec_after);
         assert_eq!(corridors.len(), 2);
         assert!(corridors.iter().all(|c| !c.executable));
+    }
+
+    #[test]
+    fn builder_simulation_failure_maps_to_prepare_message() {
+        let err = map_service_error(
+            CctpServiceError::Builder(BuilderError::SimulationFailed(
+                "insufficient balance".into(),
+            )),
+            None,
+        );
+        match err {
+            ApiError::Validation(msg) => {
+                assert!(msg.contains("Insufficient USDC balance"));
+            }
+            other => panic!("expected validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verifier_tx_not_found_is_retryable_dependency() {
+        let err = map_service_error(
+            CctpServiceError::Verifier(VerifierError::TxNotFound),
+            None,
+        );
+        match err {
+            ApiError::DependencyUnavailable(msg) => {
+                assert!(msg.contains("not yet available"));
+            }
+            other => panic!("expected dependency_unavailable, got {other:?}"),
+        }
     }
 }

@@ -35,6 +35,7 @@ import {
   executePreparedPayload,
   reconcileEvmTransactionHash,
 } from '@/lib/cctp/wallet-execution';
+import { submitBurnWithVerificationRetry } from '@/lib/cctp/stellar-submit';
 import { startCctpStatusPoll, type StatusPollHandle } from '@/lib/cctp/status-poll';
 import type {
   CctpPrepareBurnResponse,
@@ -158,6 +159,34 @@ export function useCctpSaga(input: UseCctpSagaInput) {
     pollRef.current?.stop();
     pollRef.current = null;
   }, []);
+
+  const abortExpiredQuote = useCallback(() => {
+    stopPoll();
+    clearCctpSession();
+    setSession(null);
+    setQuote(null);
+    setTransferStatus(null);
+    setPreparedPayload(null);
+    setPreparedFingerprint(null);
+    setBurnPrepareStep('unknown');
+    setStage('idle');
+  }, [stopPoll]);
+
+  const applyCctpFailure = useCallback(
+    (err: unknown, options?: { failedStage?: CctpSagaStage }) => {
+      const mapped = mapCctpError(err);
+      setError(mapped);
+      if (mapped.kind === 'quote_expired') {
+        abortExpiredQuote();
+        return mapped;
+      }
+      if (options?.failedStage) {
+        setStage(options.failedStage);
+      }
+      return mapped;
+    },
+    [abortExpiredQuote],
+  );
 
   useEffect(() => () => {
     stopPoll();
@@ -496,11 +525,11 @@ export function useCctpSaga(input: UseCctpSagaInput) {
       persistBurnPrepare(prepared);
       setStage('quoted');
     } catch (err) {
-      setError(mapCctpError(err));
+      applyCctpFailure(err);
     } finally {
       setBusy(false);
     }
-  }, [accessOptions, client, persistBurnPrepare, requireWalletRoles, session]);
+  }, [accessOptions, client, persistBurnPrepare, requireWalletRoles, session, applyCctpFailure]);
 
   const autoReconcileRevision = useMemo(() => {
     if (!session) return null;
@@ -574,10 +603,11 @@ export function useCctpSaga(input: UseCctpSagaInput) {
       const activeRecord = freshLoaded.ok ? freshLoaded.record : loaded.record;
       syncSession(activeRecord);
       applyResolvedBurnStep(activeRecord, preparedPayload);
+      setError(null);
       if (activeRecord.recovery.pendingEvmTx) {
         setStage('pending_reconcile');
       } else if (!['completed', 'cancelled', 'provider_killed'].includes(status.status)) {
-        setStage('quoted');
+        setStage((prev) => (prev === 'failed' ? prev : 'quoted'));
       }
       setResumeMismatch(false);
       if (!['completed', 'cancelled', 'provider_killed'].includes(status.status)) {
@@ -765,18 +795,33 @@ export function useCctpSaga(input: UseCctpSagaInput) {
         });
         return;
       }
-      await client.submitBurn(session.transferId, { tx_hash: exec.txHash }, accessOptions());
+      await submitBurnWithVerificationRetry(
+        client,
+        session.transferId,
+        exec.txHash,
+        accessOptions(),
+        'testnet',
+      );
       clearPendingEvmTx();
       const status = await client.getTransfer(session.transferId, accessOptions());
       handleStatus(status);
       setPreparedPayload(null);
+      setPreparedFingerprint(null);
       setBurnPrepareStep('unknown');
-      patchCctpSessionRecovery({ burnPrepareStep: 'unknown' });
+      patchCctpSessionRecovery({
+        burnPrepareStep: 'unknown',
+        lastPreparedFingerprint: undefined,
+      });
+      setError(null);
+      const burnPrepared = await client.prepareBurn(
+        session.transferId,
+        accessOptions(),
+      );
+      persistBurnPrepare(burnPrepared);
       setStage('quoted');
     } catch (err) {
       if (requireReprepareAfterSequenceError(err)) return;
-      setError(mapCctpError(err));
-      setStage('failed');
+      applyCctpFailure(err, { failedStage: 'failed' });
     } finally {
       setBusy(false);
     }
@@ -794,6 +839,8 @@ export function useCctpSaga(input: UseCctpSagaInput) {
     syncSession,
     commitPendingEvmTx,
     requireWalletRoles,
+    applyCctpFailure,
+    persistBurnPrepare,
   ]);
 
   const signBurnStep = useCallback(async () => {
@@ -838,7 +885,13 @@ export function useCctpSaga(input: UseCctpSagaInput) {
         commitPendingEvmTx({ txHash: exec.txHash, purpose: 'burn' });
         return;
       }
-      await client.submitBurn(session.transferId, { tx_hash: exec.txHash }, accessOptions());
+      await submitBurnWithVerificationRetry(
+        client,
+        session.transferId,
+        exec.txHash,
+        accessOptions(),
+        'testnet',
+      );
       clearPendingEvmTx();
       setPreparedPayload(null);
       setBurnPrepareStep('unknown');
@@ -847,8 +900,7 @@ export function useCctpSaga(input: UseCctpSagaInput) {
       startPoll(session.transferId, session.accessToken);
     } catch (err) {
       if (requireReprepareAfterSequenceError(err)) return;
-      setError(mapCctpError(err));
-      setStage('failed');
+      applyCctpFailure(err, { failedStage: 'failed' });
     } finally {
       setBusy(false);
     }
@@ -866,6 +918,7 @@ export function useCctpSaga(input: UseCctpSagaInput) {
     startPoll,
     syncSession,
     requireWalletRoles,
+    applyCctpFailure,
   ]);
 
   const signPreparedMintStep = useCallback(async () => {
@@ -922,7 +975,11 @@ export function useCctpSaga(input: UseCctpSagaInput) {
       if (pending.purpose === 'mint') {
         await client.submitMint(session.transferId, { tx_hash: exec.txHash }, accessOptions());
       } else {
-        await client.submitBurn(session.transferId, { tx_hash: exec.txHash }, accessOptions());
+        await client.submitBurn(
+          session.transferId,
+          { tx_hash: exec.txHash },
+          accessOptions(),
+        );
       }
       clearPendingEvmTx();
       if (pending.purpose === 'approval') {
@@ -939,6 +996,7 @@ export function useCctpSaga(input: UseCctpSagaInput) {
       }
     } catch (err) {
       setError(mapCctpError(err));
+      setStage('failed');
     } finally {
       setBusy(false);
     }

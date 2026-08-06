@@ -28,6 +28,8 @@ use crate::cctp::prepare_payload_cache::{
 };
 use crate::cctp::readiness::CctpRuntime;
 use crate::cctp::stellar_payload::payload_hash_from_envelope_xdr;
+use crate::cctp::stellar_rpc::StellarRpcClient;
+use crate::cctp::stellar_tx::{parse_invoke_envelope, TxStatus};
 use crate::cctp::store::{CctpStoreError, CctpTransfer, CctpTransferStore, TransferPatch};
 use crate::cctp::transitions::can_cancel;
 use crate::cctp::verifiers::{facts_match, MintVerifyOutcome, VerifierError};
@@ -37,6 +39,12 @@ use crate::models::v2_cctp::{
     CctpDirection, CctpFinality, CctpQuoteRequest, CctpTransferStatus, CctpValidationError,
     PreparedWalletPayload,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StellarSourceSubmissionKind {
+    Approval,
+    Burn,
+}
 
 #[derive(Debug, Error)]
 pub enum CctpServiceError {
@@ -807,6 +815,68 @@ impl CctpService {
         .await
     }
 
+    /// Classify a Stellar source tx by on-chain invoke target (approval vs burn).
+    async fn classify_stellar_source_submission(
+        &self,
+        tx_hash: &str,
+    ) -> Result<StellarSourceSubmissionKind, VerifierError> {
+        let rpc = StellarRpcClient::new(&self.config)?;
+        let tx = rpc.get_finalized_transaction(tx_hash).await?;
+        if tx.status != TxStatus::Success {
+            return Err(VerifierError::Failed("tx failed".into()));
+        }
+        let invoke = parse_invoke_envelope(&tx.envelope_xdr)?;
+        match invoke.function.as_str() {
+            "approve" => Ok(StellarSourceSubmissionKind::Approval),
+            "deposit_for_burn" | "deposit_for_burn_with_hook" => {
+                Ok(StellarSourceSubmissionKind::Burn)
+            }
+            other => Err(VerifierError::Failed(format!(
+                "unsupported stellar invoke: {other}"
+            ))),
+        }
+    }
+
+    /// Route `submit-burn` to approval or burn verification using on-chain evidence.
+    pub async fn record_source_submission(
+        &self,
+        transfer_id: Uuid,
+        tx_hash: &str,
+    ) -> Result<CctpTransfer, CctpServiceError> {
+        let transfer = self
+            .store
+            .get(transfer_id)
+            .await
+            .map_err(CctpServiceError::Store)?
+            .ok_or(CctpServiceError::NotFound)?;
+
+        match transfer.direction {
+            CctpDirection::StellarToEvm => {
+                let kind = self
+                    .classify_stellar_source_submission(tx_hash)
+                    .await
+                    .map_err(CctpServiceError::Verifier)?;
+                match kind {
+                    StellarSourceSubmissionKind::Approval => {
+                        self.record_approval_submission(transfer_id, tx_hash).await
+                    }
+                    StellarSourceSubmissionKind::Burn => {
+                        self.record_burn_submission(transfer_id, tx_hash).await
+                    }
+                }
+            }
+            CctpDirection::EvmToStellar => {
+                if transfer.burn_prepare_step.as_deref() == Some("approval")
+                    && transfer.source_approval_verified_at.is_none()
+                {
+                    self.record_approval_submission(transfer_id, tx_hash).await
+                } else {
+                    self.record_burn_submission(transfer_id, tx_hash).await
+                }
+            }
+        }
+    }
+
     pub async fn record_approval_submission(
         &self,
         transfer_id: Uuid,
@@ -837,18 +907,18 @@ impl CctpService {
             }
         }
 
-        let required_subunits = decimal_to_cctp_subunits(&transfer.amount)
-            .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
-
         let verified_at = Utc::now();
         match transfer.direction {
             CctpDirection::StellarToEvm => {
                 if !self.runtime.stellar_approval_verifier.is_ready() {
                     return Err(CctpServiceError::VerifiersNotReady);
                 }
-                let required_i128: i128 = required_subunits.try_into().map_err(|_| {
-                    CctpServiceError::Verifier(VerifierError::Failed("amount".into()))
-                })?;
+                let cctp_amount = stellar_outbound_cctp_amount_strict(&transfer.amount)
+                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
+                let required_i128: i128 = cctp_subunits_to_stellar_subunits(cctp_amount)
+                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?
+                    .try_into()
+                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
                 self.runtime
                     .stellar_approval_verifier
                     .verify_approval(&transfer, tx_hash, required_i128)
@@ -859,6 +929,8 @@ impl CctpService {
                 if !self.runtime.evm_approval_verifier.is_ready() {
                     return Err(CctpServiceError::VerifiersNotReady);
                 }
+                let required_subunits = decimal_to_cctp_subunits(&transfer.amount)
+                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
                 self.runtime
                     .evm_approval_verifier
                     .verify_approval(&transfer, tx_hash, required_subunits)

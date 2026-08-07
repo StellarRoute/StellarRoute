@@ -485,3 +485,16 @@ This project is part of the **Stellar open-source ecosystem** and actively parti
 **We're actively building and need your help!** Whether you're a Rust expert or just starting your blockchain journey, there's a place for you in StellarRoute.
 
 **Built with ❤️ for the Stellar ecosystem**
+
+
+## 🚀 Enhanced by Bounty Hunter
+
+### Quick Start
+```bash
+git clone https://github.com/StellarRoute/StellarRoute.git
+cd StellarRoute
+# Follow instructions above
+```
+
+### CI Status
+Automated testing and linting configured via GitHub Actions.

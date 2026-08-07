@@ -143,6 +143,10 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     reset,
   } = useSwapState();
 
+  // Stable ref for quote to prevent TDZ in callbacks
+  const quoteRef = useRef(quote);
+  quoteRef.current = quote;
+
   const { data: indexedPairs } = usePairs();
 
   // Prefer an indexed demo market that currently quotes (EUR/USDy, BTC/EXT, …).
@@ -281,12 +285,12 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
 
   const handleRouteSelect = useCallback((route: AlternativeRoute) => {
     setSelectedRoute(route);
-    // Trigger re-quote
-    quote.refresh();
+    // Trigger re-quote (using ref to avoid TDZ warning)
+    quoteRef.current.refresh();
     
     const hopCount = route.rawPath ? route.rawPath.length : (quote.data?.path.length ?? 1);
     emitRouteEvent(route.venue, hopCount);
-  }, [quote, setSelectedRoute]);
+  }, [setSelectedRoute]); // quote via ref — stable reference
 
   const isRoutesLoading = quote.loading || routesState.loading;
 
@@ -873,21 +877,31 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     };
   }, [hasRecoverableState, snapshotCurrent]);
 
-  const closeRecoveryModal = useCallback(() => {
+  // Refs for recovery functions to satisfy React Compiler memoization rules
+  const discardPendingRef = useRef(discardPending);
+  discardPendingRef.current = discardPending;
+  const resetRef = useRef(reset);
+  resetRef.current = reset;
+  const closeRecoveryModalRef = useRef(() => {});
+  closeRecoveryModalRef.current = () => {
     setWakeRecoveryOpen(false);
     setWakeSnapshot(null);
+  };
+
+  const closeRecoveryModal = useCallback(() => {
+    closeRecoveryModalRef.current();
   }, []);
 
   const handleDiscardRecovery = useCallback(() => {
     if (recoveryReason === 'refresh') {
-      discardPending();
+      discardPendingRef.current();
     } else {
-      reset();
+      resetRef.current();
       setSelectedRoute(null);
     }
     setRecoveryRequestedAt(null);
-    closeRecoveryModal();
-  }, [closeRecoveryModal, discardPending, recoveryReason, reset, setSelectedRoute]);
+    closeRecoveryModalRef.current();
+  }, [recoveryReason, setSelectedRoute]); // stable refs for functions
 
   const handleRestoreRecovery = useCallback(async () => {
     setSelectedRoute(null);
@@ -897,12 +911,12 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     try {
       if (recoveryReason === 'refresh') {
         restorePending();
-        closeRecoveryModal();
+        closeRecoveryModalRef.current();
         // Force quote refresh after restoring form state
-        quote.refresh();
+        quoteRef.current.refresh();
       } else {
-        closeRecoveryModal();
-        quote.refresh();
+        closeRecoveryModalRef.current();
+        quoteRef.current.refresh();
       }
     } catch (error) {
       console.error('Failed to restore session:', error);
@@ -910,7 +924,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     } finally {
       setIsRecoveringSession(false);
     }
-  }, [closeRecoveryModal, quote, recoveryReason, restorePending, setSelectedRoute]);
+  }, [recoveryReason, restorePending, setSelectedRoute]); // stable refs + quote via ref
 
   // Handle "Swap Again" action: close modal but keep form state intact
   const handleSwapAgain = useCallback(() => {
@@ -1026,10 +1040,14 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     [fromBalance, fromToken, balanceState.spendableBalance, setFromAmount]
   );
 
+  // Ref for switchTokens to satisfy React Compiler memoization
+  const switchTokensRef = useRef(switchTokens);
+  switchTokensRef.current = switchTokens;
+
   const handleSwitchTokens = useCallback(() => {
     setSelectedRoute(null);
-    switchTokens();
-  }, [switchTokens, setSelectedRoute]);
+    switchTokensRef.current();
+  }, [setSelectedRoute]); // switchTokens via ref — stable
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {

@@ -294,6 +294,30 @@ These are planning targets for the wider test strategy; use them to judge whethe
 
 ---
 
+
+
+## 7. Frontend E2E accessibility testing
+
+The frontend E2E suite includes automated accessibility checks via Playwright
+and axe-core/playwright. These scans run under the a11y project defined in
+frontend/playwright.config.ts.
+
+### Commands
+
+```
+cd frontend
+npx playwright test --project=a11y
+npx playwright test e2e/a11y-swap-flow.spec.ts --project=a11y
+```
+
+### Baseline exclusions
+
+Known axe-rule violations that cannot be fixed immediately are tracked as
+baseline exclusions. See [frontend/docs/a11y-testing.md](../frontend/docs/a11y-testing.md)
+for the full baseline exclusion policy, the active exclusion list, and
+instructions for adding or removing exclusions.
+
+
 ## 10. Common fixes for stale or broken local runs
 
 - Lockfile drift or Cargo resolution issues:

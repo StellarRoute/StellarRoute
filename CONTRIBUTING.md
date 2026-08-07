@@ -181,6 +181,8 @@ Every code contribution **must** include appropriate tests.
 
 For the full matrix of Rust, contract, integration, benchmark, and frontend Vitest guidance, see [docs/development/testing-guide.md](docs/development/testing-guide.md).
 
+For frontend E2E accessibility testing, including axe-core rules and baseline exclusions, see [frontend/docs/a11y-testing.md](frontend/docs/a11y-testing.md).
+
 ```bash
 # All unit tests (no external deps needed)
 cargo test

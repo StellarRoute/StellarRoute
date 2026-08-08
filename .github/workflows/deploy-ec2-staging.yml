@@ -81,13 +81,14 @@ jobs:
           echo "DEPLOY_REF=${DEPLOY_REF}" >> "${GITHUB_ENV}"
           echo "DEPLOY_URL=${DEPLOY_URL}" >> "${GITHUB_ENV}"
 
-      - name: Ensure instance running and SSM online
+      - name: Ensure instance running
         if: env.SKIP != '1'
         env:
           AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
           STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
         run: |
           set -euo pipefail
+          # Deploy role may lack ssm:DescribeInstanceInformation; do not gate on it.
           STATE="$(aws ec2 describe-instances \
             --region "${AWS_REGION}" \
             --instance-ids "${STAGING_INSTANCE_ID}" \
@@ -98,27 +99,9 @@ jobs:
             echo "Starting instance ${STAGING_INSTANCE_ID}..."
             aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
             aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+            echo "Instance is running; waiting 30s for guest services..."
+            sleep 30
           fi
-
-          echo "Waiting for SSM agent Online..."
-          for _ in $(seq 1 36); do
-            PING="$(aws ssm describe-instance-information \
-              --region "${AWS_REGION}" \
-              --filters "Key=InstanceIds,Values=${STAGING_INSTANCE_ID}" \
-              --query 'InstanceInformationList[0].PingStatus' \
-              --output text 2>/dev/null || echo None)"
-            echo "SSM PingStatus=${PING}"
-            if [[ "${PING}" == "Online" ]]; then
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "SSM agent did not become Online within 6 minutes."
-          aws ssm describe-instance-information \
-            --region "${AWS_REGION}" \
-            --filters "Key=InstanceIds,Values=${STAGING_INSTANCE_ID}" \
-            --output json || true
-          exit 1
 
       - name: Send SSM deploy command
         if: env.SKIP != '1'

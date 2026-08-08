@@ -99,18 +99,15 @@ jobs:
             echo "Starting instance ${STAGING_INSTANCE_ID}..."
             aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
             aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+            echo "Instance is running; waiting 45s for guest services..."
+            sleep 45
           fi
-
-          # SSM has been returning Failed/empty output while the API still serves traffic.
-          # Deploy role lacks ec2:RebootInstances; use stop/start (StartInstances is already allowed).
-          echo "Cycling instance power to refresh SSM agent..."
-          aws ec2 stop-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
-          aws ec2 wait instance-stopped --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
-          aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
-          aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
-          aws ec2 wait instance-status-ok --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" || true
-          echo "Instance running again; waiting 60s for SSM agent..."
-          sleep 60
+          # NOTE: Deploy role cannot reboot/stop the instance or DescribeInstanceInformation.
+          # If SSM returns Failed with empty output, SSH to the host and recover the agent:
+          #   sudo systemctl restart amazon-ssm-agent
+          #   df -h
+          #   cd /opt/stellarroute && git fetch && git reset --hard origin/main
+          #   bash deploy/aws/scripts/deploy-ec2-staging.sh
 
       - name: Send SSM deploy command
         if: env.SKIP != '1'

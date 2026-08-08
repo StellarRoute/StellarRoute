@@ -114,26 +114,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Verbose sync: always emit breadcrumbs so empty SSM output is diagnosable.
+          # Keep commands short (SSM parameter size limits) and always print
+          # breadcrumbs. Avoid `set -x` — xtrace can overflow SSM stderr capture.
           # shellcheck disable=SC2016
-          SYNC_CMD="set -eux; export HOME=/root; echo SYNC_BEGIN; hostname; date -u; df -h / /var /opt 2>/dev/null || df -h; ls -la /opt || true; test -d /opt/stellarroute || { echo 'MISSING /opt/stellarroute'; exit 1; }; cd /opt/stellarroute; git -c safe.directory=* remote -v; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e '.env.*'; git -c safe.directory=* checkout -B ${DEPLOY_REF} origin/${DEPLOY_REF}; git -c safe.directory=* log -1 --oneline; test \"\$(git -c safe.directory=* rev-parse HEAD)\" = \"\$(git -c safe.directory=* rev-parse origin/${DEPLOY_REF})\"; echo SYNC_OK"
-
-          # Health wait: require API JSON response, not full /health 200 (indexer lag
-          # currently marks staging unhealthy even when API+Postgres can serve CCTP).
-          HEALTH_WAIT='for i in $(seq 1 60); do code=$(curl -sS -o /tmp/sr-health.json -w "%{http_code}" http://127.0.0.1:8080/health || echo 000); echo "health_http=${code}"; if [[ "${code}" != "000" ]] && [[ -s /tmp/sr-health.json ]]; then echo API_responding; cat /tmp/sr-health.json; break; fi; sleep 5; done'
+          PREFLIGHT='echo PREFLIGHT_BEGIN; hostname; date -u; pwd; ls -la /opt; df -h /'
+          SYNC_CMD="export HOME=/root; echo SYNC_BEGIN; cd /opt/stellarroute || { echo MISSING_REPO; exit 1; }; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e '.env.*'; git -c safe.directory=* checkout -B ${DEPLOY_REF} origin/${DEPLOY_REF}; git -c safe.directory=* log -1 --oneline; test \"\$(git -c safe.directory=* rev-parse HEAD)\" = \"\$(git -c safe.directory=* rev-parse origin/${DEPLOY_REF})\"; echo SYNC_OK"
+          HEALTH_WAIT='for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do code=$(curl -sS -o /tmp/sr-health.json -w "%{http_code}" http://127.0.0.1:8080/health || echo 000); echo health_http=$code; if [ "$code" != "000" ] && [ -s /tmp/sr-health.json ]; then echo API_responding; break; fi; sleep 5; done'
 
           jq -n \
+            --arg preflight "${PREFLIGHT}" \
             --arg sync "${SYNC_CMD}" \
             --arg health "${HEALTH_WAIT}" \
             --arg url "${DEPLOY_URL}" \
             '{
               commands: [
+                $preflight,
                 $sync,
                 "bash /opt/stellarroute/deploy/aws/scripts/deploy-ec2-staging.sh",
                 $health,
                 ("bash /opt/stellarroute/deploy/aws/scripts/ec2-postdeploy-smoke.sh " + $url)
               ]
             }' > /tmp/ssm-commands.json
+
+          echo "SSM parameters bytes: $(wc -c < /tmp/ssm-commands.json)"
 
           COMMAND_ID="$(aws ssm send-command \
             --region "${AWS_REGION}" \

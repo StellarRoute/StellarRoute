@@ -861,7 +861,17 @@ impl CctpService {
                         self.record_approval_submission(transfer_id, tx_hash).await
                     }
                     StellarSourceSubmissionKind::Burn => {
-                        self.record_burn_submission(transfer_id, tx_hash).await
+                        match self.record_burn_submission(transfer_id, tx_hash).await {
+                            // Belt-and-suspenders: if RPC decode races classify, never leave
+                            // traders on the generic "on-chain verification failed" path for
+                            // an approve tx submitted to submit-burn.
+                            Err(CctpServiceError::Verifier(VerifierError::Failed(msg)))
+                                if msg.contains("wrong function") =>
+                            {
+                                self.record_approval_submission(transfer_id, tx_hash).await
+                            }
+                            other => other,
+                        }
                     }
                 }
             }

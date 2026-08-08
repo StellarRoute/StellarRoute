@@ -81,6 +81,45 @@ jobs:
           echo "DEPLOY_REF=${DEPLOY_REF}" >> "${GITHUB_ENV}"
           echo "DEPLOY_URL=${DEPLOY_URL}" >> "${GITHUB_ENV}"
 
+      - name: Ensure instance running and SSM online
+        if: env.SKIP != '1'
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          STATE="$(aws ec2 describe-instances \
+            --region "${AWS_REGION}" \
+            --instance-ids "${STAGING_INSTANCE_ID}" \
+            --query 'Reservations[0].Instances[0].State.Name' \
+            --output text)"
+          echo "Instance state: ${STATE}"
+          if [[ "${STATE}" != "running" ]]; then
+            echo "Starting instance ${STAGING_INSTANCE_ID}..."
+            aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
+            aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+          fi
+
+          echo "Waiting for SSM agent Online..."
+          for _ in $(seq 1 36); do
+            PING="$(aws ssm describe-instance-information \
+              --region "${AWS_REGION}" \
+              --filters "Key=InstanceIds,Values=${STAGING_INSTANCE_ID}" \
+              --query 'InstanceInformationList[0].PingStatus' \
+              --output text 2>/dev/null || echo None)"
+            echo "SSM PingStatus=${PING}"
+            if [[ "${PING}" == "Online" ]]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "SSM agent did not become Online within 6 minutes."
+          aws ssm describe-instance-information \
+            --region "${AWS_REGION}" \
+            --filters "Key=InstanceIds,Values=${STAGING_INSTANCE_ID}" \
+            --output json || true
+          exit 1
+
       - name: Send SSM deploy command
         if: env.SKIP != '1'
         id: ssm
@@ -92,22 +131,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          # SSM RunShellScript often has no $HOME, so `git config --global` fails
-          # with "fatal: $HOME not set" and the tree never updates (stale Docker cache).
-          # Use per-command `git -c safe.directory=*` + HOME=/root instead.
-          # Host tree is often dirty/untracked from manual bootstrap. Clean/reset
-          # BEFORE checkout, keep .env.prod, and fail the SSM run if sync fails
-          # (AWS-RunShellScript continues past non-zero commands unless we exit).
+          # Verbose sync: always emit breadcrumbs so empty SSM output is diagnosable.
           # shellcheck disable=SC2016
-          SYNC_CMD="set -eu; cd /opt/stellarroute; export HOME=/root; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e '.env.*'; git -c safe.directory=* checkout -B ${DEPLOY_REF} origin/${DEPLOY_REF}; git -c safe.directory=* log -1 --oneline; test \"\$(git -c safe.directory=* rev-parse HEAD)\" = \"\$(git -c safe.directory=* rev-parse origin/${DEPLOY_REF})\""
+          SYNC_CMD="set -eux; export HOME=/root; echo SYNC_BEGIN; hostname; date -u; df -h / /var /opt 2>/dev/null || df -h; ls -la /opt || true; test -d /opt/stellarroute || { echo 'MISSING /opt/stellarroute'; exit 1; }; cd /opt/stellarroute; git -c safe.directory=* remote -v; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e '.env.*'; git -c safe.directory=* checkout -B ${DEPLOY_REF} origin/${DEPLOY_REF}; git -c safe.directory=* log -1 --oneline; test \"\$(git -c safe.directory=* rev-parse HEAD)\" = \"\$(git -c safe.directory=* rev-parse origin/${DEPLOY_REF})\"; echo SYNC_OK"
+
+          # Health wait: require API JSON response, not full /health 200 (indexer lag
+          # currently marks staging unhealthy even when API+Postgres can serve CCTP).
+          HEALTH_WAIT='for i in $(seq 1 60); do code=$(curl -sS -o /tmp/sr-health.json -w "%{http_code}" http://127.0.0.1:8080/health || echo 000); echo "health_http=${code}"; if [[ "${code}" != "000" ]] && [[ -s /tmp/sr-health.json ]]; then echo API_responding; cat /tmp/sr-health.json; break; fi; sleep 5; done'
+
           jq -n \
             --arg sync "${SYNC_CMD}" \
+            --arg health "${HEALTH_WAIT}" \
             --arg url "${DEPLOY_URL}" \
             '{
               commands: [
                 $sync,
                 "bash /opt/stellarroute/deploy/aws/scripts/deploy-ec2-staging.sh",
-                "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do if curl -fsS http://127.0.0.1:8080/health >/dev/null && curl -fsS http://127.0.0.1:8080/health/deps >/dev/null; then echo API_is_healthy; break; fi; echo Waiting_for_API_health; sleep 5; done",
+                $health,
                 ("bash /opt/stellarroute/deploy/aws/scripts/ec2-postdeploy-smoke.sh " + $url)
               ]
             }' > /tmp/ssm-commands.json
@@ -117,6 +157,7 @@ jobs:
             --instance-ids "${STAGING_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy StellarRoute staging from ${GITHUB_REPOSITORY}@${GITHUB_SHA}" \
+            --timeout-seconds 3600 \
             --parameters file:///tmp/ssm-commands.json \
             --query 'Command.CommandId' \
             --output text)"

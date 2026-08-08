@@ -102,12 +102,15 @@ jobs:
           fi
 
           # SSM has been returning Failed/empty output while the API still serves traffic.
-          # Reboot once per deploy to recover a wedged amazon-ssm-agent (common after disk pressure).
-          echo "Rebooting instance to refresh SSM agent..."
-          aws ec2 reboot-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
-          aws ec2 wait instance-status-ok --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
-          echo "Instance status checks ok; waiting 45s for SSM agent..."
-          sleep 45
+          # Deploy role lacks ec2:RebootInstances; use stop/start (StartInstances is already allowed).
+          echo "Cycling instance power to refresh SSM agent..."
+          aws ec2 stop-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
+          aws ec2 wait instance-stopped --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+          aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
+          aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+          aws ec2 wait instance-status-ok --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" || true
+          echo "Instance running again; waiting 60s for SSM agent..."
+          sleep 60
 
       - name: Send SSM deploy command
         if: env.SKIP != '1'

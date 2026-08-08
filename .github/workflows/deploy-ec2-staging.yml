@@ -99,9 +99,15 @@ jobs:
             echo "Starting instance ${STAGING_INSTANCE_ID}..."
             aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
             aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
-            echo "Instance is running; waiting 30s for guest services..."
-            sleep 30
           fi
+
+          # SSM has been returning Failed/empty output while the API still serves traffic.
+          # Reboot once per deploy to recover a wedged amazon-ssm-agent (common after disk pressure).
+          echo "Rebooting instance to refresh SSM agent..."
+          aws ec2 reboot-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+          aws ec2 wait instance-status-ok --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+          echo "Instance status checks ok; waiting 45s for SSM agent..."
+          sleep 45
 
       - name: Send SSM deploy command
         if: env.SKIP != '1'

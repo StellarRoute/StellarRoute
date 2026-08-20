@@ -58,14 +58,21 @@ jobs:
           # Sync main first so enable-cctp-staging.sh exists on the host.
           # shellcheck disable=SC2016
           SYNC_CMD='set -eu; cd /opt/stellarroute; export HOME=/root; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e ".env.*"; git -c safe.directory=* checkout -B main origin/main; git -c safe.directory=* log -1 --oneline'
+          # Always apply CCTP SQL on the synced tree (main already has
+          # 20260814_cctp_finality_fast.sql). Deploy used to skip that file, so
+          # Fast quotes 500'd on a Standard-only CHECK constraint.
+          # shellcheck disable=SC2016
+          APPLY_DDL='set -eu; cd /opt/stellarroute; export HOME=/root; POSTGRES_USER=$(grep -E "^POSTGRES_USER=" .env.prod | head -1 | cut -d= -f2-); POSTGRES_DB=$(grep -E "^POSTGRES_DB=" .env.prod | head -1 | cut -d= -f2-); for mig in $(ls -1 crates/api/migrations/*cctp*.sql | sort); do echo APPLYING "$mig"; docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$mig"; done'
 
           jq -n \
             --arg sync "${SYNC_CMD}" \
+            --arg apply "${APPLY_DDL}" \
             --arg sepolia "${SEPOLIA_RPC}" \
             --arg stellar "${STELLAR_RPC}" \
             '{
               commands: [
                 $sync,
+                $apply,
                 (
                   "set -eu; cd /opt/stellarroute; export HOME=/root; " +
                   "export CCTP_SEPOLIA_RPC_URL=" + ($sepolia | @sh) + "; " +

@@ -95,6 +95,9 @@ else
   echo "CCTP_ACCESS_TOKEN_HMAC_KEY=<missing>" >&2
 fi
 
+echo "Applying CCTP DDL before API recreate (includes Fast finality check)..."
+bash "${ROOT}/deploy/aws/scripts/apply-cctp-ddl.sh"
+
 echo "Recreating API with CCTP enabled..."
 COMPOSE=(docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod)
 # Clear stale name conflicts from overlapping deploy/enable SSM runs.

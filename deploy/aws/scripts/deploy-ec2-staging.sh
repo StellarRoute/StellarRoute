@@ -48,25 +48,8 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-fil
   < "${ROOT}/crates/indexer/migrations/0015_swap_prepared_quotes.sql"
 echo " - swap_prepared_quotes ready"
 
-CCTP_MIGRATIONS=(
-  "${ROOT}/crates/api/migrations/0015_cctp_transfers.sql"
-  "${ROOT}/crates/api/migrations/0016_cctp_transfers_hardening.sql"
-  "${ROOT}/crates/api/migrations/0017_cctp_mint_metadata.sql"
-  "${ROOT}/crates/api/migrations/0018_cctp_approval_tx_hash.sql"
-  "${ROOT}/crates/api/migrations/0019_cctp_approval_verified_at.sql"
-  "${ROOT}/crates/api/migrations/20260730_cctp_review_fixes.sql"
-  "${ROOT}/crates/api/migrations/20260731_cctp_prepare_lock_hardening.sql"
-  "${ROOT}/crates/api/migrations/20260801_cctp_http_gate.sql"
-  "${ROOT}/crates/api/migrations/20260802_cctp_http_hardening.sql"
-  "${ROOT}/crates/api/migrations/20260803_cctp_reattest_lease.sql"
-)
-echo "Applying CCTP DDL (idempotent)..."
-for mig in "${CCTP_MIGRATIONS[@]}"; do
-  docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod exec -T postgres \
-    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
-    < "${mig}"
-  echo " - $(basename "${mig}") ready"
-done
+echo "Applying CCTP DDL (idempotent, all *cctp*.sql)..."
+bash "${ROOT}/deploy/aws/scripts/apply-cctp-ddl.sh"
 
 echo "Local health checks:"
 # API may still be booting; do not fail the whole deploy on a racing curl here.

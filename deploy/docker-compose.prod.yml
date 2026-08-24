@@ -1,0 +1,125 @@
+# deploy/docker-compose.prod.yml
+#
+# Production overlay for docker-compose.yml (Issue #1035 / Wave 0 Oracle).
+# Use together with the base file from the repo root:
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     --env-file .env.prod config
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     --env-file .env.prod up -d --build
+#
+# All secrets must be supplied via environment variables or a .env.prod file.
+# See deploy/secrets.checklist.md and docs/deployment/oracle-always-free.md.
+#
+# DRY-RUN / VALIDATE:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     --env-file .env.prod config
+#   # Exits 0 and prints the merged config if the YAML is valid.
+
+version: "3.8"
+
+services:
+  # ── Postgres (production hardening) ─────────────────────────────────────────
+  postgres:
+    # Remove the host-port exposure so Postgres is not reachable from outside
+    # the Docker network.
+    ports: !reset []
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:-stellarroute}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stellarroute}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Redis (production hardening) ─────────────────────────────────────────────
+  redis:
+    ports: !reset []
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?required}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── API web service ──────────────────────────────────────────────────────────
+  # Dockerfile.api defaults PORT=8080 (PaaS bind on 0.0.0.0). Keep host+container
+  # on that port so Cloudflare Tunnel can target http://127.0.0.1:8080.
+  api:
+    image: ${API_IMAGE:-stellarroute-api:latest}
+    build:
+      # Compose resolves paths relative to the project directory (repo root).
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "${API_HOST_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-stellarroute}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      PORT: "8080"
+      RUST_LOG: ${RUST_LOG:-stellarroute=info,warn}
+      SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:?required}
+      STELLAR_HORIZON_URL: ${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+      STELLARROUTE_ENV: ${STELLARROUTE_ENV:-production}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?required}
+      PUBLIC_GET_ROUTES: ${PUBLIC_GET_ROUTES:-/api/v1/quote,/api/v1/pairs,/api/v1/markets,/api/v1/orderbook,/api/v1/routes,/api/v1/price-history,/health}
+      ADMIN_AUTH_TOKEN: ${ADMIN_AUTH_TOKEN:?required}
+      ENABLE_ADMIN_ROUTES: ${ENABLE_ADMIN_ROUTES:-false}
+      CCTP_ENABLED: ${CCTP_ENABLED:-false}
+      CCTP_ACCESS_TOKEN_HMAC_KEY: ${CCTP_ACCESS_TOKEN_HMAC_KEY:-}
+      CCTP_SEPOLIA_RPC_URL: ${CCTP_SEPOLIA_RPC_URL:-}
+      SEPOLIA_RPC_URL: ${SEPOLIA_RPC_URL:-}
+      CCTP_STELLAR_RPC_URL: ${CCTP_STELLAR_RPC_URL:-}
+      CCTP_IRIS_BASE_URL: ${CCTP_IRIS_BASE_URL:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Use /health/deps for container readiness (DB/Redis). /health also gates on
+      # indexer lag and returns 503 on a fresh DB before the indexer has synced.
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health/deps || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - stellarroute-network
+
+  # ── Indexer worker ───────────────────────────────────────────────────────────
+  indexer:
+    image: ${INDEXER_IMAGE:-stellarroute-indexer:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.indexer
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-stellarroute}"
+      SOROBAN_RPC_URL: ${SOROBAN_RPC_URL:?required}
+      STELLAR_HORIZON_URL: ${STELLAR_HORIZON_URL:?required}
+      ROUTER_CONTRACT_ADDRESS: ${ROUTER_CONTRACT_ADDRESS:?required}
+      AMM_POOLS: ${AMM_POOLS:-}
+      RUST_LOG: ${RUST_LOG:-stellarroute_indexer=info,warn}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - stellarroute-network
+
+networks:
+  stellarroute-network:
+    driver: bridge

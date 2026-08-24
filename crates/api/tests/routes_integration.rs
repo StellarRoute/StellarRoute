@@ -4,9 +4,7 @@
 //! integration), verifying: multi-route list, ranking scores, per-route metadata
 //! (fees, hops, impact estimates), and limit/pagination semantics.
 
-use stellarroute_api::models::{
-    AssetInfo, RouteCandidate, RouteHop, RoutesResponse,
-};
+use stellarroute_api::models::{AssetInfo, RouteCandidate, RouteHop, RoutesResponse};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,7 +73,11 @@ fn routes_response_contains_multiple_candidates() {
 
 #[test]
 fn routes_are_ranked_by_descending_score() {
-    let best = make_candidate(95.0, 20, vec![make_hop("native", "USDC", "1.0", 20, "amm:pool-1")]);
+    let best = make_candidate(
+        95.0,
+        20,
+        vec![make_hop("native", "USDC", "1.0", 20, "amm:pool-1")],
+    );
     let second = make_candidate(
         80.0,
         40,
@@ -84,7 +86,11 @@ fn routes_are_ranked_by_descending_score() {
             make_hop("XLM2", "USDC", "1.0", 20, "sdex"),
         ],
     );
-    let third = make_candidate(65.5, 80, vec![make_hop("native", "USDC", "0.98", 80, "sdex")]);
+    let third = make_candidate(
+        65.5,
+        80,
+        vec![make_hop("native", "USDC", "0.98", 80, "sdex")],
+    );
 
     let resp = make_routes_response(vec![best, second, third]);
 
@@ -93,7 +99,10 @@ fn routes_are_ranked_by_descending_score() {
         assert!(
             scores[i] >= scores[i + 1],
             "routes[{}].score ({}) must be >= routes[{}].score ({})",
-            i, scores[i], i + 1, scores[i + 1]
+            i,
+            scores[i],
+            i + 1,
+            scores[i + 1]
         );
     }
 }
@@ -109,7 +118,11 @@ fn route_candidate_exposes_fee_bps_per_hop() {
 
 #[test]
 fn route_candidate_exposes_impact_bps() {
-    let candidate = make_candidate(88.0, 45, vec![make_hop("native", "USDC", "1.0", 45, "sdex")]);
+    let candidate = make_candidate(
+        88.0,
+        45,
+        vec![make_hop("native", "USDC", "1.0", 45, "sdex")],
+    );
     assert_eq!(candidate.impact_bps, 45);
 }
 
@@ -120,7 +133,11 @@ fn route_candidate_exposes_multi_hop_path() {
         make_hop("ETH", "USDC", "2500.0000000", 30, "amm:pool-eth-usdc"),
     ];
     let candidate = make_candidate(78.5, 50, hops);
-    assert_eq!(candidate.path.len(), 2, "two-hop path should expose both hops");
+    assert_eq!(
+        candidate.path.len(),
+        2,
+        "two-hop path should expose both hops"
+    );
     assert_eq!(candidate.path[1].source, "amm:pool-eth-usdc");
 }
 
@@ -137,7 +154,10 @@ fn route_hop_price_is_formatted_to_7_decimals() {
 #[test]
 fn route_candidate_amount_out_of_hop_is_present() {
     let hop = make_hop("native", "USDC", "1.0000000", 20, "sdex");
-    assert!(!hop.amount_out_of_hop.is_empty(), "amount_out_of_hop must be populated");
+    assert!(
+        !hop.amount_out_of_hop.is_empty(),
+        "amount_out_of_hop must be populated"
+    );
 }
 
 // ── AC4: Limit / pagination supports capping route count ─────────────────────
@@ -145,9 +165,21 @@ fn route_candidate_amount_out_of_hop_is_present() {
 #[test]
 fn routes_response_respects_limit_of_one() {
     let candidates = vec![
-        make_candidate(95.0, 20, vec![make_hop("native", "USDC", "1.0", 20, "amm:pool-1")]),
-        make_candidate(85.0, 40, vec![make_hop("native", "USDC", "0.99", 40, "sdex")]),
-        make_candidate(70.0, 60, vec![make_hop("native", "USDC", "0.98", 60, "sdex")]),
+        make_candidate(
+            95.0,
+            20,
+            vec![make_hop("native", "USDC", "1.0", 20, "amm:pool-1")],
+        ),
+        make_candidate(
+            85.0,
+            40,
+            vec![make_hop("native", "USDC", "0.99", 40, "sdex")],
+        ),
+        make_candidate(
+            70.0,
+            60,
+            vec![make_hop("native", "USDC", "0.98", 60, "sdex")],
+        ),
     ];
 
     // Simulate caller-side limit=1 (as the handler does)
@@ -158,9 +190,11 @@ fn routes_response_respects_limit_of_one() {
 
 #[test]
 fn routes_response_returns_all_when_limit_exceeds_candidates() {
-    let candidates = vec![
-        make_candidate(95.0, 20, vec![make_hop("native", "USDC", "1.0", 20, "amm:pool-1")]),
-    ];
+    let candidates = vec![make_candidate(
+        95.0,
+        20,
+        vec![make_hop("native", "USDC", "1.0", 20, "amm:pool-1")],
+    )];
     let limit = 5;
     let limited: Vec<_> = candidates.into_iter().take(limit).collect();
     let resp = make_routes_response(limited);
@@ -208,8 +242,16 @@ fn routes_response_serializes_with_all_required_fields() {
 #[test]
 fn policy_used_field_propagates_in_all_candidates() {
     let resp = make_routes_response(vec![
-        make_candidate(90.0, 30, vec![make_hop("native", "USDC", "1.0", 30, "sdex")]),
-        make_candidate(80.0, 50, vec![make_hop("native", "USDC", "0.99", 50, "sdex")]),
+        make_candidate(
+            90.0,
+            30,
+            vec![make_hop("native", "USDC", "1.0", 30, "sdex")],
+        ),
+        make_candidate(
+            80.0,
+            50,
+            vec![make_hop("native", "USDC", "0.99", 50, "sdex")],
+        ),
     ]);
 
     for candidate in &resp.routes {

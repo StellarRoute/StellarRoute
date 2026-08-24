@@ -1,0 +1,135 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { WalletNetwork } from '@/lib/wallet/types';
+import { getHorizonUrl } from '@/lib/network-endpoints';
+import { XLM_FEE_RESERVE } from '@/lib/stellar-reserves';
+
+interface HorizonBalanceLine {
+  balance: string;
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+}
+
+interface HorizonAccountResponse {
+  balances?: HorizonBalanceLine[];
+}
+
+interface WalletBalanceState {
+  balance: string | null;
+  spendableBalance: string | null;
+  loading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+const REFETCH_DEBOUNCE_MS = 1_500;
+
+function findAssetBalance(
+  balances: HorizonBalanceLine[],
+  asset: string,
+): string {
+  if (asset === 'native') {
+    return balances.find((line) => line.asset_type === 'native')?.balance ?? '0';
+  }
+
+  const [code, issuer] = asset.split(':');
+  if (!code || !issuer) return '0';
+
+  return (
+    balances.find(
+      (line) => line.asset_code === code && line.asset_issuer === issuer,
+    )?.balance ?? '0'
+  );
+}
+
+function formatSpendableNativeBalance(balance: string): string {
+  const value = Number.parseFloat(balance);
+  if (!Number.isFinite(value)) return '0';
+  return Math.max(0, value - XLM_FEE_RESERVE).toFixed(7);
+}
+
+export function useWalletBalance({
+  address,
+  asset,
+  isConnected,
+  network,
+}: {
+  address: string | null;
+  asset: string;
+  isConnected: boolean;
+  network: WalletNetwork | null;
+}): WalletBalanceState {
+  const [state, setState] = useState<Omit<WalletBalanceState, 'refetch'>>({
+    balance: null,
+    spendableBalance: null,
+    loading: false,
+    error: null,
+  });
+
+  const lastFetchAt = useRef(0);
+  const [fetchTick, setFetchTick] = useState(0);
+
+  const refetch = useCallback(() => {
+    const now = Date.now();
+    if (now - lastFetchAt.current < REFETCH_DEBOUNCE_MS) return;
+    setFetchTick((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!isConnected || !address) {
+      setState({
+        balance: null,
+        spendableBalance: null,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+
+    const horizonUrl = getHorizonUrl(network);
+
+    const controller = new AbortController();
+    lastFetchAt.current = Date.now();
+    setState((previous) => ({ ...previous, loading: true, error: null }));
+
+    fetch(`${horizonUrl}/accounts/${encodeURIComponent(address)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        // Unfunded accounts are normal on testnet — treat as zero balance.
+        if (response.status === 404) {
+          return { balances: [] } as HorizonAccountResponse;
+        }
+        if (!response.ok) {
+          throw new Error('Unable to load wallet balance.');
+        }
+        return (await response.json()) as HorizonAccountResponse;
+      })
+      .then((account) => {
+        if (controller.signal.aborted) return;
+        const balance = findAssetBalance(account.balances ?? [], asset);
+        setState({
+          balance,
+          spendableBalance:
+            asset === 'native' ? formatSpendableNativeBalance(balance) : balance,
+          loading: false,
+          error: null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({
+          balance: null,
+          spendableBalance: null,
+          loading: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
+
+    return () => controller.abort();
+  }, [address, asset, isConnected, network, fetchTick]);
+
+  return useMemo(() => ({ ...state, refetch }), [state, refetch]);
+}

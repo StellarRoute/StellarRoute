@@ -1,0 +1,50 @@
+{
+  "corridor": "evm_to_stellar",
+  "network": "testnet",
+  "status": "complete",
+  "captured_at_utc": "2026-08-14T22:22:29Z",
+  "transfer_id": "de61d422-9db3-4332-aa58-33043c7a5bdb",
+  "amount_usdc_canonical_6dp": "5000000",
+  "amount_usdc_destination_local_7dp": "4.9995000",
+  "finality": "fast",
+  "fee_executed_usdc_canonical_6dp": "500",
+  "source": {
+    "chain": "eip155:11155111",
+    "domain": 0,
+    "burn_tx_hash": "0x339b96ccb6c3bcc0eb4c37d70fb5b8e6f3ee4c6fd1e7c032e93827faab6a5e73",
+    "block": 11490069,
+    "from": "0xa632da1e4d5dd7fb236a0b798ff9331e3a9930df",
+    "to": "0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa",
+    "method": "depositForBurnWithHook"
+  },
+  "destination": {
+    "chain": "stellar:testnet",
+    "domain": 27,
+    "trustline_tx_hash": null,
+    "mint_tx_hash": "13d2025db39b461756954e1266864ea39c126cada55ddf24db9ec364138d16f2",
+    "method": "mint_and_forward",
+    "recipient": "GBSTOZPBODWWNR4LIX56BH5IGGDHABGO43YGCZOSMVDVXMOZOHZIN5YI",
+    "mint_submitter": "GBSTOZPBODWWNR4LIX56BH5IGGDHABGO43YGCZOSMVDVXMOZOHZIN5YI"
+  },
+  "iris": {
+    "base_url": "https://iris-api-sandbox.circle.com",
+    "status": "complete"
+  },
+  "explorers": {
+    "sepolia_burn": "https://sepolia.etherscan.io/tx/0x339b96ccb6c3bcc0eb4c37d70fb5b8e6f3ee4c6fd1e7c032e93827faab6a5e73",
+    "stellar_mint": "https://stellar.expert/explorer/testnet/tx/13d2025db39b461756954e1266864ea39c126cada55ddf24db9ec364138d16f2"
+  },
+  "preflight": {
+    "local_api_v2_checked_at_utc": "2026-08-14T22:12:00Z",
+    "stellar_to_evm_executable": true,
+    "evm_to_stellar_executable": true,
+    "trustline_auto_open_implemented": true,
+    "ui_saga_trustline_step_implemented": true
+  },
+  "claims": {
+    "mainnet": false,
+    "public_cctp_enabled": false,
+    "ui_wallets": ["metamask", "freighter"]
+  },
+  "notes": "MetaMask+Freighter Fast round-trip on local CCTP-enabled API. Destination credit is burn amount minus Iris Fast fee_executed (0.0005 USDC)."
+}

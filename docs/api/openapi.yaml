@@ -58,6 +58,8 @@ servers:
 tags:
   - name: health
     description: Service health and readiness probes
+  - name: assets
+    description: Asset metadata — decimals, issuer labels, and trustline hints
   - name: trading
     description: Market data — trading pairs, orderbooks, and price quotes
 
@@ -148,6 +150,79 @@ paths:
                   horizon: degraded
                   soroban_rpc: degraded
 
+  /api/v1/assets:
+    get:
+      operationId: list_assets_metadata
+      summary: Bulk asset metadata
+      description: |
+        Returns metadata for multiple assets identified by their codes.
+      tags:
+        - assets
+      parameters:
+        - name: codes
+          in: query
+          description: Comma-separated list of asset codes (e.g. `XLM,USDC`)
+          required: true
+          schema:
+            type: string
+            example: XLM,USDC
+      responses:
+        "200":
+          description: List of asset metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetMetadataBulkResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/assets/{code}:
+    get:
+      operationId: get_asset_metadata
+      summary: Get asset metadata
+      description: |
+        Returns decimals, issuer labels, and domain information for a single asset.
+      tags:
+        - assets
+      parameters:
+        - name: code
+          in: path
+          description: Asset code (e.g. `XLM`, `USDC`)
+          required: true
+          schema:
+            type: string
+            example: USDC
+        - name: issuer
+          in: query
+          description: Optional issuer address for disambiguating common codes.
+          required: false
+          schema:
+            type: string
+            example: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+      responses:
+        "200":
+          description: Asset metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetMetadataResponse"
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/pairs:
     get:
       operationId: list_pairs
@@ -210,8 +285,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: validation_error
-                message: Invalid cursor; expected a numeric offset
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: validation_error
+                  message: Invalid cursor; expected a numeric offset
+        "404":
+          description: Trading pairs not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: not_found
+                  message: No trading pairs found
         "500":
           description: Internal server error
           content:
@@ -219,8 +311,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: internal_error
-                message: Failed to fetch trading pairs
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: internal_error
+                  message: An internal error occurred
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -305,6 +401,11 @@ paths:
                   - price: "0.1060000"
                     amount: "300.0000000"
                     total: "31.8000000"
+                summary:
+                  bid: "0.1050000"
+                  ask: "0.1060000"
+                  spread_bps: 95
+                  midpoint: "0.1055000"
                 timestamp: 1740312000
         "400":
           description: Invalid asset identifier
@@ -313,8 +414,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: invalid_asset
-                message: "Invalid base asset: unknown asset format"
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: invalid_asset
+                  message: "Invalid base asset: unknown asset format"
         "404":
           description: Asset pair not found in the orderbook
           content:
@@ -322,16 +427,85 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: not_found
-                message: Asset not found in orderbook
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: not_found
+                  message: Asset not found in orderbook
         "500":
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              example:
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: internal_error
+                  message: An internal error occurred
         "429":
           $ref: "#/components/responses/RateLimited"
+
+  /api/v1/price-history/{base}/{quote}:
+    get:
+      operationId: get_price_history
+      summary: Get 24h price history
+      description: |
+        Returns a lightweight 24h sparkline series for the selected trading pair.
+
+        The backend derives the series from `orderbook_snapshots.mid_price`
+        using hourly aggregation buckets. If no snapshots are available in the
+        trailing 24h window, the endpoint returns an empty `points` array.
+      tags:
+        - trading
+      parameters:
+        - $ref: "#/components/parameters/BaseAsset"
+        - $ref: "#/components/parameters/QuoteAsset"
+      responses:
+        "200":
+          description: 24h price history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceHistoryResponse"
+              example:
+                base_asset:
+                  asset_type: native
+                  asset_code: null
+                  asset_issuer: null
+                quote_asset:
+                  asset_type: credit_alphanum4
+                  asset_code: USDC
+                  asset_issuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                window: "24h"
+                source: orderbook_snapshots.mid_price
+                generated_at: 1740312000000
+                points:
+                  - timestamp: 1740225600000
+                    price: "0.1051000"
+                  - timestamp: 1740229200000
+                    price: "0.1054000"
+        "400":
+          description: Invalid asset identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trading pair not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/quote/{base}/{quote}:
     get:
@@ -345,7 +519,10 @@ paths:
         The router evaluates both SDEX offers and Soroban AMM pools to find
         the optimal execution path.
 
-        Results are cached for **5 seconds**.
+        Results are cached for **5 seconds**. Large responses honor
+        `Accept-Encoding: br` or `Accept-Encoding: gzip`; smaller responses
+        remain uncompressed. Prometheus metrics track original versus wire
+        response bytes.
       tags:
         - trading
       parameters:
@@ -378,12 +555,27 @@ paths:
             type: string
             enum: [sell, buy]
             default: sell
+        - name: Accept-Encoding
+          in: header
+          description: Optional response compression negotiation. Large quote responses support `br` and `gzip`; smaller responses remain uncompressed.
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Best available price quote
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestIdHeader"
+            Vary:
+              schema:
+                type: string
+              description: Includes `Accept-Encoding` when quote response compression is negotiated.
+            Content-Encoding:
+              schema:
+                type: string
+                enum: [br, gzip]
+              description: Present when the quote response is compressed.
           content:
             application/json:
               schema:
@@ -401,6 +593,7 @@ paths:
                 price: "0.1055000"
                 total: "10.5500000"
                 quote_type: sell
+                degraded: false
                 path:
                   - from_asset:
                       asset_type: native
@@ -420,8 +613,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: validation_error
-                message: Amount must be greater than zero
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: validation_error
+                  message: Amount must be greater than zero
         "404":
           description: No trading route found for this pair
           content:
@@ -429,8 +626,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: not_found
-                message: No route found for this trading pair
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: no_route
+                  message: No trading route found for this pair
         "422":
           description: Stale market data — all data sources are too old to provide a quote
           content:
@@ -451,6 +652,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              example:
+                v: 1
+                timestamp: 1740312000000
+                request_id: req_01hyxk6bzv4n9p8m8j1f4c0a2r
+                data:
+                  error: internal_error
+                  message: An internal error occurred
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -634,7 +842,7 @@ components:
       description: Link to migration guidance for deprecated v1 routes.
       schema:
         type: string
-        example: "</docs/api/v1-migration-guide>; rel=\"deprecation\""
+        example: '</docs/api/v1-migration-guide>; rel="deprecation"'
 
   schemas:
     HealthResponse:
@@ -773,6 +981,54 @@ components:
           description: Cursor token for the previous page, if any
           example: "0"
 
+    AssetMetadataResponse:
+      type: object
+      required: [code, decimals, asset_type]
+      description: Enriched asset metadata
+      properties:
+        code:
+          type: string
+          description: Asset code
+          example: USDC
+        issuer:
+          type: string
+          nullable: true
+          description: G-address of the issuer
+          example: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+        decimals:
+          type: integer
+          description: Number of decimal places for the asset
+          example: 7
+        asset_type:
+          type: string
+          description: Stellar asset type
+          example: credit_alphanum4
+        display_name:
+          type: string
+          nullable: true
+          description: Human-readable display name or issuer label
+          example: USDC
+        icon_url:
+          type: string
+          nullable: true
+          format: uri
+          description: URL to the asset's icon/logo
+          example: https://stellar.org/images/lumens-logo.svg
+        domain:
+          type: string
+          nullable: true
+          description: Home domain of the issuer
+          example: centre.io
+
+    AssetMetadataBulkResponse:
+      type: object
+      required: [assets]
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetMetadataResponse"
+
     OrderbookLevel:
       type: object
       required: [price, amount, total]
@@ -816,6 +1072,48 @@ components:
           description: Unix timestamp of the snapshot
           example: 1740312000
 
+    PriceHistoryPoint:
+      type: object
+      required: [timestamp, price]
+      description: Aggregated mid-price sample for a 24h sparkline
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds for the sampling bucket
+          example: 1740225600000
+        price:
+          type: string
+          description: Average mid-price for the bucket
+          example: "0.1051000"
+
+    PriceHistoryResponse:
+      type: object
+      required: [base_asset, quote_asset, window, source, generated_at, points]
+      description: Historical price series derived from orderbook snapshots
+      properties:
+        base_asset:
+          $ref: "#/components/schemas/AssetInfo"
+        quote_asset:
+          $ref: "#/components/schemas/AssetInfo"
+        window:
+          type: string
+          description: Fixed time window for the series
+          example: "24h"
+        source:
+          type: string
+          description: Backend data source contract
+          example: orderbook_snapshots.mid_price
+        generated_at:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds when the series was generated
+          example: 1740312000000
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceHistoryPoint"
+
     PathStep:
       type: object
       required: [from_asset, to_asset, price, source]
@@ -839,7 +1137,18 @@ components:
 
     QuoteResponse:
       type: object
-      required: [base_asset, quote_asset, amount, price, total, quote_type, path, timestamp]
+      required:
+        [
+          base_asset,
+          quote_asset,
+          amount,
+          price,
+          total,
+          quote_type,
+          degraded,
+          path,
+          timestamp,
+        ]
       description: Best available price quote with full routing path
       properties:
         base_asset:
@@ -863,6 +1172,10 @@ components:
           description: Direction of the quote
           enum: [sell, buy]
           example: sell
+        degraded:
+          type: boolean
+          description: True when Soroban RPC is degraded and quote quality is reduced.
+          example: false
         path:
           type: array
           description: Ordered list of hops in the optimal execution path

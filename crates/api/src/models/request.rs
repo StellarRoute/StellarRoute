@@ -1,11 +1,38 @@
 //! API request models
 
-use serde::Deserialize;
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt;
+use utoipa::openapi::schema::{ObjectBuilder, OneOfBuilder, Schema, SchemaType};
+use utoipa::openapi::RefOr;
+use utoipa::ToSchema;
 
 /// Default slippage tolerance in basis points (0.50%)
 pub const DEFAULT_SLIPPAGE_BPS: u32 = 50;
 /// Maximum slippage tolerance in basis points (100.00%)
 pub const MAX_SLIPPAGE_BPS: u32 = 10_000;
+
+/// Allowed top-level fields for sparse quote response selection.
+pub const ALLOWED_QUOTE_FIELDS: &[&str] = &[
+    "base_asset",
+    "quote_asset",
+    "amount",
+    "price",
+    "total",
+    "quote_type",
+    "degraded",
+    "path",
+    "timestamp",
+    "expires_at",
+    "source_timestamp",
+    "ttl_seconds",
+    "rationale",
+    "price_impact",
+    "exclusion_diagnostics",
+    "data_freshness",
+    "midpoint",
+    "spread_bps",
+];
 
 /// Query parameters for quote endpoint
 #[derive(Debug, Deserialize, Clone)]
@@ -19,22 +46,116 @@ pub struct QuoteParams {
     pub quote_type: QuoteType,
     /// Explain the route selection with decision diagnostics
     pub explain: Option<bool>,
+    /// Comma-separated list of quote response fields to include
+    pub fields: Option<String>,
 }
 
 /// Request item for batch quotes
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct QuoteRequestItem {
+    /// Base asset identifier ("native", "CODE", or "CODE:ISSUER")
     pub base: String,
+    /// Quote asset identifier ("native", "CODE", or "CODE:ISSUER")
     pub quote: String,
+    /// Amount to trade (default: "1")
     pub amount: Option<String>,
+    /// Slippage tolerance in basis points (default: 50)
     pub slippage_bps: Option<u32>,
+    /// Quote direction: "sell" or "buy" (default: sell)
     pub quote_type: Option<QuoteType>,
 }
 
-/// Batch quote request
-#[derive(Debug, Deserialize)]
+impl QuoteRequestItem {
+    /// Validate this item and return a descriptive error string on failure.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.base.is_empty() {
+            return Err("base asset cannot be empty".to_string());
+        }
+        if self.quote.is_empty() {
+            return Err("quote asset cannot be empty".to_string());
+        }
+        if self.base == self.quote {
+            return Err(format!(
+                "base and quote assets must differ (got '{}')",
+                self.base
+            ));
+        }
+        if let Some(ref amount_str) = self.amount {
+            let amount: f64 = amount_str
+                .parse()
+                .map_err(|_| format!("amount '{}' is not a valid number", amount_str))?;
+            if amount <= 0.0 {
+                return Err(format!("amount must be > 0, got {}", amount));
+            }
+        }
+        if let Some(bps) = self.slippage_bps {
+            if bps > MAX_SLIPPAGE_BPS {
+                return Err(format!(
+                    "slippage_bps {} exceeds maximum {}",
+                    bps, MAX_SLIPPAGE_BPS
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Batch quote request — up to 25 pairs in one call.
+///
+/// All items are executed concurrently against a shared market snapshot.
+/// Per-item failures do not abort the batch; each item carries its own
+/// `result` field indicating success or the specific error.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct BatchQuoteRequest {
+    /// Quote items to evaluate (1–25).
     pub quotes: Vec<QuoteRequestItem>,
+}
+
+/// Request item for batch orderbooks
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct OrderbookRequestItem {
+    /// Base asset identifier ("native", "CODE", or "CODE:ISSUER")
+    pub base: String,
+    /// Quote asset identifier ("native", "CODE", or "CODE:ISSUER")
+    pub quote: String,
+}
+
+impl OrderbookRequestItem {
+    /// Validate this item and return a descriptive error string on failure.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.base.is_empty() {
+            return Err("base asset cannot be empty".to_string());
+        }
+        if self.quote.is_empty() {
+            return Err("quote asset cannot be empty".to_string());
+        }
+        if self.base == self.quote {
+            return Err(format!(
+                "base and quote assets must differ (got '{}')",
+                self.base
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Batch orderbook request — up to 25 pairs in one call.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct BatchOrderbookRequest {
+    /// Orderbook items to evaluate (1–25).
+    pub requests: Vec<OrderbookRequestItem>,
+}
+
+/// Register or update quote-expiration webhook settings for an API consumer.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct QuoteExpirationWebhookRegistrationRequest {
+    /// HTTPS endpoint that receives quote expiration events.
+    pub webhook_url: String,
+    /// Optional per-consumer signing secret for HMAC signatures.
+    /// If omitted, the server generates one and returns it once.
+    pub signing_secret: Option<String>,
+    /// Whether webhook delivery is enabled for this consumer.
+    pub enabled: Option<bool>,
 }
 
 /// Query parameters for the multiple-routes endpoint
@@ -47,6 +168,17 @@ pub struct RoutesParams {
 }
 
 impl QuoteParams {
+    /// Parse and normalize sparse field selections from `fields` query parameter.
+    pub fn selected_fields(&self) -> Option<Vec<String>> {
+        self.fields.as_ref().map(|raw| {
+            raw.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
+        })
+    }
+
     /// Get the slippage tolerance in basis points, applying default if omitted
     pub fn slippage_bps(&self) -> u32 {
         self.slippage_bps.unwrap_or(DEFAULT_SLIPPAGE_BPS)
@@ -56,32 +188,65 @@ impl QuoteParams {
     pub fn validate(&self) -> std::result::Result<(), (String, String)> {
         if let Some(ref amount_str) = self.amount {
             let amount: f64 = amount_str.parse().map_err(|_| {
-                ("invalid_amount".to_string(), "Amount must be a numeric string".to_string())
+                (
+                    "invalid_amount".to_string(),
+                    "Amount must be a numeric string".to_string(),
+                )
             })?;
             if amount <= 0.0 {
-                return Err(("invalid_amount".to_string(), "Amount must be greater than zero".to_string()));
+                return Err((
+                    "invalid_amount".to_string(),
+                    "Amount must be greater than zero".to_string(),
+                ));
             }
         }
-        
+
         if self.slippage_bps() > MAX_SLIPPAGE_BPS {
             return Err((
                 "invalid_slippage".to_string(),
-                format!("slippage_bps must be between 0 and {} (100%)", MAX_SLIPPAGE_BPS)
+                format!(
+                    "slippage_bps must be between 0 and {} (100%)",
+                    MAX_SLIPPAGE_BPS
+                ),
             ));
+        }
+
+        if let Some(selected) = self.selected_fields() {
+            if selected.is_empty() {
+                return Err((
+                    "invalid_fields".to_string(),
+                    "fields must include at least one field name".to_string(),
+                ));
+            }
+
+            let unknown: Vec<String> = selected
+                .iter()
+                .filter(|field| !ALLOWED_QUOTE_FIELDS.contains(&field.as_str()))
+                .cloned()
+                .collect();
+
+            if !unknown.is_empty() {
+                return Err((
+                    "invalid_fields".to_string(),
+                    format!(
+                        "Unknown field(s): {}. Allowed fields: {}",
+                        unknown.join(", "),
+                        ALLOWED_QUOTE_FIELDS.join(", ")
+                    ),
+                ));
+            }
         }
 
         Ok(())
     }
 }
 
-
-
 fn default_quote_type() -> QuoteType {
     QuoteType::Sell
 }
 
 /// Type of quote requested
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum QuoteType {
     /// Selling the base asset
@@ -90,8 +255,22 @@ pub enum QuoteType {
     Buy,
 }
 
-/// Asset identifier in path parameters
-#[derive(Debug, Clone, Deserialize)]
+/// Canonical object shape for wire JSON `{ "asset_code", "asset_issuer" }`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssetPathObject {
+    asset_code: String,
+    #[serde(default)]
+    asset_issuer: Option<String>,
+}
+
+/// Asset identifier accepted on the wire as either:
+/// - canonical object JSON: `{ "asset_code": "...", "asset_issuer": "..." | null }`
+/// - legacy/client string JSON: `"native"` or `"CODE:ISSUER"`
+///
+/// Parsing is fail-closed: numbers, arrays, booleans, empty strings, and
+/// unknown object fields are rejected.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AssetPath {
     /// Asset code (e.g., "XLM", "USDC", or "native" for XLM)
     pub asset_code: String,
@@ -99,21 +278,114 @@ pub struct AssetPath {
     pub asset_issuer: Option<String>,
 }
 
+impl<'de> Deserialize<'de> for AssetPath {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct AssetPathVisitor;
+
+        impl<'de> Visitor<'de> for AssetPathVisitor {
+            type Value = AssetPath;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str(
+                    "asset string (\"native\" or \"CODE:ISSUER\") or object {asset_code, asset_issuer}",
+                )
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                AssetPath::parse(value).map_err(E::custom)
+            }
+
+            fn visit_string<E>(self, value: String) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_str(&value)
+            }
+
+            fn visit_map<M>(self, map: M) -> std::result::Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let obj = AssetPathObject::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                AssetPath::from_object(obj.asset_code, obj.asset_issuer).map_err(de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_any(AssetPathVisitor)
+    }
+}
+
+impl<'__s> ToSchema<'__s> for AssetPath {
+    fn schema() -> (&'__s str, RefOr<Schema>) {
+        let string_schema = ObjectBuilder::new()
+            .schema_type(SchemaType::String)
+            .description(Some(
+                "Legacy/client asset string: \"native\" or \"CODE:ISSUER\".",
+            ))
+            .build();
+
+        let object_schema = ObjectBuilder::new()
+            .schema_type(SchemaType::Object)
+            .description(Some(
+                "Canonical asset object with asset_code and optional asset_issuer.",
+            ))
+            .property(
+                "asset_code",
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::String)
+                    .description(Some("Asset code, or \"native\" for XLM."))
+                    .build(),
+            )
+            .property(
+                "asset_issuer",
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::String)
+                    .nullable(true)
+                    .description(Some("Issuer account for credit assets; null for native."))
+                    .build(),
+            )
+            .required("asset_code")
+            .build();
+
+        (
+            "AssetPath",
+            OneOfBuilder::new()
+                .item(string_schema)
+                .item(object_schema)
+                .description(Some(
+                    "Asset identifier: canonical object or legacy string (\"native\" / \"CODE:ISSUER\").",
+                ))
+                .into(),
+        )
+    }
+}
+
 impl AssetPath {
-    /// Parse asset identifier from path segment
-    /// Format: "native" or "CODE" or "CODE:ISSUER"
+    /// Parse asset identifier from path segment / wire string.
+    /// Format: "native" / "XLM" or "CODE" or "CODE:ISSUER"
     pub fn parse(s: &str) -> std::result::Result<Self, String> {
-        if s == "native" {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Err("Asset identifier cannot be empty".to_string());
+        }
+        if trimmed.eq_ignore_ascii_case("native") || trimmed.eq_ignore_ascii_case("XLM") {
             return Ok(Self {
                 asset_code: "native".to_string(),
                 asset_issuer: None,
             });
         }
 
-        let parts: Vec<&str> = s.split(':').collect();
+        let parts: Vec<&str> = trimmed.split(':').collect();
         match parts.len() {
             1 => {
-                let code = parts[0].to_uppercase();
+                // Preserve case — Stellar asset codes are case-sensitive (e.g. USDy ≠ USDY).
+                let code = parts[0].to_string();
                 if code.is_empty() {
                     return Err(format!("Asset code cannot be empty: {}", s));
                 }
@@ -123,7 +395,7 @@ impl AssetPath {
                 })
             }
             2 => {
-                let code = parts[0].to_uppercase();
+                let code = parts[0].to_string();
                 let issuer = parts[1];
                 if code.is_empty() || issuer.is_empty() {
                     return Err(format!("Asset code and issuer cannot be empty: {}", s));
@@ -135,6 +407,41 @@ impl AssetPath {
             }
             _ => Err(format!("Invalid asset format: {}", s)),
         }
+    }
+
+    fn from_object(
+        asset_code: String,
+        asset_issuer: Option<String>,
+    ) -> std::result::Result<Self, String> {
+        let code = asset_code.trim();
+        if code.is_empty() {
+            return Err("asset_code cannot be empty".to_string());
+        }
+        let issuer = match asset_issuer {
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err("asset_issuer cannot be empty when provided".to_string());
+                }
+                Some(trimmed.to_string())
+            }
+            None => None,
+        };
+
+        if code.eq_ignore_ascii_case("native") || code.eq_ignore_ascii_case("XLM") {
+            if issuer.is_some() {
+                return Err("native asset cannot include asset_issuer".to_string());
+            }
+            return Ok(Self {
+                asset_code: "native".to_string(),
+                asset_issuer: None,
+            });
+        }
+
+        Ok(Self {
+            asset_code: code.to_string(),
+            asset_issuer: issuer,
+        })
     }
 
     /// Convert to asset type for database queries
@@ -156,6 +463,29 @@ impl AssetPath {
     }
 }
 
+// ── Swap prepare/submit ───────────────────────────────────────────────────────
+
+use crate::routes::simulation_route::RouteDryRunPath;
+
+/// Parameters for `POST /api/v1/swap/prepare`.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct SwapPrepareRequest {
+    pub route: RouteDryRunPath,
+    pub amount: String,
+    pub sender: String,
+    #[serde(default)]
+    pub min_output: Option<String>,
+    #[serde(default)]
+    pub slippage_bps: Option<u32>,
+}
+
+/// Parameters for `POST /api/v1/swap/submit`.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
+pub struct SwapSubmitRequest {
+    pub quote_id: String,
+    pub signed_xdr: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +495,43 @@ mod tests {
         let asset = AssetPath::parse("native").unwrap();
         assert_eq!(asset.asset_code, "native");
         assert_eq!(asset.asset_issuer, None);
+    }
+
+    #[test]
+    fn test_parse_xlm_as_native() {
+        let asset = AssetPath::parse("XLM").unwrap();
+        assert_eq!(asset.asset_code, "native");
+        assert_eq!(asset.asset_issuer, None);
+        let lower = AssetPath::parse("xlm").unwrap();
+        assert_eq!(lower.asset_code, "native");
+    }
+
+    #[test]
+    fn validate_accepts_known_sparse_fields() {
+        let params = QuoteParams {
+            amount: None,
+            slippage_bps: None,
+            quote_type: QuoteType::Sell,
+            explain: None,
+            fields: Some("price,total,path".to_string()),
+        };
+
+        assert!(params.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_unknown_sparse_fields() {
+        let params = QuoteParams {
+            amount: None,
+            slippage_bps: None,
+            quote_type: QuoteType::Sell,
+            explain: None,
+            fields: Some("price,foo_field,total".to_string()),
+        };
+
+        let err = params.validate().expect_err("must reject unknown fields");
+        assert_eq!(err.0, "invalid_fields");
+        assert!(err.1.contains("foo_field"));
     }
 
     #[test]
@@ -187,12 +554,76 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_preserves_asset_code_case() {
+        let asset =
+            AssetPath::parse("USDy:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS")
+                .unwrap();
+        assert_eq!(asset.asset_code, "USDy");
+    }
+
+    #[test]
+    fn asset_path_deserializes_string_and_object_without_ambiguity() {
+        let from_string: AssetPath = serde_json::from_value(serde_json::json!("native")).unwrap();
+        assert_eq!(from_string.asset_code, "native");
+        assert_eq!(from_string.asset_issuer, None);
+
+        let issued: AssetPath = serde_json::from_value(serde_json::json!(
+            "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+        ))
+        .unwrap();
+        assert_eq!(issued.asset_code, "USDC");
+        assert_eq!(
+            issued.asset_issuer.as_deref(),
+            Some("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5")
+        );
+
+        let from_object: AssetPath = serde_json::from_value(serde_json::json!({
+            "asset_code": "USDC",
+            "asset_issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+        }))
+        .unwrap();
+        assert_eq!(from_object, issued);
+
+        let native_object: AssetPath = serde_json::from_value(serde_json::json!({
+            "asset_code": "native",
+            "asset_issuer": null
+        }))
+        .unwrap();
+        assert_eq!(native_object.asset_code, "native");
+    }
+
+    #[test]
+    fn asset_path_deserialize_fails_closed_on_invalid_wire() {
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!("")).is_err());
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!(42)).is_err());
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!(true)).is_err());
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!(["native"])).is_err());
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!({
+            "asset_code": "USDC",
+            "asset_issuer": "GABC",
+            "extra": 1
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!({
+            "asset_code": "native",
+            "asset_issuer": "GABC"
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<AssetPath>(serde_json::json!({
+            "asset_code": "",
+            "asset_issuer": null
+        }))
+        .is_err());
+    }
+
+    #[test]
     fn test_quote_params_slippage_default() {
         let params = QuoteParams {
             amount: None,
             slippage_bps: None,
             quote_type: QuoteType::Sell,
             explain: None,
+            fields: None,
         };
         assert_eq!(params.slippage_bps(), DEFAULT_SLIPPAGE_BPS);
         assert!(params.validate().is_ok());
@@ -205,6 +636,7 @@ mod tests {
             slippage_bps: Some(100),
             quote_type: QuoteType::Sell,
             explain: None,
+            fields: None,
         };
         assert_eq!(params.slippage_bps(), 100);
         assert!(params.validate().is_ok());
@@ -217,6 +649,7 @@ mod tests {
             slippage_bps: Some(MAX_SLIPPAGE_BPS),
             quote_type: QuoteType::Sell,
             explain: None,
+            fields: None,
         };
         assert_eq!(params.slippage_bps(), MAX_SLIPPAGE_BPS);
         assert!(params.validate().is_ok());
@@ -229,6 +662,7 @@ mod tests {
             slippage_bps: Some(MAX_SLIPPAGE_BPS + 1),
             quote_type: QuoteType::Sell,
             explain: None,
+            fields: None,
         };
         let result = params.validate();
         assert!(result.is_err());
@@ -242,6 +676,7 @@ mod tests {
             slippage_bps: None,
             quote_type: QuoteType::Sell,
             explain: None,
+            fields: None,
         };
         let result = params.validate();
         assert!(result.is_err());
@@ -255,6 +690,7 @@ mod tests {
             slippage_bps: None,
             quote_type: QuoteType::Sell,
             explain: None,
+            fields: None,
         };
         let result = params.validate();
         assert!(result.is_err());

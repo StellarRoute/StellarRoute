@@ -1,0 +1,51 @@
+{
+  "base_asset": {
+    "asset_type": "native",
+    "asset_code": null,
+    "asset_issuer": null
+  },
+  "quote_asset": {
+    "asset_type": "credit_alphanum4",
+    "asset_code": "USDC",
+    "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+  },
+  "amount": "100.0000000",
+  "price": "0.1055000",
+  "total": "10.5500000",
+  "quote_type": "sell",
+  "degraded": false,
+  "midpoint": "0.1057500",
+  "spread_bps": 10,
+  "price_impact": "0.12",
+  "path": [
+    {
+      "from_asset": {
+        "asset_type": "native",
+        "asset_code": null,
+        "asset_issuer": null
+      },
+      "to_asset": {
+        "asset_type": "credit_alphanum4",
+        "asset_code": "USDC",
+        "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+      },
+      "price": "0.1055000",
+      "source": "sdex"
+    }
+  ],
+  "alternativeRoutes": [
+    {
+      "id": "alt-1",
+      "venue": "AQUA Pool",
+      "expectedAmount": "10.4800000"
+    }
+  ],
+  "data_freshness": {
+    "fresh_count": 5,
+    "stale_count": 0,
+    "max_staleness_secs": 12
+  },
+  "ttl_seconds": 5,
+  "expires_at": 1740312005000,
+  "timestamp": 1740312000
+}

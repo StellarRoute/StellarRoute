@@ -248,14 +248,8 @@ pub async fn is_quote_stale(
     let revision_key = super::keys::liquidity_revision(base_asset, counter_asset);
 
     match cache.get::<u64>(&revision_key).await {
-        Some(current_revision) => {
-            // If current revision is newer than quote timestamp, quote is stale
-            current_revision > quote_timestamp
-        }
-        None => {
-            // No revision tracked, assume quote is fresh
-            false
-        }
+        crate::cache::CacheResult::Hit(current_revision) => current_revision > quote_timestamp,
+        crate::cache::CacheResult::Miss | crate::cache::CacheResult::Unavailable => false,
     }
 }
 

@@ -41,7 +41,69 @@ export interface Orderbook {
   timestamp: number;
 }
 
+export interface PriceHistoryPoint {
+  /** Unix timestamp in milliseconds */
+  timestamp: number;
+  /** Mid-market price as a decimal string */
+  price: string;
+}
+
+export type PriceHistoryWindow = '1h' | '4h' | '24h' | '7d' | '30d';
+
+export interface PriceHistoryResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  window: PriceHistoryWindow;
+  source: string;
+  /** Unix timestamp in milliseconds */
+  generated_at: number;
+  points: PriceHistoryPoint[];
+}
+
 export type QuoteType = 'sell' | 'buy';
+
+/** Standard API response envelope from the backend */
+export interface ApiResponse<T> {
+  v: number;
+  timestamp: number;
+  request_id: string;
+  data: T;
+}
+
+export interface VenueEvaluation {
+  source: string;
+  price: string;
+  available_amount: string;
+  executable: boolean;
+}
+
+export interface QuoteRationaleMetadata {
+  strategy: string;
+  selected_source: string;
+  compared_venues: VenueEvaluation[];
+}
+
+export type ExclusionReason =
+  | { type: 'policy_threshold'; threshold: number }
+  | { type: 'override' }
+  | { type: 'stale_data' }
+  | { type: 'circuit_breaker_open' }
+  | { type: 'liquidity_anomaly' };
+
+export interface ExcludedVenueInfo {
+  venue_ref: string;
+  reason: ExclusionReason;
+}
+
+export interface ExclusionDiagnostics {
+  excluded_venues: ExcludedVenueInfo[];
+}
+
+export interface DataFreshness {
+  fresh_count: number;
+  stale_count: number;
+  max_staleness_secs: number;
+}
 
 export interface PathStep {
   from_asset: Asset;
@@ -49,6 +111,10 @@ export interface PathStep {
   price: string;
   /** "sdex" or "amm:<pool_address>" */
   source: string;
+  /** Total liquidity depth available at this hop's price */
+  liquidity_depth?: string;
+  /** Fee in basis points for this hop (e.g., 30 for 0.3%) */
+  fee_bps?: number;
 }
 
 export interface PriceQuote {
@@ -57,10 +123,18 @@ export interface PriceQuote {
   amount: string;
   price: string;
   total: string;
+  /** "sell" or "buy" */
   quote_type: QuoteType;
+  /** Whether the quote is serving degraded market data */
+  degraded?: boolean;
+  /** Market midpoint price */
+  midpoint?: string;
+  /** Market spread in basis points */
+  spread_bps?: number;
+  /** Route breakdown */
   path: PathStep[];
   priceImpact?: string;
-  /** Unix timestamp (seconds) */
+  /** Unix timestamp (milliseconds) when this quote was generated */
   timestamp: number;
   /** Unix timestamp (ms) when this quote expires */
   expires_at?: number;
@@ -70,6 +144,14 @@ export interface PriceQuote {
   ttl_seconds?: number;
   /** Estimated price impact percentage */
   price_impact?: string;
+  /** Optional alternative routes provided by the aggregator */
+  alternativeRoutes?: { id: string; venue: string; expectedAmount: string }[];
+  /** Rationale for quote venue selection */
+  rationale?: QuoteRationaleMetadata;
+  /** Venues excluded from routing and the reason for each exclusion */
+  exclusion_diagnostics?: ExclusionDiagnostics;
+  /** Freshness metadata about the data sources used to compute this quote */
+  data_freshness?: DataFreshness;
 }
 
 export interface HealthStatus {
@@ -89,15 +171,103 @@ export type ApiErrorCode =
   | 'overloaded'
   | 'unauthorized'
   | 'invalid_asset'
+  | 'invalid_amount'
+  | 'invalid_slippage'
+  | 'invalid_asset_format'
   | 'no_route'
+  | 'not_executable'
   | 'stale_market_data'
+  | 'not_implemented'
+  | 'quote_not_found'
+  | 'quote_expired'
+  | 'duplicate_quote'
+  | 'dependency_unavailable'
+  | 'unsupported_execution_mode'
+  | 'unsupported_route'
   | 'network_error'
-  | 'unknown_error';
+  | 'unknown_error'
+  | 'cctp_not_enabled'
+  | 'transfer_not_found'
+  | 'provider_killed'
+  | 'payload_expired'
+  | 'attestation_pending'
+  | 'network_mismatch'
+  | 'idempotency_conflict'
+  | 'reattest_cooldown'
+  | 'reattest_conflict';
 
 export interface ApiError {
   error: ApiErrorCode;
   message: string;
   details?: unknown;
+}
+
+export interface RouteHop {
+  from_asset: Asset;
+  to_asset: Asset;
+  price: string;
+  amount_out_of_hop?: string;
+  fee_bps?: number;
+  source: string;
+}
+
+export interface RouteCandidate {
+  score: number;
+  impact_bps: number;
+  estimated_output: string;
+  policy_used?: string;
+  path: RouteHop[];
+}
+
+export interface RoutesResponse {
+  base_asset: Asset;
+  quote_asset: Asset;
+  amount: string;
+  timestamp: number;
+  routes: RouteCandidate[];
+}
+
+/** GET /metrics/cache — quote cache hit/miss statistics */
+export interface CacheMetricsResponse {
+  quote_hits: number;
+  quote_misses: number;
+  hit_ratio: number;
+  stale_quote_rejections: number;
+  stale_inputs_excluded: number;
+}
+
+/** Per-pool database connection statistics from GET /metrics/pool */
+export interface PoolStats {
+  max_connections: number;
+  size: number;
+  idle: number;
+  in_use: number;
+  utilisation: number;
+}
+
+/** GET /metrics/pool — database pool statistics */
+export interface PoolStatsResponse {
+  primary: PoolStats;
+  replica?: PoolStats;
+}
+
+export interface SwapActivityItem {
+  event_id: string;
+  contract_id: string;
+  ledger: number;
+  ledger_closed_at?: string;
+  paging_token: string;
+  sender: string;
+  amount_in: string;
+  amount_out: string;
+  fee_amount: string;
+  route: unknown;
+  source_asset?: string;
+  destination_asset?: string;
+}
+
+export interface SwapActivityResponse {
+  swaps: SwapActivityItem[];
 }
 
 export * from './route';

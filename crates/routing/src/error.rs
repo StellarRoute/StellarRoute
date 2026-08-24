@@ -16,6 +16,9 @@ pub enum RoutingError {
     #[error("Invalid asset pair: {0}")]
     InvalidPair(String),
 
+    #[error("Invalid asset identifier: {0}")]
+    InvalidAsset(String),
+
     #[error("Normalization failed: {0}")]
     Normalization(String),
 
@@ -24,6 +27,12 @@ pub enum RoutingError {
 
     #[error("Numeric overflow during normalization")]
     Overflow,
+
+    #[error("Duplicate scorer registered: {0}")]
+    DuplicateScorer(String),
+
+    #[error("Unknown scorer: {0}")]
+    UnknownScorer(String),
 }
 
 pub type Result<T> = std::result::Result<T, RoutingError>;

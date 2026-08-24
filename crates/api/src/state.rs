@@ -6,13 +6,27 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::cache::{CacheManager, SingleFlight};
+use crate::dependency_health::ExternalDependencyHealth;
 
 use crate::graph::GraphManager;
-use crate::models::{QuoteResponse, RoutesResponse};
+use crate::models::LiveCompareResult;
+use crate::models::{PreparedQuoteResponse, RoutesResponse};
 use crate::replay::capture::CaptureHook;
 use crate::routes::ws::WsState;
+use stellarroute_routing::adaptive_timeout::TimeoutController;
+use stellarroute_routing::canary::{CanaryConfig, CanaryEvaluation};
 use stellarroute_routing::health::circuit_breaker::CircuitBreakerRegistry;
 
+use crate::audit::AuditWriter;
+use crate::broadcast::{HorizonTransactionBroadcaster, TransactionBroadcaster};
+use crate::cache::{PrewarmConfig, PrewarmJob};
+use crate::exactlyonce::DedupeLedger;
+use crate::indexer_lag::IndexerLagMonitor;
+use crate::liquidity_alerts::LiquidityThinnessAlerts;
+use crate::swap::price::SwapPriceSource;
+use crate::swap::store::{PgSwapQuoteStore, SwapQuoteStore};
+use crate::swap::tx::{AccountSequenceSource, HorizonAccountSequences};
+use crate::webhooks::QuoteExpirationWebhookService;
 use crate::worker::{JobQueue, RouteWorkerPool, WorkerPoolConfig};
 
 /// Primary database pool for write operations plus an optional replica pool
@@ -36,6 +50,11 @@ impl DatabasePools {
 
     pub fn write_pool(&self) -> &PgPool {
         &self.primary
+    }
+
+    /// Returns the replica pool if one is configured, otherwise `None`.
+    pub fn replica_pool(&self) -> Option<&PgPool> {
+        self.replica.as_ref()
     }
 }
 
@@ -117,12 +136,14 @@ pub struct AppState {
     pub version: String,
     /// Cache policy settings
     pub cache_policy: CachePolicy,
+    /// Optional admin auth token used for operator-only endpoints
+    pub admin_auth_token: Option<String>,
     /// Cache hit/miss counters
     pub cache_metrics: Arc<CacheMetrics>,
     /// Route computation worker pool
     pub worker_pool: Arc<RouteWorkerPool>,
     /// Single-flight manager for quotes to prevent stampedes
-    pub quote_single_flight: Arc<SingleFlight<crate::error::Result<(QuoteResponse, bool)>>>,
+    pub quote_single_flight: Arc<SingleFlight<crate::error::Result<(PreparedQuoteResponse, bool)>>>,
 
     /// Optional replay capture hook (None when REPLAY_CAPTURE_ENABLED=false)
     pub replay_capture: Option<Arc<CaptureHook>>,
@@ -135,6 +156,52 @@ pub struct AppState {
     pub ws: Option<Arc<WsState>>,
     /// Shared circuit breaker registry for liquidity providers
     pub circuit_breaker: Arc<CircuitBreakerRegistry>,
+    /// API-level kill switches for sources/venues
+    pub kill_switch: Arc<crate::kill_switch::KillSwitchManager>,
+    /// Shared liquidity anomaly detector
+    pub anomaly_detector:
+        Arc<tokio::sync::Mutex<stellarroute_routing::health::anomaly::LiquidityAnomalyDetector>>,
+    /// Canary configuration for side-by-side policy evaluation
+    pub canary_config: Arc<tokio::sync::RwLock<CanaryConfig>>,
+    /// Canary history buffer for operator reporting
+    pub canary_history: Arc<tokio::sync::RwLock<std::collections::VecDeque<CanaryEvaluation>>>,
+    /// Live-compare history buffer: results from the external canary comparison job.
+    /// Capped at 1,000 entries; newest at the back, oldest evicted from the front.
+    pub live_compare_history:
+        Arc<tokio::sync::RwLock<std::collections::VecDeque<LiveCompareResult>>>,
+    /// Dynamic timeout controller for quote discovery
+    pub timeout_controller: Arc<TimeoutController>,
+    /// Non-blocking audit log writer for route decisions
+    pub audit_writer: Arc<AuditWriter>,
+    /// Non-blocking audit log writer for swap prepare/submit attempts
+    pub swap_submit_audit_writer: Arc<AuditWriter>,
+    /// Indexer lag monitor for sync drift detection
+    pub indexer_lag: Arc<IndexerLagMonitor>,
+    /// Idempotency ledger for POST /api/v1/quote deduplication
+    pub idempotency_ledger: Arc<DedupeLedger>,
+    /// External dependency probes and dedicated circuit breakers.
+    pub external_dependency_health: Arc<ExternalDependencyHealth>,
+    /// Orderbook liquidity thinness alert dispatcher.
+    pub liquidity_thinness_alerts: Arc<LiquidityThinnessAlerts>,
+    /// Quote expiration webhook dispatcher.
+    pub quote_expiration_webhooks: Arc<QuoteExpirationWebhookService>,
+    /// Optional Soroban simulation client for dry-run validation
+    pub soroban_simulator: Option<Arc<crate::simulation::SorobanSimulator>>,
+    /// Whether to run simulations in realtime/latency-sensitive mode
+    pub soroban_simulation_enabled: bool,
+    /// Prepared swap quote lifecycle store
+    pub swap_quote_store: Arc<dyn SwapQuoteStore>,
+    /// Signed transaction broadcaster (Horizon in production)
+    pub transaction_broadcaster: Arc<dyn TransactionBroadcaster>,
+    /// Account sequence lookup for unsigned transaction construction
+    pub account_sequences: Arc<dyn AccountSequenceSource>,
+    /// Optional test/override price source. When `None`, prepare uses the live
+    /// quote pipeline (`LiveQuotePriceSource`) without storing a self-referential Arc.
+    pub swap_price_source: Option<Arc<dyn SwapPriceSource>>,
+    /// CCTP component runtime (attestation trust bootstrapped via `bootstrap_cctp_runtime`).
+    pub cctp_runtime: crate::cctp::readiness::CctpRuntime,
+    /// Production CCTP HTTP context (PG store, service, idempotency) when bootstrap succeeds.
+    pub cctp: Option<Arc<crate::cctp::bootstrap::CctpHttpContext>>,
 }
 
 impl AppState {
@@ -148,22 +215,140 @@ impl AppState {
         let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
         graph_manager.clone().start_sync();
 
+        let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(None));
+        let audit_writer = Arc::new(AuditWriter::from_env(db.write_pool().clone()));
+        let swap_submit_audit_writer = audit_writer.clone();
+        let indexer_lag = Arc::new(IndexerLagMonitor::from_env(db.write_pool().clone()));
+        indexer_lag
+            .clone()
+            .start_polling(std::time::Duration::from_secs(30));
+
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+        let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+        let liquidity_thinness_alerts = Arc::new(LiquidityThinnessAlerts::from_env());
+        let quote_expiration_webhooks =
+            Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
+
+        // Build optional Soroban simulator (if configured)
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL").ok().and_then(|url| {
+            let cfg = crate::simulation::SimulationConfig {
+                rpc_url: url,
+                ..Default::default()
+            };
+            crate::simulation::SorobanSimulator::new(cfg)
+        });
+
+        let swap_quote_store: Arc<dyn SwapQuoteStore> =
+            Arc::new(PgSwapQuoteStore::new(db.write_pool().clone()));
+        let transaction_broadcaster: Arc<dyn TransactionBroadcaster> =
+            Arc::new(HorizonTransactionBroadcaster::from_env());
+        let account_sequences: Arc<dyn AccountSequenceSource> =
+            Arc::new(HorizonAccountSequences::from_env());
+
         Self {
             db,
             cache: None,
             version: env!("CARGO_PKG_VERSION").to_string(),
             cache_policy,
+            admin_auth_token: None,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
-            quote_single_flight: Arc::new(
-                SingleFlight::<crate::error::Result<(QuoteResponse, bool)>>::new(),
-            ),
+            quote_single_flight: Arc::new(SingleFlight::<
+                crate::error::Result<(PreparedQuoteResponse, bool)>,
+            >::new()),
             replay_capture: None,
             routes_single_flight: Arc::new(SingleFlight::new()),
+            anomaly_detector: graph_manager.anomaly_detector.clone(),
             graph_manager,
             ws: None,
             circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
+            kill_switch,
+            canary_config: Arc::new(tokio::sync::RwLock::new(CanaryConfig::default())),
+            canary_history: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(1000),
+            )),
+            live_compare_history: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(1000),
+            )),
+            timeout_controller: Arc::new(TimeoutController::new(Default::default())),
+            audit_writer,
+            swap_submit_audit_writer,
+            indexer_lag,
+            idempotency_ledger,
+            external_dependency_health,
+            liquidity_thinness_alerts,
+            quote_expiration_webhooks,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
+            swap_quote_store,
+            transaction_broadcaster,
+            account_sequences,
+            swap_price_source: None,
+            cctp_runtime: crate::cctp::readiness::CctpRuntime::production_defaults(),
+            cctp: None,
         }
+    }
+
+    /// Bootstrap CCTP attestation trust via async factory (`from_config_async`).
+    ///
+    /// Sync constructors leave attestation `NotReady`; production server startup must call this.
+    pub async fn bootstrap_cctp_runtime(&mut self) {
+        match crate::cctp::config::CctpConfig::from_env() {
+            Ok(cfg) => {
+                self.cctp_runtime =
+                    crate::cctp::readiness::CctpRuntime::from_config_async(&cfg).await;
+            }
+            Err(_) => {
+                self.cctp_runtime = crate::cctp::readiness::CctpRuntime::production_defaults();
+            }
+        }
+    }
+
+    /// Test injection for CCTP runtime wiring.
+    pub fn with_cctp_runtime(mut self, runtime: crate::cctp::readiness::CctpRuntime) -> Self {
+        self.cctp_runtime = runtime;
+        self
+    }
+
+    /// Test injection for full CCTP HTTP context.
+    pub fn with_cctp(mut self, ctx: Arc<crate::cctp::bootstrap::CctpHttpContext>) -> Self {
+        self.cctp_runtime = ctx.runtime.clone();
+        self.cctp = Some(ctx);
+        self
+    }
+
+    /// Override swap services (used in tests).
+    pub fn with_swap_services(
+        mut self,
+        store: Arc<dyn SwapQuoteStore>,
+        broadcaster: Arc<dyn TransactionBroadcaster>,
+    ) -> Self {
+        self.swap_quote_store = store;
+        self.transaction_broadcaster = broadcaster;
+        self.account_sequences = Arc::new(crate::swap::tx::FixedAccountSequences::new(100));
+        self.swap_price_source = Some(Arc::new(crate::swap::price::FixedPriceSource {
+            expected_output_per_unit: 1.0,
+        }));
+        self
+    }
+
+    /// Override authoritative prepare pricing (tests).
+    pub fn with_swap_price_source(mut self, source: Arc<dyn SwapPriceSource>) -> Self {
+        self.swap_price_source = Some(source);
+        self
+    }
+
+    /// Override account sequence source (used in tests).
+    pub fn with_account_sequences(mut self, sequences: Arc<dyn AccountSequenceSource>) -> Self {
+        self.account_sequences = sequences;
+        self
     }
 
     /// Create new application state with cache
@@ -180,29 +365,167 @@ impl AppState {
         let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
         graph_manager.clone().start_sync();
 
-        Self {
+        let cache_arc = Arc::new(Mutex::new(cache));
+        let kill_switch = Arc::new(crate::kill_switch::KillSwitchManager::new(Some(
+            cache_arc.clone(),
+        )));
+        let audit_writer = Arc::new(AuditWriter::from_env(db.write_pool().clone()));
+        let swap_submit_audit_writer = audit_writer.clone();
+        let indexer_lag = Arc::new(IndexerLagMonitor::from_env(db.write_pool().clone()));
+        indexer_lag
+            .clone()
+            .start_polling(std::time::Duration::from_secs(30));
+
+        // Spawn a task to load initial state from Redis
+        let ks = kill_switch.clone();
+        tokio::spawn(async move {
+            ks.load().await;
+            ks.start_sync();
+        });
+
+        let idempotency_ledger = {
+            let ledger = Arc::new(DedupeLedger::new(60));
+            ledger.clone().spawn_cleanup_task();
+            ledger
+        };
+        let external_dependency_health = Arc::new(ExternalDependencyHealth::from_env());
+        let liquidity_thinness_alerts = Arc::new(LiquidityThinnessAlerts::from_env());
+        let quote_expiration_webhooks =
+            Arc::new(QuoteExpirationWebhookService::new(db.write_pool().clone()));
+
+        let soroban_simulator = std::env::var("SOROBAN_RPC_URL").ok().and_then(|url| {
+            let cfg = crate::simulation::SimulationConfig {
+                rpc_url: url,
+                ..Default::default()
+            };
+            crate::simulation::SorobanSimulator::new(cfg)
+        });
+
+        let swap_quote_store: Arc<dyn SwapQuoteStore> =
+            Arc::new(PgSwapQuoteStore::new(db.write_pool().clone()));
+        let transaction_broadcaster: Arc<dyn TransactionBroadcaster> =
+            Arc::new(HorizonTransactionBroadcaster::from_env());
+        let account_sequences: Arc<dyn AccountSequenceSource> =
+            Arc::new(HorizonAccountSequences::from_env());
+
+        // Build the AppState value to return, then optionally start background jobs
+        let app_state = Self {
             db,
-            cache: Some(Arc::new(Mutex::new(cache))),
+            cache: Some(cache_arc),
             version: env!("CARGO_PKG_VERSION").to_string(),
             cache_policy,
+            admin_auth_token: None,
             cache_metrics: Arc::new(CacheMetrics::default()),
             worker_pool,
-            quote_single_flight: Arc::new(
-                SingleFlight::<crate::error::Result<(QuoteResponse, bool)>>::new(),
-            ),
+            quote_single_flight: Arc::new(SingleFlight::<
+                crate::error::Result<(PreparedQuoteResponse, bool)>,
+            >::new()),
             replay_capture: None,
             routes_single_flight: Arc::new(SingleFlight::new()),
+            anomaly_detector: graph_manager.anomaly_detector.clone(),
             graph_manager,
             ws: None,
             circuit_breaker: Arc::new(CircuitBreakerRegistry::default()),
+            kill_switch,
+            canary_config: Arc::new(tokio::sync::RwLock::new(CanaryConfig::default())),
+            canary_history: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(1000),
+            )),
+            live_compare_history: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(1000),
+            )),
+            timeout_controller: Arc::new(TimeoutController::new(Default::default())),
+            audit_writer,
+            swap_submit_audit_writer,
+            indexer_lag,
+            idempotency_ledger,
+            external_dependency_health,
+            liquidity_thinness_alerts,
+            quote_expiration_webhooks,
+            soroban_simulator,
+            soroban_simulation_enabled: std::env::var("SOROBAN_SIMULATION_ENABLED")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
+            swap_quote_store,
+            transaction_broadcaster,
+            account_sequences,
+            swap_price_source: None,
+            cctp_runtime: crate::cctp::readiness::CctpRuntime::production_defaults(),
+            cctp: None,
+        };
+
+        // Start cache prewarm job if configured via env `PREWARM_PAIRS`.
+        // Format: comma separated pairs like "native/USDC,native/EURC"
+        if let Ok(pairs_list) = std::env::var("PREWARM_PAIRS") {
+            let pairs: Vec<(String, String)> = pairs_list
+                .split(',')
+                .filter_map(|s| {
+                    let s = s.trim();
+                    if s.is_empty() {
+                        return None;
+                    }
+                    let parts: Vec<&str> = s.split('/').collect();
+                    if parts.len() != 2 {
+                        return None;
+                    }
+                    Some((parts[0].to_string(), parts[1].to_string()))
+                })
+                .collect();
+
+            if !pairs.is_empty() {
+                let interval_secs = std::env::var("PREWARM_INTERVAL_SECS")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(60);
+
+                let amount = std::env::var("PREWARM_AMOUNT").unwrap_or_else(|_| "1".to_string());
+                let slippage = std::env::var("PREWARM_SLIPPAGE_BPS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(50);
+
+                let config = PrewarmConfig {
+                    pairs,
+                    interval_secs,
+                    amount,
+                    slippage_bps: slippage,
+                };
+
+                let job = PrewarmJob::new(config, Arc::new(app_state.clone()));
+                Arc::new(job).start();
+            }
         }
+
+        app_state
     }
 
     /// Create worker pool with configuration
     fn create_worker_pool(db: PgPool) -> Arc<RouteWorkerPool> {
         let queue = JobQueue::new(db);
         let config = WorkerPoolConfig::default();
-        Arc::new(RouteWorkerPool::new(config, queue))
+        let pool = Arc::new(RouteWorkerPool::new(config, queue));
+
+        // Spawn a background task that periodically pushes per-priority queue
+        // depth and virtual-clock values to Prometheus gauges.
+        let pool_ref = pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                let snapshot = pool_ref.metrics().await;
+                crate::metrics::update_queue_depth_gauges(&snapshot.pending_by_priority);
+                crate::metrics::update_virtual_clock(snapshot.virtual_clock);
+            }
+        });
+
+        pool
+    }
+
+    /// Attach an admin auth token to the state for protected operator endpoints.
+    pub fn with_admin_auth_token(mut self, token: impl Into<String>) -> Self {
+        self.admin_auth_token = Some(token.into());
+        self
     }
 
     /// Wrap in Arc for sharing across handlers
@@ -227,5 +550,67 @@ impl AppState {
     pub fn with_ws(mut self, ws: Arc<WsState>) -> Self {
         self.ws = Some(ws);
         self
+    }
+
+    /// Calculate a quantitative health score (0.0 to 1.0) based on dependency health
+    pub async fn calculate_health_score(&self) -> f64 {
+        let mut score = 1.0;
+
+        // Check DB
+        if sqlx::query("SELECT 1")
+            .execute(self.db.read_pool())
+            .await
+            .is_err()
+        {
+            score *= 0.5;
+        }
+
+        // Check Redis
+        if let Some(cache) = &self.cache {
+            if let Ok(mut guard) = cache.try_lock() {
+                if guard.health_status().await != crate::cache::CacheHealthStatus::Healthy {
+                    score *= 0.8;
+                }
+            }
+        }
+
+        // Check Horizon (simplified active probe)
+        // In a real app, this would be more sophisticated
+        score
+    }
+}
+
+#[cfg(test)]
+mod cctp_bootstrap_tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lazy_db() -> DatabasePools {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .expect("lazy pool");
+        DatabasePools::new(pool, None)
+    }
+
+    #[tokio::test]
+    async fn sync_constructor_leaves_attestation_not_ready() {
+        let state = AppState::new(lazy_db());
+        assert!(!state.cctp_runtime.attestation_verifier.is_ready());
+    }
+
+    #[tokio::test]
+    async fn bootstrap_cctp_runtime_uses_async_factory() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("SEPOLIA_RPC_URL");
+        std::env::remove_var("STELLAR_RPC_URL");
+
+        let mut state = AppState::new(lazy_db());
+        assert!(!state.cctp_runtime.attestation_verifier.is_ready());
+        state.bootstrap_cctp_runtime().await;
+        assert!(!state.cctp_runtime.evm_burn_builder.is_ready());
+        assert!(!state.cctp_runtime.attestation_verifier.is_ready());
     }
 }

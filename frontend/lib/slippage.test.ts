@@ -4,6 +4,9 @@ import {
   isValidSlippage,
   getSlippageWarning,
   getSlippageWarningLevel,
+  getSlippageWarningTier,
+  getSlippageAcknowledgmentKey,
+  requiresSlippageAcknowledgment,
 } from "./slippage";
 
 describe("Slippage Utils", () => {
@@ -41,5 +44,52 @@ describe("Slippage Utils", () => {
     expect(getSlippageWarningLevel(0.05)).toBe("low");
     expect(getSlippageWarningLevel(5)).toBe("high");
     expect(getSlippageWarningLevel(0.5)).toBeNull();
+  });
+
+  it("assigns configurable slippage warning tiers", () => {
+    expect(getSlippageWarningTier(0.05)).toBe("low");
+    expect(getSlippageWarningTier(1)).toBe("elevated");
+    expect(getSlippageWarningTier(4.99)).toBe("elevated");
+    expect(getSlippageWarningTier(5)).toBe("high");
+    expect(getSlippageWarningTier(0.5)).toBeNull();
+  });
+
+  it("requires explicit acknowledgment only for the high tier", () => {
+    expect(requiresSlippageAcknowledgment(1)).toBe(false);
+    expect(requiresSlippageAcknowledgment(5)).toBe(true);
+  });
+
+  it("changes acknowledgment key when amount, pair, or slippage changes", () => {
+    const base = getSlippageAcknowledgmentKey({
+      amount: "10",
+      fromToken: "native",
+      toToken: "USDC:GQUOTE",
+      slippage: 5,
+    });
+
+    expect(
+      getSlippageAcknowledgmentKey({
+        amount: "11",
+        fromToken: "native",
+        toToken: "USDC:GQUOTE",
+        slippage: 5,
+      }),
+    ).not.toBe(base);
+    expect(
+      getSlippageAcknowledgmentKey({
+        amount: "10",
+        fromToken: "USDC:GQUOTE",
+        toToken: "native",
+        slippage: 5,
+      }),
+    ).not.toBe(base);
+    expect(
+      getSlippageAcknowledgmentKey({
+        amount: "10",
+        fromToken: "native",
+        toToken: "USDC:GQUOTE",
+        slippage: 6,
+      }),
+    ).not.toBe(base);
   });
 });

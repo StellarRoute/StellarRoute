@@ -20,13 +20,43 @@
 //! RUST_LOG=info LOG_FORMAT=json OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 ./stellarroute-indexer
 //! ```
 
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, Tracer};
 use opentelemetry_sdk::Resource;
 use std::env;
+use tracing::Span;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TraceContext {
+    pub trace_id: String,
+    pub span_id: String,
+}
+
+impl TraceContext {
+    pub fn current() -> Self {
+        let span = Span::current();
+        let context = span.context();
+        let span_ref = context.span();
+        let span_ctx = span_ref.span_context();
+
+        Self {
+            trace_id: span_ctx.trace_id().to_string(),
+            span_id: span_ctx.span_id().to_string(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.trace_id.is_empty()
+            || self.span_id.is_empty()
+            || self.trace_id == "00000000000000000000000000000000"
+            || self.span_id == "0000000000000000"
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TracingConfig {

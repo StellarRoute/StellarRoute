@@ -1,5 +1,7 @@
 use crate::error::{IndexerError, Result};
+use crate::horizon::backpressure::{parse_retry_after, BackoffConfig, ThrottleState};
 use crate::models::horizon::{HorizonOffer, HorizonOrderbook, HorizonPage};
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -28,6 +30,10 @@ pub struct HorizonClient {
     base_url: String,
     http: reqwest::Client,
     retry_config: RetryConfig,
+    /// Shared throttle state — tracks consecutive 429s and emits metrics.
+    pub throttle: Arc<ThrottleState>,
+    /// Backoff configuration for 429 responses.
+    backoff_config: BackoffConfig,
 }
 
 /// Parameters for fetching an orderbook snapshot.
@@ -55,10 +61,35 @@ impl HorizonClient {
                 .build()
                 .unwrap_or_default(),
             retry_config,
+            throttle: Arc::new(ThrottleState::new()),
+            backoff_config: BackoffConfig::default(),
         }
     }
 
-    /// Execute a request with exponential backoff retry logic
+    /// Create a client with custom retry config and custom backoff config (useful in tests).
+    pub fn with_retry_config_and_backoff(
+        base_url: impl Into<String>,
+        retry_config: RetryConfig,
+        backoff_config: BackoffConfig,
+    ) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+            retry_config,
+            throttle: Arc::new(ThrottleState::new()),
+            backoff_config,
+        }
+    }
+
+    /// Execute a request with exponential backoff retry logic.
+    ///
+    /// 429 responses are handled specially:
+    /// - The `Retry-After` header is respected when present.
+    /// - Full-jitter exponential backoff is applied otherwise.
+    /// - Cursor progress is preserved (the caller never advances the cursor on 429).
     async fn retry_request<F, Fut, T>(&self, operation: F) -> Result<T>
     where
         F: Fn() -> Fut,
@@ -69,7 +100,10 @@ impl HorizonClient {
 
         loop {
             match operation().await {
-                Ok(result) => return Ok(result),
+                Ok(result) => {
+                    self.throttle.record_success();
+                    return Ok(result);
+                }
                 Err(e) => {
                     attempt += 1;
 
@@ -100,8 +134,81 @@ impl HorizonClient {
         }
     }
 
+    /// Execute a request, handling 429 with adaptive backoff before delegating
+    /// to the standard retry loop.
+    ///
+    /// This wrapper intercepts the raw HTTP response so it can read the
+    /// `Retry-After` header before the body is consumed.
+    async fn execute_with_backpressure(&self, url: &str) -> Result<reqwest::Response> {
+        let max_rate_limit_retries: u32 = 8;
+        let mut rl_attempt = 0u32;
+
+        loop {
+            let resp = self.http.get(url).send().await?;
+
+            if resp.status().as_u16() == 429 {
+                rl_attempt += 1;
+                let retry_after = parse_retry_after(
+                    resp.headers()
+                        .get("retry-after")
+                        .and_then(|v| v.to_str().ok()),
+                );
+                let delay = self
+                    .throttle
+                    .record_rate_limit(retry_after, &self.backoff_config);
+
+                if rl_attempt >= max_rate_limit_retries {
+                    warn!(
+                        url = url,
+                        rl_attempt, "Giving up after {} rate-limit retries", max_rate_limit_retries
+                    );
+                    return Err(IndexerError::RateLimitExceeded {
+                        retry_after: retry_after.or(Some(delay.as_secs())),
+                    });
+                }
+
+                crate::horizon::backpressure::throttle_sleep(delay).await;
+                continue;
+            }
+
+            return Ok(resp);
+        }
+    }
+
     /// Fetch offers page with retry logic.
     ///
+    /// Fetch the latest ledger sequence from Horizon (`GET /ledgers?order=desc&limit=1`).
+    pub async fn get_latest_ledger(&self) -> Result<u64> {
+        let url = format!("{}/ledgers?order=desc&limit=1", self.base_url);
+        let url_c = url.clone();
+        self.retry_request(|| async {
+            let resp = self.execute_with_backpressure(&url_c).await?;
+            let status = resp.status();
+            if !status.is_success() {
+                let error_body = resp.text().await.unwrap_or_default();
+                return Err(IndexerError::StellarApi {
+                    endpoint: url_c.clone(),
+                    status: status.as_u16(),
+                    message: error_body,
+                });
+            }
+            let body: serde_json::Value =
+                resp.json().await.map_err(|e| IndexerError::StellarApi {
+                    endpoint: url_c.clone(),
+                    status: 0,
+                    message: format!("failed to parse ledgers JSON: {e}"),
+                })?;
+            body["_embedded"]["records"][0]["sequence"]
+                .as_u64()
+                .ok_or_else(|| IndexerError::StellarApi {
+                    endpoint: url_c.clone(),
+                    status: 0,
+                    message: "missing sequence in Horizon ledgers response".to_string(),
+                })
+        })
+        .await
+    }
+
     /// Confirmed endpoint: `GET /offers`
     /// Parameters:
     /// - `limit`: Number of offers to fetch (default: 200)
@@ -127,18 +234,17 @@ impl HorizonClient {
             url.push_str(s);
         }
 
-        let client = self.http.clone();
-        let url_clone = url.clone();
+        debug!("Fetching offers from: {}", url);
 
+        let url_c = url.clone();
         self.retry_request(|| async {
-            debug!("Fetching offers from: {}", url_clone);
-            let resp = client.get(&url_clone).send().await?;
+            let resp = self.execute_with_backpressure(&url_c).await?;
 
             let status = resp.status();
             if !status.is_success() {
                 let error_body = resp.text().await.unwrap_or_default();
                 return Err(IndexerError::StellarApi {
-                    endpoint: url_clone.clone(),
+                    endpoint: url_c.clone(),
                     status: status.as_u16(),
                     message: error_body,
                 });
@@ -180,18 +286,17 @@ impl HorizonClient {
             url.push_str(issuer);
         }
 
-        let client = self.http.clone();
-        let url_clone = url.clone();
+        debug!("Fetching orderbook from: {}", url);
 
+        let url_c = url.clone();
         self.retry_request(|| async {
-            debug!("Fetching orderbook from: {}", url_clone);
-            let resp = client.get(&url_clone).send().await?;
+            let resp = self.execute_with_backpressure(&url_c).await?;
 
             let status = resp.status();
             if !status.is_success() {
                 let error_body = resp.text().await.unwrap_or_default();
                 return Err(IndexerError::StellarApi {
-                    endpoint: url_clone.clone(),
+                    endpoint: url_c.clone(),
                     status: status.as_u16(),
                     message: error_body,
                 });
@@ -205,45 +310,77 @@ impl HorizonClient {
 
     /// Stream offers in real-time using Server-Sent Events (SSE).
     ///
-    /// Endpoint: `GET /offers?cursor=now`
+    /// Endpoint: `GET /offers?cursor={cursor}`
     /// This returns a stream that sends new offers as they are created.
-    ///
-    /// Note: This function returns an async stream that yields offers as they arrive.
-    /// For now, we return a simple implementation that can be enhanced later.
-    pub async fn stream_offers(&self) -> Result<impl futures::Stream<Item = Result<HorizonOffer>>> {
+    pub async fn stream_offers(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<impl futures::Stream<Item = Result<HorizonOffer>>> {
         use futures::stream::{self, StreamExt};
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        use tokio_util::io::StreamReader;
 
-        let url = format!("{}/offers?cursor=now", self.base_url);
-        debug!("Starting offer stream from: {}", url);
+        let cursor = cursor.unwrap_or("now");
+        let url = format!("{}/offers?cursor={}", self.base_url, cursor);
+        debug!("Starting SSE offer stream from: {}", url);
 
-        // For now, return a polling-based stream
-        // In production, this should use SSE (eventsource) for true streaming
-        let client = self.clone();
-        let stream = stream::unfold(None, move |cursor: Option<String>| {
-            let client = client.clone();
-            async move {
-                // Poll for new offers
-                match client.get_offers(Some(10), cursor.as_deref(), None).await {
-                    Ok(offers) => {
-                        if offers.is_empty() {
-                            // No new offers, wait before next poll
-                            tokio::time::sleep(Duration::from_secs(2)).await;
-                            Some((vec![], cursor))
-                        } else {
-                            // Return offers and update cursor
-                            // In real Horizon API, cursor comes from paging info
-                            Some((offers, Some("next_cursor".to_string())))
+        let resp = self
+            .http
+            .get(&url)
+            .header("Accept", "text/event-stream")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let error_body = resp.text().await.unwrap_or_default();
+            return Err(IndexerError::StellarApi {
+                endpoint: url,
+                status: status.as_u16(),
+                message: error_body,
+            });
+        }
+
+        let bytes_stream = resp
+            .bytes_stream()
+            .map(|res| res.map_err(std::io::Error::other));
+        let reader = BufReader::new(StreamReader::new(bytes_stream));
+        let lines = reader.lines();
+
+        let stream = stream::unfold(lines, |mut lines| async move {
+            let mut current_event = String::new();
+            let mut current_data = String::new();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                if line.is_empty() {
+                    // End of event
+                    if current_event == "message" && !current_data.is_empty() {
+                        match serde_json::from_str::<HorizonOffer>(&current_data) {
+                            Ok(offer) => return Some((Ok(offer), lines)),
+                            Err(e) => {
+                                return Some((
+                                    Err(IndexerError::JsonParse {
+                                        context: "SSE offer".to_string(),
+                                        error: e.to_string(),
+                                    }),
+                                    lines,
+                                ))
+                            }
                         }
                     }
-                    Err(e) => {
-                        warn!("Error streaming offers: {}", e);
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        Some((vec![], cursor))
-                    }
+                    current_event.clear();
+                    current_data.clear();
+                    continue;
+                }
+
+                if let Some(data) = line.strip_prefix("data: ") {
+                    current_data.push_str(data);
+                } else if let Some(event) = line.strip_prefix("event: ") {
+                    current_event = event.to_string();
                 }
             }
-        })
-        .flat_map(|offers| stream::iter(offers.into_iter().map(Ok)));
+            None
+        });
 
         Ok(stream)
     }
@@ -553,12 +690,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_offers_429_returns_stellar_api_error() {
+    async fn test_get_offers_429_returns_rate_limit_error() {
         let mock_server = MockServer::start().await;
 
+        // Always 429 — the client should exhaust retries and return RateLimitExceeded
         Mock::given(method("GET"))
             .and(path("/offers"))
-            .respond_with(ResponseTemplate::new(429).set_body_string("Too Many Requests"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "0")
+                    .set_body_string("Too Many Requests"),
+            )
             .mount(&mock_server)
             .await;
 
@@ -571,10 +713,12 @@ mod tests {
         let client = HorizonClient::with_retry_config(mock_server.uri(), cfg);
         let err = client.get_offers(Some(10), None, None).await.unwrap_err();
 
-        match err {
-            IndexerError::StellarApi { status, .. } => assert_eq!(status, 429),
-            other => panic!("Expected StellarApi error, got {:?}", other),
-        }
+        // After our backpressure change, persistent 429s surface as RateLimitExceeded
+        assert!(
+            matches!(err, IndexerError::RateLimitExceeded { .. }),
+            "Expected RateLimitExceeded, got {:?}",
+            err
+        );
     }
 
     #[tokio::test]
@@ -948,5 +1092,59 @@ mod tests {
         let client = HorizonClient::with_retry_config(mock_server.uri(), cfg);
         let err = client.get_offers(Some(10), None, None).await.unwrap_err();
         assert!(matches!(err, IndexerError::StellarApi { .. }));
+    }
+
+    // -----------------------------------------------------------------------
+    // stream_offers
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_stream_offers_parses_sse_events() {
+        use futures::StreamExt;
+        let mock_server = MockServer::start().await;
+
+        let offer_json = sample_offer_json().to_string();
+        let sse_body = format!("event: message\ndata: {}\n\n", offer_json);
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("cursor", "now"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .append_header("Content-Type", "text/event-stream")
+                    .set_body_string(sse_body),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = HorizonClient::new(mock_server.uri());
+        let stream = client.stream_offers(None).await.unwrap();
+        futures::pin_mut!(stream);
+
+        let offer = stream.next().await.unwrap().unwrap();
+        assert_eq!(offer.id, "42");
+    }
+
+    #[tokio::test]
+    async fn test_stream_offers_with_custom_cursor() {
+        use futures::StreamExt;
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("cursor", "12345"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .append_header("Content-Type", "text/event-stream")
+                    .set_body_string("event: message\ndata: {}\n\n"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = HorizonClient::new(mock_server.uri());
+        let stream = client.stream_offers(Some("12345")).await.unwrap();
+        futures::pin_mut!(stream);
+
+        let _ = stream.next().await;
     }
 }

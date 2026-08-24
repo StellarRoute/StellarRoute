@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::priority::RequestPriority;
+
 /// Unique stable identifier for a route computation task
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct JobId {
@@ -51,6 +53,10 @@ pub struct RouteComputationJob {
     pub created_at: DateTime<Utc>,
     pub attempt: u32,
     pub max_retries: u32,
+    /// Priority band assigned at submission time.
+    pub priority: RequestPriority,
+    /// WFQ virtual time used by the starvation-prevention scheduler.
+    pub virtual_time: i64,
 }
 
 impl RouteComputationJob {
@@ -71,7 +77,16 @@ impl RouteComputationJob {
             created_at: Utc::now(),
             attempt: 0,
             max_retries,
+            priority: RequestPriority::Normal,
+            virtual_time: 0,
         }
+    }
+
+    /// Builder-style setter for priority and virtual time.
+    pub fn with_priority(mut self, priority: RequestPriority, virtual_time: i64) -> Self {
+        self.priority = priority;
+        self.virtual_time = virtual_time;
+        self
     }
 
     pub fn is_exhausted(&self) -> bool {

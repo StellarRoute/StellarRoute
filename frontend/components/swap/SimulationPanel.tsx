@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, TrendingDown, TrendingUp } from "lucide-react";
 import { useSwapI18n } from "@/lib/swap-i18n";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
 
 export interface SimulationPanelProps {
   /** Amount being paid/sold */
@@ -34,6 +35,7 @@ export function SimulationPanel({
   error,
 }: SimulationPanelProps) {
   const { t } = useSwapI18n();
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
 
   const calculateSimulation = (): SimulationData | null => {
     const payAmountNum = parseFloat(payAmount);
@@ -79,7 +81,7 @@ export function SimulationPanel({
     );
   }
 
-  if (isLoading) {
+  if (showSkeleton) {
     return (
       <div className="rounded-xl border border-border/50 p-4 space-y-4 shadow-sm animate-in fade-in duration-500">
         <div className="flex items-center gap-2">
@@ -111,7 +113,7 @@ export function SimulationPanel({
   const isHighImpact = parseFloat(simulation.priceImpact) > 0.2;
 
   return (
-    <div className="rounded-xl border border-border/50 p-4 space-y-4 bg-muted/30">
+    <div className={`rounded-xl border border-border/50 p-4 space-y-4 bg-muted/30 ${contentClassName}`.trim()}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium">{t("swap.simulation.title")}</h4>

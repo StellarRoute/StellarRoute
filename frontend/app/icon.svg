@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="StellarRoute">
+  <rect width="32" height="32" rx="8" fill="#060b11"/>
+  <path
+    d="M7 23c4-5 6-9 9-7.5 3.5 1.5 5-3.5 9-6.5"
+    stroke="#1ec9b0"
+    stroke-width="2.25"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="7" cy="23" r="2.6" fill="#060b11" stroke="#1ec9b0" stroke-width="1.6"/>
+  <circle cx="7" cy="23" r="1" fill="#1ec9b0"/>
+  <circle cx="16" cy="15.5" r="2.8" fill="#060b11" stroke="#1ec9b0" stroke-width="1.6"/>
+  <circle cx="16" cy="15.5" r="1.1" fill="#e8eef4"/>
+  <circle cx="25" cy="9" r="2.6" fill="#060b11" stroke="#e0a83a" stroke-width="1.6"/>
+  <circle cx="25" cy="9" r="1" fill="#e0a83a"/>
+</svg>

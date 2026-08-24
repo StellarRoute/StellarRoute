@@ -1,0 +1,45 @@
+name: Load Test Public Endpoints
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Target API base URL'
+        required: true
+        default: 'http://localhost:3000'
+      vus:
+        description: 'Peak virtual users'
+        required: true
+        default: '100'
+      duration:
+        description: 'Steady-state duration (k6 duration string)'
+        required: true
+        default: '2m'
+      pairs:
+        description: 'Comma-separated pairs to test'
+        required: true
+        default: 'XLM/USDC,USDC/XLM,XLM/EURC,EURC/USDC'
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run k6 load test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: scripts/load-test-quote-routes.k6.js
+          flags: >-
+            -e BASE_URL=${{ github.event.inputs.base_url }}
+            -e VUS=${{ github.event.inputs.vus }}
+            -e DURATION=${{ github.event.inputs.duration }}
+            -e PAIRS=${{ github.event.inputs.pairs }}
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-results
+          path: load-test-results.json

@@ -1,0 +1,109 @@
+# StellarRoute — full application stack overlay
+#
+# Extends docker-compose.yml (Postgres + Redis) with the API and indexer services.
+#
+# Quick start (deps + API):
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml up -d
+#   ./scripts/wait-for-services.sh
+#   curl -sf "http://127.0.0.1:${API_PORT:-3000}/health"
+#
+# With indexer (requires a real ROUTER_CONTRACT_ADDRESS):
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml \
+#     --profile indexer up -d
+#
+# With frontend (optional development UI):
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml \
+#     --profile ui up -d
+#
+# Copy .env.example to .env and fill in required values before running.
+# No production secrets should be committed; .env is git-ignored.
+
+version: '3.8'
+
+services:
+  # ── API ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: stellarroute-api:local
+    container_name: stellarroute-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://stellarroute:stellarroute_dev@postgres:5432/stellarroute
+      REDIS_URL: redis://redis:6379
+      # PaaS-style bind: listen on all interfaces inside the container.
+      API_HOST: "0.0.0.0"
+      API_PORT: "${API_PORT:-3000}"
+    ports:
+      - "${API_PORT:-3000}:${API_PORT:-3000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://localhost:${API_PORT:-3000}/health || exit 1"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - stellarroute-network
+
+  # ── Indexer (gated behind the "indexer" profile) ─────────────────────
+  # Start with: docker compose ... --profile indexer up -d
+  #
+  # IMPORTANT: ROUTER_CONTRACT_ADDRESS must be set to a deployed contract ID.
+  # An empty value will cause the indexer to exit at startup with an error
+  # message; it will NOT silently loop. Set the value in your .env file.
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.indexer
+    image: stellarroute-indexer:local
+    container_name: stellarroute-indexer
+    restart: unless-stopped
+    profiles:
+      - indexer
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://stellarroute:stellarroute_dev@postgres:5432/stellarroute
+      STELLAR_HORIZON_URL: "${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}"
+      SOROBAN_RPC_URL: "${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}"
+      # ROUTER_CONTRACT_ADDRESS must be provided in .env — the indexer validates
+      # this at startup and exits immediately with a clear error if absent.
+      ROUTER_CONTRACT_ADDRESS: "${ROUTER_CONTRACT_ADDRESS}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - stellarroute-network
+
+  # ── Frontend (gated behind the "ui" profile) ─────────────────────────
+  # Start with: docker compose ... --profile ui up -d
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: stellarroute-frontend:local
+    container_name: stellarroute-frontend
+    restart: unless-stopped
+    profiles:
+      - ui
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:${API_PORT:-3000}/api/v1"
+    ports:
+      - "3001:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - stellarroute-network

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run StellarRoute EC2 health check every 5 minutes
+
+[Timer]
+OnBootSec=3m
+OnUnitActiveSec=5m
+Persistent=true
+Unit=stellarroute-healthcheck.service
+
+[Install]
+WantedBy=timers.target

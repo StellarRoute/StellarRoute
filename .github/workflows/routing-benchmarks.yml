@@ -1,0 +1,63 @@
+name: Routing Benchmarks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'crates/routing/**'
+      - '.github/workflows/routing-benchmarks.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'crates/routing/**'
+      - '.github/workflows/routing-benchmarks.yml'
+  workflow_dispatch:
+
+jobs:
+  pathfinding-latency-gate:
+    name: Pathfinding Latency Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-routing-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run pathfinding latency gate
+        run: |
+          cargo test -p stellarroute-routing pathfinding_latency_gate \
+            --release -- --nocapture | tee pathfinding_latency_results.txt
+
+      - name: Check latency budget
+        run: |
+          if grep -q "assertion.*failed" pathfinding_latency_results.txt; then
+            echo "Pathfinding latency exceeded the 100ms M2 budget"
+            exit 1
+          fi
+          echo "Pathfinding latency gate passed"
+
+      - name: Upload latency summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pathfinding-latency-summary
+          path: pathfinding_latency_results.txt

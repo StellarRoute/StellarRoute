@@ -1,6 +1,8 @@
 # `/api/v1/routes` — Multi-Route Trading Endpoint
 
-Returns multiple **ranked route candidates** for a given trading pair. Unlike the single `/quote` endpoint, this endpoint exposes the full set of execution paths scored by the `HybridOptimizer`, enabling clients (UI, SDKs) to display alternative routes and let users choose.
+Returns multiple **ranked route candidates** for a given trading pair. This endpoint is optimizer-driven: it exposes the execution paths scored by the `HybridOptimizer`, enabling clients (UI, SDKs, wallets) to display alternatives and let users choose.
+
+`/api/v1/quote` intentionally uses a different selection rule. It performs a direct-venue comparison and returns the best executable single-hop price for the requested pair. That means the "best" result from `/quote` can differ from the first entry returned by `/routes` when the optimizer prefers a multi-hop path or a different tradeoff between output, impact, and hop count.
 
 ---
 
@@ -86,7 +88,9 @@ Routes are ranked by their **composite score**, computed by the `HybridOptimizer
 - **Hop count** — fewer hops preferred unless output significantly improves
 - **Policy weights** — configurable per environment (`production` vs `testnet`)
 
-The first route in the array is always the recommended best route.
+The first route in the array is the recommended best route for the optimizer.
+
+If you want the cheapest direct venue for a single hop, use `/api/v1/quote`. If you want the optimizer's best executable route, use `/api/v1/routes`.
 
 ---
 

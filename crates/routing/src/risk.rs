@@ -16,6 +16,8 @@ pub enum ExclusionReason {
     MaxImpactExceeded,
     LiquidityBelowFloor,
     AssetBlacklisted,
+    LiquidityAnomaly,
+    ProviderKillSwitch,
 }
 
 impl std::fmt::Display for ExclusionReason {
@@ -25,6 +27,8 @@ impl std::fmt::Display for ExclusionReason {
             ExclusionReason::MaxImpactExceeded => write!(f, "max_impact_exceeded"),
             ExclusionReason::LiquidityBelowFloor => write!(f, "liquidity_below_floor"),
             ExclusionReason::AssetBlacklisted => write!(f, "asset_blacklisted"),
+            ExclusionReason::LiquidityAnomaly => write!(f, "liquidity_anomaly"),
+            ExclusionReason::ProviderKillSwitch => write!(f, "provider_kill_switch"),
         }
     }
 }
@@ -80,6 +84,9 @@ impl AssetRiskLimit {
 pub struct RiskLimitConfig {
     pub global_defaults: AssetRiskLimit,
     pub per_asset: HashMap<String, AssetRiskLimit>,
+    /// Provider kill switches (`true` = provider disabled for risk purposes).
+    #[serde(default)]
+    pub provider_kill_switches: HashMap<String, bool>,
 }
 
 impl RiskLimitConfig {
@@ -87,12 +94,30 @@ impl RiskLimitConfig {
         Self {
             global_defaults,
             per_asset: HashMap::new(),
+            provider_kill_switches: HashMap::new(),
         }
     }
 
     pub fn with_asset_limit(mut self, asset: impl Into<String>, limit: AssetRiskLimit) -> Self {
         self.per_asset.insert(asset.into(), limit);
         self
+    }
+
+    pub fn with_provider_kill_switch(
+        mut self,
+        provider: impl Into<String>,
+        disabled: bool,
+    ) -> Self {
+        self.provider_kill_switches
+            .insert(provider.into(), disabled);
+        self
+    }
+
+    pub fn is_provider_killed(&self, provider: &str) -> bool {
+        self.provider_kill_switches
+            .get(provider)
+            .copied()
+            .unwrap_or(false)
     }
 
     pub fn get_limit(&self, asset: &str) -> &AssetRiskLimit {
@@ -111,6 +136,7 @@ impl RiskLimitConfig {
         Self {
             global_defaults: AssetRiskLimit::strict(),
             per_asset: HashMap::new(),
+            provider_kill_switches: HashMap::new(),
         }
     }
 
@@ -118,6 +144,7 @@ impl RiskLimitConfig {
         Self {
             global_defaults: AssetRiskLimit::permissive(),
             per_asset: HashMap::new(),
+            provider_kill_switches: HashMap::new(),
         }
     }
 
@@ -143,11 +170,7 @@ impl RiskValidator {
         &self.config
     }
 
-    pub fn validate_exposure(
-        &self,
-        asset: &str,
-        exposure: i128,
-    ) -> Result<(), RouteExclusion> {
+    pub fn validate_exposure(&self, asset: &str, exposure: i128) -> Result<(), RouteExclusion> {
         let limit = self.config.get_limit(asset);
 
         if limit.blacklisted {
@@ -171,11 +194,7 @@ impl RiskValidator {
         Ok(())
     }
 
-    pub fn validate_impact(
-        &self,
-        asset: &str,
-        impact_bps: u32,
-    ) -> Result<(), RouteExclusion> {
+    pub fn validate_impact(&self, asset: &str, impact_bps: u32) -> Result<(), RouteExclusion> {
         let limit = self.config.get_limit(asset);
 
         if limit.blacklisted {
@@ -199,11 +218,7 @@ impl RiskValidator {
         Ok(())
     }
 
-    pub fn validate_liquidity(
-        &self,
-        asset: &str,
-        liquidity: i128,
-    ) -> Result<(), RouteExclusion> {
+    pub fn validate_liquidity(&self, asset: &str, liquidity: i128) -> Result<(), RouteExclusion> {
         let limit = self.config.get_limit(asset);
 
         if limit.blacklisted {
@@ -234,6 +249,18 @@ impl RiskValidator {
         impact_bps: u32,
         liquidity: i128,
     ) -> Result<(), Vec<RouteExclusion>> {
+        self.validate_route_hop(asset, exposure, impact_bps, liquidity, None)
+    }
+
+    /// Validate a single hop, including optional provider kill-switch enforcement.
+    pub fn validate_route_hop(
+        &self,
+        asset: &str,
+        exposure: i128,
+        impact_bps: u32,
+        liquidity: i128,
+        provider: Option<&str>,
+    ) -> Result<(), Vec<RouteExclusion>> {
         let mut exclusions = Vec::new();
 
         if let Err(e) = self.validate_exposure(asset, exposure) {
@@ -248,11 +275,54 @@ impl RiskValidator {
             exclusions.push(e);
         }
 
+        if let Some(provider) = provider {
+            if let Err(e) = self.validate_provider(provider) {
+                exclusions.push(e);
+            }
+        }
+
         if exclusions.is_empty() {
             Ok(())
         } else {
             Err(exclusions)
         }
+    }
+
+    /// Validate every hop in a multi-hop route, enforcing provider exclusions.
+    pub fn validate_route_hops(
+        &self,
+        hops: &[(String, i128, u32, i128, Option<String>)],
+    ) -> Result<(), Vec<RouteExclusion>> {
+        let mut exclusions = Vec::new();
+        for (asset, exposure, impact_bps, liquidity, provider) in hops {
+            if let Err(mut hop_exclusions) = self.validate_route_hop(
+                asset,
+                *exposure,
+                *impact_bps,
+                *liquidity,
+                provider.as_deref(),
+            ) {
+                exclusions.append(&mut hop_exclusions);
+            }
+        }
+        if exclusions.is_empty() {
+            Ok(())
+        } else {
+            Err(exclusions)
+        }
+    }
+
+    /// Reject routes that touch a killed provider (bridge adapter / venue operator).
+    pub fn validate_provider(&self, provider: &str) -> Result<(), RouteExclusion> {
+        if self.config.is_provider_killed(provider) {
+            return Err(RouteExclusion {
+                asset: provider.to_string(),
+                reason: ExclusionReason::ProviderKillSwitch,
+                limit_value: 0,
+                actual_value: 1,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -287,8 +357,7 @@ mod tests {
 
     #[test]
     fn test_config_per_asset_override() {
-        let config = RiskLimitConfig::default()
-            .with_asset_limit("USDC", AssetRiskLimit::strict());
+        let config = RiskLimitConfig::default().with_asset_limit("USDC", AssetRiskLimit::strict());
 
         let xlm_limit = config.get_limit("XLM");
         assert_eq!(xlm_limit.max_impact_bps, 500);
@@ -307,11 +376,13 @@ mod tests {
 
     #[test]
     fn test_validator_exposure_fail() {
-        let config = RiskLimitConfig::default()
-            .with_asset_limit("XLM", AssetRiskLimit {
+        let config = RiskLimitConfig::default().with_asset_limit(
+            "XLM",
+            AssetRiskLimit {
                 max_exposure: 1_000_000,
                 ..Default::default()
-            });
+            },
+        );
         let validator = RiskValidator::new(config);
 
         let result = validator.validate_exposure("XLM", 2_000_000);
@@ -344,11 +415,13 @@ mod tests {
 
     #[test]
     fn test_validator_blacklisted_asset() {
-        let config = RiskLimitConfig::default()
-            .with_asset_limit("SCAM", AssetRiskLimit {
+        let config = RiskLimitConfig::default().with_asset_limit(
+            "SCAM",
+            AssetRiskLimit {
                 blacklisted: true,
                 ..Default::default()
-            });
+            },
+        );
         let validator = RiskValidator::new(config);
 
         let result = validator.validate_exposure("SCAM", 100);
@@ -362,12 +435,7 @@ mod tests {
         let config = RiskLimitConfig::strict_policy();
         let validator = RiskValidator::new(config);
 
-        let result = validator.validate_route(
-            "XLM",
-            100_000_000_000,
-            500,
-            10_000,
-        );
+        let result = validator.validate_route("XLM", 100_000_000_000, 500, 10_000);
         assert!(result.is_err());
         let exclusions = result.unwrap_err();
         assert!(exclusions.len() >= 2);
@@ -375,8 +443,7 @@ mod tests {
 
     #[test]
     fn test_config_json_roundtrip() {
-        let config = RiskLimitConfig::default()
-            .with_asset_limit("USDC", AssetRiskLimit::strict());
+        let config = RiskLimitConfig::default().with_asset_limit("USDC", AssetRiskLimit::strict());
 
         let json = config.to_json().unwrap();
         let parsed = RiskLimitConfig::from_json(&json).unwrap();

@@ -1,6 +1,11 @@
-export type SupportedWallet = "freighter" | "xbull";
+/**
+ * Stellar browser wallets used by WalletProvider / swap UI.
+ * Multi-chain adapters (EVM, Solana, …) live under `./adapters` and use
+ * string adapter ids + `ChainFamily` instead of extending this union.
+ */
+export type SupportedWallet = 'freighter' | 'xbull' | 'albedo' | 'lobstr';
 
-export type WalletNetwork = "testnet" | "mainnet" | "futurenet" | string;
+export type WalletNetwork = 'testnet' | 'mainnet' | 'futurenet' | string;
 
 export type WalletSession = {
   walletId: SupportedWallet | null;

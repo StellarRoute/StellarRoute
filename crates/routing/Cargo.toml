@@ -6,6 +6,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "fixture-gen"
+path = "src/bin/fixture_gen.rs"
+
 [dependencies]
 # Workspace dependencies
 serde.workspace = true
@@ -20,11 +24,13 @@ parking_lot.workspace = true
 # Routing-specific dependencies here
 rand = "0.8"
 rand_chacha = "0.3"
+clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1.0"
+proptest = "1"
 
 [[bench]]
 name = "routing_benchmarks"
@@ -32,4 +38,8 @@ harness = false
 
 [[bench]]
 name = "hybrid_optimizer_benchmarks"
+harness = false
+
+[[bench]]
+name = "deterministic_regression_benchmark"
 harness = false

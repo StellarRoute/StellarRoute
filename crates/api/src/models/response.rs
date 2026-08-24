@@ -1,7 +1,42 @@
 //! API response models
 
+use axum::{
+    body::{Body, Bytes},
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use utoipa::ToSchema;
+
+/// Standard API response envelope
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ApiResponse<T> {
+    pub v: u8,
+    pub timestamp: i64,
+    pub request_id: String,
+    pub data: T,
+}
+
+impl<T> ApiResponse<T> {
+    pub fn new(data: T, request_id: impl Into<String>) -> Self {
+        Self::with_version(1, data, request_id)
+    }
+
+    /// Envelope helper for versioned surfaces (`/api/v2`, …).
+    pub fn with_version(version: u8, data: T, request_id: impl Into<String>) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        Self {
+            v: version,
+            timestamp,
+            request_id: request_id.into(),
+            data,
+        }
+    }
+}
 
 /// Per-component health status value
 pub type ComponentStatus = String;
@@ -41,6 +76,20 @@ pub struct CacheMetricsResponse {
     pub stale_quote_rejections: u64,
     /// Total stale inputs excluded across all successful quotes
     pub stale_inputs_excluded: u64,
+    /// Total Redis infrastructure errors observed by the cache layer
+    pub redis_errors: u64,
+}
+
+/// Cache flush response for admin cache invalidation operations
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CacheFlushResponse {
+    pub base: String,
+    pub quote: String,
+    pub quote_pattern: String,
+    pub orderbook_pattern: String,
+    pub deleted_quote_keys: u64,
+    pub deleted_orderbook_keys: u64,
+    pub total_deleted: u64,
 }
 
 /// Trading pair information — matches GET /api/v1/pairs spec
@@ -134,6 +183,7 @@ pub struct OrderbookResponse {
     pub quote_asset: AssetInfo,
     pub bids: Vec<OrderbookLevel>,
     pub asks: Vec<OrderbookLevel>,
+    pub summary: OrderbookSummary,
     pub timestamp: i64,
 }
 
@@ -143,6 +193,19 @@ pub struct OrderbookLevel {
     pub price: String,
     pub amount: String,
     pub total: String,
+}
+
+/// Summary information for an orderbook snapshot
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct OrderbookSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midpoint: Option<String>,
 }
 
 /// Freshness metadata about the data sources used to compute a quote
@@ -166,6 +229,8 @@ pub struct QuoteResponse {
     pub price: String,
     pub total: String,
     pub quote_type: String,
+    #[serde(default)]
+    pub degraded: bool,
     pub path: Vec<PathStep>,
     /// Unix timestamp (ms) when this quote was generated
     pub timestamp: i64,
@@ -190,15 +255,295 @@ pub struct QuoteResponse {
     /// Freshness metadata about the data sources used to compute this quote
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_freshness: Option<DataFreshness>,
+    /// Market midpoint price (average of best bid and best ask across all venues)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midpoint: Option<String>,
+    /// Market spread in basis points
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<u32>,
+}
+
+/// Response from `POST /api/v1/swap/prepare`.
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct SwapPrepareResponse {
+    pub quote_id: String,
+    pub xdr_envelope: String,
+    pub expected_output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_output: Option<String>,
+    pub expires_at: i64,
+    /// Always `classic_path_payment` on success. Soroban/AMM prepare is unsupported.
+    pub execution_mode: String,
+    /// Network passphrase the unsigned envelope was built for (must match wallet before signing).
+    pub network_passphrase: String,
+}
+
+/// Response from `POST /api/v1/swap/submit`.
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct SwapSubmitResponse {
+    pub quote_id: String,
+    pub tx_hash: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ledger: Option<u64>,
+}
+
+/// Single historical price sample for a trading pair.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceHistoryPoint {
+    /// Unix timestamp in milliseconds for the aggregated price bucket.
+    pub timestamp: i64,
+    /// Average mid-market price for the bucket, encoded as a decimal string.
+    pub price: String,
+}
+
+/// Historical price series for charting a selected trading pair.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceHistoryResponse {
+    pub base_asset: AssetInfo,
+    pub quote_asset: AssetInfo,
+    /// Time window covered by the series, such as "24h".
+    pub window: String,
+    /// Source table/column used to build the series.
+    pub source: String,
+    /// Unix timestamp in milliseconds when the response was generated.
+    pub generated_at: i64,
+    pub points: Vec<PriceHistoryPoint>,
+}
+
+/// Asset metadata response — matches GET /api/v1/assets/:code spec
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AssetMetadataResponse {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    pub decimals: i16,
+    pub asset_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+/// Bulk asset metadata response — matches GET /api/v1/assets spec
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AssetMetadataBulkResponse {
+    pub assets: Vec<AssetMetadataResponse>,
+}
+
+/// Outcome of a single external canary comparison run.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveCompareOutcome {
+    Ok,
+    Diverged,
+    Error,
+}
+
+/// Payload pushed by the external canary script after each comparison run.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct LiveCompareResult {
+    /// Canonical pair string, e.g. "native/USDC:GA5Z..."
+    pub pair: String,
+    /// StellarRoute quote price (decimal string)
+    pub stellarroute_price: String,
+    /// Horizon best-ask price (decimal string; empty string when outcome is "error")
+    pub reference_price: String,
+    /// Absolute divergence in basis points; 0.0 when outcome is "error"
+    pub divergence_bps: f64,
+    /// Machine-readable outcome
+    pub outcome: LiveCompareOutcome,
+    /// ISO 8601 UTC timestamp of when the comparison was performed
+    pub timestamp: String,
+}
+
+/// Response body for POST /api/v1/system/canary/live-compare
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LiveCompareIngestResponse {
+    pub status: String,
+    pub entries: usize,
+}
+
+/// Response body for GET /api/v1/system/canary/live-compare/report
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LiveCompareReportResponse {
+    pub total_entries: usize,
+    pub results: Vec<LiveCompareResult>,
+}
+
+/// Prepared quote payload that can be returned without re-serializing on hot paths.
+#[derive(Debug, Clone)]
+pub struct PreparedQuoteResponse {
+    quote: Option<Arc<QuoteResponse>>,
+    body: Bytes,
+}
+
+impl PreparedQuoteResponse {
+    pub fn from_quote(quote: QuoteResponse) -> crate::error::Result<Self> {
+        let body = serde_json::to_vec(&quote).map(Bytes::from).map_err(|err| {
+            crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "failed to serialize quote response: {err}"
+            )))
+        })?;
+
+        Ok(Self {
+            quote: Some(Arc::new(quote)),
+            body,
+        })
+    }
+
+    pub fn from_cached_json(json: String) -> Self {
+        Self {
+            quote: None,
+            body: Bytes::from(json),
+        }
+    }
+
+    pub fn quote(&self) -> Option<&QuoteResponse> {
+        self.quote.as_deref()
+    }
+
+    pub fn into_quote(self) -> crate::error::Result<QuoteResponse> {
+        match self.quote {
+            Some(quote) => Ok(match Arc::try_unwrap(quote) {
+                Ok(owned) => owned,
+                Err(shared) => (*shared).clone(),
+            }),
+            None => serde_json::from_slice(&self.body).map_err(|err| {
+                crate::error::ApiError::Internal(Arc::new(anyhow::anyhow!(
+                    "failed to deserialize cached quote response: {err}"
+                )))
+            }),
+        }
+    }
+
+    pub fn json_bytes(&self) -> &Bytes {
+        &self.body
+    }
+}
+
+impl IntoResponse for PreparedQuoteResponse {
+    fn into_response(self) -> Response {
+        let mut response = Response::new(Body::from(self.body));
+        *response.status_mut() = StatusCode::OK;
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        response
+    }
 }
 
 /// Response for a batch quote request
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchQuoteResponse {
-    /// Array of quotes in the same order as requested
-    pub quotes: Vec<QuoteResponse>,
-    /// Total number of quotes successfully fetched
+    /// Results in the same order as the request items.
+    pub results: Vec<BatchQuoteItemResult>,
+    /// Number of items that succeeded.
+    pub items_succeeded: usize,
+    /// Number of items that failed (per-item errors, not a batch-level failure).
+    pub items_failed: usize,
+    /// Total items in the batch.
     pub total: usize,
+    /// Unix timestamp (ms) of the shared market snapshot used for all items.
+    /// All quotes in this batch were computed against data no older than this.
+    pub snapshot_timestamp: i64,
+}
+
+/// Result for a single item in a batch quote response.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchQuoteItemResult {
+    /// Zero-based index of this item in the original request.
+    pub index: usize,
+    /// The quote, present when `status == "ok"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote: Option<QuoteResponse>,
+    /// Per-item error, present when `status == "error"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<BatchItemError>,
+    /// `"ok"` or `"error"`.
+    pub status: String,
+}
+
+impl BatchQuoteItemResult {
+    pub fn ok(index: usize, quote: QuoteResponse) -> Self {
+        Self {
+            index,
+            quote: Some(quote),
+            error: None,
+            status: "ok".to_string(),
+        }
+    }
+
+    pub fn err(index: usize, error: BatchItemError) -> Self {
+        Self {
+            index,
+            quote: None,
+            error: Some(error),
+            status: "error".to_string(),
+        }
+    }
+}
+
+/// Response for a batch orderbook request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchOrderbookResponse {
+    /// Results in the same order as the request items.
+    pub results: Vec<BatchOrderbookItemResult>,
+    /// Number of items that succeeded.
+    pub items_succeeded: usize,
+    /// Number of items that failed (per-item errors, not a batch-level failure).
+    pub items_failed: usize,
+    /// Total items in the batch.
+    pub total: usize,
+}
+
+/// Result for a single item in a batch orderbook response.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BatchOrderbookItemResult {
+    /// Zero-based index of this item in the original request.
+    pub index: usize,
+    /// The orderbook, present when `status == "ok"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orderbook: Option<OrderbookResponse>,
+    /// Per-item error, present when `status == "error"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<BatchItemError>,
+    /// `"ok"` or `"error"`.
+    pub status: String,
+}
+
+impl BatchOrderbookItemResult {
+    pub fn ok(index: usize, orderbook: OrderbookResponse) -> Self {
+        Self {
+            index,
+            orderbook: Some(orderbook),
+            error: None,
+            status: "ok".to_string(),
+        }
+    }
+
+    pub fn err(index: usize, error: BatchItemError) -> Self {
+        Self {
+            index,
+            orderbook: None,
+            error: Some(error),
+            status: "error".to_string(),
+        }
+    }
+}
+
+/// Per-item error detail in a batch response.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BatchItemError {
+    /// Machine-readable error code.
+    pub code: String,
+    /// Human-readable description.
+    pub message: String,
 }
 
 /// Trading route response (path only, no pricing)
@@ -313,6 +658,12 @@ pub struct PathStep {
     pub to_asset: AssetInfo,
     pub price: String,
     pub source: String, // "sdex" or "amm:{pool_address}"
+    /// Total liquidity depth available at this hop's price
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_depth: Option<String>,
+    /// Fee in basis points for this hop (e.g., 30 for 0.3%)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_bps: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +691,7 @@ pub enum ExclusionReason {
     Override,
     StaleData,
     CircuitBreakerOpen,
+    LiquidityAnomaly,
 }
 
 /// Machine-readable error codes for API failures
@@ -358,17 +710,99 @@ pub enum ApiErrorCode {
     RateLimitExceeded,
     /// Server is temporarily overloaded
     Overloaded,
+    /// An upstream dependency's circuit breaker is open
+    DependencyUnavailable,
     /// Request lacks valid credentials
     Unauthorized,
     /// Invalid Stellar asset identifier
     InvalidAsset,
+    /// Invalid amount requested
+    InvalidAmount,
+    /// Invalid slippage tolerance
+    InvalidSlippage,
+    /// Malformed asset identifier format
+    InvalidAssetFormat,
     /// No executable trading route found
     NoRoute,
+    /// Route would fail execution on-chain (simulation detected failure)
+    NotExecutable,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
+    /// The requested operation is documented but not yet available
+    NotImplemented,
+    /// Referenced prepare quote is unknown or no longer valid
+    QuoteNotFound,
+    /// Referenced prepare quote has expired
+    QuoteExpired,
+    /// Idempotent conflict (e.g. quote already submitted)
+    #[serde(rename = "duplicate_quote")]
+    Conflict,
+    /// Requested venue/execution mode is not supported by this API build
+    UnsupportedExecutionMode,
+    /// Route shape is not supported (e.g. multi-hop classic path)
+    UnsupportedRoute,
+    /// Circle CCTP bridge settlement is not enabled
+    CctpNotEnabled,
+    /// Requested CCTP corridor is unknown or unsupported
+    UnsupportedCorridor,
+    /// CCTP finality mode is invalid for the source chain
+    InvalidFinality,
+    /// Recipient address failed CCTP validation
+    InvalidRecipient,
+    /// Runtime CCTP fee quote is unavailable
+    FeeQuoteUnavailable,
+    /// Attestation is still pending (saga / operation guard)
+    AttestationPending,
+    /// Attestation has expired
+    AttestationExpired,
+    /// Mint failed but may be retried
+    MintRetryable,
+    /// CCTP transfer id is unknown
+    TransferNotFound,
+    /// CCTP provider kill-switch is active
+    ProviderKilled,
 }
 
 impl ApiErrorCode {
+    /// Every documented error code. This is the single source of truth
+    /// consumed by the sdk-js drift test (issue #1051) and
+    /// `docs/api/error_taxonomy.md` — adding a new `ApiErrorCode` variant
+    /// without adding it here, to the taxonomy doc, and to
+    /// `sdk-js/src/types.ts`'s `API_ERROR_CODES` will fail
+    /// `crates/api/tests/openapi_swap_contract.rs`.
+    pub const ALL: &'static [ApiErrorCode] = &[
+        Self::InternalError,
+        Self::BadRequest,
+        Self::NotFound,
+        Self::ValidationError,
+        Self::RateLimitExceeded,
+        Self::Overloaded,
+        Self::Unauthorized,
+        Self::InvalidAsset,
+        Self::InvalidAmount,
+        Self::InvalidSlippage,
+        Self::InvalidAssetFormat,
+        Self::NoRoute,
+        Self::NotExecutable,
+        Self::StaleMarketData,
+        Self::NotImplemented,
+        Self::QuoteNotFound,
+        Self::QuoteExpired,
+        Self::Conflict,
+        Self::UnsupportedExecutionMode,
+        Self::UnsupportedRoute,
+        Self::CctpNotEnabled,
+        Self::UnsupportedCorridor,
+        Self::InvalidFinality,
+        Self::InvalidRecipient,
+        Self::FeeQuoteUnavailable,
+        Self::AttestationPending,
+        Self::AttestationExpired,
+        Self::MintRetryable,
+        Self::TransferNotFound,
+        Self::ProviderKilled,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::InternalError => "internal_error",
@@ -377,10 +811,31 @@ impl ApiErrorCode {
             Self::ValidationError => "validation_error",
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::Overloaded => "overloaded",
+            Self::DependencyUnavailable => "dependency_unavailable",
             Self::Unauthorized => "unauthorized",
             Self::InvalidAsset => "invalid_asset",
+            Self::InvalidAmount => "invalid_amount",
+            Self::InvalidSlippage => "invalid_slippage",
+            Self::InvalidAssetFormat => "invalid_asset_format",
             Self::NoRoute => "no_route",
+            Self::NotExecutable => "not_executable",
             Self::StaleMarketData => "stale_market_data",
+            Self::NotImplemented => "not_implemented",
+            Self::QuoteNotFound => "quote_not_found",
+            Self::QuoteExpired => "quote_expired",
+            Self::Conflict => "duplicate_quote",
+            Self::UnsupportedExecutionMode => "unsupported_execution_mode",
+            Self::UnsupportedRoute => "unsupported_route",
+            Self::CctpNotEnabled => "cctp_not_enabled",
+            Self::UnsupportedCorridor => "unsupported_corridor",
+            Self::InvalidFinality => "invalid_finality",
+            Self::InvalidRecipient => "invalid_recipient",
+            Self::FeeQuoteUnavailable => "fee_quote_unavailable",
+            Self::AttestationPending => "attestation_pending",
+            Self::AttestationExpired => "attestation_expired",
+            Self::MintRetryable => "mint_retryable",
+            Self::TransferNotFound => "transfer_not_found",
+            Self::ProviderKilled => "provider_killed",
         }
     }
 }
@@ -515,4 +970,84 @@ mod tests {
         assert!(json.get("staleCount").is_none());
         assert!(json.get("maxStalenessSecs").is_none());
     }
+
+    #[test]
+    fn prepared_quote_response_matches_derived_json_contract() {
+        let quote = QuoteResponse {
+            base_asset: AssetInfo::native(),
+            quote_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),
+            amount: "100.0000000".to_string(),
+            price: "1.0000000".to_string(),
+            total: "100.0000000".to_string(),
+            quote_type: "sell".to_string(),
+            degraded: false,
+            path: vec![PathStep {
+                from_asset: AssetInfo::native(),
+                to_asset: AssetInfo::credit("USDC".to_string(), Some("issuer".to_string())),
+                price: "1.0000000".to_string(),
+                source: "sdex".to_string(),
+                liquidity_depth: None,
+                fee_bps: None,
+            }],
+            timestamp: 1_700_000_000_000,
+            expires_at: Some(1_700_000_003_000),
+            source_timestamp: Some(1_700_000_000_000),
+            ttl_seconds: Some(30),
+            rationale: None,
+            price_impact: Some("0.01".to_string()),
+            exclusion_diagnostics: None,
+            data_freshness: Some(DataFreshness {
+                fresh_count: 1,
+                stale_count: 0,
+                max_staleness_secs: 0,
+            }),
+            midpoint: None,
+            spread_bps: None,
+        };
+
+        let expected = serde_json::to_vec(&quote).expect("serialize expected");
+        let prepared = PreparedQuoteResponse::from_quote(quote).expect("prepare quote response");
+
+        assert_eq!(prepared.json_bytes(), &Bytes::from(expected));
+    }
+
+    #[test]
+    fn prepared_quote_response_restores_quote_from_cached_json() {
+        let json = r#"{"base_asset":{"asset_type":"native"},"quote_asset":{"asset_type":"native"},"amount":"1.0000000","price":"1.0000000","total":"1.0000000","quote_type":"sell","path":[],"timestamp":1700000000000}"#;
+
+        let prepared = PreparedQuoteResponse::from_cached_json(json.to_string());
+        let restored = prepared.into_quote().expect("decode cached quote");
+
+        assert_eq!(restored.amount, "1.0000000");
+        assert_eq!(restored.quote_type, "sell");
+    }
+}
+
+// ── Webhook Response Models ───────────────────────────────────────────────────
+
+/// Webhook registration response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct QuoteExpirationWebhookRegistrationResponse {
+    pub consumer_id: String,
+    pub webhook_url: String,
+    pub enabled: bool,
+    /// Present only when the server generated a signing secret (caller omitted one).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_signing_secret: Option<String>,
+}
+
+/// Quote expiration webhook payload
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct QuoteExpirationWebhookPayload {
+    pub event_id: String,
+    pub consumer_id: String,
+    pub pair: String,
+    pub reason: String,
+    pub expired_at: i64,
+    pub event: String,
+    pub timestamp: i64,
+    pub quote_id: String,
+    pub base_asset: String,
+    pub quote_asset: String,
+    pub amount_in: String,
 }

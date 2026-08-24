@@ -25,6 +25,9 @@ pub struct LiquidityCandidate {
     pub price: String,
     /// Available amount as a 7-decimal string
     pub available_amount: String,
+    /// Fee in basis points (optional, present for AMM)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_bps: Option<u32>,
 }
 
 /// Snapshot of the `HealthScoringConfig` values used during the original quote.
@@ -34,6 +37,21 @@ pub struct HealthConfigSnapshot {
     pub freshness_threshold_secs_amm: u64,
     pub staleness_threshold_secs: u64,
     pub min_tvl_threshold_e7: i128,
+}
+
+/// One captured node in the quote decision graph.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DecisionGraphNode {
+    /// Stable stage key (e.g. "fetch_candidates", "freshness_eval").
+    pub stage: String,
+    /// Stage payload with deterministic ordering baked in by the caller.
+    pub payload: serde_json::Value,
+}
+
+/// Full quote decision graph snapshot captured during live execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DecisionGraphSnapshot {
+    pub nodes: Vec<DecisionGraphNode>,
 }
 
 /// A stored, redacted snapshot of a single quote computation.
@@ -62,6 +80,8 @@ pub struct ReplayArtifact {
     // ── Snapshots ───────────────────────────────────────────────────────────
     /// All liquidity candidates queried from `normalized_liquidity` at capture time.
     pub liquidity_snapshot: Vec<LiquidityCandidate>,
+    /// Full decision graph emitted by the quote pipeline.
+    pub decision_graph: DecisionGraphSnapshot,
     /// Health scoring configuration used during the original computation.
     pub health_config_snapshot: HealthConfigSnapshot,
     /// The full `QuoteResponse` produced by the live pipeline (asset_issuer redacted).
@@ -121,18 +141,19 @@ impl ReplayArtifact {
 
     /// Fetch a single artifact by ID. Returns `ApiError::NotFound` if absent.
     pub async fn fetch(db: &PgPool, id: Uuid) -> Result<ReplayArtifact> {
-        let row = sqlx::query(
-            r#"SELECT artifact FROM replay_artifacts WHERE id = $1"#,
-        )
-        .bind(id)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| {
-            ApiError::Internal(anyhow::anyhow!("Failed to fetch artifact: {}", e).into())
-        })?;
+        let row = sqlx::query(r#"SELECT artifact FROM replay_artifacts WHERE id = $1"#)
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(anyhow::anyhow!("Failed to fetch artifact: {}", e).into())
+            })?;
 
         match row {
-            None => Err(ApiError::NotFound(format!("Replay artifact not found: {}", id))),
+            None => Err(ApiError::NotFound(format!(
+                "Replay artifact not found: {}",
+                id
+            ))),
             Some(r) => {
                 let json: serde_json::Value = r.get("artifact");
                 serde_json::from_value(json).map_err(|e| {
@@ -190,15 +211,13 @@ impl ReplayArtifact {
     /// Delete artifacts older than `retention`. Returns the number of rows deleted.
     pub async fn prune_older_than(db: &PgPool, retention: Duration) -> Result<u64> {
         let cutoff = Utc::now() - retention;
-        let result = sqlx::query(
-            r#"DELETE FROM replay_artifacts WHERE captured_at < $1"#,
-        )
-        .bind(cutoff)
-        .execute(db)
-        .await
-        .map_err(|e| {
-            ApiError::Internal(anyhow::anyhow!("Failed to prune artifacts: {}", e).into())
-        })?;
+        let result = sqlx::query(r#"DELETE FROM replay_artifacts WHERE captured_at < $1"#)
+            .bind(cutoff)
+            .execute(db)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(anyhow::anyhow!("Failed to prune artifacts: {}", e).into())
+            })?;
 
         Ok(result.rows_affected())
     }
@@ -229,7 +248,9 @@ mod tests {
                 venue_ref: "offer1".to_string(),
                 price: "1.0000000".to_string(),
                 available_amount: "100.0000000".to_string(),
+                fee_bps: Some(0),
             }],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -273,6 +294,7 @@ mod tests {
                 venue_ref,
                 price: format!("{:.7}", price_int as f64 / 1_000_000.0),
                 available_amount: format!("{:.7}", amount_int as f64 / 1_000_000.0),
+                fee_bps: Some(0),
             }
         }
     }
@@ -299,6 +321,7 @@ mod tests {
                 slippage_bps: 50,
                 quote_type: "sell".to_string(),
                 liquidity_snapshot: candidates,
+                decision_graph: DecisionGraphSnapshot::default(),
                 health_config_snapshot: HealthConfigSnapshot {
                     freshness_threshold_secs_sdex: 30,
                     freshness_threshold_secs_amm: 60,

@@ -1,0 +1,91 @@
+name: SLO Probes
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Target API base URL for probes'
+        required: true
+        default: 'https://api.stellarroute.io'
+      verbose:
+        description: 'Enable verbose output'
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  smoke-tests:
+    name: SLO Smoke Probes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run SLO smoke probes
+        run: |
+          chmod +x scripts/slo-probe.sh
+          ./scripts/slo-probe.sh \
+            --base-url "${{ github.event.inputs.base_url || 'https://api.stellarroute.io' }}" \
+            ${{ github.event.inputs.verbose == true && '--verbose' || '' }} \
+            --timeout 15
+        shell: bash
+
+  load-probes:
+    name: SLO Load Probes
+    runs-on: ubuntu-latest
+    needs: smoke-tests
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run SLO load probes
+        run: |
+          BASE_URL="${{ github.event.inputs.base_url || 'https://api.stellarroute.io' }}"
+          echo "Running load probes against $BASE_URL"
+          # Load probe: 50 samples per test case with concurrency via xargs
+          for pair in "XLM/USDC" "USDC/XLM" "XLM/EURC" "EURC/USDC"; do
+            echo "--- $pair ---"
+            seq 1 50 | xargs -P 10 -I {} \
+              curl -sS -o /dev/null -w "%{http_code} %{time_total}\n" \
+                --max-time 15 \
+                "$BASE_URL/api/v1/quote/$pair?amount=1000.0" \
+                2>/dev/null
+          done | awk '
+            { total++; codes[$1]++; if ($2+0 > max) max = $2+0; latencies[total] = $2+0 }
+            END {
+              n = asort(latencies);
+              p50 = latencies[int(n*0.5)];
+              p95 = latencies[int(n*0.95)];
+              p99 = latencies[int(n*0.99)];
+              errors = 0;
+              for (c in codes) if (c != 200) errors += codes[c];
+              rate = errors/total*100;
+              printf "Samples: %d\nP50: %.3fs\nP95: %.3fs\nP99: %.3fs\nErrors: %d (%.1f%%)\n", total, p50, p95, p99, errors, rate;
+              if (p95 > 0.5) { print "FAIL: P95 exceeds SLO (0.5s)"; exit 1 }
+              if (p99 > 2.0) { print "FAIL: P99 exceeds SLO (2.0s)"; exit 1 }
+              if (rate > 1.0) { print "FAIL: Error rate exceeds SLO (1%)"; exit 1 }
+              print "PASS: All load probe thresholds met"
+            }
+          '
+        shell: bash
+
+  config-validate:
+    name: Validate SLO Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate config/slo.yaml structure
+        run: |
+          if command -v yq &>/dev/null; then
+            echo "Validating config/slo.yaml..."
+            yq eval '.version, .service, .slos[].name, .probes[].name' config/slo.yaml
+            echo "Config validation passed."
+          else
+            echo "yq not found — install with: snap install yq"
+            echo "Skipping YAML validation; checking file existence only."
+            test -f config/slo.yaml && echo "config/slo.yaml exists"
+          fi
+        shell: bash

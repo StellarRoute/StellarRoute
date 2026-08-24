@@ -74,6 +74,9 @@ pub enum IndexerError {
 
     #[error("Operation failed: {0}")]
     OperationFailed(String),
+
+    #[error("Entity not found: {entity} (id: {id})")]
+    NotFound { entity: String, id: String },
 }
 
 impl IndexerError {
@@ -90,6 +93,7 @@ impl IndexerError {
             Self::InvalidAsset { .. } | Self::InvalidOffer { .. } => Level::WARN,
             Self::StellarApi { .. } | Self::StellarApiInvalidResponse(_) => Level::WARN,
             Self::DatabaseQuery(_) => Level::ERROR,
+            Self::NotFound { .. } => Level::WARN,
             _ => Level::ERROR,
         }
     }
@@ -99,6 +103,7 @@ impl IndexerError {
             Self::NetworkTimeout { .. }
             | Self::NetworkConnection(_)
             | Self::RateLimitExceeded { .. }
+            | Self::JsonParse { .. }
             | Self::HttpRequest { .. } => true,
             // 5xx server errors are transient and worth retrying;
             // 4xx client errors are permanent and should not be retried.

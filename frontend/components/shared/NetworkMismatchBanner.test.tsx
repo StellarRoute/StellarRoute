@@ -1,0 +1,153 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { NetworkMismatchBanner } from './NetworkMismatchBanner';
+import * as WalletProvider from '@/components/providers/wallet-provider';
+
+vi.mock('@/components/providers/wallet-provider', () => ({
+  useWallet: vi.fn(),
+}));
+
+describe('NetworkMismatchBanner', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('does not render when no network mismatch', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: false,
+      network: 'testnet',
+      walletNetwork: 'testnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+    } as any);
+
+    const { container } = render(<NetworkMismatchBanner />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders banner when network mismatch detected', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    expect(screen.getByText(/network mismatch detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/mainnet/i)).toBeInTheDocument();
+    expect(screen.getByText(/testnet/i)).toBeInTheDocument();
+  });
+
+  it('shows wallet docs link when available', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    const link = screen.getByRole('link', { name: /how to switch network/i });
+    expect(link).toHaveAttribute('href', 'https://docs.freighter.app/docs/guide/gettingStarted');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('calls disconnect when disconnect button clicked', async () => {
+    const user = userEvent.setup();
+    const disconnect = vi.fn();
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect,
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    await user.click(screen.getByRole('button', { name: /disconnect wallet/i }));
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('does not offer a dismiss control for critical mismatch warnings', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    expect(
+      screen.queryByRole('button', { name: /dismiss/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot be hidden/i)).toBeInTheDocument();
+  });
+
+  it('has proper ARIA attributes', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveAttribute('aria-live', 'assertive');
+  });
+
+  it('calls setNetwork when use wallet network is clicked', async () => {
+    process.env.NEXT_PUBLIC_MAINNET_LIMITED = 'true';
+    const user = userEvent.setup();
+    const setNetwork = vi.fn();
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'freighter',
+      disconnect: vi.fn(),
+      setNetwork,
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    await user.click(screen.getByRole('button', { name: /use wallet network/i }));
+    expect(setNetwork).toHaveBeenCalledWith('mainnet');
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
+  });
+
+  it('handles xbull wallet docs link', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'mainnet',
+      walletId: 'xbull',
+      disconnect: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    const link = screen.getByRole('link', { name: /how to switch network/i });
+    expect(link).toHaveAttribute('href', 'https://xbull.app/docs');
+  });
+
+  it('renders mismatch banner for xBull public vs app testnet', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'public',
+      walletId: 'xbull',
+      disconnect: vi.fn(),
+      setNetwork: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    expect(screen.getByText(/network mismatch detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/mainnet/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'assertive');
+  });
+});

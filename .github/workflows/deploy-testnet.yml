@@ -1,17 +1,132 @@
 name: Deploy to Testnet
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      deploy_router:
+        description: "Deploy a fresh router to testnet and emit config/deployments/testnet.json."
+        required: false
+        default: false
+        type: boolean
+      contract_id:
+        description: "Optional router contract id. Defaults to repository variable SOROBAN_CONTRACT_ID."
+        required: false
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  STELLAR_NETWORK: testnet
 
 jobs:
-  skipped:
-    name: Deployment Skipped
+  # Deploys the router and emits the committed-shape, non-secret artifact
+  # (config/deployments/testnet.json). Opt-in per run; mainnet is never
+  # deployed from here and config/pools-mainnet.json is never touched.
+  deploy-router:
+    name: Deploy Router to Testnet
+    if: ${{ inputs.deploy_router }}
     runs-on: ubuntu-latest
     steps:
-      - name: Notice
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Soroban CLI
+        run: cargo install --locked soroban-cli || true
+
+      # `soroban keys add` reads the secret from stdin so it never appears in
+      # argv or the run log. GitHub also masks registered secrets in output.
+      - name: Set up deployer identity
+        env:
+          SOROBAN_DEPLOYER_SECRET: ${{ secrets.SOROBAN_DEPLOYER_SECRET }}
         run: |
-          echo "## Deployment Skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "Automatic deployments are disabled on push." >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "${SOROBAN_DEPLOYER_SECRET}" ]; then
+            echo "::error::SOROBAN_DEPLOYER_SECRET is not configured"
+            exit 1
+          fi
+          soroban network add testnet \
+            --rpc-url "https://soroban-testnet.stellar.org:443" \
+            --network-passphrase "Test SDF Network ; September 2015" || true
+          printf '%s' "${SOROBAN_DEPLOYER_SECRET}" \
+            | soroban keys add deployer --secret-key stdin --global
+
+      - name: Deploy router and write artifact
+        run: ./scripts/deploy.sh --network testnet
+
+      # Hard gate: the emitted ID must answer on-chain, or the run fails and
+      # the artifact is not published.
+      - name: Smoke check deployed router
+        run: |
+          set -euo pipefail
+          ROUTER_ID="$(jq -r .router_contract_id config/deployments/testnet.json)"
+          if [ -z "${ROUTER_ID}" ] || [ "${ROUTER_ID}" = "null" ]; then
+            echo "::error::Artifact contains no router_contract_id"
+            exit 1
+          fi
+          echo "Smoke-checking ${ROUTER_ID}"
+          soroban contract invoke \
+            --id "${ROUTER_ID}" \
+            --source deployer \
+            --network testnet \
+            -- get_admin
+
+      - name: Show artifact
+        run: |
+          cat config/deployments/testnet.json
+          echo "Copy this into ROUTER_CONTRACT_ADDRESS:"
+          jq -r .router_contract_id config/deployments/testnet.json
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-testnet
+          path: config/deployments/testnet.json
+
+  smoke-test:
+    name: Testnet Contract Smoke Tests
+    needs: [deploy-router]
+    if: ${{ always() && !cancelled() && needs.deploy-router.result != 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-soroban-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-soroban-
+
+      - name: Install Soroban CLI
+        run: cargo install --locked soroban-cli || true
+
+      - name: Set up deployer identity
+        env:
+          SOROBAN_DEPLOYER_SECRET: ${{ secrets.SOROBAN_DEPLOYER_SECRET }}
+        run: |
+          soroban network add testnet \
+            --rpc-url "https://soroban-testnet.stellar.org:443" \
+            --network-passphrase "Test SDF Network ; September 2015" || true
+          echo "${SOROBAN_DEPLOYER_SECRET}" | soroban keys add deployer --secret-key stdin --global || true
+
+      - name: Register pools
+        env:
+          STELLARROUTE_TESTNET_ROUTER_ID: ${{ inputs.contract_id || vars.SOROBAN_CONTRACT_ID }}
+        run: ./scripts/register-pools.sh --network testnet
+
+      - name: Run smoke tests
+        env:
+          STELLARROUTE_TESTNET_ROUTER_ID: ${{ inputs.contract_id || vars.SOROBAN_CONTRACT_ID }}
+          STELLARROUTE_SMOKE_ROUTE: ${{ vars.STELLARROUTE_SMOKE_ROUTE }}
+          STELLARROUTE_SMOKE_AMOUNT_IN: ${{ vars.STELLARROUTE_SMOKE_AMOUNT_IN }}
+        run: ./scripts/smoke-test-testnet.sh --network testnet

@@ -7,15 +7,37 @@ use axum::{
 use std::sync::Arc;
 use tracing::debug;
 
+use stellarroute_routing::cross_chain::ProviderPolicy;
+use stellarroute_routing::health::filter::GraphFilter;
+use stellarroute_routing::health::policy::ExclusionPolicy;
+use stellarroute_routing::health::scorer::{HealthRecord, ScoredVenue, VenueType};
 use stellarroute_routing::optimizer::HybridOptimizer;
 use stellarroute_routing::policy::RoutingPolicy;
 
+/// Build the routing policy used by `/api/v1/routes` (production + canary).
+///
+/// Bridges stay non-executable; `provider_policy` is preserved (never silently
+/// defaulted away) so kill-switches apply identically on canary evaluation.
+pub(crate) fn routes_routing_policy(
+    max_hops: usize,
+    provider_policy: ProviderPolicy,
+) -> RoutingPolicy {
+    RoutingPolicy {
+        max_hops,
+        allow_bridge_edges: false,
+        provider_policy,
+        ..Default::default()
+    }
+}
+
 use crate::{
     error::{ApiError, Result},
+    middleware::RequestId,
     models::{
         request::{AssetPath, RoutesParams},
-        AssetInfo, RouteCandidate, RouteHop, RoutesResponse,
+        ApiResponse, AssetInfo, RouteCandidate, RouteHop, RoutesResponse,
     },
+    ordering::{sort_routes, OrderingConfig},
     state::AppState,
 };
 
@@ -72,9 +94,10 @@ fn asset_path_to_info(asset: &AssetPath) -> AssetInfo {
 )]
 pub async fn get_routes(
     State(state): State<Arc<AppState>>,
+    request_id: RequestId,
     Path((base, quote)): Path<(String, String)>,
     Query(params): Query<RoutesParams>,
-) -> Result<Json<RoutesResponse>> {
+) -> Result<Json<ApiResponse<RoutesResponse>>> {
     debug!("get_routes: {}/{} params={:?}", base, quote, params);
 
     // ── Input validation ────────────────────────────────────────────────────
@@ -120,31 +143,114 @@ pub async fn get_routes(
         .routes_single_flight
         .execute(&sf_key, || async move {
             // Read the pre-built in-memory liquidity graph — zero DB hit
-            let edges = state_c.graph_manager.get_edges();
+            let compacted_graph = state_c.graph_manager.get_edges();
 
-            if edges.is_empty() {
+            if compacted_graph.asset_count() == 0 {
+                return Arc::new(Err(ApiError::NoRouteFound));
+            }
+
+            // Build ExclusionPolicy and filter degraded/excluded venues from the
+            // compacted graph before pathfinding.  The compacted graph does not carry
+            // timestamps, so we cannot derive freshness-based health scores here;
+            // instead we assign a neutral score of 1.0 so that only override and
+            // circuit-breaker directives take effect (threshold filtering is the
+            // responsibility of the indexer-maintained graph state).
+            let mut overrides = state_c.kill_switch.get_override_registry().await;
+            // Merge any static config overrides (mirrors quote.rs Stage 3 merge)
+            for entry in stellarroute_routing::health::scorer::HealthScoringConfig::default()
+                .overrides
+                .clone()
+            {
+                overrides
+                    .venue_entries
+                    .insert(entry.venue_ref, entry.directive);
+            }
+            let exclusion_policy = ExclusionPolicy {
+                thresholds: Default::default(), // thresholds intentionally zeroed: no score-based exclusion
+                overrides,
+                circuit_breaker: Some(state_c.circuit_breaker.clone()),
+            };
+            // Provider kill-switches from admin/Redis. Graph ingest currently
+            // supplies no providers; compaction preserves them when set. Filter +
+            // RoutingPolicy wiring stays active so provider-carrying edges cannot
+            // be selected when present.
+            let provider_policy = state_c.kill_switch.get_provider_policy().await;
+
+            // Deduplicate venues from all graph edges and assign neutral scores so
+            // that only overrides / circuit-breaker logic fires.
+            let all_edges = compacted_graph.to_edges();
+            let scored_venues: Vec<ScoredVenue> = {
+                let mut seen = std::collections::HashSet::new();
+                all_edges
+                    .iter()
+                    .filter(|e| seen.insert(e.venue_ref.clone()))
+                    .map(|e| {
+                        let venue_type = if e.venue_type == "amm" {
+                            VenueType::Amm
+                        } else {
+                            VenueType::Sdex
+                        };
+                        ScoredVenue {
+                            venue_ref: e.venue_ref.clone(),
+                            venue_type: venue_type.clone(),
+                            record: HealthRecord {
+                                venue_ref: e.venue_ref.clone(),
+                                venue_type,
+                                score: 1.0,
+                                signals: serde_json::json!({}),
+                                computed_at: chrono::Utc::now(),
+                            },
+                        }
+                    })
+                    .collect()
+            };
+
+            let filter = GraphFilter::new(&exclusion_policy);
+            let (filtered_edges, exclusion_diagnostics) = filter.filter_edges_with_providers(
+                &all_edges,
+                &scored_venues,
+                Some(&provider_policy),
+            );
+
+            if !exclusion_diagnostics.excluded_venues.is_empty() {
+                tracing::info!(
+                    excluded = exclusion_diagnostics.excluded_venues.len(),
+                    "routes: health exclusion policy removed degraded venues"
+                );
+            }
+
+            // Rebuild a filtered compacted graph from the healthy edges only.
+            let compacted_graph =
+                stellarroute_routing::compaction::CompactedGraph::from_edges(filtered_edges);
+
+            if compacted_graph.asset_count() == 0 {
                 return Arc::new(Err(ApiError::NoRouteFound));
             }
 
             let amount_e7 = (amount * 1e7) as i128;
+
+            let base_canary = base_c.clone();
+            let quote_canary = quote_c.clone();
+            let graph_canary = compacted_graph.clone();
+            let provider_policy_for_routing = provider_policy.clone();
+            let provider_policy_for_canary = provider_policy.clone();
 
             // Offload CPU-bound BFS to blocking thread pool to prevent async starvation
             let spawn_result = tokio::task::spawn_blocking(move || {
                 let mut optimizer = HybridOptimizer::default();
                 let _ = optimizer.set_active_policy(&env_c);
 
-                let routing_policy = RoutingPolicy {
-                    max_hops: max_hops_param,
-                    ..Default::default()
-                };
+                let routing_policy =
+                    routes_routing_policy(max_hops_param, provider_policy_for_routing);
+                debug_assert!(!routing_policy.allow_bridge_edges);
 
                 let base_canonical = asset_path_to_info(&base_c).to_canonical();
                 let quote_canonical = asset_path_to_info(&quote_c).to_canonical();
 
-                optimizer.find_optimal_routes(
+                optimizer.find_optimal_routes_compacted(
                     &base_canonical,
                     &quote_canonical,
-                    &edges,
+                    &compacted_graph,
                     amount_e7,
                     &routing_policy,
                 )
@@ -167,6 +273,86 @@ pub async fn get_routes(
                 Err(_) => return Arc::new(Err(ApiError::NoRouteFound)),
             };
 
+            // ── Canary Pipeline ──────────────────────────────────────────────────
+            let state_canary = state_c.clone();
+            let diag_baseline = diag.clone();
+            let amount_e7_canary = amount_e7;
+
+            tokio::spawn(async move {
+                let config = state_canary.canary_config.read().await.clone();
+                if !config.enabled {
+                    return;
+                }
+
+                // Pseudo-random sampling
+                let rate = (chrono::Utc::now().timestamp_micros() % 1000) as f64 / 1000.0;
+                if rate > config.evaluation_rate {
+                    return;
+                }
+
+                // Preserve provider kill-switches in canary — do not silently default away.
+                let rp = routes_routing_policy(max_hops_param, provider_policy_for_canary);
+
+                let candidate_policy = config.candidate_policy.clone();
+                let base_str = asset_path_to_info(&base_canary).to_canonical();
+                let quote_str = asset_path_to_info(&quote_canary).to_canonical();
+                let base_str_c = base_str.clone();
+                let quote_str_c = quote_str.clone();
+
+                let candidate_result = tokio::task::spawn_blocking(move || {
+                    let mut optimizer = HybridOptimizer::default();
+                    if optimizer.set_active_policy(&candidate_policy).is_err() {
+                        return None;
+                    }
+                    optimizer
+                        .find_optimal_routes_compacted(
+                            &base_str,
+                            &quote_str,
+                            &graph_canary,
+                            amount_e7_canary,
+                            &rp,
+                        )
+                        .ok()
+                })
+                .await;
+
+                if let Ok(Some(candidate_diag)) = candidate_result {
+                    let evaluation = stellarroute_routing::canary::CanaryEvaluator::evaluate(
+                        &config,
+                        &diag_baseline,
+                        &candidate_diag,
+                        &base_str_c,
+                        &quote_str_c,
+                        amount_e7_canary,
+                    );
+
+                    let mut history = state_canary.canary_history.write().await;
+                    if history.len() >= 1000 {
+                        history.pop_front();
+                    }
+                    let is_violation = evaluation.is_violation;
+                    history.push_back(evaluation);
+
+                    if is_violation {
+                        let recent_violations = history
+                            .iter()
+                            .rev()
+                            .take(config.rollback_trigger_threshold as usize)
+                            .filter(|e| e.is_violation)
+                            .count();
+
+                        if recent_violations >= config.rollback_trigger_threshold as usize {
+                            tracing::warn!(
+                                "Canary trigger threshold reached! Disabling canary pipeline."
+                            );
+                            let mut cfg = state_canary.canary_config.write().await;
+                            cfg.enabled = false;
+                        }
+                    }
+                }
+            });
+            // ───────────────────────────────────────────────────────────────────
+
             // Record route compute time metric
             crate::metrics::record_route_compute_time(
                 std::time::Duration::from_millis(diag.total_compute_time_ms),
@@ -174,44 +360,39 @@ pub async fn get_routes(
             );
 
             // ── Map diagnostics → response DTO ─────────────────────────────
-            let build_candidate =
-                |path: &stellarroute_routing::pathfinder::SwapPath,
-                 metrics: &stellarroute_routing::optimizer::RouteMetrics|
-                 -> RouteCandidate {
-                    let mut hops = Vec::new();
-                    let mut active = amount_e7;
+            let build_candidate = |path: &stellarroute_routing::pathfinder::SwapPath,
+                                   metrics: &stellarroute_routing::optimizer::RouteMetrics|
+             -> RouteCandidate {
+                let mut hops = Vec::new();
+                let mut active = amount_e7;
 
-                    for h in &path.hops {
-                        let after_fee =
-                            (active * (10000 - h.fee_bps as i128)) / 10000;
-                        let out = (after_fee as f64 * h.price) as i128;
+                for h in &path.hops {
+                    let after_fee = (active * (10000 - h.fee_bps as i128)) / 10000;
+                    let out = (after_fee as f64 * h.price) as i128;
 
-                        hops.push(RouteHop {
-                            from_asset: parse_asset_to_info(&h.source_asset),
-                            to_asset: parse_asset_to_info(&h.destination_asset),
-                            price: format!("{:.7}", h.price),
-                            amount_out_of_hop: format!("{:.7}", out as f64 / 1e7),
-                            fee_bps: h.fee_bps,
-                            source: if h.venue_type == "amm" {
-                                format!("amm:{}", h.venue_ref)
-                            } else {
-                                "sdex".into()
-                            },
-                        });
-                        active = out;
-                    }
+                    hops.push(RouteHop {
+                        from_asset: parse_asset_to_info(&h.source_asset),
+                        to_asset: parse_asset_to_info(&h.destination_asset),
+                        price: format!("{:.7}", h.price),
+                        amount_out_of_hop: format!("{:.7}", out as f64 / 1e7),
+                        fee_bps: h.fee_bps,
+                        source: if h.venue_type == "amm" {
+                            format!("amm:{}", h.venue_ref)
+                        } else {
+                            "sdex".into()
+                        },
+                    });
+                    active = out;
+                }
 
-                    RouteCandidate {
-                        estimated_output: format!(
-                            "{:.7}",
-                            metrics.output_amount as f64 / 1e7
-                        ),
-                        impact_bps: metrics.impact_bps,
-                        score: metrics.score,
-                        policy_used: diag.policy.environment.clone(),
-                        path: hops,
-                    }
-                };
+                RouteCandidate {
+                    estimated_output: format!("{:.7}", metrics.output_amount as f64 / 1e7),
+                    impact_bps: metrics.impact_bps,
+                    score: metrics.score,
+                    policy_used: diag.policy.environment.clone(),
+                    path: hops,
+                }
+            };
 
             let mut routes = Vec::with_capacity(limit_param);
             routes.push(build_candidate(&diag.selected_path, &diag.metrics));
@@ -219,6 +400,9 @@ pub async fn get_routes(
             for (path, metric) in diag.alternatives.iter().take(limit_param - 1) {
                 routes.push(build_candidate(path, metric));
             }
+
+            // Apply deterministic ordering to routes
+            sort_routes(&mut routes, &OrderingConfig::default());
 
             Arc::new(Ok(RoutesResponse {
                 base_asset: asset_path_to_info(&base_asset),
@@ -232,7 +416,9 @@ pub async fn get_routes(
 
     // ── Unwrap Arc (shared by single-flight callers) ────────────────────────
     match Arc::try_unwrap(result_arc) {
-        Ok(res) => res.map(Json),
-        Err(arc) => (*arc).clone().map(Json),
+        Ok(res) => res.map(|r| Json(ApiResponse::new(r, request_id.to_string()))),
+        Err(arc) => (*arc)
+            .clone()
+            .map(|r| Json(ApiResponse::new(r, request_id.to_string()))),
     }
 }

@@ -22,6 +22,7 @@ fn bench_pathfinding_2hop(c: &mut Criterion) {
                     liquidity: 1_000_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
                 LiquidityEdge {
                     from: "USDC".to_string(),
@@ -31,6 +32,7 @@ fn bench_pathfinding_2hop(c: &mut Criterion) {
                     liquidity: 500_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
             ];
 
@@ -63,6 +65,7 @@ fn bench_pathfinding_4hop(c: &mut Criterion) {
                     liquidity: 2_000_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
                 LiquidityEdge {
                     from: "USDC".to_string(),
@@ -72,6 +75,7 @@ fn bench_pathfinding_4hop(c: &mut Criterion) {
                     liquidity: 1_500_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
                 LiquidityEdge {
                     from: "EUR".to_string(),
@@ -81,6 +85,7 @@ fn bench_pathfinding_4hop(c: &mut Criterion) {
                     liquidity: 1_000_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
                 LiquidityEdge {
                     from: "GBP".to_string(),
@@ -90,6 +95,7 @@ fn bench_pathfinding_4hop(c: &mut Criterion) {
                     liquidity: 800_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
                 // Additional cross-links
                 LiquidityEdge {
@@ -100,6 +106,7 @@ fn bench_pathfinding_4hop(c: &mut Criterion) {
                     liquidity: 3_000_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
                 LiquidityEdge {
                     from: "XLM".to_string(),
@@ -109,6 +116,7 @@ fn bench_pathfinding_4hop(c: &mut Criterion) {
                     liquidity: 1_200_000_000,
                     price: 1.0,
                     fee_bps: 30,
+                    ..Default::default()
                 },
             ];
 

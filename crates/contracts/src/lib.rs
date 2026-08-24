@@ -21,4 +21,8 @@ mod benchmarks;
 #[cfg(test)]
 mod e2e_harness;
 #[cfg(test)]
+mod fuzz_targets;
+#[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_multihop_rollback;

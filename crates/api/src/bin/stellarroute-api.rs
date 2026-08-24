@@ -2,8 +2,203 @@
 
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
-use stellarroute_api::{telemetry, state::DatabasePools, Server, ServerConfig};
-use tracing::{error, info};
+use stellarroute_api::{state::DatabasePools, telemetry, PurgerConfig, Server, ServerConfig};
+use tracing::{error, info, warn};
+
+/// Resolve the bind host and port from environment variables.
+///
+/// PaaS platforms (Render, Fly, Railway, Kubernetes) inject a `PORT` env var
+/// and expect the process to listen on `0.0.0.0:$PORT`.  When `PORT` is
+/// present the default host becomes `0.0.0.0` so platform health-check probes
+/// can reach the process.  An explicit `API_HOST` always wins.
+///
+/// Priority order:
+/// 1. `PORT` present → host = `API_HOST` or `0.0.0.0`, port = `PORT`
+/// 2. `PORT` absent  → host = `API_HOST` or `127.0.0.1`, port = `API_PORT` or `3000`
+pub fn resolve_bind_address() -> (String, u16) {
+    let paas_port: Option<u16> = std::env::var("PORT").ok().and_then(|p| p.parse().ok());
+
+    if let Some(port) = paas_port {
+        let host = std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+        (host, port)
+    } else {
+        let host = std::env::var("API_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let port = std::env::var("API_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3000u16);
+        (host, port)
+    }
+}
+
+#[cfg(test)]
+mod bind_tests {
+    use super::*;
+
+    fn with_env<F: FnOnce()>(pairs: &[(&str, &str)], f: F) {
+        // Set vars
+        for (k, v) in pairs {
+            std::env::set_var(k, v);
+        }
+        f();
+        // Unset vars
+        for (k, _) in pairs {
+            std::env::remove_var(k);
+        }
+    }
+
+    fn without_env<F: FnOnce()>(keys: &[&str], f: F) {
+        for k in keys {
+            std::env::remove_var(k);
+        }
+        f();
+    }
+
+    #[test]
+    fn defaults_to_loopback_without_port_env() {
+        without_env(&["PORT", "API_HOST", "API_PORT"], || {
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "127.0.0.1");
+            assert_eq!(port, 3000);
+        });
+    }
+
+    #[test]
+    fn paas_port_env_binds_all_interfaces_by_default() {
+        with_env(&[("PORT", "8080")], || {
+            std::env::remove_var("API_HOST");
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "0.0.0.0");
+            assert_eq!(port, 8080);
+        });
+    }
+
+    #[test]
+    fn explicit_api_host_overrides_paas_default() {
+        with_env(&[("PORT", "9000"), ("API_HOST", "10.0.0.1")], || {
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "10.0.0.1");
+            assert_eq!(port, 9000);
+        });
+    }
+
+    #[test]
+    fn api_port_used_when_no_paas_port() {
+        with_env(&[("API_PORT", "4000")], || {
+            std::env::remove_var("PORT");
+            std::env::remove_var("API_HOST");
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "127.0.0.1");
+            assert_eq!(port, 4000);
+        });
+    }
+}
+fn validate_auth_config() -> Result<(), String> {
+    match stellarroute_api::middleware::validate_auth_startup() {
+        Ok(Some(warning)) => {
+            warn!("{}", warning);
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(message) => Err(message),
+    }
+}
+
+fn parse_bool_env(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            let v = value.trim().to_ascii_lowercase();
+            matches!(v.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
+fn validate_required_env() -> Result<(), String> {
+    let required = ["DATABASE_URL"];
+    let mut missing = Vec::new();
+
+    for key in required {
+        match std::env::var(key) {
+            Ok(value) if !value.trim().is_empty() => {}
+            _ => missing.push(key),
+        }
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Missing required environment variable(s): {}",
+            missing.join(", ")
+        ))
+    }
+}
+
+async fn run_startup_credential_checks(
+    database_url: &str,
+    redis_url: Option<&str>,
+) -> Result<(), String> {
+    if sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect(database_url)
+        .await
+        .is_err()
+    {
+        return Err("Startup credential check failed: DATABASE_URL is not reachable".to_string());
+    }
+
+    if let Some(redis_url) = redis_url {
+        let client = redis::Client::open(redis_url)
+            .map_err(|_| "Startup credential check failed: REDIS_URL is invalid".to_string())?;
+        let mut conn = client.get_connection().map_err(|_| {
+            "Startup credential check failed: REDIS_URL is not reachable".to_string()
+        })?;
+        let pong: String = redis::cmd("PING")
+            .query(&mut conn)
+            .map_err(|_| "Startup credential check failed: REDIS_URL ping failed".to_string())?;
+        if pong != "PONG" {
+            return Err(
+                "Startup credential check failed: REDIS_URL ping returned unexpected response"
+                    .to_string(),
+            );
+        }
+    }
+
+    if let Ok(soroban_url) = std::env::var("SOROBAN_RPC_URL") {
+        if !soroban_url.trim().is_empty() {
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .map_err(|_| {
+                    "Startup credential check failed: unable to create HTTP client".to_string()
+                })?;
+            let body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "startup-check",
+                "method": "getHealth",
+                "params": {}
+            });
+            let response = client
+                .post(&soroban_url)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|_| {
+                    "Startup credential check failed: SOROBAN_RPC_URL is not reachable".to_string()
+                })?;
+            if !response.status().is_success() {
+                return Err(
+                    "Startup credential check failed: SOROBAN_RPC_URL returned non-success status"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() {
@@ -12,9 +207,41 @@ async fn main() {
 
     info!("Starting StellarRoute API Server");
 
+    if let Err(message) = validate_required_env() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = stellarroute_api::server::validate_cors_config() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = validate_auth_config() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = stellarroute_api::middleware::validate_admin_auth_startup() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
     // Get database URL from environment
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://localhost/stellarroute".to_string());
+
+    let redis_url = std::env::var("REDIS_URL").ok();
+    let startup_credential_checks = parse_bool_env("STARTUP_CREDENTIAL_CHECK");
+    if startup_credential_checks {
+        info!("Running startup credential reachability checks");
+        if let Err(message) =
+            run_startup_credential_checks(&database_url, redis_url.as_deref()).await
+        {
+            error!("{}", message);
+            std::process::exit(1);
+        }
+    }
 
     // Read pool configuration from environment variables
     let max_connections: u32 = std::env::var("DB_MAX_CONNECTIONS")
@@ -66,9 +293,12 @@ async fn main() {
         .max_lifetime(Duration::from_secs(max_lifetime_secs))
         .after_connect(move |conn, _meta| {
             Box::pin(async move {
-                sqlx::query(&format!("SET statement_timeout = '{}ms'", statement_timeout_ms))
-                    .execute(&mut *conn)
-                    .await?;
+                sqlx::query(&format!(
+                    "SET statement_timeout = '{}ms'",
+                    statement_timeout_ms
+                ))
+                .execute(&mut *conn)
+                .await?;
                 sqlx::query(&format!("SET lock_timeout = '{}ms'", lock_timeout_ms))
                     .execute(&mut *conn)
                     .await?;
@@ -98,19 +328,49 @@ async fn main() {
     };
 
     // Create server configuration
+    // Resolve bind host/port — respects PaaS PORT convention.
+    let (resolved_host, resolved_port) = resolve_bind_address();
+    if resolved_host == "0.0.0.0" || resolved_host == "::" {
+        info!(
+            host = %resolved_host,
+            port = resolved_port,
+            "PaaS bind mode — listening on all interfaces"
+        );
+    }
+
     let config = ServerConfig {
-        host: std::env::var("API_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-        port: std::env::var("API_PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(3000),
+        host: resolved_host,
+        port: resolved_port,
         enable_cors: true,
         enable_compression: true,
-        redis_url: std::env::var("REDIS_URL").ok(),
+        admin_auth_token: std::env::var("ADMIN_AUTH_TOKEN").ok(),
+        redis_url,
         quote_cache_ttl_seconds: std::env::var("QUOTE_CACHE_TTL_SECONDS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(2),
+    };
+
+    // Load purger configuration
+    let purger_config = PurgerConfig::from_env();
+    info!(
+        enabled = purger_config.enabled,
+        interval_secs = purger_config.interval_secs,
+        replay_retention_days = purger_config.replay_artifacts_retention_days,
+        audit_log_retention_days = purger_config.audit_log_retention_days,
+        "Quote purger configuration loaded"
+    );
+
+    // Clone pool for purger task
+    let purger_pool = pool.clone();
+
+    // Spawn purger background task
+    let _purger_handle = if purger_config.enabled {
+        Some(tokio::spawn(async move {
+            stellarroute_api::purger::run_purger_task(purger_pool, purger_config).await;
+        }))
+    } else {
+        None
     };
 
     // Create and start server

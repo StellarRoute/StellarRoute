@@ -55,33 +55,128 @@ impl Database {
     pub async fn migrate(&self) -> Result<()> {
         info!("Running database migrations");
 
+        sqlx::raw_sql(
+            "create table if not exists _schema_migrations (
+                name text primary key,
+                applied_at timestamptz not null default now()
+            )",
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to ensure migration ledger table: {}", e);
+            IndexerError::DatabaseMigration(format!("Failed to create migration ledger: {}", e))
+        })?;
+
         // Read migration files from migrations directory
-        let migration_0001 = include_str!("../../migrations/0001_init.sql");
-        let migration_0002 = include_str!("../../migrations/0002_performance_indexes.sql");
+        let migrations: &[(&str, &str)] = &[
+            (
+                "0001_init.sql",
+                include_str!("../../migrations/0001_init.sql"),
+            ),
+            (
+                "0002_performance_indexes.sql",
+                include_str!("../../migrations/0002_performance_indexes.sql"),
+            ),
+            (
+                "0003_trading_pairs_and_snapshots.sql",
+                include_str!("../../migrations/0003_trading_pairs_and_snapshots.sql"),
+            ),
+            (
+                "0004_normalized_liquidity.sql",
+                include_str!("../../migrations/0004_normalized_liquidity.sql"),
+            ),
+            (
+                "0005_venue_health_scores.sql",
+                include_str!("../../migrations/0005_venue_health_scores.sql"),
+            ),
+            (
+                "0006_maintenance_policies.sql",
+                include_str!("../../migrations/0006_maintenance_policies.sql"),
+            ),
+            (
+                "0007_backfill_and_normalized_storage.sql",
+                include_str!("../../migrations/0007_backfill_and_normalized_storage.sql"),
+            ),
+            (
+                "0008_soroban_discovery_cursors.sql",
+                include_str!("../../migrations/0008_soroban_discovery_cursors.sql"),
+            ),
+            (
+                "0009_finalize_unified_liquidity.sql",
+                include_str!("../../migrations/0009_finalize_unified_liquidity.sql"),
+            ),
+            (
+                "0010_asset_metadata.sql",
+                include_str!("../../migrations/0010_asset_metadata.sql"),
+            ),
+            (
+                "0011_trace_context_provenance.sql",
+                include_str!("../../migrations/0011_trace_context_provenance.sql"),
+            ),
+            (
+                "0012_contract_swap_activity.sql",
+                include_str!("../../migrations/0012_contract_swap_activity.sql"),
+            ),
+            (
+                "0013_amm_pools.sql",
+                include_str!("../../migrations/0013_amm_pools.sql"),
+            ),
+            (
+                "0014_assets_native_singleton.sql",
+                include_str!("../../migrations/0014_assets_native_singleton.sql"),
+            ),
+            (
+                "0015_swap_prepared_quotes.sql",
+                include_str!("../../migrations/0015_swap_prepared_quotes.sql"),
+            ),
+        ];
 
-        // Execute migrations in order
-        info!("Running migration 0001_init.sql");
-        sqlx::query(migration_0001)
-            .execute(&self.pool)
+        for (name, sql) in migrations {
+            Self::execute_migration(&self.pool, name, sql).await?;
+        }
+
+        info!("Database migrations completed");
+        Ok(())
+    }
+
+    async fn execute_migration(pool: &PgPool, name: &str, sql: &str) -> Result<()> {
+        let already_applied: bool =
+            sqlx::query_scalar("select exists(select 1 from _schema_migrations where name = $1)")
+                .bind(name)
+                .fetch_one(pool)
+                .await
+                .map_err(|e| {
+                    error!("Failed to check migration status for {}: {}", name, e);
+                    IndexerError::DatabaseMigration(format!(
+                        "Failed to check migration {}: {}",
+                        name, e
+                    ))
+                })?;
+
+        if already_applied {
+            info!("Skipping migration {} (already applied)", name);
+            return Ok(());
+        }
+
+        info!("Running migration {}", name);
+        sqlx::raw_sql(sql).execute(pool).await.map_err(|e| {
+            error!("Migration {} failed: {}", name, e);
+            IndexerError::DatabaseMigration(format!("Failed to run {}: {}", name, e))
+        })?;
+
+        sqlx::query("insert into _schema_migrations (name) values ($1)")
+            .bind(name)
+            .execute(pool)
             .await
             .map_err(|e| {
-                error!("Migration 0001 failed: {}", e);
-                IndexerError::DatabaseMigration(format!("Failed to run 0001_init.sql: {}", e))
-            })?;
-
-        info!("Running migration 0002_performance_indexes.sql");
-        sqlx::query(migration_0002)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                error!("Migration 0002 failed: {}", e);
+                error!("Failed to record migration {}: {}", name, e);
                 IndexerError::DatabaseMigration(format!(
-                    "Failed to run 0002_performance_indexes.sql: {}",
-                    e
+                    "Failed to record migration {}: {}",
+                    name, e
                 ))
             })?;
 
-        info!("Database migrations completed");
         Ok(())
     }
 

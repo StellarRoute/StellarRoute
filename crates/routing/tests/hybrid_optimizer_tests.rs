@@ -15,7 +15,8 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             venue_ref: "pool_xlm_usdc".to_string(),
             liquidity: 1_000_000_000,
             price: 1.0,
-            fee_bps: 30, // 100 XLM
+            fee_bps: 30,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -24,7 +25,8 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             venue_ref: "book_xlm_eurt".to_string(),
             liquidity: 500_000_000,
             price: 1.0,
-            fee_bps: 30, // 50 XLM
+            fee_bps: 30,
+            ..Default::default()
         },
         // Multi-hop paths
         LiquidityEdge {
@@ -34,7 +36,8 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             venue_ref: "pool_usdc_eurt".to_string(),
             liquidity: 800_000_000,
             price: 1.0,
-            fee_bps: 30, // 80 USDC
+            fee_bps: 30,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "EURT".to_string(),
@@ -43,7 +46,8 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             venue_ref: "book_eurt_btc".to_string(),
             liquidity: 200_000_000,
             price: 1.0,
-            fee_bps: 30, // 20 EURT
+            fee_bps: 30,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -52,7 +56,8 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             venue_ref: "pool_usdc_btc".to_string(),
             liquidity: 300_000_000,
             price: 1.0,
-            fee_bps: 30, // 30 USDC
+            fee_bps: 30,
+            ..Default::default()
         },
         // Additional liquidity sources
         LiquidityEdge {
@@ -62,7 +67,8 @@ fn create_test_graph() -> Vec<LiquidityEdge> {
             venue_ref: "pool_xlm_btc".to_string(),
             liquidity: 150_000_000,
             price: 1.0,
-            fee_bps: 30, // 15 XLM
+            fee_bps: 30,
+            ..Default::default()
         },
     ]
 }
@@ -172,6 +178,7 @@ fn test_policy_constraints() {
         max_impact_bps: 10,     // Very low impact tolerance
         max_compute_time_ms: 1, // Very low time tolerance
         environment: "restrictive".to_string(),
+        scorer: None,
     };
 
     optimizer.add_policy(restrictive_policy).unwrap();
@@ -204,6 +211,7 @@ fn test_custom_policy() {
         max_impact_bps: 1000,
         max_compute_time_ms: 50,
         environment: "latency_first".to_string(),
+        scorer: None,
     };
 
     optimizer.add_policy(latency_first_policy).unwrap();

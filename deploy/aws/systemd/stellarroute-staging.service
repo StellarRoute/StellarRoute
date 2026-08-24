@@ -1,0 +1,16 @@
+[Unit]
+Description=StellarRoute staging stack (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/stellarroute
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

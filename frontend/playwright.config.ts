@@ -1,5 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const useOptimisticE2EServer =
+  process.env.PLAYWRIGHT_E2E === "true" ||
+  process.argv.some((arg) => arg.includes("optimistic-swap"));
+
+const useCctpE2EServer = process.argv.some((arg) =>
+  arg.includes("cctp-swap"),
+);
+
+const useWebpackE2EServer = useOptimisticE2EServer || useCctpE2EServer;
+
 /**
  * Playwright configuration for mobile visual regression tests.
  * Feature: mobile-swap-experience
@@ -17,27 +27,74 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   /* Reporter */
   reporter: process.env.CI ? "github" : "list",
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+    },
+  },
   use: {
     /* Base URL for the Next.js dev server */
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
     /* Collect trace on first retry */
     trace: "on-first-retry",
-    /* Screenshot comparison threshold — CI fails when diff exceeds this */
-    toHaveScreenshot: {
-      maxDiffPixelRatio: 0.02, // 2% pixel ratio threshold
-    },
   },
   projects: [
     {
       name: "chromium-mobile",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "edge-cases",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/quote-edge-cases.spec.ts",
+    },
+    {
+      name: "a11y",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/a11y-swap-flow.spec.ts",
+    },
+    {
+      name: "optimistic-swap",
+      timeout: 60_000,
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/optimistic-swap-pipeline.spec.ts",
+    },
+    {
+      name: "cctp-swap",
+      timeout: 90_000,
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/cctp-swap-flow.spec.ts",
+    },
   ],
   /* Start the Next.js dev server before running tests */
   webServer: {
-    command: "npm run dev",
+    command: useWebpackE2EServer
+      ? "npm run dev -- --webpack"
+      : "npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !useWebpackE2EServer,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      ...(useWebpackE2EServer
+        ? { PLAYWRIGHT_E2E: "true", NEXT_PUBLIC_API_PROXY: "true" }
+        : {}),
+    },
   },
 });

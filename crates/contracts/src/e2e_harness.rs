@@ -269,10 +269,10 @@ fn e2e_direct_swap_not_before_rejected() {
 #[test]
 fn e2e_direct_swap_paused_rejected() {
     let env = setup();
-    let (_, client) = deploy_router(&env);
+    let (admin, client) = deploy_router(&env);
     let pool = deploy_pool_99(&env);
     client.register_pool(&pool);
-    client.pause();
+    client.pause(&admin);
 
     let result = client.try_execute_swap(
         &Address::generate(&env),
@@ -285,12 +285,12 @@ fn e2e_direct_swap_paused_rejected() {
 #[test]
 fn e2e_direct_swap_resumes_after_unpause() {
     let env = setup();
-    let (_, client) = deploy_router(&env);
+    let (admin, client) = deploy_router(&env);
     let pool = deploy_pool_99(&env);
     client.register_pool(&pool);
 
-    client.pause();
-    client.unpause();
+    client.pause(&admin);
+    client.unpause(&admin);
 
     let result = client.try_execute_swap(
         &Address::generate(&env),
@@ -550,14 +550,14 @@ fn e2e_event_execute_alias_emits_failed_on_error() {
 #[test]
 fn e2e_event_pause_unpause_emitted() {
     let env = setup();
-    let (_, client) = deploy_router(&env);
+    let (admin, client) = deploy_router(&env);
 
     let before = env.events().all().len();
-    client.pause();
+    client.pause(&admin);
     let after_pause = env.events().all().len();
     assert!(after_pause > before, "pause must emit event");
 
-    client.unpause();
+    client.unpause(&admin);
     let after_unpause = env.events().all().len();
     assert!(after_unpause > after_pause, "unpause must emit event");
 }
@@ -1044,7 +1044,7 @@ fn e2e_lifecycle_multi_user_volume_accumulation() {
 #[test]
 fn e2e_lifecycle_pause_mid_operation_then_resume() {
     let env = setup();
-    let (_, client) = deploy_router(&env);
+    let (admin, client) = deploy_router(&env);
     let pool = deploy_pool_99(&env);
     client.register_pool(&pool);
 
@@ -1061,7 +1061,7 @@ fn e2e_lifecycle_pause_mid_operation_then_resume() {
     assert!(r1.amount_out > 0);
 
     // Admin pauses
-    client.pause();
+    client.pause(&admin);
 
     // Swap 2: fails
     let r2 = client.try_execute_swap(
@@ -1079,7 +1079,7 @@ fn e2e_lifecycle_pause_mid_operation_then_resume() {
     assert_eq!(client.get_total_swap_volume(), 1_000);
 
     // Admin unpauses
-    client.unpause();
+    client.unpause(&admin);
 
     // Swap 3: succeeds again
     let r3 = client.execute_swap(

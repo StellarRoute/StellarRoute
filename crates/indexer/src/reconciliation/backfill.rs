@@ -5,13 +5,13 @@
 //! `normalized_liquidity` storage table.
 
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row, FromRow};
+use sqlx::{FromRow, PgPool, Row};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use crate::error::Result;
 
@@ -38,15 +38,16 @@ impl BackfillStatus {
     }
 }
 
-impl ToString for BackfillStatus {
-    fn to_string(&self) -> String {
-        match self {
-            BackfillStatus::Idle => "idle".to_string(),
-            BackfillStatus::Running => "running".to_string(),
-            BackfillStatus::Paused => "paused".to_string(),
-            BackfillStatus::Completed => "completed".to_string(),
-            BackfillStatus::Error(e) => e.clone(),
-        }
+impl std::fmt::Display for BackfillStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BackfillStatus::Idle => "idle",
+            BackfillStatus::Running => "running",
+            BackfillStatus::Paused => "paused",
+            BackfillStatus::Completed => "completed",
+            BackfillStatus::Error(e) => e,
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -83,7 +84,7 @@ impl BackfillManager {
         drop(status);
 
         info!("Starting historical liquidity normalization backfill...");
-        
+
         // Ensure checkpoint exists
         sqlx::query(
             "INSERT INTO backfill_checkpoints (job_name, last_processed_id, status) VALUES ($1, 0, 'running') ON CONFLICT (job_name) DO NOTHING"
@@ -101,7 +102,7 @@ impl BackfillManager {
                 error!("Backfill process failed: {:?}", e);
                 let mut status = manager.status.write().await;
                 *status = BackfillStatus::Error(e.to_string());
-                
+
                 let _ = sqlx::query("UPDATE backfill_checkpoints SET status = 'error', last_error = $2 WHERE job_name = $1")
                     .bind(JOB_ID)
                     .bind(e.to_string())
@@ -117,12 +118,12 @@ impl BackfillManager {
     pub async fn pause(&self) -> Result<()> {
         let mut status = self.status.write().await;
         *status = BackfillStatus::Paused;
-        
+
         sqlx::query("UPDATE backfill_checkpoints SET status = 'paused' WHERE job_name = $1")
             .bind(JOB_ID)
             .execute(&self.pool)
             .await?;
-        
+
         info!("Backfill job pause requested");
         Ok(())
     }
@@ -144,16 +145,15 @@ impl BackfillManager {
             drop(current_status);
 
             // 1. Fetch checkpoint
-            let checkpoint: BackfillCheckpoint = sqlx::query_as(
-                "SELECT * FROM backfill_checkpoints WHERE job_name = $1"
-            )
-            .bind(JOB_ID)
-            .fetch_one(&self.pool)
-            .await?;
+            let checkpoint: BackfillCheckpoint =
+                sqlx::query_as("SELECT * FROM backfill_checkpoints WHERE job_name = $1")
+                    .bind(JOB_ID)
+                    .fetch_one(&self.pool)
+                    .await?;
 
             // 2. Fetch batch of raw offers
             let rows = sqlx::query(
-                "SELECT * FROM sdex_offers WHERE offer_id > $1 ORDER BY offer_id ASC LIMIT $2"
+                "SELECT * FROM sdex_offers WHERE offer_id > $1 ORDER BY offer_id ASC LIMIT $2",
             )
             .bind(checkpoint.last_processed_id)
             .bind(checkpoint.batch_size)
@@ -166,29 +166,34 @@ impl BackfillManager {
                 info!("Historical backfill completed successfully");
                 let mut status = self.status.write().await;
                 *status = BackfillStatus::Completed;
-                
-                sqlx::query("UPDATE backfill_checkpoints SET status = 'completed' WHERE job_name = $1")
-                    .bind(JOB_ID)
-                    .execute(&self.pool)
-                    .await?;
+
+                sqlx::query(
+                    "UPDATE backfill_checkpoints SET status = 'completed' WHERE job_name = $1",
+                )
+                .bind(JOB_ID)
+                .execute(&self.pool)
+                .await?;
                 return Ok(());
             }
 
             let mut last_id = checkpoint.last_processed_id;
-            
+
             // 3. Normalize and Upsert
             for row in rows {
                 let offer_id: i64 = row.get("offer_id");
                 let price: Decimal = row.get("price");
                 let amount: Decimal = row.get("amount");
-                
+
                 // Normalization (7 decimal places)
                 let price_e7 = (price * scale_e7).to_i64().unwrap_or(0);
                 let amount_e7 = (amount * scale_e7).to_i64().unwrap_or(0);
 
                 // Simple integrity check
                 if price_e7 <= 0 || amount_e7 <= 0 {
-                    warn!("Invalid historical record skipped: offer_id={}, price={}, amount={}", offer_id, price, amount);
+                    warn!(
+                        "Invalid historical record skipped: offer_id={}, price={}, amount={}",
+                        offer_id, price, amount
+                    );
                     continue;
                 }
 
@@ -207,7 +212,7 @@ impl BackfillManager {
                         available_amount_e7 = EXCLUDED.available_amount_e7,
                         source_ledger = EXCLUDED.source_ledger,
                         updated_at = now()
-                    "#
+                    "#,
                 )
                 .bind(offer_id.to_string())
                 .bind(row.get::<uuid::Uuid, _>("selling_asset_id"))
@@ -229,7 +234,7 @@ impl BackfillManager {
                 .bind(JOB_ID)
                 .execute(&self.pool)
                 .await?;
-            
+
             info!("Processed historical batch up to offer_id: {}", last_id);
 
             // Yield to avoid blocking and stay "production-safe" (throttling)
@@ -246,7 +251,7 @@ mod tests {
     #[test]
     fn test_normalization_precision_e7() {
         let scale_e7 = Decimal::from(10_000_000);
-        
+
         let price = Decimal::from_str("1.2345678").unwrap();
         let price_e7 = (price * scale_e7).to_i64().unwrap();
         assert_eq!(price_e7, 12_345_678);
@@ -258,8 +263,14 @@ mod tests {
 
     #[test]
     fn test_backfill_status_enum() {
-        assert!(matches!(BackfillStatus::from_string("running"), BackfillStatus::Running));
-        assert!(matches!(BackfillStatus::from_string("paused"), BackfillStatus::Paused));
+        assert!(matches!(
+            BackfillStatus::from_string("running"),
+            BackfillStatus::Running
+        ));
+        assert!(matches!(
+            BackfillStatus::from_string("paused"),
+            BackfillStatus::Paused
+        ));
         assert_eq!(BackfillStatus::Idle.to_string(), "idle");
     }
 }

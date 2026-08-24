@@ -1,0 +1,138 @@
+name: Enable CCTP Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      sepolia_rpc_url:
+        description: "Explicit Sepolia JSON-RPC URL (required)"
+        required: true
+        default: "https://ethereum-sepolia-rpc.publicnode.com"
+      stellar_rpc_url:
+        description: "Optional CCTP_STELLAR_RPC_URL override (else host SOROBAN_RPC_URL)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: enable-cctp-staging
+  cancel-in-progress: false
+
+jobs:
+  enable:
+    name: Enable CCTP on staging EC2 via SSM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check configuration
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+        run: |
+          if [[ -z "${AWS_ROLE_ARN}" || -z "${STAGING_INSTANCE_ID}" ]]; then
+            echo "Missing required secrets AWS_ROLE_ARN and/or STAGING_INSTANCE_ID."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Send SSM enable-CCTP command
+        id: ssm
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+          SEPOLIA_RPC: ${{ github.event.inputs.sepolia_rpc_url }}
+          STELLAR_RPC: ${{ github.event.inputs.stellar_rpc_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SEPOLIA_RPC}" ]]; then
+            echo "sepolia_rpc_url input is required" >&2
+            exit 1
+          fi
+
+          # Sync main first so enable-cctp-staging.sh exists on the host.
+          # shellcheck disable=SC2016
+          SYNC_CMD='set -eu; cd /opt/stellarroute; export HOME=/root; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e ".env.*"; git -c safe.directory=* checkout -B main origin/main; git -c safe.directory=* log -1 --oneline'
+          # Always apply CCTP SQL on the synced tree (main already has
+          # 20260814_cctp_finality_fast.sql). Deploy used to skip that file, so
+          # Fast quotes 500'd on a Standard-only CHECK constraint.
+          # shellcheck disable=SC2016
+          APPLY_DDL='set -eu; cd /opt/stellarroute; export HOME=/root; POSTGRES_USER=$(grep -E "^POSTGRES_USER=" .env.prod | head -1 | cut -d= -f2-); POSTGRES_DB=$(grep -E "^POSTGRES_DB=" .env.prod | head -1 | cut -d= -f2-); for mig in $(ls -1 crates/api/migrations/*cctp*.sql | sort); do echo APPLYING "$mig"; docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$mig"; done'
+
+          jq -n \
+            --arg sync "${SYNC_CMD}" \
+            --arg apply "${APPLY_DDL}" \
+            --arg sepolia "${SEPOLIA_RPC}" \
+            --arg stellar "${STELLAR_RPC}" \
+            '{
+              commands: [
+                $sync,
+                $apply,
+                (
+                  "set -eu; cd /opt/stellarroute; export HOME=/root; " +
+                  "export CCTP_SEPOLIA_RPC_URL=" + ($sepolia | @sh) + "; " +
+                  (if $stellar != "" then
+                    "export CCTP_STELLAR_RPC_URL=" + ($stellar | @sh) + "; "
+                   else "" end) +
+                  "bash deploy/aws/scripts/enable-cctp-staging.sh"
+                )
+              ]
+            }' > /tmp/ssm-commands.json
+
+          COMMAND_ID="$(aws ssm send-command \
+            --region "${AWS_REGION}" \
+            --instance-ids "${STAGING_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Enable CCTP on StellarRoute staging" \
+            --parameters file:///tmp/ssm-commands.json \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          echo "command_id=${COMMAND_ID}" >> "${GITHUB_OUTPUT}"
+          echo "Started SSM command: ${COMMAND_ID}"
+
+      - name: Wait and print SSM output
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+          COMMAND_ID: ${{ steps.ssm.outputs.command_id }}
+        run: |
+          set -euo pipefail
+
+          STATUS="Pending"
+          for _ in $(seq 1 90); do
+            STATUS="$(aws ssm get-command-invocation \
+              --region "${AWS_REGION}" \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${STAGING_INSTANCE_ID}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo Pending)"
+
+            case "${STATUS}" in
+              Pending|InProgress|Delayed)
+                sleep 10
+                ;;
+              *)
+                break
+                ;;
+            esac
+          done
+
+          echo "Final SSM status: ${STATUS}"
+
+          aws ssm get-command-invocation \
+            --region "${AWS_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${STAGING_INSTANCE_ID}" \
+            --query '{Status:Status,StatusDetails:StatusDetails,ResponseCode:ResponseCode,StandardOutputContent:StandardOutputContent,StandardErrorContent:StandardErrorContent}' \
+            --output json
+
+          if [[ "${STATUS}" != "Success" ]]; then
+            echo "Remote enable failed with status: ${STATUS}."
+            exit 1
+          fi

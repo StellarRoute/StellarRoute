@@ -8,7 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export function ActivityTableSkeleton() {
   return (
-    <div className="w-full">
+    <div
+      className="w-full"
+      aria-busy="true"
+      aria-label="Loading transaction history"
+    >
       {/* Table header skeleton */}
       <div className="border-b flex bg-muted/50 sticky top-0">
         <div className="flex-1 p-4">

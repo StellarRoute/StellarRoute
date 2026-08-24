@@ -1,0 +1,73 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/victor/Desktop/StellarRoute/crates/contracts/Cargo.toml
+workspace: /Users/victor/Desktop/StellarRoute/Cargo.toml
+    Checking stellarroute-api v0.1.0 (/Users/victor/Desktop/StellarRoute/crates/api)
+warning: unused import: `OverrideRegistry`
+  --> crates/api/src/routes/quote.rs:22:61
+   |
+22 | use stellarroute_routing::health::policy::{ExclusionPolicy, OverrideRegistry};
+   |                                                             ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no variant or associated item named `LiquidityAnomaly` found for enum `models::response::ExclusionReason` in the current scope
+   --> crates/api/src/routes/quote.rs:652:41
+    |
+652 |                     ApiExclusionReason::LiquidityAnomaly
+    |                                         ^^^^^^^^^^^^^^^^ variant or associated item not found in `models::response::ExclusionReason`
+    |
+   ::: crates/api/src/models/response.rs:338:1
+    |
+338 | pub enum ExclusionReason {
+    | ------------------------ variant or associated item `LiquidityAnomaly` not found for this enum
+
+error[E0382]: borrow of moved value: `graph_manager`
+    --> crates/api/src/state.rs:178:31
+     |
+ 157 |         let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
+     |             ------------- move occurs because `graph_manager` has type `Arc<GraphManager>`, which does not implement the `Copy` trait
+...
+ 174 |             graph_manager,
+     |             ------------- value moved here
+...
+ 178 |             anomaly_detector: graph_manager.anomaly_detector.clone(),
+     |                               ^^^^^^^^^^^^^ value borrowed here after move
+     |
+     = note: borrow occurs due to deref coercion to `GraphManager`
+note: deref defined here
+    --> /Users/victor/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/sync.rs:2418:5
+     |
+2418 |     type Target = T;
+     |     ^^^^^^^^^^^
+help: clone the value to increment its reference count
+     |
+ 174 |             graph_manager: graph_manager.clone(),
+     |                          +++++++++++++++++++++++
+
+error[E0382]: borrow of moved value: `graph_manager`
+    --> crates/api/src/state.rs:226:31
+     |
+ 195 |         let graph_manager = Arc::new(GraphManager::new(db.write_pool().clone()));
+     |             ------------- move occurs because `graph_manager` has type `Arc<GraphManager>`, which does not implement the `Copy` trait
+...
+ 222 |             graph_manager,
+     |             ------------- value moved here
+...
+ 226 |             anomaly_detector: graph_manager.anomaly_detector.clone(),
+     |                               ^^^^^^^^^^^^^ value borrowed here after move
+     |
+     = note: borrow occurs due to deref coercion to `GraphManager`
+note: deref defined here
+    --> /Users/victor/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/sync.rs:2418:5
+     |
+2418 |     type Target = T;
+     |     ^^^^^^^^^^^
+help: clone the value to increment its reference count
+     |
+ 222 |             graph_manager: graph_manager.clone(),
+     |                          +++++++++++++++++++++++
+
+Some errors have detailed explanations: E0382, E0599.
+For more information about an error, try `rustc --explain E0382`.
+warning: `stellarroute-api` (lib) generated 1 warning
+error: could not compile `stellarroute-api` (lib) due to 3 previous errors; 1 warning emitted

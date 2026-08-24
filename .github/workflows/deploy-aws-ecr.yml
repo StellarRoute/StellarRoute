@@ -1,0 +1,97 @@
+name: Deploy AWS ECR
+
+# Optional: build API + indexer and push to ECR using GitHub OIDC (no long-lived keys).
+# Disabled until repository variables are set — see docs/deployment/aws.md.
+#
+# Required GitHub configuration:
+#   Variables: AWS_ROLE_ARN, AWS_REGION, ECR_API_REPOSITORY, ECR_INDEXER_REPOSITORY
+#   (repositories = full URL host/path without tag, e.g. 123.dkr.ecr.us-east-1.amazonaws.com/stellarroute-staging/api)
+#
+# Trust policy on the IAM role must allow:
+#   sts:AssumeRoleWithWebIdentity for token.actions.githubusercontent.com
+#   with sub claim repo:StellarRoute/StellarRoute:ref:refs/heads/main (or environment).
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (default: short SHA)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile.api"
+      - "Dockerfile.indexer"
+      - "crates/api/**"
+      - "crates/indexer/**"
+      - "crates/routing/**"
+      - "Cargo.toml"
+      - ".github/workflows/deploy-aws-ecr.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  push-ecr:
+    name: Push ${{ matrix.name }} to ECR
+    runs-on: ubuntu-latest
+    # Skip automatically until AWS_ROLE_ARN is configured
+    if: ${{ vars.AWS_ROLE_ARN != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            file: Dockerfile.api
+          - name: indexer
+            file: Dockerfile.indexer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
+          ECR_INDEXER_REPOSITORY: ${{ vars.ECR_INDEXER_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.name }}" = "api" ]; then
+            REPO="${ECR_API_REPOSITORY}"
+          else
+            REPO="${ECR_INDEXER_REPOSITORY}"
+          fi
+          if [ -z "${REPO}" ]; then
+            echo "Missing ECR repository variable for ${{ matrix.name }}"
+            exit 1
+          fi
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f "${{ matrix.file }}" \
+            -t "${REPO}:${TAG}" \
+            -t "${REPO}:latest" \
+            --push \
+            .
+          echo "Pushed ${REPO}:${TAG}"

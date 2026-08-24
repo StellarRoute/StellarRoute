@@ -28,9 +28,11 @@ pub mod error;
 pub mod types;
 
 // Flat re-exports — callers only need `use stellarroute_sdk::*`.
-pub use client::{ClientBuilder, StellarRouteClient};
+pub use client::{Client, ClientBuilder, StellarRouteClient};
 pub use error::{ApiErrorCode, RateLimitInfo, Result, SdkError};
 pub use types::{
-    AssetInfo, HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, PathStep,
-    QuoteRequest, QuoteResponse, QuoteType, TradingPair,
+    ApiV2Info, AssetInfo, BridgeVenueMeta, CanonicalizeAssetResponse, ChainAsset, HealthResponse,
+    OrderbookLevel, OrderbookResponse, PairsResponse, PathStep, QuoteRequest, QuoteResponse,
+    QuoteType, Route, RouteHop, RoutesRequest, RoutesResponse, SwapPrepareRequest,
+    SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse, TradingPair,
 };

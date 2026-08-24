@@ -66,13 +66,10 @@ async fn test_reordered_stream_best_effort() {
         let check = deduplicator.check(key).await;
         if matches!(check, DeduplicationResult::New) {
             let seq_result = deduplicator.check_sequence(stream_id, *seq).await;
-            match seq_result {
-                Ok(true) => {
-                    processed.push(*seq);
-                    deduplicator.mark_processing(key.clone(), *seq).await;
-                    deduplicator.mark_completed(key, stream_id, *seq).await;
-                }
-                _ => {}
+            if let Ok(true) = seq_result {
+                processed.push(*seq);
+                deduplicator.mark_processing(key.clone(), *seq).await;
+                deduplicator.mark_completed(key, stream_id, *seq).await;
             }
         }
     }
@@ -118,21 +115,36 @@ async fn test_mixed_duplicate_and_reordered() {
     let event2 = IdempotencyKey::from_ledger(101, "tx2", 0);
     let event3 = IdempotencyKey::from_ledger(102, "tx3", 0);
 
-    assert!(matches!(deduplicator.check(&event1).await, DeduplicationResult::New));
+    assert!(matches!(
+        deduplicator.check(&event1).await,
+        DeduplicationResult::New
+    ));
     deduplicator.mark_processing(event1.clone(), 1).await;
     deduplicator.mark_completed(&event1, stream_id, 1).await;
 
-    assert!(matches!(deduplicator.check(&event3).await, DeduplicationResult::New));
+    assert!(matches!(
+        deduplicator.check(&event3).await,
+        DeduplicationResult::New
+    ));
     deduplicator.mark_processing(event3.clone(), 3).await;
     deduplicator.mark_completed(&event3, stream_id, 3).await;
 
-    assert!(matches!(deduplicator.check(&event1).await, DeduplicationResult::Duplicate));
+    assert!(matches!(
+        deduplicator.check(&event1).await,
+        DeduplicationResult::Duplicate
+    ));
 
-    assert!(matches!(deduplicator.check(&event2).await, DeduplicationResult::New));
+    assert!(matches!(
+        deduplicator.check(&event2).await,
+        DeduplicationResult::New
+    ));
     let result = deduplicator.check_sequence(stream_id, 2).await;
     assert!(result.is_ok());
 
-    assert!(matches!(deduplicator.check(&event3).await, DeduplicationResult::Duplicate));
+    assert!(matches!(
+        deduplicator.check(&event3).await,
+        DeduplicationResult::Duplicate
+    ));
 }
 
 #[tokio::test]
@@ -156,9 +168,18 @@ async fn test_state_persistence_across_restart() {
     let restored_deduplicator = create_test_deduplicator(OrderingStrategy::BestEffort);
     restored_deduplicator.import_state(state).await;
 
-    assert!(matches!(restored_deduplicator.check(&event1).await, DeduplicationResult::Duplicate));
-    assert!(matches!(restored_deduplicator.check(&event2).await, DeduplicationResult::Duplicate));
-    assert!(matches!(restored_deduplicator.check(&event3).await, DeduplicationResult::New));
+    assert!(matches!(
+        restored_deduplicator.check(&event1).await,
+        DeduplicationResult::Duplicate
+    ));
+    assert!(matches!(
+        restored_deduplicator.check(&event2).await,
+        DeduplicationResult::Duplicate
+    ));
+    assert!(matches!(
+        restored_deduplicator.check(&event3).await,
+        DeduplicationResult::New
+    ));
 }
 
 #[tokio::test]
@@ -169,14 +190,20 @@ async fn test_high_volume_duplicate_detection() {
     let event_count = 1000u32;
     for i in 0..event_count {
         let key = IdempotencyKey::from_ledger(i, &format!("tx{}", i), 0);
-        assert!(matches!(deduplicator.check(&key).await, DeduplicationResult::New));
+        assert!(matches!(
+            deduplicator.check(&key).await,
+            DeduplicationResult::New
+        ));
         deduplicator.mark_processing(key.clone(), i as u64).await;
         deduplicator.mark_completed(&key, stream_id, i as u64).await;
     }
 
     for i in 0..event_count {
         let key = IdempotencyKey::from_ledger(i, &format!("tx{}", i), 0);
-        assert!(matches!(deduplicator.check(&key).await, DeduplicationResult::Duplicate));
+        assert!(matches!(
+            deduplicator.check(&key).await,
+            DeduplicationResult::Duplicate
+        ));
     }
 
     let stats = deduplicator.get_stats().await;
@@ -199,13 +226,19 @@ async fn test_interleaved_streams() {
     ];
 
     for (stream, key, seq) in &events {
-        assert!(matches!(deduplicator.check(key).await, DeduplicationResult::New));
+        assert!(matches!(
+            deduplicator.check(key).await,
+            DeduplicationResult::New
+        ));
         deduplicator.mark_processing(key.clone(), *seq).await;
         deduplicator.mark_completed(key, stream, *seq).await;
     }
 
     for (_, key, _) in &events {
-        assert!(matches!(deduplicator.check(key).await, DeduplicationResult::Duplicate));
+        assert!(matches!(
+            deduplicator.check(key).await,
+            DeduplicationResult::Duplicate
+        ));
     }
 
     let stats = deduplicator.get_stats().await;
@@ -214,15 +247,23 @@ async fn test_interleaved_streams() {
 
 #[tokio::test]
 async fn test_failed_event_reprocessing() {
-    let mut config = DeduplicationConfig::default();
-    config.reprocess_failed = true;
+    let config = DeduplicationConfig {
+        reprocess_failed: true,
+        ..Default::default()
+    };
     let deduplicator = EventDeduplicator::new(config);
 
     let key = IdempotencyKey::from_ledger(100, "tx1", 0);
 
-    assert!(matches!(deduplicator.check(&key).await, DeduplicationResult::New));
+    assert!(matches!(
+        deduplicator.check(&key).await,
+        DeduplicationResult::New
+    ));
     deduplicator.mark_processing(key.clone(), 1).await;
     deduplicator.mark_failed(&key).await;
 
-    assert!(matches!(deduplicator.check(&key).await, DeduplicationResult::Reprocessing));
+    assert!(matches!(
+        deduplicator.check(&key).await,
+        DeduplicationResult::Reprocessing
+    ));
 }

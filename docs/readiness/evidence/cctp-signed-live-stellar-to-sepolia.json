@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-07-31T19:19:43Z",
+  "tested_git_head": "836119c4fc2864f7704022b5ba4f25727f66f547",
+  "proof_script_sha256": "63933048a8d5a2a4123266541283c219a534409862d26fde47959669d92b8c10",
+  "evidence_scope": "signed_live_stellar_to_sepolia_testnet_only",
+  "direction": "stellar_to_evm",
+  "domains": {
+    "stellar": 27,
+    "sepolia": 0
+  },
+  "finality": "standard",
+  "amount": "1.0000000",
+  "transfer_id_redacted": "64e0baf5…98b5",
+  "public_addresses": {
+    "stellar_source": "GBH24C7D2IFM4RF7SDWPLREQYQ3CL32PCJJEATMYIPWBKB6PPGTNAAIX",
+    "sepolia_recipient": "0xb94e6a26ca0b75cf98c0441c80072957dc9cc533"
+  },
+  "contract_ids": {
+    "stellar_token_messenger": "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP",
+    "stellar_usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+    "sepolia_token_messenger": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275",
+    "sepolia_usdc": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"
+  },
+  "transaction_hashes": {
+    "stellar_burn": "a1339950fe4eab3d567a4a363e5029c81819eaf92a4564d6cc8b30a6eaa50e8f",
+    "sepolia_mint": "0x26be76b6f3a1f962917fc8f94f7b7e01b75905e46ef92a2deb74d01fa04adf4f"
+  },
+  "ledgers_blocks": {
+    "stellar_burn_ledger": 3901230,
+    "sepolia_mint_block": 11391400
+  },
+  "status_timeline": {
+    "saga_started_unix": 1785525518,
+    "burn_submitted_unix": 1785525538,
+    "attestation_ready_unix": 1785525571,
+    "completed_unix": 1785525581
+  },
+  "timings_seconds": {
+    "burn_to_attestation": 33,
+    "total_saga": 63
+  },
+  "readiness": {
+    "stellar_to_evm_executable": true
+  },
+  "request_ids": {
+    "quote": "d12b9661-db70-41f9-8196-dc75519af533"
+  },
+  "verified_claims": {
+    "signed_live_stellar_to_sepolia": true,
+    "reverse_corridor_not_claimed": true,
+    "mainnet_not_claimed": true
+  },
+  "later_public_destination_mint": {
+    "timestamp": "2026-08-14T02:07:12Z",
+    "sepolia_mint": "0x713cc8b174d775bf7a3a97f33c53a37f698c93bc66b378dfa55ccfcc7f1cbed6",
+    "sepolia_mint_block": 11484164,
+    "amount_usdc": "25",
+    "evidence": "docs/readiness/evidence/cctp-signed-live-stellar-to-sepolia-2026-08-14.json",
+    "narrative_doc": "docs/cctp/signed-live-stellar-to-sepolia.md"
+  },
+  "secret_scan": "pass"
+}

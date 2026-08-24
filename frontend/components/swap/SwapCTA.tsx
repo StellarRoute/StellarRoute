@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import type { SwapValidationResult } from "@/lib/swap-validation";
 import { useSwapI18n } from "@/lib/swap-i18n";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 interface SwapCTAProps {
   validation: SwapValidationResult;

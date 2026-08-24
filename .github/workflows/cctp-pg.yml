@@ -1,0 +1,50 @@
+name: CCTP Postgres Store
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'crates/api/migrations/0015_cctp_transfers.sql'
+      - 'crates/api/migrations/0016_cctp_transfers_hardening.sql'
+      - 'crates/api/migrations/0017_cctp_mint_metadata.sql'
+      - 'crates/api/migrations/0018_cctp_approval_tx_hash.sql'
+      - 'crates/api/migrations/0019_cctp_approval_verified_at.sql'
+      - 'crates/api/src/cctp/store.rs'
+      - 'crates/api/tests/cctp_store_integration.rs'
+      - 'scripts/cctp-pg-test.sh'
+      - '.github/workflows/cctp-pg.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'crates/api/migrations/0015_cctp_transfers.sql'
+      - 'crates/api/migrations/0016_cctp_transfers_hardening.sql'
+      - 'crates/api/migrations/0017_cctp_mint_metadata.sql'
+      - 'crates/api/migrations/0018_cctp_approval_tx_hash.sql'
+      - 'crates/api/migrations/0019_cctp_approval_verified_at.sql'
+      - 'crates/api/src/cctp/store.rs'
+      - 'crates/api/tests/cctp_store_integration.rs'
+      - 'scripts/cctp-pg-test.sh'
+      - '.github/workflows/cctp-pg.yml'
+
+jobs:
+  cctp-pg-store:
+    name: CCTP store (disposable Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-cctp-pg-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cctp-pg-
+      - name: Run disposable Postgres CCTP store test
+        run: ./scripts/cctp-pg-test.sh

@@ -1,15 +1,20 @@
 'use client';
 
-import { Info, HelpCircle } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PriceImpactIndicator } from "./PriceImpactIndicator";
+import { Button } from "@/components/ui/button";
+import { useSwapI18n } from "@/lib/swap-i18n";
+import { useProgressiveLoadingTransition } from "@/hooks/useProgressiveLoadingTransition";
+import { PriceHistorySparkline } from "@/components/shared/PriceHistorySparkline";
+import { usePriceHistory } from "@/hooks/useApi";
+import type { PriceHistoryPoint } from "@/types";
 
 interface PriceInfoPanelProps {
   rate?: string;
@@ -17,6 +22,10 @@ interface PriceInfoPanelProps {
   minReceived?: string;
   networkFee?: string;
   isLoading?: boolean;
+  onExportJson?: () => void;
+  onExportCsv?: () => void;
+  fromAsset?: string;
+  toAsset?: string;
 }
 
 export function PriceInfoPanel({
@@ -25,8 +34,27 @@ export function PriceInfoPanel({
   minReceived,
   networkFee,
   isLoading = false,
+  onExportJson,
+  onExportCsv,
+  fromAsset,
+  toAsset,
 }: PriceInfoPanelProps) {
-  if (isLoading) {
+  const { t } = useSwapI18n();
+  const { showSkeleton, contentClassName } = useProgressiveLoadingTransition(isLoading);
+  
+  const shouldFetchPriceHistory = Boolean(fromAsset && toAsset && !isLoading);
+  const { data: priceHistoryData, loading: priceHistoryLoading } = usePriceHistory(
+    fromAsset ?? '',
+    toAsset ?? '',
+    60_000,
+    !shouldFetchPriceHistory
+  );
+
+  const prefersReducedMotion = typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+
+  if (showSkeleton) {
     return (
       <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3">
         <Skeleton className="h-4 w-full opacity-50" />
@@ -37,17 +65,26 @@ export function PriceInfoPanel({
   }
 
   return (
-    <div className="rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20">
+    <div className={`rounded-2xl border border-border/40 bg-background/40 backdrop-blur-sm p-4 space-y-3 transition-all duration-300 hover:border-primary/20 ${contentClassName}`.trim()}>
+      {shouldFetchPriceHistory && (
+        <PriceHistorySparkline
+          points={priceHistoryData?.points}
+          loading={priceHistoryLoading}
+          className={prefersReducedMotion ? 'hidden' : ''}
+        />
+      )}
+
+      {/* Existing UI */}
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
-          <span>Exchange Rate</span>
+          <span>{t("swap.quote.rate")}</span>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <HelpCircle className="h-3.5 w-3.5 opacity-50 cursor-help" />
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Current market rate for this trading pair inclusive of path routing.</p>
+                <p className="text-xs">{t("swap.quote.exchangeRateTooltip")}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -59,21 +96,21 @@ export function PriceInfoPanel({
 
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
-          <span>Price Impact</span>
+          <span>{t("swap.quote.priceImpact")}</span>
         </div>
         <PriceImpactIndicator impact={priceImpact} />
       </div>
 
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
-          <span>Minimum Received</span>
+          <span>{t("swap.quote.minimumReceived")}</span>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <HelpCircle className="h-3.5 w-3.5 opacity-50 cursor-help" />
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Your transaction will revert if there is a large unfavorable price movement before it is confirmed.</p>
+                <p className="text-xs">{t("swap.quote.minimumReceivedTooltip")}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -85,14 +122,14 @@ export function PriceInfoPanel({
 
       <div className="pt-2 mt-1 border-t border-border/20 flex justify-between items-center text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
-          <span>Network Fee</span>
+          <span>{t("swap.quote.networkFee")}</span>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <HelpCircle className="h-3.5 w-3.5 opacity-50 cursor-help" />
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Estimated cost to execute this transaction on the Stellar network.</p>
+                <p className="text-xs">{t("swap.quote.networkFeeTooltip")}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -101,7 +138,14 @@ export function PriceInfoPanel({
           {networkFee || '—'}
         </span>
       </div>
+      <div className="pt-2 flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="outline" type="button" onClick={onExportJson}>
+          {t("swap.quote.exportJson")}
+        </Button>
+        <Button size="sm" variant="outline" type="button" onClick={onExportCsv}>
+          {t("swap.quote.exportCsv")}
+        </Button>
+      </div>
     </div>
   );
 }
-

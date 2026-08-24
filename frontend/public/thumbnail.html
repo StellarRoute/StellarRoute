@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StellarRoute — Thumbnail</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #060b11;
+      --ink-2: #0c141d;
+      --paper: #e8eef4;
+      --muted: #9aafc0;
+      --teal: #1ec9b0;
+      --teal-deep: #0d8f82;
+      --amber: #e0a83a;
+      --line: #243442;
+      --grid: rgba(154, 175, 192, 0.07);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #111820;
+      font-family: Figtree, system-ui, sans-serif;
+      color: var(--paper);
+      padding: 2rem;
+    }
+
+    /* Exact OG / social thumbnail frame */
+    .thumb {
+      position: relative;
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      border-radius: 4px;
+      background: var(--ink);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.06),
+        0 40px 80px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Navigation-chart atmosphere */
+    .atmosphere {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 55% at 18% 30%, rgba(30, 201, 176, 0.18), transparent 60%),
+        radial-gradient(ellipse 50% 45% at 88% 70%, rgba(224, 168, 58, 0.12), transparent 55%),
+        radial-gradient(ellipse 40% 35% at 70% 15%, rgba(91, 163, 201, 0.1), transparent 50%),
+        linear-gradient(165deg, #060b11 0%, #0a121a 45%, #071018 100%);
+    }
+
+    .grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 85% 75% at 55% 50%, black 20%, transparent 75%);
+    }
+
+    .grain {
+      position: absolute;
+      inset: 0;
+      opacity: 0.35;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .frame {
+      position: absolute;
+      inset: 28px;
+      border: 1px solid rgba(36, 52, 66, 0.9);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    .frame::before,
+    .frame::after {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-color: var(--teal);
+      border-style: solid;
+      opacity: 0.7;
+    }
+
+    .frame::before {
+      top: -1px;
+      left: -1px;
+      border-width: 2px 0 0 2px;
+    }
+
+    .frame::after {
+      bottom: -1px;
+      right: -1px;
+      border-width: 0 2px 2px 0;
+    }
+
+    /* Route constellation graphic */
+    .routes {
+      position: absolute;
+      right: -40px;
+      top: 40px;
+      width: 720px;
+      height: 560px;
+      opacity: 0.95;
+    }
+
+    .routes svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .content {
+      position: relative;
+      z-index: 2;
+      height: 100%;
+      padding: 72px 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      max-width: 640px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--teal);
+    }
+
+    .eyebrow .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(224, 168, 58, 0.2);
+    }
+
+    .brand {
+      margin-top: 28px;
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 800;
+      font-size: 92px;
+      line-height: 0.92;
+      letter-spacing: -0.04em;
+      color: var(--paper);
+    }
+
+    .brand span {
+      background: linear-gradient(105deg, #e8eef4 30%, #1ec9b0 78%, #e0a83a 120%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .tagline {
+      margin-top: 28px;
+      max-width: 28ch;
+      font-size: 24px;
+      font-weight: 500;
+      line-height: 1.35;
+      color: var(--muted);
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+      background: rgba(12, 20, 29, 0.72);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--paper);
+      backdrop-filter: blur(6px);
+    }
+
+    .chip i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--teal);
+    }
+
+    .chip.amber i { background: var(--amber); }
+    .chip.blue i { background: #5ba3c9; }
+
+    .url {
+      margin-left: auto;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: rgba(154, 175, 192, 0.85);
+    }
+
+    /* Soft pulse on route nodes */
+    @keyframes pulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+
+    .node-pulse {
+      animation: pulse 3.2s ease-in-out infinite;
+    }
+
+    .node-pulse.d2 { animation-delay: 0.6s; }
+    .node-pulse.d3 { animation-delay: 1.2s; }
+    .node-pulse.d4 { animation-delay: 1.8s; }
+
+    @media (max-width: 1240px) {
+      body { padding: 1rem; }
+      .thumb {
+        width: min(1200px, 100vw - 2rem);
+        height: auto;
+        aspect-ratio: 1200 / 630;
+        transform-origin: top center;
+      }
+      .content {
+        padding: clamp(1.5rem, 5vw, 4.5rem);
+        max-width: 54%;
+      }
+      .brand { font-size: clamp(2.5rem, 7.5vw, 5.75rem); }
+      .tagline { font-size: clamp(0.95rem, 2vw, 1.5rem); }
+      .routes { width: 62%; right: -4%; }
+    }
+  </style>
+</head>
+<body>
+  <article class="thumb" role="img" aria-label="StellarRoute — Best-price routing across Stellar DEX and Soroban AMM pools">
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grid" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="frame" aria-hidden="true"></div>
+
+    <div class="routes" aria-hidden="true">
+      <svg viewBox="0 0 720 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- faint depth arcs -->
+        <path d="M80 420 C 200 280, 320 500, 480 300 C 560 220, 620 180, 700 140"
+              stroke="#243442" stroke-width="1.5" stroke-dasharray="4 10" opacity="0.7" />
+        <path d="M40 180 C 160 80, 260 260, 400 160 C 520 70, 600 120, 690 40"
+              stroke="#243442" stroke-width="1" stroke-dasharray="2 8" opacity="0.5" />
+
+        <!-- primary route path -->
+        <path d="M90 380 C 170 300, 210 220, 290 250 C 380 285, 420 160, 510 190 C 590 215, 640 110, 700 90"
+              stroke="url(#routeGrad)" stroke-width="3" stroke-linecap="round" />
+        <!-- secondary venue hop -->
+        <path d="M290 250 C 330 340, 400 360, 470 320 C 540 280, 580 340, 650 300"
+              stroke="url(#routeGrad2)" stroke-width="2" stroke-linecap="round" opacity="0.85" />
+        <!-- tertiary bridge arc -->
+        <path d="M510 190 C 560 260, 620 250, 680 210"
+              stroke="#e0a83a" stroke-width="1.75" stroke-linecap="round" opacity="0.55" stroke-dasharray="6 8" />
+
+        <defs>
+          <linearGradient id="routeGrad" x1="90" y1="380" x2="700" y2="90" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#0d8f82" />
+            <stop offset="0.55" stop-color="#1ec9b0" />
+            <stop offset="1" stop-color="#5ba3c9" />
+          </linearGradient>
+          <linearGradient id="routeGrad2" x1="290" y1="250" x2="650" y2="300" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#1ec9b0" stop-opacity="0.2" />
+            <stop offset="0.5" stop-color="#e0a83a" />
+            <stop offset="1" stop-color="#1ec9b0" stop-opacity="0.3" />
+          </linearGradient>
+          <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        <!-- venue nodes -->
+        <g class="node-pulse">
+          <circle cx="90" cy="380" r="14" fill="#1ec9b0" opacity="0.15" filter="url(#soft)" />
+          <circle cx="90" cy="380" r="7" fill="#060b11" stroke="#1ec9b0" stroke-width="2.5" />
+          <circle cx="90" cy="380" r="2.5" fill="#1ec9b0" />
+        </g>
+        <g class="node-pulse d2">
+          <circle cx="290" cy="250" r="16" fill="#1ec9b0" opacity="0.12" filter="url(#soft)" />
+          <circle cx="290" cy="250" r="8" fill="#060b11" stroke="#1ec9b0" stroke-width="2.5" />
+          <circle cx="290" cy="250" r="3" fill="#e8eef4" />
+        </g>
+        <g class="node-pulse d3">
+          <circle cx="510" cy="190" r="14" fill="#e0a83a" opacity="0.15" filter="url(#soft)" />
+          <circle cx="510" cy="190" r="7" fill="#060b11" stroke="#e0a83a" stroke-width="2.5" />
+          <circle cx="510" cy="190" r="2.5" fill="#e0a83a" />
+        </g>
+        <g class="node-pulse d4">
+          <circle cx="700" cy="90" r="12" fill="#5ba3c9" opacity="0.18" filter="url(#soft)" />
+          <circle cx="700" cy="90" r="6" fill="#060b11" stroke="#5ba3c9" stroke-width="2" />
+          <circle cx="700" cy="90" r="2" fill="#5ba3c9" />
+        </g>
+        <g class="node-pulse d2">
+          <circle cx="470" cy="320" r="6" fill="#060b11" stroke="#e0a83a" stroke-width="2" />
+          <circle cx="650" cy="300" r="5" fill="#060b11" stroke="#1ec9b0" stroke-width="1.75" />
+        </g>
+
+        <!-- tiny constellation stars -->
+        <circle cx="160" cy="120" r="1.5" fill="#e8eef4" opacity="0.35" />
+        <circle cx="420" cy="80" r="1.2" fill="#e8eef4" opacity="0.25" />
+        <circle cx="600" cy="400" r="1.4" fill="#e8eef4" opacity="0.3" />
+        <circle cx="240" cy="460" r="1.1" fill="#1ec9b0" opacity="0.45" />
+        <circle cx="560" cy="480" r="1.3" fill="#e0a83a" opacity="0.4" />
+
+        <!-- venue labels -->
+        <text x="108" y="388" fill="#9aafc0" font-family="Figtree, sans-serif" font-size="13" font-weight="600">SDEX</text>
+        <text x="308" y="246" fill="#9aafc0" font-family="Figtree, sans-serif" font-size="13" font-weight="600">Soroban</text>
+        <text x="526" y="186" fill="#9aafc0" font-family="Figtree, sans-serif" font-size="13" font-weight="600">Route</text>
+        <text x="548" y="68" fill="#9aafc0" font-family="Figtree, sans-serif" font-size="13" font-weight="600">Best price</text>
+      </svg>
+    </div>
+
+    <div class="content">
+      <div>
+        <div class="eyebrow">
+          <span class="dot" aria-hidden="true"></span>
+          Stellar DEX Aggregator
+        </div>
+        <h1 class="brand">Stellar<span>Route</span></h1>
+        <p class="tagline">
+          Best-price routing across Stellar DEX and Soroban AMM pools — non-custodial, wallet-signed.
+        </p>
+      </div>
+
+      <div class="footer">
+        <span class="chip"><i></i> SDEX + AMM</span>
+        <span class="chip amber"><i></i> Non-custodial</span>
+        <span class="chip blue"><i></i> Best route</span>
+        <span class="url">stellarroute.app</span>
+      </div>
+    </div>
+  </article>
+</body>
+</html>

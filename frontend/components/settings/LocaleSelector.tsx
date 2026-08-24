@@ -4,19 +4,22 @@ import { useSettings } from '@/components/providers/settings-provider';
 import { SUPPORTED_LOCALES, Locale } from '@/lib/formatting';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useSwapI18n } from '@/lib/swap-i18n';
+import type { SwapTranslationKey } from '@/lib/swap-i18n';
 
 export function LocaleSelector() {
   const { settings, updateLocale } = useSettings();
   const currentLocale = settings.locale;
+  const { t } = useSwapI18n();
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Language & Region</CardTitle>
+        <CardTitle className="text-lg">{t('settings.locale.title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="text-sm text-muted-foreground mb-4">
-          Choose your preferred language and number formatting. This affects how amounts, prices, and other numbers are displayed.
+          {t('settings.locale.description')}
         </p>
         <div className="grid gap-2">
           {Object.entries(SUPPORTED_LOCALES).map(([locale, displayName]) => (
@@ -29,7 +32,7 @@ export function LocaleSelector() {
               <div className="text-left">
                 <div className="font-medium">{displayName}</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Example: {formatExample(locale as Locale)}
+                  {formatExample(locale as Locale, t)}
                 </div>
               </div>
             </Button>
@@ -40,7 +43,13 @@ export function LocaleSelector() {
   );
 }
 
-function formatExample(locale: Locale): string {
+function formatExample(
+  locale: Locale,
+  t: (
+    key: SwapTranslationKey,
+    vars?: Record<string, string | number>,
+  ) => string,
+): string {
   try {
     const amount = new Intl.NumberFormat(locale, {
       minimumFractionDigits: 2,
@@ -54,8 +63,8 @@ function formatExample(locale: Locale): string {
       maximumFractionDigits: 2
     }).format(0.0123);
     
-    return `${amount} • ${percentage}`;
+    return t('settings.locale.example', { amount, percent: percentage });
   } catch {
-    return '1,234.56 • 1.23%';
+    return t('settings.locale.example', { amount: '1,234.56', percent: '1.23%' });
   }
 }

@@ -1,0 +1,28 @@
+{
+  "pairs": [
+    {
+      "base": "XLM",
+      "counter": "USDC",
+      "base_asset": "native",
+      "counter_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "offer_count": 42,
+      "last_updated": "2026-02-23T11:59:00Z"
+    },
+    {
+      "base": "USDC",
+      "counter": "BTC",
+      "base_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "counter_asset": "BTC:GAUTUYY2THLF7SGITDFMXJVYH3LHDSMGEAKSBU267M2K7A3W543CKUEF",
+      "offer_count": 17,
+      "last_updated": "2026-02-23T11:58:30Z"
+    },
+    {
+      "base": "XLM",
+      "counter": "yXLM",
+      "base_asset": "native",
+      "counter_asset": "yXLM:GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55",
+      "offer_count": 8
+    }
+  ],
+  "total": 3
+}

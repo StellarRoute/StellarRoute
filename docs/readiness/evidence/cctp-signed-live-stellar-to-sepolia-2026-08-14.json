@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-08-14T02:07:12Z",
+  "evidence_scope": "public_destination_mint_stellar_to_sepolia_testnet_only",
+  "direction": "stellar_to_evm",
+  "domains": {
+    "stellar": 27,
+    "sepolia": 0
+  },
+  "amount_usdc": "25",
+  "amount_canonical_6dp": "25000000",
+  "public_addresses": {
+    "sepolia_recipient": "0xa632DA1E4D5DD7FB236a0b798ff9331e3a9930Df"
+  },
+  "contract_ids": {
+    "stellar_usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+  },
+  "transaction_hashes": {
+    "sepolia_mint": "0x713cc8b174d775bf7a3a97f33c53a37f698c93bc66b378dfa55ccfcc7f1cbed6"
+  },
+  "ledgers_blocks": {
+    "sepolia_mint_block": 11484164
+  },
+  "explorers": {
+    "sepolia_mint": "https://sepolia.etherscan.io/tx/0x713cc8b174d775bf7a3a97f33c53a37f698c93bc66b378dfa55ccfcc7f1cbed6"
+  },
+  "verified_claims": {
+    "signed_live_stellar_to_sepolia_destination_mint": true,
+    "reverse_corridor_not_claimed": true,
+    "mainnet_not_claimed": true,
+    "public_cctp_enabled_not_claimed": true
+  },
+  "notes": "Public Etherscan-verified Sepolia receiveMessage mint for CCTP source domain 27 (Stellar). Companion full-saga harness evidence remains in cctp-signed-live-stellar-to-sepolia.json.",
+  "related_evidence": "docs/readiness/evidence/cctp-signed-live-stellar-to-sepolia.json",
+  "narrative_doc": "docs/cctp/signed-live-stellar-to-sepolia.md"
+}

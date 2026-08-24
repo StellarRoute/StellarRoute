@@ -1,0 +1,129 @@
+name: Deploy to Mainnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build + verify only, no deploy)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  STELLAR_NETWORK: mainnet
+
+jobs:
+  deploy:
+    name: Build & Deploy Contract
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_MAINNET_ENABLED == 'true' || github.event.inputs.dry_run == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-deploy-mainnet-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-deploy-mainnet-
+
+      - name: Install Soroban CLI
+        run: cargo install --locked soroban-cli || true
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run contract tests before deploy
+        run: cargo test -p stellarroute-contracts
+
+      - name: Deploy to mainnet
+        env:
+          SOROBAN_MAINNET_DEPLOYER_SECRET: ${{ secrets.SOROBAN_MAINNET_DEPLOYER_SECRET }}
+        run: |
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            ./scripts/deploy.sh --network mainnet --dry-run
+            exit 0
+          fi
+
+          if [[ -z "${SOROBAN_MAINNET_DEPLOYER_SECRET}" ]]; then
+            echo "SOROBAN_MAINNET_DEPLOYER_SECRET is not configured."
+            exit 1
+          fi
+
+          echo "${SOROBAN_MAINNET_DEPLOYER_SECRET}" | soroban keys add deployer --secret-key stdin --global || true
+          ./scripts/deploy.sh --network mainnet
+
+      - name: Compute WASM hash
+        if: always()
+        id: wasm_hash
+        run: |
+          WASM_FILE="crates/contracts/target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm"
+          if [[ -f "${WASM_FILE}" ]]; then
+            HASH=$(sha256sum "${WASM_FILE}" | awk '{print $1}')
+            SIZE=$(stat -c%s "${WASM_FILE}" 2>/dev/null || stat -f%z "${WASM_FILE}" 2>/dev/null || echo "unknown")
+            echo "hash=${HASH}" >> "${GITHUB_OUTPUT}"
+            echo "size=${SIZE}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Mainnet Deployment Summary" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Field | Value |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|-------|-------|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| **Dry Run** | ${{ github.event.inputs.dry_run }} |" >> "${GITHUB_STEP_SUMMARY}"
+          if [[ -f config/deployment-mainnet.json ]]; then
+            ROUTER_ID=$(jq -r '.contracts.router.contract_id // .contract_id // empty' config/deployment-mainnet.json)
+            echo "| **Router ID** | \`${ROUTER_ID}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          if [[ -n "${{ steps.wasm_hash.outputs.hash }}" ]]; then
+            echo "| **WASM Hash** | \`${{ steps.wasm_hash.outputs.hash }}\` |" >> "${GITHUB_STEP_SUMMARY}"
+            echo "| **WASM Size** | ${{ steps.wasm_hash.outputs.size }} bytes |" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload deployment artifact
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-mainnet
+          path: config/deployment-mainnet.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellarroute-contract-wasm-mainnet
+          path: crates/contracts/target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm
+          if-no-files-found: ignore
+          retention-days: 90
+
+  skip-deploy:
+    name: Mainnet Deployment Skipped
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_MAINNET_ENABLED != 'true' && github.event.inputs.dry_run != 'true' }}
+    steps:
+      - name: Notice
+        run: |
+          echo "## Mainnet Deployment Skipped" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Set repository variable \`DEPLOY_MAINNET_ENABLED=true\` and configure \`SOROBAN_MAINNET_DEPLOYER_SECRET\` to enable mainnet deployment." >> "${GITHUB_STEP_SUMMARY}"

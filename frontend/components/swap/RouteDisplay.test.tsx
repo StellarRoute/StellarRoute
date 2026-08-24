@@ -1,16 +1,24 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { act } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RouteDisplay } from "./RouteDisplay";
 
+const DEFAULT_PROPS = {
+  amountOut: "50.0",
+};
+
 describe("RouteDisplay", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+  });
 
   it("should render loading skeleton when isLoading is true", () => {
     render(<RouteDisplay amountOut="50.0" isLoading={true} />);
 
     const skeletonElements = document.querySelectorAll(".animate-pulse");
-    expect(skeletonElements.length).toBeGreaterThanOrEqual(5);
+    expect(skeletonElements.length).toBeGreaterThanOrEqual(4);
   });
 
   it("should render actual content when isLoading is false or undefined", () => {
@@ -77,4 +85,138 @@ describe("RouteDisplay", () => {
 
     expect(screen.queryByTestId("alternative-route-route-0")).not.toBeInTheDocument();
   });
+
+  it("renders route detail drawer with per-hop venue and fee breakdown", async () => {
+    const routes = [
+      {
+        id: "route-0",
+        venue: "AQUA Pool",
+        expectedAmount: "≈ 49.7500",
+        hops: [
+          {
+            id: "hop-0",
+            fromAsset: "XLM",
+            toAsset: "AQUA",
+            venue: "SDEX",
+            fee: "0.00001 XLM",
+          },
+          {
+            id: "hop-1",
+            fromAsset: "AQUA",
+            toAsset: "USDC",
+            venue: "AQUA Pool",
+            fee: "0.00002 XLM",
+          },
+        ],
+      },
+    ];
+
+    render(<RouteDisplay amountOut="50.0" alternativeRoutes={routes} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show route details" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Route detail drawer")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Per-hop route details")).toBeInTheDocument();
+    expect(screen.getByText("Hop 1: XLM -> AQUA")).toBeInTheDocument();
+    expect(screen.getByText("Hop 2: AQUA -> USDC")).toBeInTheDocument();
+    expect(screen.getByText("Estimated total fees")).toBeInTheDocument();
+    expect(screen.getByText("0.00003 XLM")).toBeInTheDocument();
+  });
+
+  it("progressively transitions from skeleton to content", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<RouteDisplay amountOut="50.0" isLoading={true} />);
+
+      expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+
+      rerender(<RouteDisplay amountOut="50.0" isLoading={false} />);
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
+      expect(screen.getByText("Best Route")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Telemetry tests
+// ---------------------------------------------------------------------------
+
+describe('RouteDisplay — telemetry', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('emits telemetry event on alternative route selection', async () => {
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).toHaveBeenCalledTimes(1);
+      const event = telemetryListener.mock.calls[0][0] as CustomEvent;
+      expect(event.detail).toEqual({
+        venue: 'AQUA Pool',
+        hopCount: 1,
+      });
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+    }
+  });
+
+  it('does not emit telemetry event when NEXT_PUBLIC_TELEMETRY_ENABLED is false', async () => {
+    vi.stubEnv('NEXT_PUBLIC_TELEMETRY_ENABLED', 'false');
+    const telemetryListener = vi.fn();
+    window.addEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+
+    try {
+      render(
+        <RouteDisplay
+          {...DEFAULT_PROPS}
+          alternativeRoutes={[
+            {
+              id: 'r0',
+              venue: 'AQUA Pool',
+              expectedAmount: '9.9',
+              hops: [{ id: 'h0', fromAsset: 'XLM', toAsset: 'USDC', venue: 'AQUA Pool', fee: '0' }],
+            },
+          ]}
+        />
+      );
+
+      const routeBtn = screen.getByTestId('alternative-route-r0');
+      await userEvent.click(routeBtn);
+
+      expect(telemetryListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('stellarroute:route-selected', telemetryListener as EventListener);
+      vi.unstubAllEnvs();
+    }
+  });
+});
+

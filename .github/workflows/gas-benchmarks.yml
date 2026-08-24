@@ -5,10 +5,7 @@ on:
     branches: [main, develop]
     paths:
       - 'crates/contracts/**'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - 'crates/contracts/**'
+  workflow_dispatch:
 
 jobs:
   benchmark:
@@ -59,6 +56,31 @@ jobs:
             echo "❌ Benchmark thresholds exceeded!"
             exit 1
           fi
+
+          # Read baselines from JSON
+          BASELINE_1HOP=$(jq -r '.execute_swap_1_hop' gas_baselines.json)
+          BASELINE_4HOP=$(jq -r '.execute_swap_4_hop' gas_baselines.json)
+          
+          # Extract actual costs
+          ACTUAL_1HOP=$(grep "execute_swap_1_hop_cpu_cost" benchmark_results.txt | awk '{print $2}')
+          ACTUAL_4HOP=$(grep "execute_swap_4_hops_cpu_cost" benchmark_results.txt | awk '{print $2}')
+          
+          # Calculate max allowed (10% over baseline
+          MAX_ALLOWED_1HOP=$((BASELINE_1HOP + (BASELINE_1HOP / 10)))
+          MAX_ALLOWED_4HOP=$((BASELINE_4HOP + (BASELINE_4HOP / 10)))
+          
+          echo "execute_swap 1-hop: ${ACTUAL_1HOP} / ${MAX_ALLOWED_1HOP}"
+          echo "execute_swap 4-hops: ${ACTUAL_4HOP} / ${MAX_ALLOWED_4HOP}"
+          
+          # Check thresholds
+          if [ "$ACTUAL_1HOP" -gt "$MAX_ALLOWED_1HOP" ]; then
+            echo "❌ execute_swap 1-hop CPU cost exceeded 10% threshold!"
+            exit 1
+          fi
+          if [ "$ACTUAL_4HOP" -gt "$MAX_ALLOWED_4HOP" ]; then
+            echo "❌ execute_swap 4-hops CPU cost exceeded 10% threshold!"
+            exit 1
+          fi
           echo "✅ All benchmarks passed"
 
       - name: Build WASM
@@ -97,6 +119,7 @@ jobs:
         with:
           name: benchmark-results
           path: crates/contracts/benchmark_results.txt
+          if-no-files-found: error
 
       - name: Upload optimized WASM
         uses: actions/upload-artifact@v4

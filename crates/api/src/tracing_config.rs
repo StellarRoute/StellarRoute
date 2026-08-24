@@ -14,7 +14,8 @@
 //! | `LOG_FORMAT`             | `json` \| `pretty`            | `pretty`         |
 
 use opentelemetry::trace::TraceContextExt;
-use opentelemetry::{global, KeyValue};
+use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
+use opentelemetry::{global, Context, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, Tracer};
@@ -184,6 +185,20 @@ impl TraceContext {
             headers.insert("traceparent", val);
         }
     }
+
+    pub fn to_otel_context(&self) -> Option<Context> {
+        let trace_id = TraceId::from_hex(&self.trace_id).ok()?;
+        let span_id = SpanId::from_hex(&self.span_id).ok()?;
+        let span_context = SpanContext::new(
+            trace_id,
+            span_id,
+            TraceFlags::SAMPLED,
+            false,
+            TraceState::default(),
+        );
+
+        Some(Context::new().with_remote_span_context(span_context))
+    }
 }
 
 pub mod span_names {
@@ -215,8 +230,10 @@ mod tests {
 
     #[test]
     fn test_sampling_ratio_clamped() {
-        let mut config = TracingConfig::default();
-        config.sampling_ratio = 1.5;
+        let config = TracingConfig {
+            sampling_ratio: 1.5,
+            ..Default::default()
+        };
         let clamped = config.sampling_ratio.clamp(0.0, 1.0);
         assert!((clamped - 1.0).abs() < f64::EPSILON);
     }

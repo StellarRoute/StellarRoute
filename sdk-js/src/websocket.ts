@@ -16,6 +16,45 @@ import type { PriceQuote, Orderbook } from './types.js';
 
 export type WebSocketState = 'connecting' | 'connected' | 'disconnecting' | 'disconnected';
 
+export interface Clock {
+  now(): number;
+  setTimeout(callback: (...args: any[]) => void, ms: number, ...args: any[]): any;
+  clearTimeout(timeoutId: any): void;
+}
+
+export class DefaultClock implements Clock {
+  now() { return Date.now(); }
+  setTimeout(callback: (...args: any[]) => void, ms: number, ...args: any[]) {
+    return setTimeout(callback, ms, ...args);
+  }
+  clearTimeout(timeoutId: any) {
+    clearTimeout(timeoutId);
+  }
+}
+
+export interface IWebSocket {
+  readyState: number;
+  onopen: ((event: any) => void) | null;
+  onclose: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onmessage: ((event: any) => void) | null;
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+}
+
+export interface IWebSocketFactory {
+  create(url: string): IWebSocket;
+}
+
+export class DefaultWebSocketFactory implements IWebSocketFactory {
+  create(url: string): IWebSocket {
+    if (typeof WebSocket === 'undefined') {
+      throw new Error('WebSocket is not available in this environment. Provide a WebSocketFactory or polyfill.');
+    }
+    return new (WebSocket as any)(url);
+  }
+}
+
 export interface WebSocketOptions {
   /** Maximum reconnection attempts (default: 5) */
   maxReconnectAttempts?: number;
@@ -29,6 +68,10 @@ export interface WebSocketOptions {
   connectionTimeoutMs?: number;
   /** Enable debug logging */
   debug?: boolean;
+  /** Custom clock for testing (default: DefaultClock) */
+  clock?: Clock;
+  /** Custom WebSocket factory for testing (default: DefaultWebSocketFactory) */
+  webSocketFactory?: IWebSocketFactory;
 }
 
 export interface SubscriptionOptions {
@@ -107,19 +150,23 @@ export type EventListener = (event: WebSocketEvent) => void;
 // ============================================================================
 
 export class StellarRouteWebSocket {
-  private ws: WebSocket | null = null;
+  private ws: IWebSocket | null = null;
   private readonly baseUrl: string;
   private readonly options: Required<WebSocketOptions>;
+  private readonly clock: Clock;
+  private readonly wsFactory: IWebSocketFactory;
   private state: WebSocketState = 'disconnected';
   private listeners: Set<EventListener> = new Set();
   private subscriptions: Map<string, Subscription> = new Map();
   private reconnectAttempts = 0;
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimeout: any = null;
+  private connectionTimeout: any = null;
   private shouldReconnect = true;
 
   constructor(baseUrl = 'ws://localhost:8080', options?: WebSocketOptions) {
     this.baseUrl = baseUrl.replace(/\/$/, '').replace(/^http/, 'ws');
+    this.clock = options?.clock ?? new DefaultClock();
+    this.wsFactory = options?.webSocketFactory ?? new DefaultWebSocketFactory();
     this.options = {
       maxReconnectAttempts: options?.maxReconnectAttempts ?? 5,
       initialBackoffMs: options?.initialBackoffMs ?? 1000,
@@ -127,6 +174,8 @@ export class StellarRouteWebSocket {
       backoffMultiplier: options?.backoffMultiplier ?? 2,
       connectionTimeoutMs: options?.connectionTimeoutMs ?? 10000,
       debug: options?.debug ?? false,
+      clock: this.clock,
+      webSocketFactory: this.wsFactory,
     };
   }
 
@@ -151,18 +200,21 @@ export class StellarRouteWebSocket {
         const wsUrl = `${this.baseUrl}/ws`;
         this.log('Connecting to', wsUrl);
         
-        this.ws = new WebSocket(wsUrl);
+        const currentWs = this.wsFactory.create(wsUrl);
+        this.ws = currentWs;
         
         // Connection timeout
-        this.connectionTimeout = setTimeout(() => {
-          if (this.ws?.readyState !== WebSocket.OPEN) {
+        this.connectionTimeout = this.clock.setTimeout(() => {
+          if (this.ws === currentWs && this.ws.readyState !== 1 /* OPEN */) {
             this.log('Connection timeout');
-            this.ws?.close();
+            this.ws.close();
             reject(new Error('Connection timeout'));
           }
         }, this.options.connectionTimeoutMs);
 
-        this.ws.onopen = () => {
+        currentWs.onopen = () => {
+          if (this.ws !== currentWs) return;
+          
           this.clearConnectionTimeout();
           this.setState('connected');
           this.reconnectAttempts = 0;
@@ -173,13 +225,13 @@ export class StellarRouteWebSocket {
           resolve();
         };
 
-        this.ws.onclose = (event) => {
-          this.clearConnectionTimeout();
-          this.log('Disconnected', event.code, event.reason);
+        currentWs.onclose = (event) => {
+          if (this.ws !== currentWs) return;
           
-          if (this.state === 'connected') {
-            this.setState('disconnected');
-          }
+          this.clearConnectionTimeout();
+          this.log('Disconnected', event?.code, event?.reason);
+          
+          this.setState('disconnected');
 
           // Attempt reconnection if not intentionally disconnected
           if (this.shouldReconnect && this.reconnectAttempts < this.options.maxReconnectAttempts) {
@@ -189,28 +241,32 @@ export class StellarRouteWebSocket {
               type: 'error',
               code: 'reconnect_failed',
               message: 'Maximum reconnection attempts reached',
-              timestamp: Date.now(),
+              timestamp: this.clock.now(),
             });
           }
         };
 
-        this.ws.onerror = (error) => {
+        currentWs.onerror = (error) => {
+          if (this.ws !== currentWs) return;
+          
           this.clearConnectionTimeout();
           this.log('WebSocket error', error);
           this.emit({
             type: 'error',
             code: 'websocket_error',
             message: 'WebSocket connection error',
-            timestamp: Date.now(),
+            timestamp: this.clock.now(),
           });
         };
 
-        this.ws.onmessage = (event) => {
+        currentWs.onmessage = (event) => {
+          if (this.ws !== currentWs) return;
           this.handleMessage(event.data);
         };
 
       } catch (error) {
         this.clearConnectionTimeout();
+        this.setState('disconnected');
         reject(error);
       }
     });
@@ -223,6 +279,7 @@ export class StellarRouteWebSocket {
   async disconnect(): Promise<void> {
     this.shouldReconnect = false;
     this.clearReconnectTimeout();
+    this.clearConnectionTimeout();
     
     if (this.ws) {
       this.setState('disconnecting');
@@ -245,7 +302,7 @@ export class StellarRouteWebSocket {
    * Check if connected to the server.
    */
   isConnected(): boolean {
-    return this.state === 'connected' && this.ws?.readyState === WebSocket.OPEN;
+    return this.state === 'connected' && this.ws?.readyState === 1 /* OPEN */;
   }
 
   // ============================================================================
@@ -286,7 +343,7 @@ export class StellarRouteWebSocket {
     this.emit({
       type: 'subscription_removed',
       subscription,
-      timestamp: Date.now(),
+      timestamp: this.clock.now(),
     });
   }
 
@@ -345,11 +402,11 @@ export class StellarRouteWebSocket {
   }
 
   private generateSubscriptionId(subscription: Subscription): string {
-    return `${subscription.type}:${subscription.base}/${subscription.quote}:${Date.now()}`;
+    return `${subscription.type}:${subscription.base}/${subscription.quote}:${this.clock.now()}`;
   }
 
   private send(message: unknown): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === 1 /* OPEN */) {
       this.ws.send(JSON.stringify(message));
     }
   }
@@ -365,7 +422,7 @@ export class StellarRouteWebSocket {
             type: 'quote_update',
             subscription: message.subscription,
             data: message.data,
-            timestamp: message.timestamp ?? Date.now(),
+            timestamp: message.timestamp ?? this.clock.now(),
           });
           break;
 
@@ -374,7 +431,7 @@ export class StellarRouteWebSocket {
             type: 'orderbook_update',
             subscription: message.subscription,
             data: message.data,
-            timestamp: message.timestamp ?? Date.now(),
+            timestamp: message.timestamp ?? this.clock.now(),
           });
           break;
 
@@ -382,7 +439,7 @@ export class StellarRouteWebSocket {
           this.emit({
             type: 'subscription_confirmed',
             subscription: message.subscription,
-            timestamp: message.timestamp ?? Date.now(),
+            timestamp: message.timestamp ?? this.clock.now(),
           });
           break;
 
@@ -392,7 +449,7 @@ export class StellarRouteWebSocket {
             code: message.code,
             message: message.message,
             details: message.details,
-            timestamp: message.timestamp ?? Date.now(),
+            timestamp: message.timestamp ?? this.clock.now(),
           });
           break;
 
@@ -415,11 +472,12 @@ export class StellarRouteWebSocket {
   }
 
   private setState(state: WebSocketState): void {
+    if (this.state === state) return;
     this.state = state;
     this.emit({
       type: 'connection_state',
       state,
-      timestamp: Date.now(),
+      timestamp: this.clock.now(),
     });
   }
 
@@ -432,7 +490,7 @@ export class StellarRouteWebSocket {
     
     this.log(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${backoff}ms`);
     
-    this.reconnectTimeout = setTimeout(() => {
+    this.reconnectTimeout = this.clock.setTimeout(() => {
       this.connect().catch((error) => {
         this.log('Reconnect failed', error);
       });
@@ -451,14 +509,14 @@ export class StellarRouteWebSocket {
 
   private clearReconnectTimeout(): void {
     if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
+      this.clock.clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
   }
 
   private clearConnectionTimeout(): void {
     if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout);
+      this.clock.clearTimeout(this.connectionTimeout);
       this.connectionTimeout = null;
     }
   }

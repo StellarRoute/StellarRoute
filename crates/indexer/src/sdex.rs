@@ -6,7 +6,8 @@ use tracing::{debug, error, info, warn};
 use crate::db::Database;
 use crate::error::{IndexerError, Result};
 use crate::horizon::HorizonClient;
-use crate::models::{asset::Asset, horizon::HorizonOffer, offer::Offer};
+use crate::models::{asset::Asset, offer::Offer};
+use crate::telemetry::TraceContext;
 
 /// Indexing mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,21 +23,46 @@ pub struct SdexIndexer {
     horizon: HorizonClient,
     db: Database,
     mode: IndexingMode,
+    partition_manager: crate::partition::PartitionManager,
+}
+
+fn pair_key(selling: &Asset, buying: &Asset) -> String {
+    fn asset_label(asset: &Asset) -> String {
+        let (asset_type, code, _) = asset.key();
+        code.unwrap_or(asset_type)
+    }
+
+    format!("{}/{}", asset_label(selling), asset_label(buying))
 }
 
 impl SdexIndexer {
     /// Create a new SDEX indexer with polling mode
-    pub fn new(horizon: HorizonClient, db: Database) -> Self {
+    pub fn new(
+        horizon: HorizonClient,
+        db: Database,
+        partition_manager: crate::partition::PartitionManager,
+    ) -> Self {
         Self {
             horizon,
             db,
             mode: IndexingMode::Polling,
+            partition_manager,
         }
     }
 
     /// Create a new SDEX indexer with specified mode
-    pub fn with_mode(horizon: HorizonClient, db: Database, mode: IndexingMode) -> Self {
-        Self { horizon, db, mode }
+    pub fn with_mode(
+        horizon: HorizonClient,
+        db: Database,
+        mode: IndexingMode,
+        partition_manager: crate::partition::PartitionManager,
+    ) -> Self {
+        Self {
+            horizon,
+            db,
+            mode,
+            partition_manager,
+        }
     }
 
     /// Start indexing offers from Horizon
@@ -55,6 +81,22 @@ impl SdexIndexer {
             match self.index_offers().await {
                 Ok(count) => {
                     info!("Indexed {} offers", count);
+                    crate::metrics::record_offers_indexed("sdex", count as u64);
+                    crate::metrics::record_throttle_success("sdex");
+                    if let Err(e) = self.record_poll_heartbeat().await {
+                        warn!("Failed to record SDEX poll heartbeat: {}", e);
+                    }
+                }
+                Err(IndexerError::RateLimitExceeded { retry_after }) => {
+                    // Cursor is NOT advanced on rate-limit — we retry the same page.
+                    let wait_secs = retry_after.unwrap_or(5);
+                    warn!(
+                        retry_after_secs = wait_secs,
+                        "SDEX polling rate-limited; preserving cursor and waiting"
+                    );
+                    let consecutive = self.horizon.throttle.consecutive_429s();
+                    crate::metrics::record_throttle_event(wait_secs * 1_000, consecutive, "sdex");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
                 }
                 Err(e) => {
                     error!("Error indexing offers: {}", e);
@@ -67,84 +109,231 @@ impl SdexIndexer {
         }
     }
 
+    /// Record the Horizon tip so API lag monitors treat a fresh poll as caught up.
+    ///
+    /// Orderbook polling rewrites current offers whose `last_modified_ledger` may
+    /// be millions of ledgers old; without this heartbeat `/health` stays 503.
+    async fn record_poll_heartbeat(&self) -> Result<()> {
+        let ledger = self.horizon.get_latest_ledger().await?;
+        sqlx::query(
+            r#"
+            INSERT INTO ingestion_state (key, value, updated_at)
+            VALUES ('sdex_last_horizon_ledger', $1, now())
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+            "#,
+        )
+        .bind(ledger.to_string())
+        .execute(self.db.pool())
+        .await?;
+        Ok(())
+    }
+
     /// Start streaming mode indexing
     async fn start_streaming(&self) -> Result<()> {
         use futures::StreamExt;
 
         info!("Starting SDEX offer indexing (streaming mode)");
 
-        let stream = self.horizon.stream_offers().await?;
-        futures::pin_mut!(stream);
+        let mut cursor = self.fetch_latest_paging_token().await.ok();
+        let mut error_count = 0;
 
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(horizon_offer) => {
-                    // Convert to our Offer model
-                    match Offer::try_from(horizon_offer) {
-                        Ok(offer) => {
-                            // Index the offer
-                            let pool = self.db.pool();
-                            if let Err(e) = self.upsert_asset(pool, &offer.selling).await {
-                                warn!("Failed to upsert selling asset: {}", e);
+        loop {
+            info!(
+                cursor = ?cursor,
+                "Connecting to Horizon offer stream"
+            );
+
+            let stream_result = self.horizon.stream_offers(cursor.as_deref()).await;
+
+            match stream_result {
+                Ok(stream) => {
+                    error_count = 0;
+                    futures::pin_mut!(stream);
+
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(horizon_offer) => {
+                                crate::metrics::record_sse_event("sdex");
+                                // Update local cursor if provided in the offer
+                                if let Some(ref token) = horizon_offer.paging_token {
+                                    cursor = Some(token.clone());
+                                }
+
+                                // Convert to our Offer model
+                                match Offer::try_from(horizon_offer) {
+                                    Ok(offer) => {
+                                        // Determine market pair identifier for partitioning
+                                        let pair_key = pair_key(&offer.selling, &offer.buying);
+                                        if !self.partition_manager.should_process(&pair_key) {
+                                            debug!(
+                                                "Skipping pair {} on partition {}",
+                                                pair_key, self.partition_manager.partition_id
+                                            );
+                                            continue;
+                                        }
+
+                                        // Index the offer
+                                        let pool = self.db.pool();
+                                        let selling_asset_id =
+                                            match self.upsert_asset(pool, &offer.selling).await {
+                                                Ok(id) => id,
+                                                Err(e) => {
+                                                    warn!("Failed to upsert selling asset: {}", e);
+                                                    continue;
+                                                }
+                                            };
+                                        let buying_asset_id =
+                                            match self.upsert_asset(pool, &offer.buying).await {
+                                                Ok(id) => id,
+                                                Err(e) => {
+                                                    warn!("Failed to upsert buying asset: {}", e);
+                                                    continue;
+                                                }
+                                            };
+                                        if let Err(e) = self
+                                            .upsert_offer(
+                                                pool,
+                                                &offer,
+                                                selling_asset_id,
+                                                buying_asset_id,
+                                            )
+                                            .await
+                                        {
+                                            warn!("Failed to upsert offer {}: {}", offer.id, e);
+                                        } else {
+                                            debug!("Indexed offer {} via streaming", offer.id);
+                                            crate::metrics::record_offers_indexed("sdex", 1);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to parse streamed offer: {}", e);
+                                    }
+                                }
                             }
-                            if let Err(e) = self.upsert_asset(pool, &offer.buying).await {
-                                warn!("Failed to upsert buying asset: {}", e);
+                            Err(e) => {
+                                warn!("Stream event error: {}", e);
                             }
-                            if let Err(e) = self.upsert_offer(pool, &offer).await {
-                                warn!("Failed to upsert offer {}: {}", offer.id, e);
-                            } else {
-                                debug!("Indexed offer {} via streaming", offer.id);
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to parse streamed offer: {}", e);
                         }
                     }
+                    warn!("Offer stream ended unexpectedly; reconnecting");
+                    crate::metrics::record_sse_disconnect("sdex");
                 }
                 Err(e) => {
-                    warn!("Stream error: {}", e);
+                    error_count += 1;
+                    error!(
+                        "Failed to connect to SSE stream (attempt {}): {}",
+                        error_count, e
+                    );
+
+                    if error_count >= 3 {
+                        warn!("SSE connection failed consistently; falling back to polling");
+                        return self.start_polling().await;
+                    }
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }
         }
+    }
 
-        warn!("Offer stream ended unexpectedly");
-        Ok(())
+    /// Fetch the latest paging token from the database
+    async fn fetch_latest_paging_token(&self) -> Result<String> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT paging_token FROM sdex_offers WHERE paging_token IS NOT NULL ORDER BY last_modified_ledger DESC LIMIT 1"
+        )
+        .fetch_optional(self.db.pool())
+        .await
+        .map_err(IndexerError::DatabaseQuery)?;
+
+        row.map(|r| r.0).ok_or(IndexerError::NotFound {
+            entity: "paging_token".to_string(),
+            id: "latest".to_string(),
+        })
     }
 
     /// Index offers from Horizon API
+    #[tracing::instrument(skip(self), fields(source = "horizon"))]
     async fn index_offers(&self) -> Result<usize> {
         debug!("Fetching offers from Horizon");
 
-        let horizon_offers: Vec<HorizonOffer> = self.horizon.get_offers(None, None, None).await?;
-        debug!("Fetched {} offers from Horizon", horizon_offers.len());
-
         let pool = self.db.pool();
         let mut indexed = 0;
+        let page_limit = 200u32;
+        let mut cursor: Option<String> = None;
 
-        for horizon_offer in horizon_offers {
-            // Convert Horizon offer to our Offer model
-            let offer = match Offer::try_from(horizon_offer) {
-                Ok(o) => o,
-                Err(e) => {
-                    warn!("Failed to parse offer: {}", e);
+        // Horizon returns offers in pages; polling only the first page misses most
+        // of testnet/mainnet liquidity (including native/XLM sell offers).
+        for _ in 0..100 {
+            let horizon_offers = self
+                .horizon
+                .get_offers(Some(page_limit), cursor.as_deref(), None)
+                .await?;
+            let batch_len = horizon_offers.len();
+            if batch_len == 0 {
+                break;
+            }
+
+            debug!("Fetched {} offers from Horizon", batch_len);
+            let next_cursor = horizon_offers
+                .last()
+                .and_then(|offer| offer.paging_token.clone());
+
+            for horizon_offer in horizon_offers {
+                // Convert Horizon offer to our Offer model
+                let offer = match Offer::try_from(horizon_offer) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        warn!("Failed to parse offer: {}", e);
+                        continue;
+                    }
+                };
+
+                // Determine market pair identifier for partitioning
+                let pair_key = pair_key(&offer.selling, &offer.buying);
+                if !self.partition_manager.should_process(&pair_key) {
+                    debug!(
+                        "Skipping pair {} on partition {}",
+                        pair_key, self.partition_manager.partition_id
+                    );
                     continue;
                 }
-            };
 
-            // Extract and upsert assets
-            if let Err(e) = self.upsert_asset(pool, &offer.selling).await {
-                warn!("Failed to upsert selling asset: {}", e);
-            }
-            if let Err(e) = self.upsert_asset(pool, &offer.buying).await {
-                warn!("Failed to upsert buying asset: {}", e);
-            }
+                // Extract and upsert assets
+                let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!("Failed to upsert selling asset: {}", e);
+                        continue;
+                    }
+                };
+                let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!("Failed to upsert buying asset: {}", e);
+                        continue;
+                    }
+                };
 
-            // Upsert offer
-            match self.upsert_offer(pool, &offer).await {
-                Ok(_) => indexed += 1,
-                Err(e) => {
-                    warn!("Failed to upsert offer {}: {}", offer.id, e);
+                // Upsert offer
+                match self
+                    .upsert_offer(pool, &offer, selling_asset_id, buying_asset_id)
+                    .await
+                {
+                    Ok(_) => indexed += 1,
+                    Err(e) => {
+                        warn!("Failed to upsert offer {}: {}", offer.id, e);
+                    }
                 }
+            }
+
+            if batch_len < page_limit as usize {
+                break;
+            }
+
+            cursor = next_cursor;
+            if cursor.is_none() {
+                break;
             }
         }
 
@@ -152,67 +341,91 @@ impl SdexIndexer {
     }
 
     /// Upsert an asset into the database
-    async fn upsert_asset(&self, pool: &PgPool, asset: &Asset) -> Result<()> {
+    #[tracing::instrument(skip(self, pool, asset), fields(asset_type = %asset.key().0))]
+    async fn upsert_asset(&self, pool: &PgPool, asset: &Asset) -> Result<uuid::Uuid> {
         let (asset_type, asset_code, asset_issuer) = asset.key();
 
-        sqlx::query(
+        if asset_type == "native" {
+            if let Some(id) = sqlx::query_scalar::<_, uuid::Uuid>(
+                r#"
+                select id from assets
+                where asset_type = 'native'
+                order by created_at asc
+                limit 1
+                "#,
+            )
+            .fetch_optional(pool)
+            .await
+            .map_err(IndexerError::DatabaseQuery)?
+            {
+                return Ok(id);
+            }
+        }
+
+        sqlx::query_scalar(
             r#"
-            INSERT INTO assets (asset_type, asset_code, asset_issuer, created_at, updated_at)
-            VALUES ($1, $2, $3, NOW(), NOW())
+            INSERT INTO assets (asset_type, asset_code, asset_issuer, created_at)
+            VALUES ($1, $2, $3, NOW())
             ON CONFLICT (asset_type, asset_code, asset_issuer)
-            DO UPDATE SET updated_at = NOW()
+            DO UPDATE SET asset_type = EXCLUDED.asset_type
+            RETURNING id
             "#,
         )
         .bind(asset_type)
         .bind(asset_code)
         .bind(asset_issuer)
-        .execute(pool)
+        .fetch_one(pool)
         .await
-        .map_err(IndexerError::DatabaseQuery)?;
-
-        Ok(())
+        .map_err(IndexerError::DatabaseQuery)
     }
 
     /// Upsert an offer into the database
-    async fn upsert_offer(&self, pool: &PgPool, offer: &Offer) -> Result<()> {
-        let (selling_type, selling_code, selling_issuer) = offer.selling.key();
-        let (buying_type, buying_code, buying_issuer) = offer.buying.key();
+    #[tracing::instrument(skip(self, pool, offer), fields(offer_id = offer.id))]
+    async fn upsert_offer(
+        &self,
+        pool: &PgPool,
+        offer: &Offer,
+        selling_asset_id: uuid::Uuid,
+        buying_asset_id: uuid::Uuid,
+    ) -> Result<()> {
+        let trace_context = TraceContext::current();
 
         sqlx::query(
             r#"
             INSERT INTO sdex_offers (
-                offer_id, seller_id, selling_asset_type, selling_asset_code, selling_asset_issuer,
-                buying_asset_type, buying_asset_code, buying_asset_issuer,
-                amount, price_n, price_d, price, last_modified_ledger, last_modified_time,
-                created_at, updated_at
+                offer_id, seller, selling_asset_id, buying_asset_id,
+                amount, price_n, price_d, price, last_modified_ledger, paging_token,
+                source_trace_id, source_span_id, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8::numeric, $9, $10, $11, $12, NOW())
             ON CONFLICT (offer_id)
             DO UPDATE SET
-                seller_id = EXCLUDED.seller_id,
+                seller = EXCLUDED.seller,
+                selling_asset_id = EXCLUDED.selling_asset_id,
+                buying_asset_id = EXCLUDED.buying_asset_id,
                 amount = EXCLUDED.amount,
                 price_n = EXCLUDED.price_n,
                 price_d = EXCLUDED.price_d,
                 price = EXCLUDED.price,
                 last_modified_ledger = EXCLUDED.last_modified_ledger,
-                last_modified_time = EXCLUDED.last_modified_time,
+                paging_token = EXCLUDED.paging_token,
+                source_trace_id = EXCLUDED.source_trace_id,
+                source_span_id = EXCLUDED.source_span_id,
                 updated_at = NOW()
             "#,
         )
         .bind(offer.id as i64)
         .bind(offer.seller.as_str())
-        .bind(selling_type)
-        .bind(selling_code)
-        .bind(selling_issuer)
-        .bind(buying_type)
-        .bind(buying_code)
-        .bind(buying_issuer)
+        .bind(selling_asset_id)
+        .bind(buying_asset_id)
         .bind(offer.amount.as_str())
         .bind(offer.price_n)
         .bind(offer.price_d)
         .bind(offer.price.as_str())
         .bind(offer.last_modified_ledger as i64)
-        .bind(offer.last_modified_time)
+        .bind(offer.paging_token.as_deref())
+        .bind(trace_context.trace_id)
+        .bind(trace_context.span_id)
         .execute(pool)
         .await
         .map_err(IndexerError::DatabaseQuery)?;

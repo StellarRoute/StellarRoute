@@ -1,16 +1,20 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { formatDistanceToNow } from "date-fns"
-import { ArrowRight, ExternalLink, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { ArrowRight, Trash2, Download, Wallet } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ActivityTableSkeleton } from "@/components/shared/ActivityTableSkeleton"
 import { CopyButton } from "@/components/shared/CopyButton"
+import { ExplorerLink } from "@/components/shared/ExplorerLink"
+import { RelativeTime } from "@/components/shared/RelativeTime"
+import { AssetIcon } from "@/components/shared/AssetIcon"
 import { useTransactionHistory } from "@/hooks/useTransactionHistory"
 import { useVirtualWindow } from "@/hooks/useVirtualWindow"
+import { useWallet } from "@/components/providers/wallet-provider"
+import { WalletConnectionOnboarding } from "@/components/modals/WalletConnectionOnboarding"
 import { TransactionRecord } from "@/types/transaction"
 import {
   Table,
@@ -20,25 +24,61 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  ALL_EXPORT_COLUMNS,
+  generateTransactionsCSV,
+  triggerCSVDownload,
+} from "@/lib/transaction-csv-export"
 
-// Hardcode mock wallet to match DemoSwap
-const MOCK_WALLET = "GBSU...XYZ9"
 const ACTIVITY_VIRTUALIZATION_THRESHOLD = 24
 const ACTIVITY_ROW_HEIGHT = 80
 
-export function TransactionHistory() {
-  const { transactions, clearHistory } = useTransactionHistory(MOCK_WALLET)
+export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionRecord) => void } = {}) {
+  const {
+    address,
+    isConnected,
+    availableWallets,
+    isLoading: walletLoading,
+    error: walletError,
+    connect,
+    walletNetwork,
+    network,
+    setNetwork,
+    refreshWallets,
+  } = useWallet()
+  const { transactions, clearHistory } = useTransactionHistory(address)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
   const [sortKey, setSortKey] = useState<"date" | "amount">("date")
   const [isLoading, setIsLoading] = useState(true)
+  const [showConnectModal, setShowConnectModal] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [])
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => {
+    if (typeof window === "undefined") return ALL_EXPORT_COLUMNS.map((col) => col.key);
+    try {
+      const stored = localStorage.getItem("stellar_route_csv_export_columns");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load export columns", e);
+    }
+    return ALL_EXPORT_COLUMNS.map((col) => col.key);
+  });
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
 
   const filteredTxs = transactions.filter((tx) => {
     if (filterAsset === "ALL") return true
@@ -51,6 +91,41 @@ export function TransactionHistory() {
     }
     return parseFloat(b.fromAmount) - parseFloat(a.fromAmount)
   })
+
+  const handleColumnToggle = useCallback((key: string, checked: boolean) => {
+    setSelectedColumns((prev) => {
+      const next = checked ? [...prev, key] : prev.filter((k) => k !== key);
+      localStorage.setItem("stellar_route_csv_export_columns", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleExportCSV = useCallback(async () => {
+    if (selectedColumns.length === 0) return;
+    setIsExporting(true);
+    setExportProgress(0);
+    try {
+      const csv = await generateTransactionsCSV(
+        sortedTxs,
+        selectedColumns,
+        100,
+        (progress) => setExportProgress(progress)
+      );
+      triggerCSVDownload(csv, `stellarroute_trade_activity_${Date.now()}.csv`);
+    } catch (err) {
+      console.error("Export failed", err);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  }, [sortedTxs, selectedColumns]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [])
 
   const shouldVirtualize = sortedTxs.length > ACTIVITY_VIRTUALIZATION_THRESHOLD
   const virtualWindow = useVirtualWindow({
@@ -67,16 +142,18 @@ export function TransactionHistory() {
 
   const getStatusBadge = (status: TransactionRecord["status"]) => {
     switch (status) {
-      case "success":
-        return <Badge className="bg-success">Success</Badge>
+      case "confirmed":
+        return <Badge className="bg-success" aria-label="Status: confirmed">Confirmed</Badge>
       case "failed":
-        return <Badge variant="destructive">Failed</Badge>
+        return <Badge variant="destructive" aria-label="Status: failed">Failed</Badge>
       case "pending":
-      case "submitting":
-      case "processing":
-        return <Badge variant="secondary">Processing</Badge>
+        return <Badge variant="secondary" aria-label="Status: pending">Pending</Badge>
+      case "submitted":
+        return <Badge variant="secondary" aria-label="Status: submitted">Submitted</Badge>
+      case "dropped":
+        return <Badge variant="outline" aria-label="Status: dropped">Dropped</Badge>
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge variant="outline" aria-label={`Status: ${status}`}>{status}</Badge>
     }
   }
 
@@ -85,11 +162,15 @@ export function TransactionHistory() {
       <div className="p-4 border-b flex flex-col sm:flex-row justify-between items-center gap-4 bg-muted/30">
         <div>
           <h2 className="text-2xl font-bold">Transaction History</h2>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-            Wallet:{" "}
-            <span className="font-mono text-foreground">{MOCK_WALLET}</span>
-            <CopyButton value={MOCK_WALLET} label="Copy wallet address" />
-          </p>
+          {isConnected && address ? (
+            <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+              Wallet:{" "}
+              <span className="font-mono text-foreground">{address}</span>
+              <CopyButton value={address} label="Copy wallet address" />
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-1">No wallet connected</p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -112,6 +193,39 @@ export function TransactionHistory() {
             <option value="amount">Sort by Amount</option>
           </select>
 
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2" disabled={isExporting} data-testid="csv-export-button">
+                <Download className="h-4 w-4" />
+                <span>{isExporting ? `Exporting (${Math.round(exportProgress * 100)}%)` : "Export"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56" data-testid="csv-export-menu">
+              <DropdownMenuLabel>Select Columns</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {ALL_EXPORT_COLUMNS.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col.key}
+                  checked={selectedColumns.includes(col.key)}
+                  onCheckedChange={(checked) => handleColumnToggle(col.key, checked)}
+                  onSelect={(e) => e.preventDefault()}
+                  data-testid={`column-checkbox-${col.key}`}
+                >
+                  {col.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={selectedColumns.length === 0 || isExporting}
+                onClick={handleExportCSV}
+                className="justify-center font-semibold text-primary focus:text-primary focus:bg-primary/10"
+                data-testid="csv-download-button"
+              >
+                Download CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button variant="outline" size="icon" onClick={clearHistory} title="Clear History">
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
@@ -121,6 +235,17 @@ export function TransactionHistory() {
       <div ref={scrollRef} data-testid="tx-history-scroll" className="flex-1 overflow-auto">
         {isLoading ? (
           <ActivityTableSkeleton />
+        ) : !isConnected ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center h-full" data-testid="wallet-disconnected-state">
+            <Wallet className="w-16 h-16 text-muted-foreground/50 mb-4" />
+            <h3 className="text-xl font-semibold mb-1">Connect Your Wallet</h3>
+            <p className="text-sm text-muted-foreground max-w-[250px] mb-4">
+              Connect your wallet to view your transaction history.
+            </p>
+            <Button onClick={() => setShowConnectModal(true)} data-testid="connect-wallet-cta">
+              Connect Wallet
+            </Button>
+          </div>
         ) : sortedTxs.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center h-full">
             <div className="text-muted-foreground w-16 h-16 mb-4 opacity-50 bg-muted rounded-full flex items-center justify-center">
@@ -141,13 +266,14 @@ export function TransactionHistory() {
                   <TableHead>Rate</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Explorer</TableHead>
+                  <TableHead className="text-right">Retry</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {shouldVirtualize && virtualWindow.topSpacerHeight > 0 && (
                   <TableRow aria-hidden="true">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="border-0 p-0"
                       style={{ height: virtualWindow.topSpacerHeight }}
                     />
@@ -159,20 +285,40 @@ export function TransactionHistory() {
                       <div className="flex flex-col">
                         <span>{new Date(tx.timestamp).toLocaleDateString()}</span>
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDistanceToNow(tx.timestamp, { addSuffix: true })}
+                          <RelativeTime timestamp={tx.timestamp} />
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">-{tx.fromAmount}</span>
-                          <span className="text-xs text-muted-foreground">{tx.fromAsset}</span>
+                        <div className="flex items-center gap-2">
+                          <AssetIcon
+                            symbol={tx.fromAsset}
+                            src={tx.fromIcon}
+                            size={20}
+                            className="rounded-full border border-border/60 bg-muted"
+                            imageClassName="h-full w-full"
+                            fallbackClassName="text-[0.65rem]"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm">-{tx.fromAmount}</span>
+                            <span className="text-xs text-muted-foreground">{tx.fromAsset}</span>
+                          </div>
                         </div>
                         <ArrowRight className="w-4 h-4 text-muted-foreground/50" />
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm text-success">+{tx.toAmount}</span>
-                          <span className="text-xs text-muted-foreground">{tx.toAsset}</span>
+                        <div className="flex items-center gap-2">
+                          <AssetIcon
+                            symbol={tx.toAsset}
+                            src={tx.toIcon}
+                            size={20}
+                            className="rounded-full border border-border/60 bg-muted"
+                            imageClassName="h-full w-full"
+                            fallbackClassName="text-[0.65rem]"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm text-success">+{tx.toAmount}</span>
+                            <span className="text-xs text-muted-foreground">{tx.toAsset}</span>
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -194,18 +340,26 @@ export function TransactionHistory() {
                       {tx.hash ? (
                         <div className="inline-flex items-center gap-1 justify-end">
                           <CopyButton value={tx.hash} label="Copy transaction hash" />
-                          <a
-                            href={`https://stellar.expert/explorer/public/tx/${tx.hash}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline group"
-                          >
-                            <span className="hidden sm:inline">View</span>
-                            <ExternalLink className="w-3 h-3 group-hover:translate-x-px group-hover:-translate-y-px transition-transform" />
-                          </a>
+                          <ExplorerLink
+                            hash={tx.hash}
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          />
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {(tx.status === "failed" || tx.status === "dropped") ? (
+                        <button
+                          className="text-xs text-primary hover:underline"
+                          aria-label={`Retry ${tx.fromAsset}→${tx.toAsset} swap from ${new Date(tx.timestamp).toLocaleDateString()}`}
+                          onClick={() => onRetry?.(tx)}
+                        >
+                          Retry
+                        </button>
+                      ) : (
+                        <span />
                       )}
                     </TableCell>
                   </TableRow>
@@ -213,7 +367,7 @@ export function TransactionHistory() {
                 {shouldVirtualize && virtualWindow.bottomSpacerHeight > 0 && (
                   <TableRow aria-hidden="true">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="border-0 p-0"
                       style={{ height: virtualWindow.bottomSpacerHeight }}
                     />
@@ -224,6 +378,19 @@ export function TransactionHistory() {
           </div>
         )}
       </div>
+
+      <WalletConnectionOnboarding
+        open={showConnectModal}
+        onOpenChange={setShowConnectModal}
+        availableWallets={availableWallets}
+        isLoading={walletLoading}
+        error={walletError?.message ?? null}
+        onConnect={connect}
+        appNetwork={network}
+        walletNetwork={walletNetwork}
+        onNetworkSelection={setNetwork}
+        onRefreshWallets={refreshWallets}
+      />
     </Card>
   )
 }

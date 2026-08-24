@@ -1,0 +1,121 @@
+# Wallet Production Readiness Runbook
+
+This document maps every wallet-related code path to its current status — **stub / test-only** vs **production-ready** — and provides a Phase B on-chain swap checklist for contributors landing real signing support.
+
+---
+
+## 1. Feature Matrix
+
+| Feature                        | Entry point                                                                         | Status              | Notes                                                                                                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Connect (Freighter)**        | `connectWallet("freighter")` in `lib/wallet/index.ts`                               | ✅ Production ready | Calls `requestAccess()` + `getAddress()` + `getNetworkDetails()` from `@stellar/freighter-api`                                                                                  |
+| **Connect (xBull)**            | `connectWallet("xbull")` in `lib/wallet/index.ts`                                   | ✅ Production ready | Reads `window.xbull.connect()` — requires xBull extension installed                                                                                                             |
+| **Connect (Albedo)**           | `connectWallet("albedo")` in `lib/wallet/index.ts`                                  | ✅ Production ready | Uses the Albedo `public_key` intent through `window.albedo` or the hosted intent client                                                                                         |
+| **Detect installed wallets**   | `getAvailableWallets()` in `lib/wallet/index.ts`                                    | ✅ Production ready | Freighter: `isAllowed()` API; xBull: `window.xbull` presence check; Albedo: browser-hosted intent client                                                                        |
+| **View address**               | `getAddress()` (Freighter) / `connect().publicKey` (xBull) / `publicKey()` (Albedo) | ✅ Production ready | Called during `connectWallet` and `refreshWalletSession`                                                                                                                        |
+| **View network**               | `getNetworkDetails()` (Freighter) / `getNetwork()` (xBull) / app network fallback (Albedo) | ✅ Production ready | xBull reports the selected network via `getNetwork()` (window.xbull or xBullSDK); Albedo still uses app network fallback for session state |
+| **Sign transaction**           | `signTransactionWithWallet(xdr, walletId)` in `lib/wallet/index.ts`                 | ✅ Production ready | Freighter: `signTransaction()`; xBull: `window.xbull.sign()`; Albedo: `tx` intent returning signed envelope XDR                                                                 |
+| **Sign transaction stub**      | `signTransactionStub(xdr)` in `lib/wallet/index.ts`                                 | 🔴 Stub only        | Returns `{ ok: false }` — used in tests and out-of-scope flows. **Never call in production.**                                                                                   |
+| **Spendable balance**          | `useWalletBalance` in `hooks/useWalletBalance.ts`                                   | ✅ Production ready | Fetches `GET /accounts/{address}` from Horizon; native spendable balance subtracts `XLM_FEE_RESERVE`; consumed by `SwapCard` for balance display, loading/error states, and MAX |
+| **Auto-reconnect**             | `WalletProvider` effect in `wallet-provider.tsx`                                    | ✅ Production ready | Reads `stellarroute.wallet.lastWalletId` from `localStorage`, respects `autoReconnectPreferred` flag                                                                            |
+| **Reconnect on focus/online**  | `WalletProvider` window event listeners                                             | ✅ Production ready | Throttled to 5 s to avoid hammering the wallet extension                                                                                                                        |
+| **Network mismatch detection** | `networkMismatch` in `WalletProvider`                                               | ✅ Production ready | Compares app `network` state with `walletNetwork` returned by wallet (Freighter + xBull real network; Albedo app fallback)                                                      |
+| **Capability check**           | `refreshCapabilities()` / `checkWalletCapabilities()`                               | ⚠️ Mock             | `refreshCapabilities` in the provider sets `{ statuses: [] }` — wire to `checkWalletCapabilities` from `lib/wallet/index.ts` for Phase B                                        |
+| **Account switch detection**   | `accountSwitchState` in `WalletProvider`                                            | ✅ Production ready | Detects address change after `refreshAccount()`                                                                                                                                 |
+| **Sync mismatch / resync**     | `syncMismatch` + `resyncWallet()` in `WalletProvider`                               | ✅ Production ready | Calls `refreshAccount()` and clears the mismatch flag                                                                                                                           |
+| **Transaction lifecycle**      | `useTransactionLifecycle` hook                                                      | ⚠️ Partial          | Signs via `signTransactionWithWallet` but submit path (`submit.ts`) does not broadcast to Horizon yet — see Phase B checklist                                                   |
+| **Transaction broadcast**      | `lib/wallet/submit.ts`                                                              | 🔴 Stub             | `submitTransaction` is scaffolded but does not POST to Horizon. Phase B task.                                                                                                   |
+
+---
+
+## 2. Stubbed vs Production-ready Paths
+
+### 🔴 Stubs (must be replaced before mainnet)
+
+| Symbol                          | File                                       | What it does                 | Replace with                                                                   |
+| ------------------------------- | ------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------------ |
+| `signTransactionStub`           | `lib/wallet/index.ts`                      | Echoes XDR back, `ok: false` | Remove production call sites; always use `signTransactionWithWallet`           |
+| `submitTransaction` (stub body) | `lib/wallet/submit.ts`                     | Not yet posting to Horizon   | POST XDR to `https://horizon.stellar.org/transactions` (or testnet equivalent) |
+| `refreshCapabilities` mock      | `components/providers/wallet-provider.tsx` | Sets empty `statuses: []`    | Call `checkWalletCapabilities(walletId, network)` from `lib/wallet/index.ts`   |
+
+### ⚠️ Partial implementations
+
+| Path                              | Gap                                                               | Action needed                                                                                               |
+| --------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Albedo network detection          | Uses app network fallback instead of passive wallet network reads | Implement wallet-specific network APIs if exposed; keep capability checks constrained to supported networks |
+| Transaction lifecycle submit step | `useTransactionLifecycle` calls sign but not broadcast            | Wire the signed XDR into `submitTransaction` once it POSTs to Horizon                                       |
+
+---
+
+## 3. Phase B On-chain Swap Checklist
+
+Before enabling real on-chain swaps (Phase B):
+
+- [x] **Replace `stubSpendableBalance`** — `useWalletBalance` fetches live balance from Horizon `accounts/{address}`; native MAX subtracts fee reserve (future: `buying_liabilities` / `selling_liabilities` for trustline holds)
+- [ ] **Implement `submitTransaction`** in `lib/wallet/submit.ts` — POST signed XDR to Horizon `/transactions`; handle `400 tx_bad_auth`, `400 op_underfunded`, and network timeouts
+- [ ] **Wire `refreshCapabilities`** in `WalletProvider` — replace mock with `checkWalletCapabilities(walletId, network)` so `WalletCapabilitiesBanner` reflects real status
+- [x] **Fix xBull passive network detection** — `connectWallet`/`refreshWalletSession` call xBull `getNetwork()` so `networkMismatch` works for public + testnet; Albedo still uses app fallback
+- [ ] **Remove all `signTransactionWithWallet` call sites** — search for `signTransactionWithWallet` and ensure only `signTransactionWithWallet` is used in non-test code
+- [ ] **Validate network passphrase mapping** — ensure `networkPassphrase` passed to `signTransaction` matches Stellar's canonical values (`Test SDF Network ; September 2015` / `Public Global Stellar Network ; September 2015`)
+- [ ] **Test Freighter + xBull on testnet end-to-end** — confirm sign → broadcast → Horizon confirmation flow with real wallets
+- [ ] **Add Horizon error taxonomy to `lib/api/trader-error-copy.ts`** — map `tx_bad_seq`, `op_no_trust`, `op_line_full`, etc. to user-facing messages
+
+---
+
+## 4. Freighter, xBull, and Albedo Integration Patterns
+
+### Freighter
+
+Freighter exposes a Promise-based API via `@stellar/freighter-api`. All calls return `{ error?: { message } }` shaped results — always check `.error` before using the value.
+
+```ts
+// Connect
+const access = await requestAccess();
+if (access.error) throw new Error(access.error.message);
+
+// Sign
+const res = await signTransaction(xdr, { networkPassphrase });
+if (res.error) throw new Error(res.error.message);
+return res.signedTxXdr;
+```
+
+### xBull
+
+xBull injects `window.xbull` and/or SEP-43 `window.xBullSDK`. Detect via either client.
+
+```ts
+const xbull = (window as any).xbull ?? (window as any).xBullSDK;
+const { publicKey } = await xbull.connect();
+const networkRes = await xbull.getNetwork?.(); // { network, networkPassphrase }
+const signedXdr = await xbull.sign({ xdr, network: 'testnet' });
+```
+
+### Albedo
+
+Albedo works through hosted intents. The adapter uses an already injected `window.albedo` client when present and otherwise loads the official UMD intent client on demand.
+
+```ts
+const albedo = window.albedo;
+const { pubkey } = await albedo.publicKey();
+const { signed_envelope_xdr } = await albedo.tx({
+  xdr,
+  network: 'testnet',
+  pubkey,
+});
+```
+
+---
+
+## 5. References
+
+- `frontend/lib/wallet/index.ts` — all wallet adapter functions
+- `frontend/components/providers/wallet-provider.tsx` — React context; lifecycle, reconnect, mismatch detection
+- `frontend/lib/wallet/submit.ts` — Horizon broadcast stub
+- `frontend/hooks/useWalletBalance.ts` — Horizon account balance fetch for swap UI
+- `frontend/hooks/useTransactionLifecycle.ts` — sign + submit orchestration
+- [Freighter API docs](https://docs.freighter.app)
+- [Horizon REST API](https://developers.stellar.org/api/horizon)
+
+---
+
+_This document is referenced from [CONTRIBUTING.md](../../CONTRIBUTING.md) and [docs/development/SETUP.md](SETUP.md)._

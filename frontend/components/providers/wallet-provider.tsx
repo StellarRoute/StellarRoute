@@ -1,17 +1,31 @@
 'use client';
 
 import * as React from 'react';
+import { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 import {
   connectWallet,
   disconnectWallet,
   getAvailableWallets,
+  refreshWalletSession,
+  checkWalletCapabilities,
 } from '@/lib/wallet';
+import {
+  isNetworkAllowed,
+  loadPersistedNetwork,
+  normalizeAppNetwork,
+  persistNetwork,
+  resolveInitialNetwork,
+} from '@/lib/network-policy';
 import type {
   AvailableWallet,
   SupportedWallet,
   WalletError,
   WalletNetwork,
+  AccountSwitchState,
+  Capabilities,
 } from '@/lib/wallet/types';
+import { STELLAR_NETWORK } from '@/lib/constants';
 
 interface WalletContextValue {
   address: string | null;
@@ -23,32 +37,136 @@ interface WalletContextValue {
   isLoading: boolean;
   error: WalletError | null;
   connect: (walletId: SupportedWallet) => Promise<void>;
+  reconnect: () => Promise<void>;
   disconnect: () => void;
   setNetwork: (network: WalletNetwork) => void;
+  autoReconnectPreferred: boolean;
+  setAutoReconnectPreferred: (enabled: boolean) => void;
   refreshWallets: () => Promise<void>;
+  refreshAccount: () => Promise<void>;
   networkMismatch: boolean;
-  stubSpendableBalance: string | null;
+  accountSwitchState: AccountSwitchState;
+  isTransactionPending: boolean;
+  setTransactionPending: (pending: boolean) => void;
+  capabilities: Capabilities | null;
+  refreshCapabilities: () => Promise<void>;
+  syncMismatch: boolean;
+  resyncWallet: () => Promise<void>;
+  dismissSyncMismatch: () => void;
 }
 
-const WalletContext = React.createContext<WalletContextValue | undefined>(undefined);
+const WalletContext = createContext<WalletContextValue | undefined>(undefined);
+
+const AUTO_RECONNECT_PREFERENCE_KEY = 'stellarroute.wallet.autoReconnect';
+const LAST_WALLET_ID_KEY = 'stellarroute.wallet.lastWalletId';
+
+function createCheckingCapabilities(): Capabilities {
+  return {
+    checkedAt: Date.now(),
+    statuses: [
+      {
+        capability: 'sign_transaction',
+        allowed: false,
+        reason: 'Checking wallet permissions',
+        resolution: 'Wait a moment, then try again',
+      },
+    ],
+  };
+}
+
+function createFailedCapabilities(message?: string): Capabilities {
+  return {
+    checkedAt: Date.now(),
+    statuses: [
+      {
+        capability: 'sign_transaction',
+        allowed: false,
+        reason: message ?? 'Failed to verify wallet permissions',
+        resolution: 'Reconnect your wallet or use Check again',
+      },
+    ],
+  };
+}
 
 interface WalletProviderProps {
-  children: React.ReactNode;
-  defaultNetwork?: WalletNetwork;
+  children: ReactNode;
+  defaultNetwork?: string;
 }
 
 export function WalletProvider({
   children,
-  defaultNetwork = 'testnet',
+  defaultNetwork = STELLAR_NETWORK,
 }: WalletProviderProps) {
   const [address, setAddress] = React.useState<string | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
-  const [network, setNetwork] = React.useState<WalletNetwork>(defaultNetwork);
+  const [network, setNetworkState] = React.useState<WalletNetwork>(() =>
+    resolveInitialNetwork(null, defaultNetwork),
+  );
   const [walletNetwork, setWalletNetwork] = React.useState<WalletNetwork | null>(null);
   const [walletId, setWalletId] = React.useState<SupportedWallet | null>(null);
   const [availableWallets, setAvailableWallets] = React.useState<AvailableWallet[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<WalletError | null>(null);
+  const [autoReconnectPreferred, setAutoReconnectPreferredState] = React.useState(true);
+  const [didLoadReconnectPreference, setDidLoadReconnectPreference] = React.useState(false);
+  const [accountSwitchState, setAccountSwitchState] = React.useState<AccountSwitchState>({
+    isDetecting: false,
+    hasChanged: false,
+    previousAddress: null,
+  });
+  const [isTransactionPending, setIsTransactionPending] = React.useState(false);
+  const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
+  const [syncMismatch, setSyncMismatch] = React.useState(false);
+  const didAttemptInitialReconnect = React.useRef(false);
+  const reconnectThrottleUntilMs = React.useRef(0);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      setDidLoadReconnectPreference(true);
+      return;
+    }
+
+    const savedPreference = window.localStorage.getItem(
+      AUTO_RECONNECT_PREFERENCE_KEY,
+    );
+    if (savedPreference !== null) {
+      setAutoReconnectPreferredState(savedPreference === 'true');
+    }
+    setNetworkState(resolveInitialNetwork(loadPersistedNetwork(), defaultNetwork));
+    setDidLoadReconnectPreference(true);
+  }, [defaultNetwork]);
+
+  const setNetwork = React.useCallback((nextNetwork: WalletNetwork) => {
+    if (!isNetworkAllowed(nextNetwork)) {
+      setError({
+        message: `Network "${nextNetwork}" is not available in this environment.`,
+      });
+      return;
+    }
+
+    setNetworkState(nextNetwork);
+    persistNetwork(nextNetwork);
+    setError(null);
+  }, []);
+
+  const setAutoReconnectPreferred = React.useCallback((enabled: boolean) => {
+    setAutoReconnectPreferredState(enabled);
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(AUTO_RECONNECT_PREFERENCE_KEY, String(enabled));
+  }, []);
+
+  const setLastWalletId = React.useCallback((id: SupportedWallet | null) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (id === null) {
+      window.localStorage.removeItem(LAST_WALLET_ID_KEY);
+      return;
+    }
+    window.localStorage.setItem(LAST_WALLET_ID_KEY, id);
+  }, []);
 
   const refreshWallets = React.useCallback(async () => {
     const wallets = await getAvailableWallets();
@@ -60,33 +178,286 @@ export function WalletProvider({
   }, [refreshWallets]);
 
   const connect = React.useCallback(async (selectedWalletId: SupportedWallet) => {
+    // Prevent account switching during transactions
+    if (isTransactionPending) {
+      const message = 'Cannot switch accounts during a pending transaction';
+      setError({ message });
+      throw new Error(message);
+    }
+
     setIsLoading(true);
     setError(null);
+    setAccountSwitchState({
+      isDetecting: false,
+      hasChanged: false,
+      previousAddress: null,
+    });
+
     try {
       const session = await connectWallet(selectedWalletId);
       setAddress(session.address);
       setIsConnected(session.isConnected);
       setWalletNetwork(session.network ?? null);
       setWalletId(session.walletId);
+      setLastWalletId(session.walletId);
+      setCapabilities(createCheckingCapabilities());
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error('Unknown error');
+      setError({ message: e.message });
+      throw e;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setLastWalletId, isTransactionPending]);
+
+  const reconnect = React.useCallback(async () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const savedWalletId = window.localStorage.getItem(LAST_WALLET_ID_KEY);
+    if (
+      savedWalletId !== 'freighter' &&
+      savedWalletId !== 'xbull' &&
+      savedWalletId !== 'albedo' &&
+      savedWalletId !== 'lobstr'
+    ) {
+      return;
+    }
+
+    const available =
+      availableWallets.find((wallet) => wallet.id === savedWalletId) ?? null;
+    if (available && !available.installed) {
+      setError({ message: `${available.label} is not installed.` });
+      return;
+    }
+
+    await connect(savedWalletId);
+  }, [availableWallets, connect]);
+
+  const disconnect = React.useCallback(() => {
+    // Prevent disconnection during transactions
+    if (isTransactionPending) {
+      setError({ message: 'Cannot disconnect during a pending transaction' });
+      return;
+    }
+
+    const session = disconnectWallet();
+    setAddress(session.address);
+    setIsConnected(session.isConnected);
+    setWalletNetwork(session.network ?? null);
+    setWalletId(session.walletId);
+    setCapabilities(null);
+    setError(null);
+    setAccountSwitchState({
+      isDetecting: false,
+      hasChanged: false,
+      previousAddress: null,
+    });
+  }, [isTransactionPending]);
+
+  const refreshAccount = React.useCallback(async () => {
+    if (!walletId || !isConnected) return;
+
+    // Prevent account refresh during transactions
+    if (isTransactionPending) {
+      setError({ message: 'Cannot refresh account during a pending transaction' });
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const session = await refreshWalletSession(walletId);
+      const previousAddress = address;
+      
+      setAddress(session.address);
+      setIsConnected(session.isConnected);
+      setWalletNetwork(session.network ?? null);
+      setWalletId(session.walletId);
+
+      // Reset account switch state after successful refresh
+      setAccountSwitchState({
+        isDetecting: false,
+        hasChanged: false,
+        previousAddress: null,
+      });
+
+      // If address changed, this was an account switch
+      if (previousAddress && session.address !== previousAddress) {
+        // Trigger any necessary balance/quote refreshes here
+        console.log('Account switched from', previousAddress, 'to', session.address);
+      }
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Unknown error');
       setError({ message: e.message });
     } finally {
       setIsLoading(false);
     }
+  }, [walletId, isConnected, address, isTransactionPending]);
+
+  const previousNetworkRef = React.useRef(network);
+
+  React.useEffect(() => {
+    if (!isConnected || !walletId) {
+      previousNetworkRef.current = network;
+      return;
+    }
+
+    if (previousNetworkRef.current === network) {
+      return;
+    }
+
+    previousNetworkRef.current = network;
+    void refreshAccount();
+  }, [network, isConnected, walletId, refreshAccount]);
+
+  React.useEffect(() => {
+    if (!didLoadReconnectPreference) {
+      return;
+    }
+    if (didAttemptInitialReconnect.current) {
+      return;
+    }
+    didAttemptInitialReconnect.current = true;
+    if (!autoReconnectPreferred || isConnected) {
+      return;
+    }
+    void reconnect();
+  }, [autoReconnectPreferred, didLoadReconnectPreference, isConnected, reconnect]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const tryRecoverConnection = () => {
+      if (!autoReconnectPreferred || isConnected || isLoading) {
+        return;
+      }
+      const now = Date.now();
+      if (now < reconnectThrottleUntilMs.current) {
+        return;
+      }
+      reconnectThrottleUntilMs.current = now + 5000;
+      void reconnect();
+    };
+
+    window.addEventListener('focus', tryRecoverConnection);
+    window.addEventListener('online', tryRecoverConnection);
+
+    return () => {
+      window.removeEventListener('focus', tryRecoverConnection);
+      window.removeEventListener('online', tryRecoverConnection);
+    };
+  }, [autoReconnectPreferred, isConnected, isLoading, reconnect]);
+
+  const addressRef = React.useRef(address);
+  const walletIdRef = React.useRef(walletId);
+
+  React.useEffect(() => {
+    addressRef.current = address;
+  }, [address]);
+
+  React.useEffect(() => {
+    walletIdRef.current = walletId;
+  }, [walletId]);
+
+  // Persist wallet state to localStorage
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (address) {
+      window.localStorage.setItem('stellarroute.wallet.address', address);
+    } else {
+      window.localStorage.removeItem('stellarroute.wallet.address');
+    }
+  }, [address]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (walletId) {
+      window.localStorage.setItem('stellarroute.wallet.walletId', walletId);
+    } else {
+      window.localStorage.removeItem('stellarroute.wallet.walletId');
+    }
+  }, [walletId]);
+
+  // Listen for storage events from other tabs
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (
+        e.key === 'stellarroute.wallet.address' ||
+        e.key === 'stellarroute.wallet.walletId'
+      ) {
+        const storedAddress = window.localStorage.getItem('stellarroute.wallet.address');
+        const storedWalletId = window.localStorage.getItem('stellarroute.wallet.walletId') as SupportedWallet | null;
+
+        const currentAddress = addressRef.current;
+        const currentWalletId = walletIdRef.current;
+
+        if (storedAddress !== currentAddress || storedWalletId !== currentWalletId) {
+          setSyncMismatch(true);
+        } else {
+          setSyncMismatch(false);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
-  const disconnect = React.useCallback(() => {
-    const session = disconnectWallet();
-    setAddress(session.address);
-    setIsConnected(session.isConnected);
-    setWalletNetwork(session.network ?? null);
-    setWalletId(session.walletId);
-    setError(null);
-  }, []);
+  const networkMismatch =
+    isConnected &&
+    walletNetwork !== null &&
+    normalizeAppNetwork(walletNetwork) !== normalizeAppNetwork(network);
 
-  const networkMismatch = isConnected && walletNetwork !== null && walletNetwork !== network;
-  const stubSpendableBalance = isConnected ? '10000.0000000' : null;
+  const refreshCapabilities = React.useCallback(async () => {
+    if (!walletId || !isConnected) {
+      setCapabilities(null);
+      return;
+    }
+    setCapabilities(createCheckingCapabilities());
+    try {
+      const caps = await checkWalletCapabilities(walletId, network);
+      setCapabilities(caps);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to verify wallet permissions';
+      setCapabilities(createFailedCapabilities(message));
+    }
+  }, [walletId, isConnected, network]);
+
+  React.useEffect(() => {
+    void refreshCapabilities();
+  }, [refreshCapabilities]);
+
+  const resyncWallet = React.useCallback(async () => {
+    if (typeof window === 'undefined') return;
+
+    if (isTransactionPending) {
+      setError({ message: 'Cannot resync wallet during a pending transaction' });
+      return;
+    }
+
+    const storedAddress = window.localStorage.getItem('stellarroute.wallet.address');
+    const storedWalletId = window.localStorage.getItem('stellarroute.wallet.walletId') as SupportedWallet | null;
+
+    if (storedWalletId && storedAddress) {
+      await connect(storedWalletId);
+    } else {
+      disconnect();
+    }
+    setSyncMismatch(false);
+  }, [connect, disconnect, isTransactionPending]);
+
+  const dismissSyncMismatch = React.useCallback(() => {
+    setSyncMismatch(false);
+  }, []);
 
   const value: WalletContextValue = {
     address,
@@ -98,20 +469,91 @@ export function WalletProvider({
     isLoading,
     error,
     connect,
+    reconnect,
     disconnect,
     setNetwork,
+    autoReconnectPreferred,
+    setAutoReconnectPreferred,
     refreshWallets,
+    refreshAccount,
     networkMismatch,
-    stubSpendableBalance,
+    accountSwitchState,
+    isTransactionPending,
+    setTransactionPending: React.useCallback((pending: boolean) => {
+      setIsTransactionPending(pending);
+    }, []),
+    capabilities,
+    refreshCapabilities,
+    syncMismatch,
+    resyncWallet,
+    dismissSyncMismatch,
   };
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  return (
+    <WalletContext.Provider value={value}>
+      {children}
+    </WalletContext.Provider>
+  );
+}
+
+const STORY_WALLET_ADDRESS =
+  'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+const noopAsync = async () => {};
+
+interface StoryWalletProviderProps {
+  children: ReactNode;
+  connected?: boolean;
+  address?: string;
+}
+
+/** Deterministic wallet context for Ladle stories and visual fixtures. */
+export function StoryWalletProvider({
+  children,
+  connected = false,
+  address = STORY_WALLET_ADDRESS,
+}: StoryWalletProviderProps) {
+  const value: WalletContextValue = {
+    address: connected ? address : null,
+    isConnected: connected,
+    network: 'testnet',
+    walletNetwork: connected ? 'testnet' : null,
+    walletId: connected ? 'freighter' : null,
+    availableWallets: [],
+    isLoading: false,
+    error: null,
+    connect: noopAsync,
+    reconnect: noopAsync,
+    disconnect: () => {},
+    setNetwork: () => {},
+    autoReconnectPreferred: false,
+    setAutoReconnectPreferred: () => {},
+    refreshWallets: noopAsync,
+    refreshAccount: noopAsync,
+    networkMismatch: false,
+    accountSwitchState: {
+      isDetecting: false,
+      hasChanged: false,
+      previousAddress: null,
+    },
+    isTransactionPending: false,
+    setTransactionPending: () => {},
+    capabilities: null,
+    refreshCapabilities: noopAsync,
+    syncMismatch: false,
+    resyncWallet: noopAsync,
+    dismissSyncMismatch: () => {},
+  };
+
+  return (
+    <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+  );
 }
 
 export function useWallet() {
-  const context = React.useContext(WalletContext);
-  if (context === undefined) {
-    throw new Error('useWallet must be used within a WalletProvider');
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error('useWallet must be used within WalletProvider');
   }
   return context;
 }

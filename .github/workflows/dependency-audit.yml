@@ -1,0 +1,66 @@
+name: Dependency Audit
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily at 08:00 UTC to catch newly-published advisories
+    - cron: '0 8 * * *'
+
+jobs:
+  cargo-audit:
+    name: cargo audit (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        # 0.22+ is required for CVSS 4.0 advisory parsing (advisory DB now uses it)
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Run cargo audit
+        # cargo-audit automatically reads .cargo/audit.toml from the workspace
+        # root. Any advisory NOT listed there will fail the build.
+        run: cargo audit
+
+  npm-audit-frontend:
+    name: npm audit (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run npm audit
+        # Fail on high/critical severity. Moderate and below require explicit
+        # exception justification in audit/dependency-exceptions.md.
+        run: npm audit --prefix frontend --audit-level=high
+
+  npm-audit-sdk:
+    name: npm audit (sdk-js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: sdk-js/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix sdk-js --legacy-peer-deps
+
+      - name: Run npm audit
+        run: npm audit --prefix sdk-js --audit-level=high

@@ -53,7 +53,10 @@ impl DiffEngine {
         let orig = &artifact.original_output;
 
         // ── price ────────────────────────────────────────────────────────────
-        let orig_price = orig.get("price").cloned().unwrap_or(serde_json::Value::Null);
+        let orig_price = orig
+            .get("price")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         let replay_price = serde_json::Value::String(replay.price.clone());
         if !numeric_values_equal(&orig_price, &replay_price) {
             divergences.push(FieldDivergence {
@@ -77,6 +80,22 @@ impl DiffEngine {
             });
         }
 
+        // ── rationale.compared_venues ───────────────────────────────────────
+        let orig_compared = orig
+            .get("rationale")
+            .and_then(|r| r.get("compared_venues"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let replay_compared =
+            serde_json::to_value(&replay.compared_venues).unwrap_or(serde_json::Value::Null);
+        if orig_compared != serde_json::Value::Null && orig_compared != replay_compared {
+            divergences.push(FieldDivergence {
+                field: "rationale.compared_venues".to_string(),
+                original: orig_compared,
+                replayed: replay_compared,
+            });
+        }
+
         // ── path[0].source ───────────────────────────────────────────────────
         let orig_path_source = orig
             .get("path")
@@ -91,9 +110,7 @@ impl DiffEngine {
             .unwrap_or(serde_json::Value::Null);
 
         // Only compare if the original has a path (some artifacts may not)
-        if orig_path_source != serde_json::Value::Null
-            && orig_path_source != replay_path_source
-        {
+        if orig_path_source != serde_json::Value::Null && orig_path_source != replay_path_source {
             divergences.push(FieldDivergence {
                 field: "path[0].source".to_string(),
                 original: orig_path_source,
@@ -141,7 +158,8 @@ mod tests {
     use super::*;
     use crate::models::{AssetInfo, PathStep};
     use crate::replay::artifact::{
-        HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION,
+        DecisionGraphSnapshot, HealthConfigSnapshot, LiquidityCandidate, ReplayArtifact,
+        CURRENT_SCHEMA_VERSION,
     };
     use chrono::Utc;
     use proptest::prelude::*;
@@ -162,7 +180,9 @@ mod tests {
                 venue_ref: "offer1".to_string(),
                 price: price.to_string(),
                 available_amount: "100.0000000".to_string(),
+                fee_bps: Some(0),
             }],
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -186,7 +206,10 @@ mod tests {
                 to_asset: AssetInfo::native(),
                 price: price.to_string(),
                 source: source.to_string(),
+                fee_bps: None,
+                liquidity_depth: None,
             }],
+            compared_venues: vec![],
             is_deterministic: true,
             replayed_at: Utc::now(),
         }
@@ -224,7 +247,10 @@ mod tests {
         // Let's use a value clearly within tolerance
         let replay2 = make_replay(&artifact, "1.00000005", "sdex:offer1");
         let report2 = DiffEngine::diff(&artifact, &replay2);
-        assert!(report2.is_identical, "diff within tolerance should be identical");
+        assert!(
+            report2.is_identical,
+            "diff within tolerance should be identical"
+        );
         let _ = report; // suppress unused warning
     }
 
@@ -234,7 +260,10 @@ mod tests {
         let replay = make_replay(&artifact, "1.0000000", "amm:pool1");
         let report = DiffEngine::diff(&artifact, &replay);
         assert!(!report.is_identical);
-        assert!(report.divergences.iter().any(|d| d.field == "selected_source"));
+        assert!(report
+            .divergences
+            .iter()
+            .any(|d| d.field == "selected_source"));
     }
 
     // ── Property-based tests ────────────────────────────────────────────────

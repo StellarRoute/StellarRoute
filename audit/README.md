@@ -10,6 +10,13 @@ This directory contains all materials required for an external security audit of
 | [scope.md](scope.md) | Files and functions in scope for audit |
 | [assumptions.md](assumptions.md) | Security assumptions and trust boundaries |
 | [known-issues.md](known-issues.md) | Known limitations and accepted risks |
+| [internal-security-review.md](internal-security-review.md) | Internal security review checklist for router contract, API, and frontend wallet |
+| [threat-model.md](threat-model.md) | Quote manipulation, sandwich, and DoS threat scenarios with mitigations |
+| [dependency-exceptions.md](dependency-exceptions.md) | Accepted dependency CVE exceptions and review process |
+| [bug-bounty-scope.md](bug-bounty-scope.md) | Bug bounty scope draft: in/out of bounds, reward tiers, safe harbor |
+| [fuzzing.md](fuzzing.md) | Fuzz targets for `validate_route` / `execute_swap` and overnight runbook |
+| [external-audit.md](external-audit.md) | External audit engagement: auditor selection, commit freeze, findings remediation, report publication |
+| [readiness-evidence.md](readiness-evidence.md) | What is ready to hand an auditor today vs what still requires humans / third parties |
 
 ## Quick Start for Auditors
 
@@ -26,6 +33,10 @@ This directory contains all materials required for an external security audit of
    ```bash
    cargo install cargo-tarpaulin
    cargo tarpaulin -p stellarroute-contracts --out Html
+   ```
+6. Run router input-validation fuzz targets (see [fuzzing.md](fuzzing.md)):
+   ```bash
+   cargo test -p stellarroute-contracts fuzz_ -- --nocapture
    ```
 
 ## Contract Version

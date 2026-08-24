@@ -1,0 +1,430 @@
+# Contract Deployment Runbook
+
+This document describes the end-to-end Soroban contract lifecycle for StellarRoute, including build, deploy, verify, upgrade, storage TTL maintenance, and pool registration.
+
+## Purpose
+
+Use this runbook for operators managing StellarRoute contracts on Testnet or Mainnet.
+It is aligned with the repository's existing deployment scripts in `scripts/`.
+
+## Prerequisites
+
+- Rust 1.75+ with the `wasm32-unknown-unknown` target installed
+- Soroban CLI installed (`cargo install --locked soroban-cli`)
+- `jq` installed for JSON parsing
+- A funded Stellar account for the target network
+- Repository checkout with the latest `main` branch
+
+### Required tools
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install --locked soroban-cli
+sudo apt-get install -y jq
+```
+
+### Network identities
+
+Use separate deployer identities for Testnet and Mainnet.
+For Testnet, fund the deployer via Friendbot:
+
+```bash
+soroban keys generate deployer --network testnet
+curl "https://friendbot.stellar.org/?addr=$(soroban keys address deployer)"
+```
+
+For Mainnet, the identity must be funded via a real Stellar wallet or on-chain transfer.
+
+## Build and test workflow
+
+From the repository root:
+
+```bash
+cargo test -p stellarroute-contracts
+```
+
+To build the contract WASM artifact directly:
+
+```bash
+cargo build --manifest-path crates/contracts/Cargo.toml --target wasm32-unknown-unknown --release
+```
+
+The deployment scripts rely on the compiled artifact at:
+
+- `crates/contracts/target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm`
+
+## Configuration differences: Testnet vs Mainnet
+
+The scripts use `--network` to select the target configuration.
+Valid values are:
+
+- `testnet`
+- `mainnet`
+
+Configuration is defined in `config/networks.json`:
+
+- `testnet.rpc_url` → `https://soroban-testnet.stellar.org:443`
+- `mainnet.rpc_url` → `https://soroban-rpc.mainnet.stellar.org:443`
+- `testnet.network_passphrase` → Testnet passphrase
+- `mainnet.network_passphrase` → Public mainnet passphrase
+
+Pool registration data is separated by network:
+
+- `config/pools-testnet.json`
+- `config/pools-mainnet.json`
+
+### Key differences
+
+- Testnet supports Friendbot; Mainnet does not.
+- Use different deployer accounts and deployment artifacts for each network.
+- The `--network` flag selects both RPC URL and network passphrase.
+- Mainnet operations incur real XLM costs.
+
+## Deploying contracts with `scripts/deploy.sh`
+
+### Usage
+
+```bash
+./scripts/deploy.sh --network testnet
+```
+
+Optional flags:
+
+- `--identity <name>`: Soroban identity name (default: `deployer`)
+- `--dry-run`: build and simulate without on-chain transactions
+
+### What this script does
+
+1. Runs `cargo build` for `crates/contracts` targeting `wasm32-unknown-unknown`
+2. Optimizes the WASM using `soroban contract optimize`
+3. Deploys two contracts on-chain:
+   - `router`
+   - `constant_product_adapter`
+4. Initializes the router with:
+   - `admin` set to the deployer identity address
+   - `fee_rate` set to `30` (bps)
+   - `fee_to` set to the deployer address
+5. Saves `config/deployment-<network>.json`
+6. Verifies the deployed router admin via `get_admin()`
+
+### Deployment artifact
+
+The deploy script writes the artifact to:
+
+- `config/deployment-testnet.json`
+- `config/deployment-mainnet.json`
+
+This file includes contract IDs, network RPC metadata, and the current Git commit.
+
+## Verifying deployed contracts with `scripts/verify.sh`
+
+### Usage
+
+```bash
+./scripts/verify.sh --network testnet
+```
+
+The script:
+
+1. Builds and optimizes local WASM
+2. Fetches on-chain deployed bytecode for the router contract
+3. Compares local and deployed SHA-256 hashes
+4. Invokes read-only router methods to confirm state:
+   - `get_admin`
+   - `get_fee_rate_value`
+   - `get_fee_to`
+   - `is_paused`
+   - `get_pool_count`
+   - `version`
+
+### Notes
+
+- The script uses `config/deployment-<network>.json` to resolve the router contract ID.
+- If no deployment artifact exists, the verification step will fail.
+
+## Upgrade flow with `scripts/upgrade.sh`
+
+### Usage
+
+```bash
+./scripts/upgrade.sh --network testnet
+```
+
+Optional flags:
+
+- `--identity <name>`: Soroban identity name (default: `deployer`)
+- `--dry-run`: build and compare without submitting on-chain transactions
+
+### What this script does
+
+1. Reads the current router contract ID from `config/deployment-<network>.json`
+2. Captures pre-upgrade state from the router
+3. Builds and optimizes the new WASM
+4. Compares the new WASM hash against the deployed router code
+5. Installs the new WASM on-chain if different
+6. Submits a router upgrade proposal via `propose_upgrade`
+   - uses `execute_after=4320`
+7. Redeploys the adapter contract with the updated WASM
+8. Verifies key invariants after upgrade
+9. Updates the deployment artifact
+
+### Governance assumptions
+
+- The deployer identity is assumed to be the router admin.
+- The router upgrade path is assumed to allow the admin to propose upgrades.
+- The script does not execute a full governance vote; it submits a timed upgrade proposal.
+- If your deployment uses a separate multi-sig or governance quorum, ensure the proposal is accepted and executed per your process.
+
+### Post-upgrade checks
+
+After the script completes, run:
+
+```bash
+./scripts/verify.sh --network testnet
+```
+
+And confirm that the router continues to report expected state.
+
+## TTL extension with `scripts/extend-ttl.sh`
+
+### Usage
+
+```bash
+./scripts/extend-ttl.sh --network testnet
+```
+
+Optional flags:
+
+- `--watch`: run continuously on a schedule
+- `--dry-run`: check TTL status without extending
+- `--interval <seconds>`: poll interval when watching
+- `--identity <name>`: Soroban identity name (default: `deployer`)
+
+### Purpose
+
+This script monitors storage TTL and calls `extend_storage_ttl()` before contract storage keys expire.
+It is intended to keep long-lived router state healthy on Soroban.
+
+### Recommended cadence
+
+- Weekly for active deployments
+- More frequently if the contract has many registered pools
+
+### When TTL extension is needed
+
+The script uses the router's `get_ttl_status` response:
+
+- If `needs_extension` is `true`, it will call `extend_storage_ttl`
+- If the status check fails, the script may still attempt an extension as a safety measure
+
+### Notes
+
+- Mainnet extension costs real XLM; monitor spend carefully.
+- Testnet extension is a low-cost operation, but still requires a funded account.
+- To enable failure alerts to a Slack-compatible webhook, set the `TTL_ALERT_WEBHOOK_URL` environment variable:
+  ```bash
+  TTL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/... ./scripts/extend-ttl.sh --network testnet
+  ```
+
+### Alerting and escalation
+
+The TTL extension script can send a webhook alert when an extension attempt fails. Configure an optional environment variable before running the script:
+
+```bash
+export TTL_ALERT_WEBHOOK_URL="https://hooks.slack.com/services/EXAMPLE/WEBHOOK/TOKEN"
+```
+
+The value should be a full HTTPS webhook URL. For Slack, the script posts a JSON payload to that endpoint.
+
+Example Slack incoming webhook snippet:
+
+```bash
+curl -X POST \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"StellarRoute TTL extension failed on testnet: check the operator logs and contract state"}' \
+  "$TTL_ALERT_WEBHOOK_URL"
+```
+
+If TTL extension fails twice in a row, escalate immediately:
+
+1. Review the latest operator logs and the contract state for the affected network.
+2. Verify whether the contract is still healthy and whether storage keys are nearing expiry.
+3. If the issue persists, pause or reduce automated reliance on the bot and notify the on-call operator or maintainer.
+4. Re-run the TTL check manually and, if needed, extend the affected state directly.
+5. Record the incident and the remediation steps for follow-up.
+
+For the operational risk behind this process, see [audit/assumptions.md](../../audit/assumptions.md).
+
+## Pool registration with `scripts/register-pools.sh`
+
+### Usage
+
+```bash
+./scripts/register-pools.sh --network testnet
+```
+
+The script reads the pool list from:
+
+- `config/pools-testnet.json`
+- `config/pools-mainnet.json`
+
+### Discovering real pool contract addresses
+
+`config/pools-testnet.json` ships with placeholder entries. You must replace them with real Soroban contract IDs before registration will do anything.
+
+**Option A — Stellar Expert (browser)**
+
+Open [https://testnet.stellar.expert/explorer/testnet](https://testnet.stellar.expert/explorer/testnet), search for a known token pair or AMM factory, and copy the 56-character contract ID (starts with `C`).
+
+**Option B — Soroban RPC (factory contract)**
+
+```bash
+soroban contract invoke \
+  --id <FACTORY_CONTRACT_ID> \
+  --network testnet \
+  -- get_pools
+```
+
+**Option C — Horizon liquidity-pools endpoint (classic AMM only)**
+
+```bash
+curl "https://horizon-testnet.stellar.org/liquidity_pools?limit=20" | jq '.._embedded.records[].id'
+```
+
+> Horizon returns hex pool IDs, not Soroban contract addresses. Use only if your adapter accepts Horizon pool IDs.
+
+### Editing `config/pools-testnet.json`
+
+Replace each `PLACEHOLDER_POOL_ADDRESS_*` value with a real contract ID. The script automatically skips any entry whose `address` starts with `PLACEHOLDER`.
+
+Example filled file:
+
+```json
+{
+  "description": "Testnet liquidity pool addresses to register with the StellarRoute router contract.",
+  "pools": [
+    {
+      "name": "XLM/USDC Testnet Pool",
+      "address": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "notes": "Constant-product AMM pool — XLM base, USDC quote"
+    },
+    {
+      "name": "XLM/BTC Testnet Pool",
+      "address": "CBEZJWFMKJHPJ3YHPYUGJFMXM5VBXE3HMGHQRQNMFVNRQWKQ6RZXKWM",
+      "notes": "Constant-product AMM pool — XLM base, BTC quote"
+    }
+  ]
+}
+```
+
+### Pool registration workflow
+
+1. Obtain real pool contract IDs (see above).
+2. Edit `config/pools-<network>.json` replacing all placeholders.
+3. Confirm the router is deployed (`config/deployment-<network>.json` must exist).
+4. Run the script to invoke `register_pool` for each configured pool.
+5. The script verifies registration using `is_pool_registered`.
+6. It prints the deployed on-chain pool count.
+
+Once registered, the StellarRoute indexer discovers pools via the router's `get_pool_count` / `get_pools` methods and includes their reserve data in `amm_pool_reserves` and `normalized_liquidity`.
+
+For a full walkthrough including expected log output see [`docs/deployment/README.md` §3](../deployment/README.md#3-register-pools).
+
+### Common failure modes
+
+- placeholder pool addresses in config (script skips and reports `Registered: 0`)
+- invalid or malformed pool contract IDs
+- router contract not deployed or incorrect deployment artifact
+
+## Common operational examples
+
+```bash
+./scripts/deploy.sh --network testnet
+./scripts/verify.sh --network testnet
+./scripts/register-pools.sh --network testnet
+./scripts/extend-ttl.sh --network testnet
+./scripts/upgrade.sh --network testnet
+```
+
+## Smoke testing with pause/unpause coverage
+
+The default `smoke-test-testnet.sh` runs core functionality only. To include pause/unpause operator smoke coverage:
+
+```bash
+STELLARROUTE_SMOKE_PAUSE=1 ./scripts/smoke-test-testnet.sh --network testnet
+```
+
+This will:
+1. Check current pause status
+2. If unpaused, call `pause` and verify the contract is paused
+3. Call `unpause` and verify the contract is unpaused
+4. Leaves the contract in the same state as it started
+
+The test uses the deployer identity (default: `deployer`), which must be the admin of the router contract.
+
+For operator-managed registration that should persist across restarts and serve as bootstrap fallback for the indexer, use the DB helper script:
+
+```bash
+./scripts/db-register-pool.sh add <POOL_ADDRESS> [network]
+./scripts/db-register-pool.sh remove <POOL_ADDRESS>
+```
+
+For Mainnet, replace `testnet` with `mainnet` and use a funded mainnet deployer identity.
+
+## Troubleshooting
+
+### `Soroban CLI (soroban or stellar) is not installed.`
+
+Install the Soroban CLI:
+
+```bash
+cargo install --locked soroban-cli
+```
+
+If you have the `stellar` command instead, the scripts will use it automatically.
+
+### `No deployment artifact found at ...` or missing contract ID
+
+Run deployment first:
+
+```bash
+./scripts/deploy.sh --network testnet
+```
+
+Or confirm the deployment artifact path exists:
+
+- `config/deployment-testnet.json`
+- `config/deployment-mainnet.json`
+
+### `Invalid network '...'` error
+
+Use only `testnet` or `mainnet` with `--network`.
+
+### `Failed to fetch deployed bytecode`
+
+Possible causes:
+
+- wrong contract ID in the deployment artifact
+- network RPC or passphrase mismatch
+- contract not deployed to the selected network
+
+### TTL extension failures
+
+If `get_ttl_status` fails, verify the router contract is deployed and reachable.
+If gas is insufficient, fund the deployer account and retry.
+
+### Upgrade invariant failures
+
+If invariants break after upgrade, stop and inspect the contract state.
+Verify `admin`, `fee_rate`, `is_paused`, and `get_pool_count` before continuing.
+
+## References
+
+- `scripts/deploy.sh`
+- `scripts/verify.sh`
+- `scripts/upgrade.sh`
+- `scripts/extend-ttl.sh`
+- `scripts/register-pools.sh`
+- `docs/contracts/router-interface.md`
+- `docs/contracts/gas-benchmarks.md`
+- `docs/deployment/README.md`

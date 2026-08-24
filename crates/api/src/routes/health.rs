@@ -4,7 +4,27 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use std::{collections::HashMap, sync::Arc};
 use tracing::warn;
 
-use crate::{models::{DependenciesHealthResponse, HealthResponse}, state::AppState};
+use crate::{
+    cache::CacheHealthStatus,
+    middleware::RequestId,
+    models::{ApiResponse, DependenciesHealthResponse, HealthResponse},
+    state::AppState,
+};
+
+/// Evaluate optional Redis cache health for component maps.
+///
+/// Redis is a performance cache, not a required dependency. A degraded cache
+/// must be reported but must not flip overall service health to unhealthy.
+async fn probe_redis_status(state: &AppState) -> CacheHealthStatus {
+    let Some(cache) = &state.cache else {
+        return CacheHealthStatus::NotConfigured;
+    };
+
+    match cache.try_lock() {
+        Ok(mut guard) => guard.health_status().await,
+        Err(_) => CacheHealthStatus::Healthy,
+    }
+}
 
 /// Health check endpoint
 ///
@@ -20,7 +40,10 @@ use crate::{models::{DependenciesHealthResponse, HealthResponse}, state::AppStat
         (status = 503, description = "One or more dependencies unhealthy", body = HealthResponse),
     )
 )]
-pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+pub async fn health_check(
+    State(state): State<Arc<AppState>>,
+    request_id: RequestId,
+) -> impl IntoResponse {
     let timestamp = chrono::Utc::now().to_rfc3339();
     let mut components: HashMap<String, String> = HashMap::new();
     let mut all_healthy = true;
@@ -36,28 +59,44 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoRespon
     };
     components.insert("database".to_string(), db_status);
 
-    // --- Redis (optional) ---
-    let redis_status = if let Some(cache) = &state.cache {
-        match cache.try_lock() {
-            Ok(mut guard) => {
-                if guard.is_healthy().await {
-                    "healthy".to_string()
-                } else {
-                    warn!("Redis health check failed");
-                    all_healthy = false;
-                    "unhealthy".to_string()
-                }
+    // --- Redis (optional performance cache) ---
+    let redis_status = probe_redis_status(&state).await;
+    components.insert(
+        "redis".to_string(),
+        redis_status.as_component_status().to_string(),
+    );
+    if redis_status == CacheHealthStatus::Degraded {
+        warn!("Redis cache subsystem degraded during health check");
+    }
+
+    // --- Indexer lag ---
+    let lag_snapshots = state.indexer_lag.snapshots().await;
+    for snap in &lag_snapshots {
+        let component_key = format!("indexer_lag_{}", snap.source);
+        let component_val = match snap.status {
+            crate::indexer_lag::SyncStatus::Ok => "healthy".to_string(),
+            crate::indexer_lag::SyncStatus::Warning => {
+                warn!(
+                    source = %snap.source,
+                    lag_ledgers = snap.lag_ledgers,
+                    "Indexer lag elevated during health check"
+                );
+                // Warning does not flip all_healthy — it's a soft signal
+                format!("warning (lag: {} ledgers)", snap.lag_ledgers)
             }
-            Err(_) => {
-                // Lock contention — treat as healthy rather than a false alert
-                "healthy".to_string()
+            crate::indexer_lag::SyncStatus::Critical => {
+                warn!(
+                    source = %snap.source,
+                    lag_ledgers = snap.lag_ledgers,
+                    "Indexer lag CRITICAL during health check"
+                );
+                all_healthy = false;
+                format!("unhealthy (lag: {} ledgers)", snap.lag_ledgers)
             }
-        }
-    } else {
-        // Redis not configured — report as not_configured so callers know
-        "not_configured".to_string()
-    };
-    components.insert("redis".to_string(), redis_status);
+            crate::indexer_lag::SyncStatus::Unknown => "unknown".to_string(),
+        };
+        components.insert(component_key, component_val);
+    }
 
     let status = if all_healthy {
         "healthy".to_string()
@@ -78,7 +117,8 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoRespon
         StatusCode::SERVICE_UNAVAILABLE
     };
 
-    (http_status, Json(body)).into_response()
+    let envelope = ApiResponse::new(body, request_id.to_string());
+    (http_status, Json(envelope)).into_response()
 }
 
 /// Dependency readiness check for infrastructure and external providers.
@@ -93,48 +133,78 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoRespon
 )]
 pub async fn dependency_health(
     State(state): State<Arc<AppState>>,
+    request_id: RequestId,
 ) -> impl IntoResponse {
     let timestamp = chrono::Utc::now().to_rfc3339();
     let mut components: HashMap<String, String> = HashMap::new();
     let mut all_ok = true;
 
     // --- PostgreSQL ---
+    // Feeds the database circuit breaker so the live path can fail fast rather
+    // than queue behind an unreachable Postgres.
     let db_status = match sqlx::query("SELECT 1").execute(state.db.read_pool()).await {
-        Ok(_) => "healthy".to_string(),
+        Ok(_) => {
+            state
+                .external_dependency_health
+                .record_database_result(true);
+            "healthy".to_string()
+        }
         Err(e) => {
             warn!("Dependency DB health check failed: {}", e);
+            state
+                .external_dependency_health
+                .record_database_result(false);
             all_ok = false;
             "degraded".to_string()
         }
     };
     components.insert("database".to_string(), db_status);
 
-    // --- Redis (optional) ---
-    let redis_status = if let Some(cache) = &state.cache {
-        match cache.try_lock() {
-            Ok(mut guard) => {
-                if guard.is_healthy().await {
-                    "healthy".to_string()
-                } else {
-                    all_ok = false;
-                    "degraded".to_string()
-                }
-            }
-            Err(_) => {
-                // Lock contention — treat as healthy rather than a false alert
-                "healthy".to_string()
-            }
-        }
-    } else {
-        "not_configured".to_string()
-    };
-    components.insert("redis".to_string(), redis_status);
+    // --- Redis (optional performance cache) ---
+    let redis_status = probe_redis_status(&state).await;
+    components.insert(
+        "redis".to_string(),
+        redis_status.as_component_status().to_string(),
+    );
 
     // --- Horizon / Soroban RPC ---
-    // Keep this lightweight: if you want active probes, you can wire them up
-    // similarly to the earlier implementation using `reqwest`.
-    components.insert("horizon".to_string(), "not_configured".to_string());
-    components.insert("soroban_rpc".to_string(), "not_configured".to_string());
+    let horizon_status = state.external_dependency_health.probe_horizon().await;
+    if horizon_status.starts_with("degraded") {
+        all_ok = false;
+    }
+    components.insert("horizon".to_string(), horizon_status);
+
+    let soroban_status = state.external_dependency_health.probe_soroban().await;
+    if soroban_status.starts_with("degraded") {
+        all_ok = false;
+    }
+    components.insert("soroban_rpc".to_string(), soroban_status);
+
+    // --- Indexer lag ---
+    let lag_snapshots = state.indexer_lag.snapshots().await;
+    for snap in &lag_snapshots {
+        let component_key = format!("indexer_lag_{}", snap.source);
+        let component_val = match snap.status {
+            crate::indexer_lag::SyncStatus::Ok => {
+                format!("ok (lag: {} ledgers)", snap.lag_ledgers)
+            }
+            crate::indexer_lag::SyncStatus::Warning => {
+                format!(
+                    "warning (lag: {} ledgers, {:.0}s)",
+                    snap.lag_ledgers, snap.lag_seconds
+                )
+            }
+            crate::indexer_lag::SyncStatus::Critical => {
+                all_ok = false;
+                format!(
+                    "degraded (lag: {} ledgers, {:.0}s)",
+                    snap.lag_ledgers, snap.lag_seconds
+                )
+            }
+            crate::indexer_lag::SyncStatus::Unknown => "unknown".to_string(),
+        };
+        components.insert(component_key, component_val);
+    }
 
     let status = if all_ok { "ok" } else { "degraded" }.to_string();
     let body = DependenciesHealthResponse {
@@ -149,5 +219,6 @@ pub async fn dependency_health(
         StatusCode::SERVICE_UNAVAILABLE
     };
 
-    (http_status, Json(body)).into_response()
+    let envelope = ApiResponse::new(body, request_id.to_string());
+    (http_status, Json(envelope)).into_response()
 }

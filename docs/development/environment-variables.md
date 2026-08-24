@@ -1,0 +1,330 @@
+# Environment Variables Reference
+
+Single authoritative catalog of environment variables used across StellarRoute services. For local setup steps, see [SETUP.md](./SETUP.md).
+
+Copy [`.env.example`](../../.env.example) to `.env` at the repository root and adjust values for your environment.
+
+## Quick reference by service
+
+| Service | Binary / app | Required vars |
+|---------|--------------|---------------|
+| API | `stellarroute-api` | `DATABASE_URL` |
+| Indexer | `stellarroute-indexer` | `DATABASE_URL`, `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, `ROUTER_CONTRACT_ADDRESS` |
+| Routing | (library, used by API) | — (all optional) |
+| Contracts tooling | `scripts/deploy.sh` | — (`STELLAR_NETWORK` optional) |
+| Frontend | Next.js (`frontend/`) | — (all optional) |
+| Docker Compose | `docker-compose.yml` | — (defines Postgres/Redis container config) |
+
+---
+
+## Database
+
+PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay CLI, and regional read-replica routing.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `DATABASE_URL` | string (URL) | API fallback: `postgres://localhost/stellarroute` | **Required** (indexer, replay CLI); validated at API startup | API, Indexer, Replay CLI, Regions | Primary PostgreSQL connection string. Local Docker default: `postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute` |
+| `DATABASE_URL_EU_WEST` | string (URL) | — | Optional | API (regions) | Read-replica URL for the `eu-west` region |
+| `DATABASE_URL_AP_SOUTHEAST` | string (URL) | — | Optional | API (regions) | Read-replica URL for the `ap-southeast` region |
+| `DB_MAX_CONNECTIONS` | integer | `10` | Optional | API | Maximum connections in the API Postgres pool |
+| `DB_MIN_CONNECTIONS` | integer | `2` | Optional | API | Minimum idle connections in the API Postgres pool |
+| `DB_CONNECTION_TIMEOUT` | integer (seconds) | `30` | Optional | API | Max wait when acquiring a connection from the API pool |
+| `DB_IDLE_TIMEOUT` | integer (seconds) | `600` | Optional | API | Close idle API pool connections after this duration |
+| `DB_MAX_LIFETIME` | integer (seconds) | `1800` | Optional | API | Recycle API pool connections after this lifetime |
+| `DB_STATEMENT_TIMEOUT_MS` | integer (ms) | `5000` | Optional | API | Postgres `statement_timeout` applied on each API pool connection |
+| `DB_LOCK_TIMEOUT_MS` | integer (ms) | `2000` | Optional | API | Postgres `lock_timeout` applied on each API pool connection |
+| `DB_IDLE_IN_TXN_TIMEOUT_MS` | integer (ms) | `5000` | Optional | API | Postgres `idle_in_transaction_session_timeout` on API pool connections |
+| `MAX_CONNECTIONS` | integer | `10` | Optional | Indexer | Maximum connections in the indexer Postgres pool (`config` crate field `max_connections`) |
+| `MIN_CONNECTIONS` | integer | `2` | Optional | Indexer | Minimum idle connections in the indexer Postgres pool |
+| `CONNECTION_TIMEOUT_SECS` | integer (seconds) | `30` | Optional | Indexer | Max wait when acquiring a connection from the indexer pool |
+| `IDLE_TIMEOUT_SECS` | integer (seconds) | `600` | Optional | Indexer | Close idle indexer pool connections after this duration |
+| `MAX_LIFETIME_SECS` | integer (seconds) | `1800` | Optional | Indexer | Recycle indexer pool connections after this lifetime |
+| `TEST_DATABASE_URL` | string (URL) | — | Optional | API tests | Dedicated database URL for consistency-guard integration tests |
+
+---
+
+## Redis
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `REDIS_URL` | string (URL) | — | Optional | API | Redis connection string for quote caching and rate limiting. When unset, rate limiting falls back to in-memory. Local Docker default: `redis://localhost:6379` |
+| `QUOTE_CACHE_TTL_SECONDS` | integer (seconds) | `2` | Optional | API | Time-to-live for cached quote responses in Redis |
+
+---
+
+## Stellar / Horizon
+
+> **Mixed networks are unsupported.** `STELLAR_HORIZON_URL` and `SOROBAN_RPC_URL`
+> must resolve to the same Stellar network. Pairing (for example) mainnet Horizon
+> with testnet Soroban RPC makes the indexer write SDEX offers from one ledger and
+> AMM pools from another into the same tables — quotes then price against liquidity
+> that does not exist, and nothing in the pipeline errors. `.env.example` ships one
+> coherent block per network; copy a whole block rather than editing single URLs.
+> Canonical per-network URLs live in [`config/networks.json`](../../config/networks.json).
+
+| Network | `STELLAR_HORIZON_URL` | `SOROBAN_RPC_URL` | Network passphrase |
+|---------|-----------------------|-------------------|--------------------|
+| Testnet | `https://horizon-testnet.stellar.org` | `https://soroban-testnet.stellar.org:443` | `Test SDF Network ; September 2015` |
+| Mainnet | `https://horizon.stellar.org` | `https://soroban-rpc.mainnet.stellar.org:443` | `Public Global Stellar Network ; September 2015` |
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `STELLAR_HORIZON_URL` | string (URL) | — | **Required** (indexer); optional (API health/lag) | Indexer, API | Stellar Horizon API base URL (e.g. `https://horizon.stellar.org` or `https://horizon-testnet.stellar.org`) |
+| `STELLAR_HORIZON_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Horizon URLs tried if the primary is unreachable. Example: `https://horizon-testnet.stellar.org,https://horizon.stellar.org`. The first reachable URL wins. |
+| `HORIZON_MODE` | string | `poll` | Optional | Indexer | SDEX ingestion mode: `poll` or `sse` |
+| `HORIZON_LIMIT` | integer | `200` | Optional | Indexer | Maximum records per Horizon API page request |
+| `POLL_INTERVAL_SECS` | integer (seconds) | `2` | Optional | Indexer | Poll interval when Horizon streaming is not used |
+
+---
+
+## Soroban RPC
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `SOROBAN_RPC_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Soroban RPC URLs tried if the primary is unreachable. Example: `https://soroban-rpc.stellar.org`. The first reachable URL wins. |
+| `ROUTER_CONTRACT_ADDRESS` | string (Stellar address) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery |
+| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `ROUTER_CONTRACT_ADDRESS` | string (Soroban contract ID) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery. Validated at indexer startup: must be a 56-character contract ID starting with `C`. Missing, empty, or malformed values abort startup with a non-zero exit before any SDEX/AMM loop runs. Read it from the committed deploy artifact: `jq -r .router_contract_id config/deployments/testnet.json` |
+| `ALLOW_EMPTY_ROUTER` | boolean | `false` | Optional (**dev only**) | Indexer | Escape hatch that lets the indexer boot with an unset/empty `ROUTER_CONTRACT_ADDRESS` (SDEX-only, no AMM discovery). Refused when `STELLARROUTE_ENV=production` — startup fails instead. Never set this in a deployed environment |
+| `AMM_POOLS` | string (comma-separated) | — | Optional | Indexer | Additional AMM pool addresses to index, appended to DB-discovered pools |
+
+---
+
+## Circle CCTP v2 bridge (API)
+
+Default-off public bridge settlement. See [`docs/api/cctp-v2-contract.md`](../api/cctp-v2-contract.md). EC2 / Oracle staging copies: set these in repo-root `.env.prod` (see [`deploy/env.prod.example`](../../deploy/env.prod.example)). Staging enablement checklist: [`docs/deployment/cctp-staging-enablement-checklist.md`](../deployment/cctp-staging-enablement-checklist.md).
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `CCTP_ENABLED` | boolean | `false` | Optional | API | Master switch; when `false`, all `/api/v2/bridge/cctp/*` handlers return `503 cctp_not_enabled` |
+| `CCTP_ACCESS_TOKEN_HMAC_KEY` | string (hex / base64 / base64url) | — | **Required** when `CCTP_ENABLED=true` | API | HMAC key for deterministic idempotent quote tokens. Minimum **32 decoded bytes**. Generate: `python3 -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('='))"` |
+| `CCTP_ACCESS_TOKEN_HMAC_PREVIOUS_KEYS` | string (comma-separated keys) | — | Optional | API | Up to **2** prior HMAC keys for idempotent replay after rotation (same encodings as primary). See contract doc for drain procedure |
+| `CCTP_IDEMPOTENCY_LEASE_SECS` | integer (seconds) | `30` | Optional | API | Exclusive lease duration for in-flight idempotent quotes (tests often use `2`) |
+| `CCTP_IRIS_BASE_URL` | string (HTTPS URL) | `https://iris-api-sandbox.circle.com` | Optional | API | Circle Iris API base URL (sandbox host enforced on testnet) |
+| `CCTP_SEPOLIA_RPC_URL` | string (HTTPS URL) | — | **Required** when `CCTP_ENABLED=true` | API | Primary Sepolia JSON-RPC for EVM burn/mint builders, verifiers, and dependency probes. Precedence: `CCTP_SEPOLIA_RPC_URL` → `SEPOLIA_RPC_URL`. No implicit default (never `rpc.sepolia.org`). Optional fallbacks: `CCTP_SEPOLIA_RPC_FALLBACK_URLS` (comma-separated, max 8 total) |
+| `SEPOLIA_RPC_URL` | string (HTTPS URL) | — | Alias | API | Generic alias for `CCTP_SEPOLIA_RPC_URL` when the CCTP-specific name is unset |
+| `CCTP_STELLAR_RPC_URL` | string (HTTPS URL) | — | Optional | API | Primary Soroban RPC for Stellar CCTP builders/verifiers and dependency probes. Precedence: `CCTP_STELLAR_RPC_URL` → `STELLAR_RPC_URL` → `SOROBAN_RPC_URL` → `https://soroban-testnet.stellar.org`. Optional fallbacks: `CCTP_STELLAR_RPC_FALLBACK_URLS` |
+| `STELLAR_RPC_URL` | string (HTTPS URL) | — | Alias | API | Generic alias in the Stellar RPC precedence chain |
+
+---
+
+## Deployment profile & security (M5)
+
+Single switch that flips several hardened defaults on for public deployments. See
+[`docs/api/production-exposure.md`](../api/production-exposure.md) for the full
+endpoint-by-endpoint inventory.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `STELLARROUTE_ENV` | string | *(unset = dev)* | Optional | API | Set to `production` for public deployments. Flips `CORS_ALLOWED_ORIGINS` enforcement and the `REQUIRE_AUTH` default to `true`, and gates `/metrics` + `/api/v1/replay/*` behind `ADMIN_AUTH_TOKEN` |
+| `CORS_ALLOWED_ORIGINS` | string (comma-separated origins) | *(empty)* | **Required** when production/strict CORS | API | Explicit allowlist of browser origins permitted to call the API (e.g. `https://app.example.com`). Startup fails if empty while strict CORS is required |
+| `REQUIRE_STRICT_CORS` | boolean | `false` | Optional | API | Enforce the production CORS allowlist behavior without setting `STELLARROUTE_ENV=production` (e.g. an internet-facing staging environment) |
+| `API_KEYS` | string (comma-separated) | — | Optional | API | Integrator API keys accepted via `x-api-key` or `Authorization: Bearer <key>` |
+| `REQUIRE_AUTH` | boolean | `false` dev/test, `true` production | Optional | API | When `true`, reject requests without a valid API key. Explicit value always wins over the profile default |
+| `PUBLIC_GET_ROUTES` | string (comma-separated path prefixes) | *(empty)* | Optional | API | Explicit allowlist of routes that stay reachable via unauthenticated `GET` even when `REQUIRE_AUTH=true` (e.g. public quote/orderbook reads for a browser frontend). Never exempts non-GET methods, and never applies to `/api/v1/admin/*` or `/api/v1/system/*`. **CCTP** `/api/v2/bridge/cctp/*` is exempt from the global API-key gate separately: quote stays public+rate-limited; transfer routes use `x-cctp-transfer-access` |
+| `ALLOW_INSECURE_PUBLIC_API` | boolean | `false` | Optional | API | Break-glass override acknowledging `STELLARROUTE_ENV=production` with auth disabled. Without it, the API refuses to boot in that configuration; with it, it boots and logs a warning. Never set this in a real production deployment |
+| `ADMIN_AUTH_TOKEN` | string | — | Optional (required to use admin/operator endpoints) | API | Bearer/`x-admin-token` for `/api/v1/admin/*`, `/api/v1/system/*`, and (in production) `/metrics`, `/metrics/cache`, `/metrics/pool`, `/api/v1/replay/*`. Requests are denied when unset, even without a token |
+
+### Integrator API keys vs. browser public GETs
+
+There are two distinct read paths into the API, and they should not be conflated:
+
+- **Integrators** (server-to-server callers) authenticate with an API key from
+  `API_KEYS`, sent as `x-api-key` or `Authorization: Bearer <key>`. This is the
+  expected path when `REQUIRE_AUTH=true`.
+- **Browser-facing public reads** (e.g. the frontend calling `/api/v1/quote`
+  directly from the browser, where there's no key to keep secret) should be
+  exposed via `PUBLIC_GET_ROUTES` — an explicit, reviewed allowlist of GET
+  route prefixes — rather than by turning `REQUIRE_AUTH` off globally. Turning
+  auth off globally also exposes mutating routes that were never meant to be
+  public; `PUBLIC_GET_ROUTES` only ever exempts `GET` requests on the listed
+  prefixes.
+
+## API server
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `API_HOST` | string | `127.0.0.1` (local) / `0.0.0.0` (when `PORT` is set) | Optional | API | Bind address for the HTTP server. Explicit value always wins. |
+| `API_PORT` | integer | `3000` | Optional | API | Listen port (used when `PORT` env is absent) |
+| `PORT` | integer | — | Optional (set by PaaS) | API | PaaS standard port variable (Render, Fly, Railway, K8s). When present, overrides `API_PORT` and defaults `API_HOST` to `0.0.0.0` so the platform health-check router can reach the process. Set `API_HOST` explicitly if a different bind address is required. |
+| `STARTUP_CREDENTIAL_CHECK` | boolean | `false` | Optional | API, Indexer | When `true`, verify dependencies (DB, Redis, Horizon, Soroban) are reachable before serving |
+| `SHUTDOWN_DRAIN_TIMEOUT_S` | integer (seconds) | `30` | Optional | API, Indexer | Graceful shutdown drain window for in-flight work |
+| `RATE_LIMIT_WINDOW_SECS` | integer (seconds) | `60` | Optional | API | Sliding-window length for HTTP rate limiting |
+| `RATE_LIMIT_PAIRS` | integer | `60` | Optional | API | Max requests per window for `/api/v1/pairs` |
+| `RATE_LIMIT_ORDERBOOK` | integer | `60` | Optional | API | Max requests per window for `/api/v1/orderbook/*` |
+| `RATE_LIMIT_QUOTE` | integer | `20` | Optional | API | Max requests per window for `/api/v1/quote/*` |
+| `API_V1_SUNSET` | string (HTTP-date) | `Wed, 01 Jul 2026 00:00:00 GMT` | Optional | API | `Sunset` header value for deprecated `/api/v1` routes |
+| `API_V1_SUCCESSOR_LINK` | string | `</docs/api/v1-migration-guide>; rel="deprecation"` | Optional | API | `Link` header pointing to the v1 migration guide |
+| `IDEMPOTENCY_TTL_SECS` | integer (seconds) | `300` | Optional | API | TTL for idempotent quote deduplication ledger entries |
+| `PREWARM_PAIRS` | string (comma-separated) | — | Optional | API | Trading pairs to prewarm in cache (e.g. `native/USDC,native/EURC`) |
+| `PREWARM_INTERVAL_SECS` | integer (seconds) | `60` | Optional | API | Interval between cache prewarm cycles |
+| `PREWARM_AMOUNT` | string | `1` | Optional | API | Quote amount used during cache prewarm |
+| `PREWARM_SLIPPAGE_BPS` | integer | `50` | Optional | API | Slippage (basis points) used during cache prewarm |
+| `REPLAY_CAPTURE_ENABLED` | boolean | `false` | Optional | API | Persist quote replay artifacts to Postgres when `true` or `1` |
+| `AUDIT_LOG_ENABLED` | boolean | `true` | Optional | API | Enable route audit log writes when not `false`/`0` |
+| `ADMIN_AUDIT_ENABLED` | boolean | `true` | Optional | API | Emit admin audit JSON to stdout when not `false`/`0` |
+| `LIQUIDITY_THINNESS_ALERT_WEBHOOK_URL` | string (URL) | — | Optional | API | Webhook URL for low-liquidity orderbook alerts |
+| `LIQUIDITY_THINNESS_ALERT_THRESHOLDS` | string (JSON) | — | Optional | API | Per-pair depth thresholds for liquidity thinness alerts |
+| `HEALTH_SCORE_INTERVAL_SECS` | integer (seconds) | `60` | Optional | API | Interval between venue health score recomputation cycles |
+| `HEALTH_SCORE_JITTER_SECS` | integer (seconds) | `10` | Optional | API | Random jitter added to health score scheduler interval |
+| `HEALTH_SCORE_MAX_RETRIES` | integer | `3` | Optional | API | Max retries per health score cycle before dead-letter logging |
+| `HEALTH_SCORE_RETRY_DELAY_SECS` | integer (seconds) | `5` | Optional | API | Delay between health score retry attempts |
+
+### Quote purger
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `QUOTE_PURGER_ENABLED` | boolean | `true` | Optional | API | Enable automated stale-quote purging |
+| `QUOTE_PURGER_INTERVAL_SECS` | integer (seconds) | `3600` | Optional | API | Interval between purge runs |
+| `QUOTE_PURGER_REPLAY_RETENTION_DAYS` | integer (days) | `30` | Optional | API | Retention for `replay_artifacts` rows |
+| `QUOTE_PURGER_AUDIT_LOG_RETENTION_DAYS` | integer (days) | `30` | Optional | API | Retention for `route_audit_log` rows |
+| `QUOTE_PURGER_REPLAY_BATCH_SIZE` | integer | `1000` | Optional | API | Max rows deleted per replay-artifacts batch |
+| `QUOTE_PURGER_AUDIT_LOG_BATCH_SIZE` | integer | `5000` | Optional | API | Max rows deleted per audit-log batch |
+| `QUOTE_PURGER_MAX_ITERATIONS` | integer | `100` | Optional | API | Max delete iterations per purge run |
+| `QUOTE_PURGER_PURGE_REPLAY_ARTIFACTS` | boolean | `true` | Optional | API | Purge replay artifacts when `true` |
+| `QUOTE_PURGER_PURGE_AUDIT_LOG` | boolean | `true` | Optional | API | Purge audit log rows when `true` |
+| `QUOTE_PURGER_LOG_METRICS` | boolean | `true` | Optional | API | Log purge metrics to tracing when `true` |
+| `QUOTE_PURGER_SLOW_PURGE_THRESHOLD_SECS` | integer (seconds) | `60` | Optional | API | Alert when a purge run exceeds this duration |
+| `QUOTE_PURGER_ALERT_DELETION_THRESHOLD` | integer | `1000000` | Optional | API | Alert when deleted row count exceeds this threshold |
+
+---
+
+## WebSocket
+
+Configured in `crates/api/src/routes/ws/mod.rs`.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `WS_MAX_CONNECTIONS` | integer | `500` | Optional | API | Maximum concurrent WebSocket connections |
+| `WS_POLL_INTERVAL_MS` | integer (ms) | `1000` | Optional | API | Quote broadcaster poll interval |
+| `WS_PING_INTERVAL_SECS` | integer (seconds) | `30` | Optional | API | Keepalive ping interval |
+| `WS_PONG_TIMEOUT_SECS` | integer (seconds) | `10` | Optional | API | Close connection if pong not received in time |
+| `WS_BACKPRESSURE_TIMEOUT_SECS` | integer (seconds) | `10` | Optional | API | Timeout when client send buffer is full |
+
+---
+
+## Indexer
+
+Additional indexer-specific tuning (loaded via the `config` crate from environment unless noted).
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `AMM_POLL_INTERVAL_SECS` | integer (seconds) | `30` | Optional | Indexer | Poll interval for AMM pool updates |
+| `STALE_THRESHOLD_SECS` | integer (seconds) | `300` | Optional | Indexer | Mark AMM pools stale after this many seconds without updates |
+| `MAINTENANCE_INTERVAL_MINS` | integer (minutes) | `60` | Optional | Indexer | Interval between scheduled maintenance tasks |
+| `SNAPSHOT_RETENTION_DAYS` | integer (days) | `90` | Optional | Indexer | Delete snapshots older than this retention period |
+| `SNAPSHOT_COMPACTION_HOURS` | integer (hours) | `24` | Optional | Indexer | Compact snapshots older than this threshold |
+| `INDEXER_PARTITION_COUNT` | integer | `4` | Optional | Indexer | Number of workload partitions |
+| `INDEXER_PARTITION_ID` | integer | `0` | Optional | Indexer | Identifier of this partition instance |
+| `HOT_PAIR_ALLOWLIST` | string (comma-separated) | *(empty)* | Optional | Indexer | Hot pair identifiers (e.g. `XLM/USD,USDC/EUR`) |
+| `HOT_PAIR_VOLUME_THRESHOLD` | integer | `1000000000` | Optional | Indexer | Volume threshold (native units) to classify a pair as hot |
+| `HOT_PAIR_WINDOW_SECS` | integer (seconds) | `300` | Optional | Indexer | Window for hot-pair volume detection |
+| `ASSET_METADATA_STALENESS_HOURS` | integer (hours) | `24` | Optional | Indexer | Re-fetch asset metadata after this staleness period |
+
+---
+
+## Routing
+
+Used by the routing library when computing paths inside the API.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `ROUTING_MAX_HOPS` | integer | `4` | Optional | Routing (API) | Maximum hop depth for multi-hop route discovery |
+| `ROUTING_VENUE_ALLOWLIST` | string (comma-separated) | *(empty)* | Optional | Routing (API) | When non-empty, only listed venue types are considered |
+| `ROUTING_VENUE_DENYLIST` | string (comma-separated) | *(empty)* | Optional | Routing (API) | Venue types excluded from route discovery |
+| `ROUTING_ASSET_DENYLIST` | string (comma-separated) | *(empty)* | Optional | Routing (API) | Asset codes excluded from route discovery |
+| `ROUTING_SCORER` | string | `default` | Optional | Routing (API) | Active route scorer name (e.g. `fee_minimizing`) |
+
+---
+
+## Observability / tracing
+
+Shared by API (`crates/api/src/tracing_config.rs`) and indexer (`crates/indexer/src/telemetry.rs`).
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `RUST_LOG` | string (tracing filter) | `info` | Optional | API, Indexer | Log level filter (standard `tracing-subscriber` / `EnvFilter` syntax) |
+| `LOG_FORMAT` | string | `pretty` | Optional | API, Indexer | Log output format: `json` or `pretty` |
+| `OTEL_SERVICE_NAME` | string | API: `stellarroute`; Indexer: `stellarroute-indexer` | Optional | API, Indexer | Service name attached to OpenTelemetry spans |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | string (URL) | — | Optional | API, Indexer | OTLP collector URL; when unset, trace export is disabled |
+| `OTEL_SAMPLING_RATIO` | float (`0.0`–`1.0`) | `1.0` | Optional | API, Indexer | Fraction of traces to sample for export |
+
+---
+
+## Contracts tooling
+
+Used by deployment scripts under `scripts/` (see `scripts/lib/common.sh`).
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `STELLAR_NETWORK` | string | `testnet` | Optional | Deploy scripts | Target network when `--network` is not passed (`testnet` or `mainnet`) |
+
+Deploy scripts also accept CLI flags (`--network`, `--identity`, `--dry-run`) rather than additional environment variables. Network RPC URLs are read from `config/networks.json`.
+
+---
+
+## Frontend
+
+Next.js public variables (prefixed with `NEXT_PUBLIC_` so they are exposed to the browser). See also [frontend/docs/FEATURE_FLAGS.md](../../frontend/docs/FEATURE_FLAGS.md), [docs/deployment/vercel-frontend.md](../deployment/vercel-frontend.md), and `frontend/lib/env-guard.ts`.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `NEXT_PUBLIC_API_URL` | string (URL) | `http://localhost:8080/api/v1` (dev only) | **Required in production** | Frontend | Shared API origin or base including `/api/v1`. The client strips a trailing `/api/v1` when calling `/api/v2` CCTP routes |
+| `NEXT_PUBLIC_API_URL_TESTNET` | string (URL) | — | Recommended for testnet staging | Frontend | Per-network API URL; preferred when `NEXT_PUBLIC_STELLAR_NETWORK=testnet` |
+| `NEXT_PUBLIC_API_URL_MAINNET` | string (URL) | — | Required for mainnet UI | Frontend | Per-network API URL for mainnet |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | `testnet` \| `mainnet` | `testnet` | Recommended | Frontend | App network for wallets, badges, and env-guard resolution |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | string | — | Optional (required for WalletConnect) | Frontend | Reown Cloud project id enabling `evm-walletconnect` (QR / mobile EVM wallets). Create at https://cloud.reown.com |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | string (URL) | network default | Optional | Frontend | Override Horizon endpoint |
+| `STELLARROUTE_ENV` | string | — | Optional | Frontend | Set `production` to enforce the same API URL guard outside Vercel |
+| `NEXT_PUBLIC_FEATURE_ROUTES_BETA` | boolean | `false` | Optional | Frontend | Enable routes beta via `lib/feature-flags.ts` (`true`/`1`/`yes`/`on`) |
+| `NEXT_PUBLIC_FLAGS_URL` | string (URL) | — | Optional | Frontend | Remote JSON feature-flag config URL (highest priority) |
+| `NEXT_PUBLIC_FLAG_ROUTES_BETA` | boolean | `false` | Optional | Frontend | Enable routes beta via `useFeatureFlag` hook |
+| `NEXT_PUBLIC_FLAG_SWAP_UI_V2` | boolean | `false` | Optional | Frontend | Enable swap UI v2 experiment |
+| `NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY` | boolean | `false` | Optional | Frontend | Enable transaction history tab |
+| `NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE` | boolean | `false` | Optional | Frontend | Enable advanced slippage controls |
+
+**Production guard:** when `VERCEL_ENV=production` or `STELLARROUTE_ENV=production`, `next build` fails if the critical API URL is missing or points at localhost.
+
+### Frontend / CI (testing only)
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `CI` | boolean | — | Optional | Playwright | When set, enables CI-specific test settings (retries, GitHub reporter, single worker) |
+| `PLAYWRIGHT_BASE_URL` | string (URL) | `http://localhost:3000` | Optional | Playwright | Base URL for end-to-end tests |
+
+---
+
+## Docker Compose
+
+Variables set inside `docker-compose.yml` for local Postgres and Redis containers (not read directly by Rust services except via `DATABASE_URL` / `REDIS_URL` you configure in `.env`).
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `POSTGRES_USER` | string | `stellarroute` | — | Docker (Postgres) | Postgres superuser name |
+| `POSTGRES_PASSWORD` | string | `stellarroute_dev` | — | Docker (Postgres) | Postgres password |
+| `POSTGRES_DB` | string | `stellarroute` | — | Docker (Postgres) | Initial database name |
+
+Postgres is exposed on host port **5432**; Redis on **6379**.
+
+---
+
+## Source map
+
+Variables above were verified against:
+
+- `crates/api/src/bin/stellarroute-api.rs`
+- `crates/api/src/server.rs`, `env_profile.rs`, `routes/mod.rs`
+- `crates/api/src/routes/ws/mod.rs`
+- `crates/api/src/middleware/rate_limit.rs`, `middleware/auth.rs`, `middleware/admin.rs`, `middleware/api_versioning.rs`
+- `crates/api/src/tracing_config.rs`, `shutdown.rs`
+- `crates/api/src/replay/capture.rs`, `purger/config.rs`
+- `crates/api/src/regions/config.rs`, `state.rs`
+- `crates/api/src/audit/writer.rs`, `admin_audit.rs`
+- `crates/api/src/health_scheduler.rs`, `liquidity_alerts.rs`, `dependency_health.rs`
+- `crates/indexer/src/config/mod.rs`, `bin/stellarroute-indexer.rs`
+- `crates/indexer/src/telemetry.rs`, `shutdown.rs`, `amm.rs`, `asset_metadata.rs`
+- `crates/routing/src/policy.rs`, `scorer.rs`
+- `scripts/lib/common.sh`
+- `frontend/lib/constants.ts`, `frontend/lib/feature-flags.ts`, `frontend/src/hooks/useFeatureFlag.ts`
+- `docker-compose.yml`

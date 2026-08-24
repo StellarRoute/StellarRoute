@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { RouteVisualization } from '@/components/shared/RouteVisualization';
-import { SplitRouteVisualization } from '@/components/shared/SplitRouteVisualization';
-import { PathStep } from '@/types';
-import { SplitRouteData, RouteMetrics } from '@/types/route';
+import { TradeRouteDisplay } from '@/components/shared/TradeRouteDisplay';
+import type { PathStep, PriceQuote } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -90,11 +89,24 @@ const complexPath: PathStep[] = [
   },
 ];
 
-const splitRouteData: SplitRouteData = {
-  paths: [
+const splitRouteQuote = {
+  base_asset: { asset_type: 'native' },
+  quote_asset: {
+    asset_type: 'credit_alphanum4',
+    asset_code: 'BTC',
+    asset_issuer: 'GBVOL...',
+  },
+  amount: '1000',
+  price: '0.000001277',
+  total: '0.001277',
+  quote_type: 'sell',
+  timestamp: Date.now(),
+  price_impact: '0.15',
+  path: [],
+  split_paths: [
     {
-      percentage: 60,
-      steps: [
+      allocation_bps: 6000,
+      path: [
         {
           from_asset: { asset_type: 'native' },
           to_asset: {
@@ -120,11 +132,11 @@ const splitRouteData: SplitRouteData = {
           source: 'sdex',
         },
       ],
-      outputAmount: '0.000765',
+      output_amount: '0.000765',
     },
     {
-      percentage: 40,
-      steps: [
+      allocation_bps: 4000,
+      path: [
         {
           from_asset: { asset_type: 'native' },
           to_asset: {
@@ -137,19 +149,15 @@ const splitRouteData: SplitRouteData = {
             'amm:CDQR7XQJUGQP3VXV3YKQJMVXQXQXQXQXQXQXQXQXQXQXQXQXQXQXQXQX',
         },
       ],
-      outputAmount: '0.000512',
+      output_amount: '0.000512',
     },
   ],
-  totalOutput: '0.001277',
-  totalFees: '0.00001',
-  totalPriceImpact: '0.15%',
-};
-
-const mockMetrics: RouteMetrics = {
-  totalFees: '0.00001 BTC',
-  totalPriceImpact: '0.15%',
-  netOutput: '0.001267 BTC',
-  averageRate: '0.00000127',
+} satisfies PriceQuote & {
+  split_paths: Array<{
+    allocation_bps: number;
+    path: PathStep[];
+    output_amount: string;
+  }>;
 };
 
 export default function RouteVisualizationDemo() {
@@ -217,10 +225,7 @@ export default function RouteVisualizationDemo() {
               SDEX multi-hop, 40% via direct AMM
             </p>
           </Card>
-          <SplitRouteVisualization
-            splitRoute={splitRouteData}
-            metrics={mockMetrics}
-          />
+          <TradeRouteDisplay quote={splitRouteQuote} />
         </TabsContent>
 
         <TabsContent value="states" className="space-y-6">

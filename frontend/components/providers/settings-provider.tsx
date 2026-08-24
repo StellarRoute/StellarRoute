@@ -1,8 +1,20 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react';
 import { useTheme } from 'next-themes';
-import { Settings, DEFAULT_SETTINGS, ThemeSetting } from '@/types/settings';
+import {
+  Settings,
+  DEFAULT_SETTINGS,
+  ThemeSetting,
+  SlippageProfile,
+  ACCENT_COLORS,
+} from '@/types/settings';
 import { getUserLocale } from '@/lib/formatting';
 
 const STORAGE_KEY = 'stellar_route_settings';
@@ -13,9 +25,18 @@ interface SettingsContextType {
   updateTheme: (theme: ThemeSetting) => void;
   updateLocale: (locale: Settings['locale']) => void;
   resetSettings: () => void;
+  addProfile: (profile: { name: string; value: number }) => void;
+  updateProfile: (id: string, updates: Partial<SlippageProfile>) => void;
+  deleteProfile: (id: string) => void;
+  selectProfile: (id: string) => void;
+  updateAccentColor: (color: Settings['accentColor']) => void;
+  updateFontScale: (scale: Settings['fontScale']) => void;
+  updateHighContrast: (enabled: boolean) => void;
 }
 
-const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+const SettingsContext = createContext<SettingsContextType | undefined>(
+  undefined
+);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const { theme, setTheme } = useTheme();
@@ -27,7 +48,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return {
         ...DEFAULT_SETTINGS,
         ...parsed,
-        theme: (theme as ThemeSetting) || parsed.theme || DEFAULT_SETTINGS.theme,
+        theme:
+          (theme as ThemeSetting) || parsed.theme || DEFAULT_SETTINGS.theme,
         locale: parsed.locale || getUserLocale(),
       };
     } catch (e) {
@@ -45,7 +67,56 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
-  const isValidSlippage = (value: number) => Number.isFinite(value) && value >= 0 && value <= 50;
+  // Apply accent color variables on change
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const hex = ACCENT_COLORS[settings.accentColor] ?? ACCENT_COLORS.teal;
+      if (hex) {
+        document.documentElement.style.setProperty('--primary', hex);
+        document.documentElement.style.setProperty('--ring', hex);
+        document.documentElement.style.setProperty('--sidebar-primary', hex);
+        // Dark ink on bright teal accents for readable CTA text
+        document.documentElement.style.setProperty(
+          '--primary-foreground',
+          '#041512'
+        );
+      }
+    }
+  }, [settings.accentColor]);
+
+  // Apply font scale size on change (scale * 16px)
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty(
+        'font-size',
+        `${settings.fontScale * 16}px`
+      );
+    }
+  }, [settings.fontScale]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (settings.highContrast) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+  }, [settings.highContrast]);
+
+  // ── Updaters ───────────────────────────────────────────────────────────────
+  // Apply high-contrast class on change
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (settings.highContrast) {
+        document.documentElement.classList.add('high-contrast');
+      } else {
+        document.documentElement.classList.remove('high-contrast');
+      }
+    }
+  }, [settings.highContrast]);
+
+  const isValidSlippage = (value: number) =>
+    Number.isFinite(value) && value >= 0 && value <= 50;
 
   const updateSlippage = (value: number) => {
     if (!isValidSlippage(value)) {
@@ -65,9 +136,89 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, locale }));
   };
 
+  const updateAccentColor = (color: Settings['accentColor']) => {
+    setSettings((prev) => ({ ...prev, accentColor: color }));
+  };
+
+  const updateFontScale = (scale: Settings['fontScale']) => {
+    setSettings((prev) => ({ ...prev, fontScale: scale }));
+  };
+
+  const updateHighContrast = (enabled: boolean) => {
+    setSettings((prev) => ({ ...prev, highContrast: enabled }));
+  };
+
   const resetSettings = () => {
     setTheme(DEFAULT_SETTINGS.theme);
     setSettings(DEFAULT_SETTINGS);
+  };
+
+  const addProfile = (profile: { name: string; value: number }) => {
+    if (!isValidSlippage(profile.value)) return;
+    const newProfile: SlippageProfile = {
+      id: crypto.randomUUID(),
+      name: profile.name,
+      value: profile.value,
+      isPreset: false,
+    };
+    setSettings((prev) => ({
+      ...prev,
+      slippageProfiles: [...prev.slippageProfiles, newProfile],
+      activeProfileId: newProfile.id,
+      slippageTolerance: newProfile.value,
+    }));
+  };
+
+  const updateProfile = (id: string, updates: Partial<SlippageProfile>) => {
+    if (updates.value !== undefined && !isValidSlippage(updates.value)) return;
+    setSettings((prev) => ({
+      ...prev,
+      slippageProfiles: prev.slippageProfiles.map((p) =>
+        p.id === id && !p.isPreset ? { ...p, ...updates } : p
+      ),
+      slippageTolerance:
+        prev.activeProfileId === id && updates.value !== undefined
+          ? updates.value
+          : prev.slippageTolerance,
+    }));
+  };
+
+  const deleteProfile = (id: string) => {
+    setSettings((prev) => {
+      const profile = prev.slippageProfiles.find((p) => p.id === id);
+      if (profile?.isPreset) return prev; // Cannot delete preset
+
+      const newProfiles = prev.slippageProfiles.filter((p) => p.id !== id);
+      let newActiveId = prev.activeProfileId;
+      let newSlippage = prev.slippageTolerance;
+
+      if (prev.activeProfileId === id) {
+        newActiveId = DEFAULT_SETTINGS.activeProfileId;
+        const fallback = newProfiles.find((p) => p.id === newActiveId);
+        newSlippage = fallback
+          ? fallback.value
+          : DEFAULT_SETTINGS.slippageTolerance;
+      }
+
+      return {
+        ...prev,
+        slippageProfiles: newProfiles,
+        activeProfileId: newActiveId,
+        slippageTolerance: newSlippage,
+      };
+    });
+  };
+
+  const selectProfile = (id: string) => {
+    setSettings((prev) => {
+      const profile = prev.slippageProfiles.find((p) => p.id === id);
+      if (!profile) return prev;
+      return {
+        ...prev,
+        activeProfileId: id,
+        slippageTolerance: profile.value,
+      };
+    });
   };
 
   return (
@@ -78,6 +229,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         updateTheme,
         updateLocale,
         resetSettings,
+        addProfile,
+        updateProfile,
+        deleteProfile,
+        selectProfile,
+        updateAccentColor,
+        updateFontScale,
+        updateHighContrast,
       }}
     >
       {children}

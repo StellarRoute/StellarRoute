@@ -10,7 +10,7 @@ use axum::{
 };
 use serde_json::Value;
 use sqlx::PgPool;
-use stellarroute_api::{Server, ServerConfig, state::DatabasePools};
+use stellarroute_api::{state::DatabasePools, Server, ServerConfig};
 use tower::ServiceExt;
 
 // ---------------------------------------------------------------------------
@@ -73,6 +73,27 @@ fn dependencies_health_response_serializes_to_spec_shape() {
     assert_eq!(json["status"], "degraded");
     assert_eq!(json["components"]["database"], "healthy");
     assert_eq!(json["components"]["horizon"], "degraded");
+}
+
+#[test]
+fn health_response_allows_degraded_optional_redis() {
+    use std::collections::HashMap;
+    use stellarroute_api::models::HealthResponse;
+
+    let mut components = HashMap::new();
+    components.insert("database".to_string(), "healthy".to_string());
+    components.insert("redis".to_string(), "degraded".to_string());
+
+    let response = HealthResponse {
+        status: "healthy".to_string(),
+        timestamp: "2026-01-20T12:00:00+00:00".to_string(),
+        version: "0.1.0".to_string(),
+        components,
+    };
+
+    let json = serde_json::to_value(&response).expect("serialization failed");
+    assert_eq!(json["status"], "healthy");
+    assert_eq!(json["components"]["redis"], "degraded");
 }
 
 // ---------------------------------------------------------------------------

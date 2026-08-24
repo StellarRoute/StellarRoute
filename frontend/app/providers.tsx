@@ -4,7 +4,11 @@ import { ReactNode } from 'react';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
 
 import { WalletProvider } from '@/components/providers/wallet-provider';
+import { getDefaultNetwork } from '@/lib/network-policy';
 import { SettingsProvider } from '@/components/providers/settings-provider';
+import { SessionRecoveryProvider } from '@/components/providers/session-recovery-provider';
+import { GlobalToastListener } from '@/components/providers/GlobalToastListener';
+import { TradingPairProvider } from '@/contexts/TradingPairContext';
 
 interface ProvidersProps {
   children: ReactNode;
@@ -19,9 +23,16 @@ export function Providers({ children, defaultTheme = 'dark' }: ProvidersProps) {
       enableSystem
       disableTransitionOnChange
     >
-      <SettingsProvider>
-        <WalletProvider defaultNetwork="testnet">{children}</WalletProvider>
-      </SettingsProvider>
+      <SessionRecoveryProvider>
+        <SettingsProvider>
+          <WalletProvider defaultNetwork={getDefaultNetwork()}>
+            <TradingPairProvider>
+              <GlobalToastListener />
+              {children}
+            </TradingPairProvider>
+          </WalletProvider>
+        </SettingsProvider>
+      </SessionRecoveryProvider>
     </NextThemesProvider>
   );
 }

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{ApiError, Result};
-use crate::models::{AssetInfo, PathStep};
+use crate::models::{AssetInfo, PathStep, VenueEvaluation};
 use crate::replay::artifact::{LiquidityCandidate, ReplayArtifact, CURRENT_SCHEMA_VERSION};
 
 // ---------------------------------------------------------------------------
@@ -28,6 +28,8 @@ pub struct ReplayOutput {
     pub price: String,
     /// Execution path (single hop for current implementation).
     pub path: Vec<PathStep>,
+    /// Deterministically ordered venues considered for selection.
+    pub compared_venues: Vec<VenueEvaluation>,
     /// `true` when `selected_source` matches the value in `original_output`.
     pub is_deterministic: bool,
     /// Wall-clock time when the replay was executed.
@@ -70,18 +72,34 @@ impl ReplayEngine {
             .parse()
             .map_err(|_| ApiError::BadRequest("Invalid amount in artifact".to_string()))?;
 
-        // Reconstruct candidates from snapshot
-        let candidates: Vec<ReplayCandidate> = artifact
-            .liquidity_snapshot
-            .iter()
-            .filter_map(|row| parse_candidate(row))
-            .collect();
+        // Reconstruct candidates from decision graph stage input when present.
+        // Fallback to liquidity_snapshot for older artifacts.
+        let candidates: Vec<ReplayCandidate> = selection_input_candidates(artifact)
+            .or_else(|| {
+                Some(
+                    artifact
+                        .liquidity_snapshot
+                        .iter()
+                        .filter_map(parse_candidate)
+                        .collect(),
+                )
+            })
+            .unwrap_or_default();
 
         // Run the same deterministic selection as the live pipeline:
         // sort by price ASC, venue_type ASC, venue_ref ASC
-        let (selected, _) = select_best_venue(candidates, amount)?;
+        let (selected, sorted_candidates) = select_best_venue(candidates, amount)?;
 
         let selected_source = format!("{}:{}", selected.venue_type, selected.venue_ref);
+        let compared_venues = sorted_candidates
+            .iter()
+            .map(|candidate| VenueEvaluation {
+                source: format!("{}:{}", candidate.venue_type, candidate.venue_ref),
+                price: format!("{:.7}", candidate.price),
+                available_amount: format!("{:.7}", candidate.available_amount),
+                executable: candidate.available_amount >= amount && candidate.price > 0.0,
+            })
+            .collect::<Vec<_>>();
 
         // Determine is_deterministic by comparing with original_output
         let original_source = artifact
@@ -104,6 +122,8 @@ impl ReplayEngine {
             } else {
                 "sdex".to_string()
             },
+            liquidity_depth: Some(format!("{:.7}", selected.available_amount)),
+            fee_bps: Some(selected.fee_bps),
         }];
 
         Ok(ReplayOutput {
@@ -111,6 +131,7 @@ impl ReplayEngine {
             selected_source,
             price: format!("{:.7}", selected.price),
             path,
+            compared_venues,
             is_deterministic,
             replayed_at: Utc::now(),
         })
@@ -127,6 +148,7 @@ struct ReplayCandidate {
     venue_ref: String,
     price: f64,
     available_amount: f64,
+    fee_bps: u32,
 }
 
 fn parse_candidate(row: &LiquidityCandidate) -> Option<ReplayCandidate> {
@@ -137,7 +159,32 @@ fn parse_candidate(row: &LiquidityCandidate) -> Option<ReplayCandidate> {
         venue_ref: row.venue_ref.clone(),
         price,
         available_amount,
+        fee_bps: row.fee_bps.unwrap_or(0),
     })
+}
+
+fn selection_input_candidates(artifact: &ReplayArtifact) -> Option<Vec<ReplayCandidate>> {
+    let node = artifact
+        .decision_graph
+        .nodes
+        .iter()
+        .find(|n| n.stage == "venue_selection_input")?;
+
+    let arr = node.payload.as_array()?;
+    let candidates = arr
+        .iter()
+        .filter_map(|row| {
+            Some(ReplayCandidate {
+                venue_type: row.get("venue_type")?.as_str()?.to_string(),
+                venue_ref: row.get("venue_ref")?.as_str()?.to_string(),
+                price: row.get("price")?.as_f64()?,
+                available_amount: row.get("available_amount")?.as_f64()?,
+                fee_bps: row.get("fee_bps")?.as_u64()? as u32,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Some(candidates)
 }
 
 /// Deterministic venue selection: sort price ASC → venue_type ASC → venue_ref ASC,
@@ -187,7 +234,9 @@ fn parse_asset_info(s: &str) -> AssetInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::replay::artifact::{HealthConfigSnapshot, CURRENT_SCHEMA_VERSION};
+    use crate::replay::artifact::{
+        DecisionGraphSnapshot, HealthConfigSnapshot, CURRENT_SCHEMA_VERSION,
+    };
     use proptest::prelude::*;
 
     fn make_artifact(candidates: Vec<LiquidityCandidate>, amount: &str) -> ReplayArtifact {
@@ -196,6 +245,7 @@ mod tests {
             venue_ref: "offer1".to_string(),
             price: "1.0000000".to_string(),
             available_amount: "100.0000000".to_string(),
+            fee_bps: Some(0),
         });
         let source = format!("{}:{}", first.venue_type, first.venue_ref);
         ReplayArtifact {
@@ -209,6 +259,7 @@ mod tests {
             slippage_bps: 50,
             quote_type: "sell".to_string(),
             liquidity_snapshot: candidates,
+            decision_graph: DecisionGraphSnapshot::default(),
             health_config_snapshot: HealthConfigSnapshot {
                 freshness_threshold_secs_sdex: 30,
                 freshness_threshold_secs_amm: 60,
@@ -222,12 +273,19 @@ mod tests {
         }
     }
 
-    fn candidate(venue_type: &str, venue_ref: &str, price: &str, amount: &str) -> LiquidityCandidate {
+    fn candidate(
+        venue_type: &str,
+        venue_ref: &str,
+        price: &str,
+        amount: &str,
+        fee_bps: Option<u32>,
+    ) -> LiquidityCandidate {
         LiquidityCandidate {
             venue_type: venue_type.to_string(),
             venue_ref: venue_ref.to_string(),
             price: price.to_string(),
             available_amount: amount.to_string(),
+            fee_bps,
         }
     }
 
@@ -237,8 +295,8 @@ mod tests {
     fn selects_lower_priced_candidate() {
         let artifact = make_artifact(
             vec![
-                candidate("amm", "pool1", "1.0200000", "100.0000000"),
-                candidate("sdex", "offer1", "1.0000000", "100.0000000"),
+                candidate("amm", "pool1", "1.0200000", "100.0000000", Some(30)),
+                candidate("sdex", "offer1", "1.0000000", "100.0000000", Some(0)),
             ],
             "50.0000000",
         );
@@ -250,7 +308,13 @@ mod tests {
     #[test]
     fn schema_version_mismatch_returns_bad_request() {
         let mut artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000")],
+            vec![candidate(
+                "sdex",
+                "offer1",
+                "1.0000000",
+                "100.0000000",
+                Some(0),
+            )],
             "1.0000000",
         );
         artifact.schema_version = 99;
@@ -269,7 +333,13 @@ mod tests {
     #[test]
     fn insufficient_liquidity_returns_no_route() {
         let artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "5.0000000")],
+            vec![candidate(
+                "sdex",
+                "offer1",
+                "1.0000000",
+                "5.0000000",
+                Some(0),
+            )],
             "100.0000000",
         );
         let err = ReplayEngine::run(&artifact).unwrap_err();
@@ -279,7 +349,13 @@ mod tests {
     #[test]
     fn is_deterministic_true_when_source_matches() {
         let artifact = make_artifact(
-            vec![candidate("sdex", "offer1", "1.0000000", "100.0000000")],
+            vec![candidate(
+                "sdex",
+                "offer1",
+                "1.0000000",
+                "100.0000000",
+                Some(0),
+            )],
             "50.0000000",
         );
         let output = ReplayEngine::run(&artifact).expect("should succeed");
@@ -294,11 +370,13 @@ mod tests {
             venue_ref in "[a-z0-9]{4,12}",
             price_int in 1u64..1_000_000u64,
         ) -> LiquidityCandidate {
+            let vt = venue_type.to_string();
             LiquidityCandidate {
-                venue_type: venue_type.to_string(),
+                venue_type: vt.clone(),
                 venue_ref,
                 price: format!("{:.7}", price_int as f64 / 1_000_000.0),
                 available_amount: "1000.0000000".to_string(),
+                fee_bps: if vt == "amm" { Some(30) } else { Some(0) },
             }
         }
     }

@@ -1,7 +1,7 @@
 //! Prometheus metrics endpoint
 
-use axum::response::Response;
 use axum::http::StatusCode;
+use axum::response::Response;
 
 /// Prometheus metrics endpoint
 #[utoipa::path(

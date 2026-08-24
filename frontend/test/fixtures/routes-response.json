@@ -1,0 +1,99 @@
+{
+  "base_asset": {
+    "asset_type": "native",
+    "asset_code": null,
+    "asset_issuer": null
+  },
+  "quote_asset": {
+    "asset_type": "credit_alphanum4",
+    "asset_code": "USDC",
+    "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+  },
+  "amount": "100.0000000",
+  "timestamp": 1740312000,
+  "routes": [
+    {
+      "score": 0.98,
+      "impact_bps": 12,
+      "estimated_output": "10.5500000",
+      "policy_used": "best_price",
+      "path": [
+        {
+          "from_asset": {
+            "asset_type": "native",
+            "asset_code": null,
+            "asset_issuer": null
+          },
+          "to_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": "USDC",
+            "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+          },
+          "price": "0.1055000",
+          "source": "sdex",
+          "fee_bps": 30
+        }
+      ]
+    },
+    {
+      "score": 0.91,
+      "impact_bps": 25,
+      "estimated_output": "10.4800000",
+      "path": [
+        {
+          "from_asset": {
+            "asset_type": "native",
+            "asset_code": null,
+            "asset_issuer": null
+          },
+          "to_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": "USDC",
+            "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+          },
+          "price": "0.1048000",
+          "source": "amm:CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "fee_bps": 30,
+          "amount_out_of_hop": "10.4800000"
+        }
+      ]
+    },
+    {
+      "score": 0.85,
+      "impact_bps": 45,
+      "estimated_output": "10.3900000",
+      "path": [
+        {
+          "from_asset": {
+            "asset_type": "native",
+            "asset_code": null,
+            "asset_issuer": null
+          },
+          "to_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": "yXLM",
+            "asset_issuer": "GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55"
+          },
+          "price": "1.0000000",
+          "source": "amm:CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+          "fee_bps": 30
+        },
+        {
+          "from_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": "yXLM",
+            "asset_issuer": "GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55"
+          },
+          "to_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": "USDC",
+            "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+          },
+          "price": "0.1039000",
+          "source": "sdex",
+          "fee_bps": 0
+        }
+      ]
+    }
+  ]
+}

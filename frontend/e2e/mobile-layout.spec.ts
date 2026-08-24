@@ -113,3 +113,25 @@ test("swap page has no horizontal scroll at 320px", async ({ page }) => {
 
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 });
+
+// ---------------------------------------------------------------------------
+// Task 1 — Theme toggle visibility & touch target on mobile viewports
+// ---------------------------------------------------------------------------
+
+test("theme toggle is present and has correct touch target on mobile viewports", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await gotoSwap(page);
+
+  // Assert theme toggle is visible in the header
+  const themeToggle = page.getByRole("button", { name: "Toggle theme" }).first();
+  await expect(themeToggle).toBeVisible();
+
+  // Assert touch target size is at least 44x44px
+  const box = await themeToggle.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+});
+

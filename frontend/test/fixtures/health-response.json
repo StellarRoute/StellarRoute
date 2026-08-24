@@ -1,0 +1,9 @@
+{
+  "status": "healthy",
+  "timestamp": "2026-02-23T12:00:00Z",
+  "version": "0.1.0",
+  "components": {
+    "database": "healthy",
+    "redis": "healthy"
+  }
+}

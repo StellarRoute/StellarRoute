@@ -17,6 +17,7 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 1_000_000_000,
             price: 0.10,
             fee_bps: 30,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -26,6 +27,7 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 500_000_000,
             price: 0.92,
             fee_bps: 25,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -35,6 +37,7 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 100_000_000,
             price: 0.092,
             fee_bps: 30,
+            ..Default::default()
         },
     ]
 }
@@ -70,15 +73,18 @@ fn test_strict_policy_excludes_low_liquidity() {
         liquidity: 10_000,
         price: 0.10,
         fee_bps: 30,
+        ..Default::default()
     }];
     let routing_policy = RoutingPolicy::default();
 
     let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 10_000_000, &routing_policy);
 
-    assert!(result.is_err() || {
-        let diagnostics = result.unwrap();
-        !diagnostics.excluded_routes.is_empty()
-    });
+    assert!(
+        result.is_err() || {
+            let diagnostics = result.unwrap();
+            !diagnostics.excluded_routes.is_empty()
+        }
+    );
 }
 
 #[test]
@@ -100,10 +106,12 @@ fn test_per_asset_overrides() {
 
     let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 10_000_000, &routing_policy);
 
-    assert!(result.is_err() || {
-        let diagnostics = result.unwrap();
-        !diagnostics.excluded_routes.is_empty()
-    });
+    assert!(
+        result.is_err() || {
+            let diagnostics = result.unwrap();
+            !diagnostics.excluded_routes.is_empty()
+        }
+    );
 }
 
 #[test]
@@ -124,12 +132,10 @@ fn test_blacklisted_asset_excluded() {
     let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 10_000_000, &routing_policy);
 
     if let Ok(diagnostics) = result {
-        assert!(
-            diagnostics
-                .excluded_routes
-                .iter()
-                .any(|e| e.asset == "USDC")
-        );
+        assert!(diagnostics
+            .excluded_routes
+            .iter()
+            .any(|e| e.asset == "USDC"));
     }
 }
 

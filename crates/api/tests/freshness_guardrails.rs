@@ -190,14 +190,15 @@ async fn stale_market_data_error_produces_typed_json_details() {
         status, 422,
         "all-stale quote must return HTTP 422 Unprocessable Entity"
     );
+    assert_eq!(json["v"], 1, "envelope version must be 1");
     assert_eq!(
-        json["error"], "stale_market_data",
+        json["data"]["error"], "stale_market_data",
         "error field must be stale_market_data"
     );
-    assert_eq!(json["details"]["stale_count"], 3);
-    assert_eq!(json["details"]["fresh_count"], 0);
-    assert_eq!(json["details"]["threshold_secs_sdex"], 30);
-    assert_eq!(json["details"]["threshold_secs_amm"], 60);
+    assert_eq!(json["data"]["details"]["stale_count"], 3);
+    assert_eq!(json["data"]["details"]["fresh_count"], 0);
+    assert_eq!(json["data"]["details"]["threshold_secs_sdex"], 30);
+    assert_eq!(json["data"]["details"]["threshold_secs_amm"], 60);
 }
 
 /// ExclusionReason::StaleData serialises with tag type = "stale_data" (snake_case).

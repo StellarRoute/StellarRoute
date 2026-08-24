@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TransactionRecord } from "@/types/transaction";
-
+import { generateTransactionsCSV, triggerCSVDownload } from "@/lib/transaction-csv-export";
 import { TransactionHistory } from "./TransactionHistory";
 
 const historyState = vi.hoisted(() => ({
@@ -10,9 +10,62 @@ const historyState = vi.hoisted(() => ({
   clearHistory: vi.fn(),
 }));
 
+const walletState = vi.hoisted(() => ({
+  address: "GBSUTEST1234ABCD" as string | null,
+  isConnected: true,
+  availableWallets: [],
+  isLoading: false,
+  error: null as { message: string } | null,
+  connect: vi.fn(),
+  walletNetwork: null as string | null,
+}));
+
 vi.mock("@/hooks/useTransactionHistory", () => ({
   useTransactionHistory: () => historyState,
 }));
+
+vi.mock("@/components/providers/wallet-provider", () => ({
+  useWallet: () => walletState,
+}));
+
+vi.mock("@/components/modals/WalletConnectionOnboarding", () => ({
+  WalletConnectionOnboarding: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="wallet-onboarding-modal" /> : null,
+}));
+
+vi.mock("@/lib/transaction-csv-export", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/transaction-csv-export")>();
+  return {
+    ...actual,
+    generateTransactionsCSV: vi.fn(actual.generateTransactionsCSV),
+    triggerCSVDownload: vi.fn(),
+  };
+});
+
+vi.mock("@/components/ui/dropdown-menu", () => {
+  return {
+    DropdownMenu: ({ children }: any) => <div data-testid="dropdown-menu-mock">{children}</div>,
+    DropdownMenuTrigger: ({ children }: any) => <div data-testid="dropdown-menu-trigger-mock">{children}</div>,
+    DropdownMenuContent: ({ children }: any) => <div data-testid="dropdown-menu-content-mock">{children}</div>,
+    DropdownMenuLabel: ({ children }: any) => <div>{children}</div>,
+    DropdownMenuSeparator: () => <hr />,
+    DropdownMenuCheckboxItem: ({ children, checked, onCheckedChange, "data-testid": testId }: any) => (
+      <label data-testid={testId}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onCheckedChange(e.target.checked)}
+        />
+        {children}
+      </label>
+    ),
+    DropdownMenuItem: ({ children, onClick, disabled, "data-testid": testId }: any) => (
+      <button data-testid={testId} onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    ),
+  };
+});
 
 function createTransactions(count: number): TransactionRecord[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -27,19 +80,27 @@ function createTransactions(count: number): TransactionRecord[] {
     minReceived: "0.97",
     networkFee: "0.001",
     routePath: [],
-    status: "success",
+    status: "confirmed",
     hash: `hash-${index}`,
     walletAddress: "GBSU...XYZ9",
   }));
 }
 
+
+
 describe("TransactionHistory", () => {
   beforeEach(() => {
     historyState.transactions = [];
     historyState.clearHistory = vi.fn();
+    walletState.address = "GBSUTEST1234ABCD";
+    walletState.isConnected = true;
+    walletState.error = null;
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it("should show skeleton loader initially", async () => {
     const { container } = render(<TransactionHistory />);
@@ -51,7 +112,7 @@ describe("TransactionHistory", () => {
   it("should replace skeleton with empty state after loading", async () => {
     const { container } = render(<TransactionHistory />);
 
-    let skeletons = container.querySelectorAll(".animate-pulse");
+    const skeletons = container.querySelectorAll(".animate-pulse");
     expect(skeletons.length).toBeGreaterThan(0);
 
     await waitFor(
@@ -67,6 +128,39 @@ describe("TransactionHistory", () => {
     render(<TransactionHistory />);
 
     expect(screen.getByText("Transaction History")).toBeInTheDocument();
+  });
+
+  it("renders asset icons and status badges in transaction rows", async () => {
+    historyState.transactions = [
+      {
+        id: "tx-1",
+        timestamp: Date.now(),
+        fromAsset: "USDC",
+        fromAmount: "10",
+        toAsset: "XLM",
+        toAmount: "9.8",
+        exchangeRate: "0.98",
+        priceImpact: "0.01",
+        minReceived: "9.7",
+        networkFee: "0.001",
+        routePath: [],
+        status: "confirmed",
+        hash: "hash-1",
+        walletAddress: "GBSU...XYZ9",
+        fromIcon: "https://example.com/usdc.svg",
+        toIcon: "https://example.com/xlm.svg",
+      },
+    ];
+
+    render(<TransactionHistory />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Confirmed')).toBeInTheDocument();
+      expect(screen.getByText('-10')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('img', { name: /USDC icon/i })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /XLM icon/i })).toBeInTheDocument();
   });
 
   it("should maintain layout stability during loading to loaded transition", async () => {
@@ -95,9 +189,20 @@ describe("TransactionHistory", () => {
 
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await waitFor(() => {
+      expect(screen.getByText("No Transactions Found")).toBeInTheDocument();
+    }, { timeout: 700 });
+  });
 
-    expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
+  it("progressively transitions from skeleton to history content", async () => {
+    const { container } = render(<TransactionHistory />);
+
+    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("No Transactions Found")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("No Transactions Found")).toBeInTheDocument();
+    }, { timeout: 700 });
   });
 
   it("virtualizes long activity lists and swaps the rendered window on scroll", async () => {
@@ -124,5 +229,147 @@ describe("TransactionHistory", () => {
     });
 
     expect(screen.queryByTestId("tx-row-tx-0")).not.toBeInTheDocument();
+  });
+
+  describe("Wallet connection state", () => {
+    it("shows disconnected empty state with connect CTA when wallet is not connected", async () => {
+      walletState.isConnected = false;
+      walletState.address = null;
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("wallet-disconnected-state")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Connect Your Wallet")).toBeInTheDocument();
+      expect(screen.getByTestId("connect-wallet-cta")).toBeInTheDocument();
+    });
+
+    it("opens wallet onboarding modal when connect CTA is clicked", async () => {
+      walletState.isConnected = false;
+      walletState.address = null;
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("connect-wallet-cta")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("connect-wallet-cta"));
+
+      expect(screen.getByTestId("wallet-onboarding-modal")).toBeInTheDocument();
+    });
+
+    it("shows connected wallet address in header when wallet is connected", async () => {
+      walletState.isConnected = true;
+      walletState.address = "GBSUTEST1234ABCD";
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText("GBSUTEST1234ABCD")).toBeInTheDocument();
+      });
+    });
+
+    it("shows transaction table when wallet is connected and has transactions", async () => {
+      walletState.isConnected = true;
+      walletState.address = "GBSUTEST1234ABCD";
+      historyState.transactions = createTransactions(3);
+
+      render(<TransactionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("tx-row-tx-0")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("wallet-disconnected-state")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("CSV Export and Column Selection", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      vi.clearAllMocks();
+      historyState.transactions = createTransactions(10);
+    });
+
+    it("should render Export button", async () => {
+      render(<TransactionHistory />);
+      await waitFor(() => {
+        expect(screen.getByTestId("csv-export-button")).toBeInTheDocument();
+      });
+    });
+
+    it("should save column selection to localStorage and load from it", async () => {
+      localStorage.setItem("stellar_route_csv_export_columns", JSON.stringify(["date", "status"]));
+      
+      const { unmount } = render(<TransactionHistory />);
+      unmount();
+      
+      const rendered = render(<TransactionHistory />);
+      const downloadBtn = rendered.getByTestId("csv-download-button");
+      fireEvent.click(downloadBtn);
+      
+      await waitFor(() => {
+        expect(generateTransactionsCSV).toHaveBeenCalledWith(
+          expect.any(Array),
+          ["date", "status"],
+          expect.any(Number),
+          expect.any(Function)
+        );
+      });
+    });
+
+    it("should update selected columns and persist to localStorage when checkboxes are toggled", async () => {
+      render(<TransactionHistory />);
+      
+      const statusCheckbox = screen.getByTestId("column-checkbox-status").querySelector("input")!;
+      expect(statusCheckbox.checked).toBe(true);
+      
+      fireEvent.click(statusCheckbox);
+      
+      expect(statusCheckbox.checked).toBe(false);
+      
+      const stored = localStorage.getItem("stellar_route_csv_export_columns");
+      expect(stored).not.toContain("status");
+      
+      const downloadBtn = screen.getByTestId("csv-download-button");
+      fireEvent.click(downloadBtn);
+      
+      await waitFor(() => {
+        expect(generateTransactionsCSV).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.not.arrayContaining(["status"]),
+          expect.any(Number),
+          expect.any(Function)
+        );
+      });
+    });
+
+    it("should respect current filters and header order when exporting (Acceptance Criteria: Export respects current filters, Tests validate CSV header order)", async () => {
+      render(<TransactionHistory />);
+      
+      const selects = screen.getAllByRole("combobox");
+      const assetFilter = selects[0];
+      
+      fireEvent.change(assetFilter, { target: { value: "XLM" } });
+      
+      const downloadBtn = screen.getByTestId("csv-download-button");
+      fireEvent.click(downloadBtn);
+      
+      await waitFor(() => {
+        expect(generateTransactionsCSV).toHaveBeenCalled();
+      });
+      
+      const calledTxs = (generateTransactionsCSV as any).mock.calls[0][0] as TransactionRecord[];
+      
+      expect(calledTxs.length).toBeGreaterThan(0);
+      calledTxs.forEach((tx) => {
+        expect(tx.fromAsset === "XLM" || tx.toAsset === "XLM").toBe(true);
+      });
+      
+      expect(triggerCSVDownload).toHaveBeenCalled();
+    });
   });
 });

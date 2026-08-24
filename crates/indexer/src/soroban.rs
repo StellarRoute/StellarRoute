@@ -93,7 +93,49 @@ struct JsonRpcRequest<'a> {
 pub trait SorobanRpc: Send + Sync {
     async fn get_latest_ledger(&self) -> Result<u64>;
     async fn get_pool_state(&self, contract_id: &str) -> Result<serde_json::Value>;
+    async fn get_events(
+        &self,
+        start_ledger: u64,
+        end_ledger: Option<u64>,
+        filters: Vec<EventFilter>,
+    ) -> Result<Vec<SorobanEvent>>;
     async fn request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value>;
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct EventFilter {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    #[serde(rename = "contractIds")]
+    pub contract_ids: Vec<String>,
+    pub topics: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SorobanEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    #[serde(rename = "ledger")]
+    pub ledger: u64,
+    #[serde(rename = "ledgerClosedAt")]
+    pub ledger_closed_at: String,
+    #[serde(rename = "contractId")]
+    pub contract_id: String,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "pagingToken")]
+    pub paging_token: String,
+    #[serde(rename = "topic")]
+    pub topics: Vec<String>,
+    #[serde(rename = "value")]
+    pub value: SorobanEventValue,
+    #[serde(rename = "inSuccessfulContractCall")]
+    pub in_successful_contract_call: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SorobanEventValue {
+    pub xdr: String,
 }
 
 #[derive(Clone)]
@@ -174,10 +216,34 @@ impl SorobanRpc for SorobanRpcClient {
             "getContractData",
             json!({
                 "contractId": contract_id,
-                // Callers can post-process and decode XDR payload fields as needed.
             }),
         )
         .await
+    }
+
+    async fn get_events(
+        &self,
+        start_ledger: u64,
+        end_ledger: Option<u64>,
+        filters: Vec<EventFilter>,
+    ) -> Result<Vec<SorobanEvent>> {
+        let mut params = json!({
+            "startLedger": start_ledger,
+            "filters": filters,
+        });
+
+        if let Some(end) = end_ledger {
+            params["endLedger"] = json!(end);
+        }
+
+        let result = self.request("getEvents", params).await?;
+
+        // Handle paginated response if necessary, but for simplicity we assume it fits
+        let events: Vec<SorobanEvent> =
+            serde_json::from_value(result.get("events").cloned().unwrap_or(json!([])))
+                .map_err(|e| IndexerError::SorobanRpc(format!("failed to parse events: {e}")))?;
+
+        Ok(events)
     }
 
     async fn request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {

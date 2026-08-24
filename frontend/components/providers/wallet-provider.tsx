@@ -5,10 +5,12 @@ import {
   connectWallet,
   disconnectWallet,
   getAvailableWallets,
+  checkWalletCapabilities,
 } from '@/lib/wallet';
 import type {
   AvailableWallet,
   SupportedWallet,
+  WalletCapabilityStatus,
   WalletError,
   WalletNetwork,
 } from '@/lib/wallet/types';
@@ -22,10 +24,12 @@ interface WalletContextValue {
   availableWallets: AvailableWallet[];
   isLoading: boolean;
   error: WalletError | null;
+  capabilities: WalletCapabilityStatus | null;
   connect: (walletId: SupportedWallet) => Promise<void>;
   disconnect: () => void;
   setNetwork: (network: WalletNetwork) => void;
   refreshWallets: () => Promise<void>;
+  refreshCapabilities: () => void;
   networkMismatch: boolean;
   stubSpendableBalance: string | null;
 }
@@ -47,6 +51,7 @@ export function WalletProvider({
   const [walletNetwork, setWalletNetwork] = React.useState<WalletNetwork | null>(null);
   const [walletId, setWalletId] = React.useState<SupportedWallet | null>(null);
   const [availableWallets, setAvailableWallets] = React.useState<AvailableWallet[]>([]);
+  const [capabilities, setCapabilities] = React.useState<WalletCapabilityStatus | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<WalletError | null>(null);
 
@@ -55,9 +60,22 @@ export function WalletProvider({
     setAvailableWallets(wallets);
   }, []);
 
+  const refreshCapabilities = React.useCallback(() => {
+    if (walletId) {
+      const status = checkWalletCapabilities(walletId, network);
+      setCapabilities(status);
+    } else {
+      setCapabilities(null);
+    }
+  }, [walletId, network]);
+
   React.useEffect(() => {
     void refreshWallets();
   }, [refreshWallets]);
+
+  React.useEffect(() => {
+    refreshCapabilities();
+  }, [refreshCapabilities]);
 
   const connect = React.useCallback(async (selectedWalletId: SupportedWallet) => {
     setIsLoading(true);
@@ -82,6 +100,7 @@ export function WalletProvider({
     setIsConnected(session.isConnected);
     setWalletNetwork(session.network ?? null);
     setWalletId(session.walletId);
+    setCapabilities(null);
     setError(null);
   }, []);
 
@@ -97,10 +116,12 @@ export function WalletProvider({
     availableWallets,
     isLoading,
     error,
+    capabilities,
     connect,
     disconnect,
     setNetwork,
     refreshWallets,
+    refreshCapabilities,
     networkMismatch,
     stubSpendableBalance,
   };

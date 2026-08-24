@@ -6,12 +6,70 @@ import {
   signTransaction,
 } from "@stellar/freighter-api";
 
-import type { AvailableWallet, SupportedWallet, WalletSession } from "./types";
+import type {
+  AvailableWallet,
+  SupportedWallet,
+  WalletCapabilities,
+  WalletCapabilityStatus,
+  WalletNetwork,
+  WalletSession,
+} from "./types";
 
 export const WALLET_LABELS: Record<SupportedWallet, string> = {
   freighter: "Freighter",
   xbull: "xBull",
 };
+
+export const WALLET_CAPABILITIES_MAP: Record<SupportedWallet, WalletCapabilities> = {
+  freighter: {
+    canSign: true,
+    supportedNetworks: ["testnet", "mainnet", "futurenet"],
+    supportsNetworkSwitching: true,
+  },
+  xbull: {
+    canSign: false, // xBull signTransaction not yet supported in-app
+    supportedNetworks: ["testnet", "mainnet"],
+    supportsNetworkSwitching: false,
+  },
+};
+
+export function checkWalletCapabilities(
+  walletId: SupportedWallet | null,
+  network: WalletNetwork
+): WalletCapabilityStatus {
+  if (!walletId) {
+    return {
+      canSign: false,
+      networkSupported: false,
+      missingCapabilities: ["No wallet connected"],
+    };
+  }
+
+  const capabilities = WALLET_CAPABILITIES_MAP[walletId];
+  if (!capabilities) {
+    return {
+      canSign: false,
+      networkSupported: false,
+      missingCapabilities: ["Unsupported wallet"],
+    };
+  }
+
+  const missing: string[] = [];
+  const networkSupported = capabilities.supportedNetworks.includes(network);
+
+  if (!capabilities.canSign) {
+    missing.push("Transaction signing is not supported for this wallet.");
+  }
+  if (!networkSupported) {
+    missing.push(`Network "${network}" is not supported by ${WALLET_LABELS[walletId] || walletId}.`);
+  }
+
+  return {
+    canSign: capabilities.canSign,
+    networkSupported,
+    missingCapabilities: missing,
+  };
+}
 
 export async function getAvailableWallets(): Promise<AvailableWallet[]> {
   const wallets: AvailableWallet[] = [];

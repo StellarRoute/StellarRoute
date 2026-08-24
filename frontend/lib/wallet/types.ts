@@ -19,3 +19,15 @@ export type WalletError = {
   message: string;
   code?: string;
 };
+
+export interface WalletCapabilities {
+  canSign: boolean;
+  supportedNetworks: WalletNetwork[];
+  supportsNetworkSwitching: boolean;
+}
+
+export interface WalletCapabilityStatus {
+  canSign: boolean;
+  networkSupported: boolean;
+  missingCapabilities: string[];
+}

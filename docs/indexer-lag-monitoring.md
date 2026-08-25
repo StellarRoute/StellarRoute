@@ -33,6 +33,9 @@ The `IndexerLagMonitor` runs as a background task in the API process.  Every
 
 All metrics are exposed at `GET /metrics` in Prometheus text format.
 
+For a ready-to-import Grafana dashboard covering the lag and sync gauges, see
+[`monitoring/grafana/indexer-lag-dashboard.json`](../monitoring/grafana/indexer-lag-dashboard.json).
+
 ---
 
 ## Threshold-Based Warning Levels

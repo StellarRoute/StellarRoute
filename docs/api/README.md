@@ -3,6 +3,7 @@
 This section collects the API reference and integration docs for StellarRoute.
 
 - `routes_endpoint.md` — REST API endpoints for quote, orderbook, and route requests.
+- `contract-registry.md` — read-only contract version and WASM hash lookup endpoints.
 - `websocket.md` — WebSocket quote stream API and real-time subscription details.
 - `versioning.md` — API versioning strategy and supported release behavior.
 - `versioning-policy.md` — version lifecycle policy for breaking and non-breaking changes.

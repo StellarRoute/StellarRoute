@@ -44,6 +44,8 @@ describe("NotificationInbox", () => {
   it("renders one notification and marks it read when opened", async () => {
     const user = userEvent.setup();
     const markRead = vi.fn();
+    const dismiss = vi.fn();
+    const dismissAll = vi.fn();
     mockUseSystemMessages.mockReturnValue({
       messages: [
         {
@@ -58,8 +60,8 @@ describe("NotificationInbox", () => {
       loading: false,
       error: null,
       markRead,
-      dismiss: vi.fn(),
-      dismissAll: vi.fn(),
+      dismiss,
+      dismissAll,
     });
 
     render(<NotificationInbox />);
@@ -71,5 +73,15 @@ describe("NotificationInbox", () => {
     expect(screen.getByText("Quotes may refresh more slowly.")).toBeInTheDocument();
     expect(screen.getByText("maintenance")).toBeInTheDocument();
     expect(markRead).toHaveBeenCalledWith("maintenance-1");
+
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss: Scheduled maintenance" }),
+    );
+    expect(dismiss).toHaveBeenCalledWith("maintenance-1");
+
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss all notifications" }),
+    );
+    expect(dismissAll).toHaveBeenCalledOnce();
   });
 });

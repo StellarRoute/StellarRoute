@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AnalyticsDashboard } from "./AnalyticsDashboard";
@@ -59,6 +60,8 @@ describe("AnalyticsDashboard", () => {
   });
 
   it("renders mocked metrics data", () => {
+    const refreshCache = vi.fn();
+    const refreshPool = vi.fn();
     mockUseCacheMetrics.mockReturnValue({
       data: {
         quote_hits: 120,
@@ -69,7 +72,7 @@ describe("AnalyticsDashboard", () => {
       },
       loading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: refreshCache,
     });
     mockUsePoolStats.mockReturnValue({
       data: {
@@ -83,7 +86,7 @@ describe("AnalyticsDashboard", () => {
       },
       loading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: refreshPool,
     });
 
     render(<AnalyticsDashboard />);
@@ -91,5 +94,31 @@ describe("AnalyticsDashboard", () => {
     expect(screen.getByText("80.0%")).toBeInTheDocument();
     expect(screen.getByText("120")).toBeInTheDocument();
     expect(screen.getByText("Primary pool")).toBeInTheDocument();
+  });
+
+  it("refreshes both mocked metrics sources", async () => {
+    const user = userEvent.setup();
+    const refreshCache = vi.fn();
+    const refreshPool = vi.fn();
+    mockUseCacheMetrics.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: null,
+      refresh: refreshCache,
+    });
+    mockUsePoolStats.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: null,
+      refresh: refreshPool,
+    });
+
+    render(<AnalyticsDashboard />);
+    await user.click(
+      screen.getByRole("button", { name: "Refresh analytics metrics" }),
+    );
+
+    expect(refreshCache).toHaveBeenCalledOnce();
+    expect(refreshPool).toHaveBeenCalledOnce();
   });
 });

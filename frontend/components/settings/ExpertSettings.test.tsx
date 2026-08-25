@@ -5,7 +5,7 @@ import { SettingsProvider } from "@/components/providers/settings-provider";
 import { ExpertSettings } from "./ExpertSettings";
 
 describe("ExpertSettings", () => {
-  it("renders under the settings provider", () => {
+  it("renders the expert mode control under the settings provider", () => {
     render(
       <SettingsProvider>
         <ExpertSettings
@@ -23,5 +23,24 @@ describe("ExpertSettings", () => {
       "aria-checked",
       "false",
     );
+  });
+
+  it("renders expert-only settings when expert mode is enabled", () => {
+    render(
+      <SettingsProvider>
+        <ExpertSettings
+          expertMode
+          bypassConfirmation={false}
+          extendedRouteDetails={false}
+          onExpertModeChange={vi.fn()}
+          onBypassConfirmationChange={vi.fn()}
+          onExtendedRouteDetailsChange={vi.fn()}
+        />
+      </SettingsProvider>,
+    );
+
+    expect(screen.getByText(/Expert Mode enables highly custom values/)).toBeInTheDocument();
+    expect(screen.getByText("Bypass Confirmation Modal")).toBeInTheDocument();
+    expect(screen.getByText("Extended Route Diagnostics")).toBeInTheDocument();
   });
 });

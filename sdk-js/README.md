@@ -123,6 +123,8 @@ if (result.exclusion_diagnostics) {
 
 Additional runnable quickstart files are in `sdk-js/examples/`.
 
+See the [price history example](./examples/quickstart-price-history.ts) for a read-only 24-hour history query.
+
 ## API docs
 
 Generate TypeDoc API docs:

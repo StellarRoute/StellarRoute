@@ -18,5 +18,12 @@ describe("HomeFaqSection", () => {
       expect(screen.getByText(faq.question)).toBeInTheDocument();
       expect(screen.getByText(faq.answer)).toBeInTheDocument();
     }
+
+    expect(
+      screen.getByRole("link", { name: "how Stellar DEX aggregation works" }),
+    ).toHaveAttribute("href", "/stellar-dex-aggregator");
+    expect(
+      screen.getByRole("link", { name: "Stellar cross-chain swaps" }),
+    ).toHaveAttribute("href", "/cross-chain-swap");
   });
 });

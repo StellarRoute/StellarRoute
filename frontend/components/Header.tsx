@@ -9,7 +9,11 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="container flex h-14 items-center mx-auto px-4">
         <div className="mr-4 flex">
-          <Link href="/swap" className="mr-6 flex items-center space-x-2">
+          <Link
+            href="/swap"
+            aria-label="StellarRoute — open swap"
+            className="mr-6 flex items-center space-x-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <span className="hidden font-bold sm:inline-block">
               StellarRoute
             </span>
@@ -21,10 +25,10 @@ export function Header() {
             {/* future nav/search area */}
           </div>
 
-          <nav className="flex items-center gap-4">
+          <nav aria-label="Primary navigation" className="flex items-center gap-4">
             <Link
               href="/history"
-              className="text-sm font-medium hover:text-primary transition-colors"
+              className="text-sm font-medium transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               History
             </Link>

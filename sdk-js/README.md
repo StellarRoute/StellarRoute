@@ -121,7 +121,10 @@ if (result.exclusion_diagnostics) {
 }
 ```
 
-Additional runnable quickstart files are in `sdk-js/examples/`.
+Additional runnable quickstart files are in `sdk-js/examples/`:
+
+- [Health check](./examples/quickstart-health.ts)
+- [Trading pairs](./examples/quickstart-pairs.ts)
 
 ## API docs
 

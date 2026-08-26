@@ -84,4 +84,83 @@ mod tests {
         assert_eq!(policy.load_score(policy.max_queue_depth / 2, 0), 50);
         assert_eq!(policy.load_score(policy.max_queue_depth, 0), 100);
     }
+
+    #[test]
+    fn default_policy_constants_unchanged() {
+        let policy = BackpressurePolicy::default();
+        assert_eq!(policy.max_queue_depth, 10000);
+        assert_eq!(policy.max_workers, 100);
+        assert_eq!(policy.rejection_threshold_percent, 80);
+    }
+
+    #[test]
+    fn reject_when_backlog_at_80_percent_of_max_queue_depth() {
+        let policy = BackpressurePolicy::default();
+        let threshold_80 = (policy.max_queue_depth * 80) / 100;
+        assert_eq!(threshold_80, 8000);
+
+        // Exactly at 80% threshold - should reject (>=)
+        let result = policy.should_accept(threshold_80, 0);
+        assert!(result.is_err(), "should reject at exactly 80% backlog");
+
+        // Just below 80% - should accept
+        let result = policy.should_accept(threshold_80 - 1, 0);
+        assert!(result.is_ok(), "should accept below 80% backlog");
+    }
+
+    #[test]
+    fn backlog_combines_pending_and_processing() {
+        let policy = BackpressurePolicy::default();
+
+        // pending=7999 + processing=1 = 8000 - at 80%, should reject
+        let result = policy.should_accept(7999, 1);
+        assert!(result.is_err(), "combined backlog at 80% should reject");
+
+        // pending=7998 + processing=1 = 7999 - just below, should accept
+        let result = policy.should_accept(7998, 1);
+        assert!(result.is_ok(), "combined backlog below 80% should accept");
+    }
+
+    #[test]
+    fn accept_at_zero_load() {
+        let policy = BackpressurePolicy::default();
+        assert!(policy.should_accept(0, 0).is_ok());
+    }
+
+    #[test]
+    fn reject_at_full_capacity() {
+        let policy = BackpressurePolicy::default();
+        // max_queue_depth = 10000, reject at >= 10000
+        assert!(policy.should_accept(10000, 0).is_err());
+        assert!(policy.should_accept(5000, 5000).is_err());
+        assert!(policy.should_accept(9999, 1).is_err());
+    }
+
+    #[test]
+    fn custom_policy_threshold_respected() {
+        let policy = BackpressurePolicy {
+            max_queue_depth: 500,
+            max_workers: 10,
+            rejection_threshold_percent: 50,
+        };
+
+        // 50% of 500 = 250
+        assert!(policy.should_accept(250, 0).is_err(), "should reject at 50% threshold");
+        assert!(policy.should_accept(249, 0).is_ok(), "should accept below 50% threshold");
+        assert!(policy.should_accept(500, 0).is_err(), "should reject at full capacity");
+    }
+
+    #[test]
+    fn load_score_clamps_at_100() {
+        let policy = BackpressurePolicy::default();
+        assert_eq!(policy.load_score(policy.max_queue_depth * 2, 0), 100);
+    }
+
+    #[test]
+    fn load_score_includes_processing_jobs() {
+        let policy = BackpressurePolicy::default();
+        let score_pending_only = policy.load_score(5000, 0);
+        let score_with_processing = policy.load_score(3000, 2000);
+        assert_eq!(score_pending_only, score_with_processing);
+    }
 }

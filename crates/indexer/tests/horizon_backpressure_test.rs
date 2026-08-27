@@ -123,6 +123,46 @@ fn test_throttle_wait_ms_accumulates() {
     assert_eq!(state.throttle_wait_ms(), 5_000);
 }
 
+#[test]
+fn test_default_throttle_constants_unchanged() {
+    let cfg = BackoffConfig::default();
+    assert_eq!(cfg.min_delay_ms, 500);
+    assert_eq!(cfg.base_delay_ms, 1_000);
+    assert_eq!(cfg.max_delay_ms, 60_000);
+}
+
+#[test]
+fn test_throttle_state_consecutive_burst_recovery_cycles() {
+    let state = ThrottleState::new();
+    let cfg = BackoffConfig::default();
+
+    // Burst 1: 3 consecutive 429s -> recovers
+    for _ in 0..3 {
+        state.record_rate_limit(Some(1), &cfg);
+    }
+    assert_eq!(state.consecutive_429s(), 3);
+    assert_eq!(state.throttle_events(), 3);
+    state.record_success();
+    assert_eq!(state.consecutive_429s(), 0);
+
+    // Burst 2: 4 consecutive 429s -> recovers
+    for _ in 0..4 {
+        state.record_rate_limit(Some(1), &cfg);
+    }
+    assert_eq!(state.consecutive_429s(), 4);
+    assert_eq!(state.throttle_events(), 7);
+    state.record_success();
+    assert_eq!(state.consecutive_429s(), 0);
+
+    // Single 429 -> recovers
+    state.record_rate_limit(Some(1), &cfg);
+    assert_eq!(state.consecutive_429s(), 1);
+    assert_eq!(state.throttle_events(), 8);
+    state.record_success();
+    assert_eq!(state.consecutive_429s(), 0);
+    assert_eq!(state.throttle_events(), 8);
+}
+
 // ---------------------------------------------------------------------------
 // Integration: mocked 429 → success
 // ---------------------------------------------------------------------------
@@ -167,6 +207,154 @@ async fn test_get_offers_recovers_after_single_429() {
     assert_eq!(client.throttle.consecutive_429s(), 0);
     // One throttle event was recorded
     assert_eq!(client.throttle.throttle_events(), 1);
+}
+
+/// Horizon returns 429 three times in a burst (with Retry-After: 0),
+/// then succeeds on the fourth attempt.
+#[tokio::test]
+async fn test_get_offers_recovers_after_consecutive_burst_429s() {
+    let mock_server = MockServer::start().await;
+
+    // First 3 calls: 429 with Retry-After: 0
+    Mock::given(method("GET"))
+        .and(path("/offers"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "0")
+                .set_body_string("Too Many Requests"),
+        )
+        .up_to_n_times(3)
+        .mount(&mock_server)
+        .await;
+
+    // 4th call: 200 with one offer
+    Mock::given(method("GET"))
+        .and(path("/offers"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(offers_page_json(serde_json::json!([sample_offer_json()]))),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let client = HorizonClient::new(mock_server.uri());
+    let offers = client.get_offers(Some(10), None, None).await.unwrap();
+
+    assert_eq!(
+        offers.len(),
+        1,
+        "Should have recovered and returned 1 offer"
+    );
+    // After recovery, consecutive counter resets to 0
+    assert_eq!(client.throttle.consecutive_429s(), 0);
+    // 3 throttle events were recorded
+    assert_eq!(client.throttle.throttle_events(), 3);
+}
+
+/// Multiple requests each encountering 429 bursts and recovering,
+/// ensuring consecutive count resets each time and throttle events accumulate.
+#[tokio::test]
+async fn test_get_offers_recovers_across_multiple_burst_and_recovery_cycles() {
+    let mock_server = MockServer::start().await;
+
+    // Cycle 1: 2x 429 on /offers?cursor=1
+    Mock::given(method("GET"))
+        .and(path("/offers"))
+        .and(wiremock::matchers::query_param("cursor", "1"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "0")
+                .set_body_string("Too Many Requests"),
+        )
+        .up_to_n_times(2)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/offers"))
+        .and(wiremock::matchers::query_param("cursor", "1"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(offers_page_json(serde_json::json!([sample_offer_json()]))),
+        )
+        .mount(&mock_server)
+        .await;
+
+    // Cycle 2: 3x 429 on /offers?cursor=2
+    Mock::given(method("GET"))
+        .and(path("/offers"))
+        .and(wiremock::matchers::query_param("cursor", "2"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "0")
+                .set_body_string("Too Many Requests"),
+        )
+        .up_to_n_times(3)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/offers"))
+        .and(wiremock::matchers::query_param("cursor", "2"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(offers_page_json(serde_json::json!([sample_offer_json()]))),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let client = HorizonClient::new(mock_server.uri());
+
+    // Request 1: 2x 429 then success
+    let page1 = client.get_offers(None, Some("1"), None).await.unwrap();
+    assert_eq!(page1.len(), 1);
+    assert_eq!(client.throttle.consecutive_429s(), 0);
+    assert_eq!(client.throttle.throttle_events(), 2);
+
+    // Request 2: 3x 429 then success
+    let page2 = client.get_offers(None, Some("2"), None).await.unwrap();
+    assert_eq!(page2.len(), 1);
+    assert_eq!(client.throttle.consecutive_429s(), 0);
+    assert_eq!(client.throttle.throttle_events(), 5);
+}
+
+/// `get_latest_ledger` recovers after consecutive 429 responses.
+#[tokio::test]
+async fn test_get_latest_ledger_recovers_after_burst_429s() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/ledgers"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "0")
+                .set_body_string("Too Many Requests"),
+        )
+        .up_to_n_times(2)
+        .mount(&mock_server)
+        .await;
+
+    let ledger_json = serde_json::json!({
+        "_embedded": {
+            "records": [
+                { "sequence": 42_000_000_u64 }
+            ]
+        }
+    })
+    .to_string();
+
+    Mock::given(method("GET"))
+        .and(path("/ledgers"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(ledger_json))
+        .mount(&mock_server)
+        .await;
+
+    let client = HorizonClient::new(mock_server.uri());
+    let seq = client.get_latest_ledger().await.unwrap();
+
+    assert_eq!(seq, 42_000_000);
+    assert_eq!(client.throttle.consecutive_429s(), 0);
+    assert_eq!(client.throttle.throttle_events(), 2);
 }
 
 /// Horizon returns 429 with a Retry-After header; the client must honour it.

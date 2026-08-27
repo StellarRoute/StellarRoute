@@ -226,4 +226,82 @@ mod tests {
         state.record_rate_limit(Some(3), &cfg); // 3000 ms
         assert_eq!(state.throttle_wait_ms(), 5_000);
     }
+
+    #[test]
+    fn test_default_throttle_constants_unchanged() {
+        let cfg = BackoffConfig::default();
+        assert_eq!(cfg.min_delay_ms, 500);
+        assert_eq!(cfg.base_delay_ms, 1_000);
+        assert_eq!(cfg.max_delay_ms, 60_000);
+    }
+
+    #[test]
+    fn test_throttle_state_multiple_burst_recovery_cycles() {
+        let state = ThrottleState::new();
+        let cfg = BackoffConfig::default();
+
+        // Burst 1: 3 consecutive 429s
+        for _ in 0..3 {
+            state.record_rate_limit(Some(1), &cfg);
+        }
+        assert_eq!(state.consecutive_429s(), 3);
+        assert_eq!(state.throttle_events(), 3);
+
+        // Recovery 1
+        state.record_success();
+        assert_eq!(state.consecutive_429s(), 0);
+        assert_eq!(state.throttle_events(), 3);
+
+        // Burst 2: 5 consecutive 429s
+        for _ in 0..5 {
+            state.record_rate_limit(Some(1), &cfg);
+        }
+        assert_eq!(state.consecutive_429s(), 5);
+        assert_eq!(state.throttle_events(), 8);
+
+        // Recovery 2
+        state.record_success();
+        assert_eq!(state.consecutive_429s(), 0);
+        assert_eq!(state.throttle_events(), 8);
+
+        // Burst 3: 2 consecutive 429s
+        for _ in 0..2 {
+            state.record_rate_limit(Some(1), &cfg);
+        }
+        assert_eq!(state.consecutive_429s(), 2);
+        assert_eq!(state.throttle_events(), 10);
+
+        // Recovery 3
+        state.record_success();
+        assert_eq!(state.consecutive_429s(), 0);
+        assert_eq!(state.throttle_events(), 10);
+    }
+
+    #[test]
+    fn test_throttle_state_consecutive_counter_does_not_drift_after_single_or_burst_recovery() {
+        let state = ThrottleState::new();
+        let cfg = BackoffConfig::default();
+
+        // Single 429 -> success
+        state.record_rate_limit(Some(1), &cfg);
+        assert_eq!(state.consecutive_429s(), 1);
+        state.record_success();
+        assert_eq!(state.consecutive_429s(), 0);
+
+        // Burst of 4 429s -> success
+        for _ in 0..4 {
+            state.record_rate_limit(Some(1), &cfg);
+        }
+        assert_eq!(state.consecutive_429s(), 4);
+        state.record_success();
+        assert_eq!(state.consecutive_429s(), 0);
+
+        // Another single 429 -> success
+        state.record_rate_limit(Some(1), &cfg);
+        assert_eq!(state.consecutive_429s(), 1);
+        state.record_success();
+        assert_eq!(state.consecutive_429s(), 0);
+
+        assert_eq!(state.throttle_events(), 6);
+    }
 }

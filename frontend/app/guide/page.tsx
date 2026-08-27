@@ -14,26 +14,38 @@ const steps = [
   {
     title: "Connect your wallet",
     body: "Use Freighter or xBull. Match the network badge in the footer (Testnet vs Mainnet) before you trade.",
+    image: "/guide/01-connect.svg",
+    alt: "Wallet connect screen showing Freighter and xBull options with network badge",
   },
   {
     title: "Fund and reserve XLM",
     body: "Keep enough XLM for network fees and Stellar base reserves. On testnet, Friendbot can fund a new account.",
+    image: "/guide/02-fund.svg",
+    alt: "Account balance panel showing XLM balance and base reserve requirement",
   },
   {
     title: "Add a trustline if needed",
     body: "Non-XLM receive assets usually need a trustline. Approve the trustline transaction in your wallet when prompted.",
+    image: "/guide/03-trustline.svg",
+    alt: "Trustline approval prompt in the wallet for the receive asset",
   },
   {
     title: "Pick a pair and enter a small amount",
     body: "Choose pay/receive assets, enter a modest size for your first live swap, and wait for the best-route quote.",
+    image: "/guide/04-pair.svg",
+    alt: "Swap card with pay and receive assets selected and a best-route quote displayed",
   },
   {
     title: "Set slippage and review the route",
     body: "Start near 0.5% slippage unless markets are moving quickly. Read high-impact warnings before confirming.",
+    image: "/guide/05-slippage.svg",
+    alt: "Slippage selector set to 0.5% with route details and impact level shown",
   },
   {
     title: "Confirm in your wallet",
     body: "Review amounts in the wallet prompt, sign, then track status in the app. StellarRoute never holds your keys.",
+    image: "/guide/06-confirm.svg",
+    alt: "Wallet confirmation popup showing PathPaymentStrictSend with amounts and fee",
   },
 ] as const;
 
@@ -84,6 +96,14 @@ export default function FirstSwapGuidePage() {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {step.body}
               </p>
+              <img
+                src={step.image}
+                alt={step.alt}
+                width={640}
+                height={360}
+                loading="lazy"
+                className="mt-4 w-full rounded-lg border"
+              />
             </li>
           ))}
         </ol>

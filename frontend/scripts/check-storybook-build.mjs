@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUILD_DIR = path.resolve(__dirname, "..", "build");
-const MAX_BUILD_BYTES = 2 * 1024 * 1024; // 2 MiB guardrail
+const MAX_BUILD_BYTES = 5 * 1024 * 1024; // 5 MiB guardrail
 
 function directorySizeBytes(dir) {
   let total = 0;

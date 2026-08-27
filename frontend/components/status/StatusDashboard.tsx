@@ -16,9 +16,13 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
+  Database,
+  HardDrive,
+  Zap,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useHealth, useHealthDeps } from '@/hooks/useApi';
+import { useHealth, useHealthDeps, useCacheMetrics, usePoolStats } from '@/hooks/useApi';
 import { getTraderErrorCopy } from '@/lib/api/trader-error-copy';
 import { STATUS_PAGE_REFRESH_MS } from '@/lib/api/client';
 
@@ -55,6 +59,63 @@ const STATUS_BG = {
   not_configured: 'bg-muted/50 border-border',
   unknown: 'bg-muted/50 border-border',
 };
+
+// ---------------------------------------------------------------------------
+// KPI Card — read-only metric display
+// ---------------------------------------------------------------------------
+
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  description?: string;
+  icon: React.ReactNode;
+  loading?: boolean;
+}
+
+function KpiCard({ label, value, description, icon, loading }: KpiCardProps) {
+  return (
+    <Card className="bg-muted/30">
+      <CardContent className="flex items-center gap-4 py-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <p className="text-2xl font-bold truncate">
+            {loading ? (
+              <span className="inline-block h-6 w-16 animate-pulse rounded bg-muted" />
+            ) : (
+              value
+            )}
+          </p>
+          {description && (
+            <p className="text-xs text-muted-foreground truncate">{description}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+
+function formatPercent(ratio: number): string {
+  if (!Number.isFinite(ratio)) return '—';
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+function formatNumber(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
+// ---------------------------------------------------------------------------
+// Status helpers
+// ---------------------------------------------------------------------------
 
 function getStatusKey(status: string): keyof typeof STATUS_ICONS {
   const lowerStatus = status.toLowerCase();
@@ -127,13 +188,25 @@ export function StatusDashboard() {
     refresh: refreshDeps,
   } = useHealthDeps(healthIntervalMs);
 
+  const {
+    data: cacheData,
+    loading: cacheLoading,
+    refresh: refreshCache,
+  } = useCacheMetrics(healthIntervalMs);
+
+  const {
+    data: poolData,
+    loading: poolLoading,
+    refresh: refreshPool,
+  } = usePoolStats(healthIntervalMs);
+
   const loading = healthLoading || depsLoading;
 
   useEffect(() => {
     if (!healthLoading && !depsLoading && (healthData || depsData)) {
       setLastUpdated(new Date());
     }
-  }, [healthLoading, depsLoading, healthData, depsData]);
+  }, [healthLoading, depsLoading, healthData, depsData, cacheData, poolData]);
 
   const rawError = healthError ?? depsError ?? null;
   const errorMessage = rawError ? getTraderErrorCopy(rawError).headline : null;
@@ -141,7 +214,9 @@ export function StatusDashboard() {
   const handleRefresh = useCallback(() => {
     refreshHealth();
     refreshDeps();
-  }, [refreshHealth, refreshDeps]);
+    refreshCache();
+    refreshPool();
+  }, [refreshHealth, refreshDeps, refreshCache, refreshPool]);
 
   if (loading && !healthData) {
     return (
@@ -250,6 +325,52 @@ export function StatusDashboard() {
                 <ComponentStatusItem key={name} name={name} status={status} />
               ))
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {(cacheData || poolData || cacheLoading || poolLoading) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Performance KPIs
+            </CardTitle>
+            <CardDescription>
+              Read-only metrics from the StellarRoute API
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <KpiCard
+                label="Cache Hit Ratio"
+                value={cacheData ? formatPercent(cacheData.hit_ratio) : '—'}
+                description={`${formatNumber(cacheData?.quote_hits ?? 0)} hits / ${formatNumber(cacheData?.quote_misses ?? 0)} misses`}
+                icon={<HardDrive className="h-5 w-5" />}
+                loading={cacheLoading}
+              />
+              <KpiCard
+                label="Stale Rejections"
+                value={cacheData ? formatNumber(cacheData.stale_quote_rejections) : '—'}
+                description={`${formatNumber(cacheData?.stale_inputs_excluded ?? 0)} stale inputs excluded`}
+                icon={<Shield className="h-5 w-5" />}
+                loading={cacheLoading}
+              />
+              <KpiCard
+                label="DB Connections (Primary)"
+                value={poolData ? poolData.primary.size : '—'}
+                description={`${poolData?.primary.in_use ?? 0} in use / ${poolData?.primary.idle ?? 0} idle`}
+                icon={<Database className="h-5 w-5" />}
+                loading={poolLoading}
+              />
+              <KpiCard
+                label="DB Utilization (Primary)"
+                value={poolData ? `${Math.round(poolData.primary.utilisation * 100)}%` : '—'}
+                description={`Max ${poolData?.primary.max_connections ?? '—'} connections`}
+                icon={<Zap className="h-5 w-5" />}
+                loading={poolLoading}
+              />
+            </div>
           </CardContent>
         </Card>
       )}

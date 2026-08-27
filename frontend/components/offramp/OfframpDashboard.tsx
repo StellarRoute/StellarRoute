@@ -16,6 +16,7 @@ import {
   resolveOfframpMode,
 } from '@/lib/offramp';
 import type { OfframpMode } from '@/lib/offramp/types';
+import { useOfframpI18n } from '@/lib/offramp-i18n';
 import { cn } from '@/lib/utils';
 import { OfframpModeToggle } from './OfframpModeToggle';
 import { SourceAssetPicker } from './SourceAssetPicker';
@@ -34,6 +35,7 @@ export function OfframpDashboard() {
   const [accountName, setAccountName] = useState('');
   const [touchedAccount, setTouchedAccount] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
+  const { t } = useOfframpI18n();
 
   const asset =
     findOfframpSource(sourceId) ??
@@ -59,7 +61,7 @@ export function OfframpDashboard() {
 
   const accountNumberError =
     touchedAccount && accountNumber.length > 0 && !isValidNigerianAccountNumber(accountNumber)
-      ? 'Enter a valid 10-digit NUBAN account number.'
+      ? t('offramp.form.nubanError')
       : null;
 
   const canSubmit =
@@ -109,15 +111,13 @@ export function OfframpDashboard() {
         />
         <div className="relative max-w-2xl space-y-4">
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.28em] text-primary">
-            Cash corridor · {OFFRAMP_FIAT.flag} Naira first
+            {t('offramp.hero.eyebrow', { flag: OFFRAMP_FIAT.flag })}
           </p>
           <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1]">
-            Stablecoin to local fiat
+            {t('offramp.hero.title')}
           </h1>
           <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Move USDC (or bridge another coin into Stellar USDC) and cash out to
-            Nigerian Naira. Non-custodial on-chain legs; bank payout via partner
-            rails when settlement goes live.
+            {t('offramp.hero.description')}
           </p>
         </div>
       </header>
@@ -134,7 +134,7 @@ export function OfframpDashboard() {
           />
 
           <div className="space-y-2">
-            <Label htmlFor="offramp-amount">Amount</Label>
+            <Label htmlFor="offramp-amount">{t('offramp.form.amountLabel')}</Label>
             <div className="relative">
               <Input
                 id="offramp-amount"
@@ -153,15 +153,15 @@ export function OfframpDashboard() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              On {asset.chainLabel}
+              {t('offramp.form.onChain', { chain: asset.chainLabel })}
               {displayMode === 'bridge' &&
               !asset.isStellarUsdc &&
               asset.kind !== 'stellar_xlm' &&
               asset.kind !== 'stellar_usdc'
-                ? ' · will bridge into Stellar USDC before payout'
+                ? t('offramp.form.bridgeHint')
                 : null}
               {asset.status === 'swap_then_offramp'
-                ? ' · swap to USDC on Stellar, then cash out'
+                ? t('offramp.form.swapHint')
                 : null}
             </p>
           </div>
@@ -201,14 +201,12 @@ export function OfframpDashboard() {
               data-testid="offramp-continue"
             >
               {displayMode === 'direct'
-                ? 'Preview Naira payout'
-                : 'Preview bridge + Naira payout'}
+                ? t('offramp.form.previewDirect')
+                : t('offramp.form.previewBridge')}
             </Button>
             <p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
               <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              Bank credits are not live yet. This dashboard locks your route and
-              quote shape so partner settlement can plug in without redesigning
-              the flow.
+              {t('offramp.form.notLiveNotice')}
             </p>
           </div>
 
@@ -222,14 +220,16 @@ export function OfframpDashboard() {
                 <CheckCircle2 className="mt-0.5 size-5 text-success" />
                 <div>
                   <p className="font-semibold text-foreground">
-                    Route ready · ₦{quote.receiveNgn} indicative
+                    {t('offramp.ready.title', { amount: quote.receiveNgn })}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {displayMode === 'direct'
-                      ? 'Stellar USDC → Nigerian bank.'
-                      : `${asset.symbol} on ${asset.chainLabel} → bridge to Stellar USDC → Nigerian bank.`}{' '}
-                    Connect a wallet and complete the on-chain leg when payout
-                    partners are enabled on this deployment.
+                      ? t('offramp.ready.directDescription')
+                      : t('offramp.ready.bridgeDescription', {
+                          symbol: asset.symbol,
+                          chain: asset.chainLabel,
+                        })}{' '}
+                    {t('offramp.ready.walletHint')}
                   </p>
                 </div>
               </div>
@@ -245,7 +245,7 @@ export function OfframpDashboard() {
             )}
           >
             <p className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              How it moves
+              {t('offramp.rail.title')}
             </p>
             <OfframpRouteRail steps={routeSteps} />
           </div>
@@ -256,3 +256,4 @@ export function OfframpDashboard() {
     </div>
   );
 }
+

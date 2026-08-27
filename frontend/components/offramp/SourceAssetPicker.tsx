@@ -1,5 +1,6 @@
 'use client';
 
+import { useOfframpI18n } from '@/lib/offramp-i18n';
 import { cn } from '@/lib/utils';
 import type { OfframpSourceAsset } from '@/lib/offramp/types';
 
@@ -12,19 +13,6 @@ interface SourceAssetPickerProps {
   className?: string;
 }
 
-function statusLabel(asset: OfframpSourceAsset): string {
-  switch (asset.status) {
-    case 'ready':
-      return 'Ready';
-    case 'bridge_required':
-      return 'Bridge';
-    case 'swap_then_offramp':
-      return 'Swap';
-    case 'coming_soon':
-      return 'Soon';
-  }
-}
-
 export function SourceAssetPicker({
   assets,
   selectedId,
@@ -32,17 +20,32 @@ export function SourceAssetPicker({
   directOnly = false,
   className,
 }: SourceAssetPickerProps) {
+  const { t } = useOfframpI18n();
+
+  function statusLabel(asset: OfframpSourceAsset): string {
+    switch (asset.status) {
+      case 'ready':
+        return t('offramp.source.statusReady');
+      case 'bridge_required':
+        return t('offramp.source.statusBridge');
+      case 'swap_then_offramp':
+        return t('offramp.source.statusSwap');
+      case 'coming_soon':
+        return t('offramp.source.statusSoon');
+    }
+  }
+
   return (
     <div className={cn('space-y-3', className)} data-testid="offramp-source-picker">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-semibold tracking-tight">
-            You send
+            {t('offramp.source.title')}
           </h2>
           <p className="text-sm text-muted-foreground">
             {directOnly
-              ? 'Direct path uses Stellar USDC only.'
-              : 'Choose any listed coin — we bridge into Stellar USDC first when needed.'}
+              ? t('offramp.source.directDescription')
+              : t('offramp.source.bridgeDescription')}
           </p>
         </div>
       </div>
@@ -122,3 +125,4 @@ export function SourceAssetPicker({
     </div>
   );
 }
+

@@ -1,5 +1,6 @@
 'use client';
 
+import { useOfframpI18n } from '@/lib/offramp-i18n';
 import { cn } from '@/lib/utils';
 import type { OfframpMode } from '@/lib/offramp/types';
 
@@ -9,36 +10,41 @@ interface OfframpModeToggleProps {
   className?: string;
 }
 
-const MODES: Array<{
-  id: OfframpMode;
-  title: string;
-  description: string;
-}> = [
-  {
-    id: 'direct',
-    title: 'Stellar USDC',
-    description: 'Cash out USDC you already hold on Stellar.',
-  },
-  {
-    id: 'bridge',
-    title: 'Bridge + offramp',
-    description: 'Pick any supported coin, bridge to Stellar, then Naira.',
-  },
-];
-
 export function OfframpModeToggle({
   mode,
   onChange,
   className,
 }: OfframpModeToggleProps) {
+  const { t } = useOfframpI18n();
+
+  const modes: Array<{
+    id: OfframpMode;
+    badge: string;
+    title: string;
+    description: string;
+  }> = [
+    {
+      id: 'direct',
+      badge: t('offramp.mode.directBadge'),
+      title: t('offramp.mode.directTitle'),
+      description: t('offramp.mode.directDesc'),
+    },
+    {
+      id: 'bridge',
+      badge: t('offramp.mode.bridgeBadge'),
+      title: t('offramp.mode.bridgeTitle'),
+      description: t('offramp.mode.bridgeDesc'),
+    },
+  ];
+
   return (
     <div
       className={cn('grid gap-3 sm:grid-cols-2', className)}
       role="radiogroup"
-      aria-label="Offramp path"
+      aria-label={t('offramp.mode.groupLabel')}
       data-testid="offramp-mode-toggle"
     >
-      {MODES.map((item) => {
+      {modes.map((item) => {
         const selected = mode === item.id;
         return (
           <button
@@ -62,7 +68,7 @@ export function OfframpModeToggle({
                 selected ? 'text-primary' : 'text-muted-foreground',
               )}
             >
-              {item.id === 'direct' ? 'Fastest' : 'Any coin'}
+              {item.badge}
             </span>
             <span className="block font-display text-lg font-semibold tracking-tight text-foreground">
               {item.title}
@@ -82,3 +88,4 @@ export function OfframpModeToggle({
     </div>
   );
 }
+

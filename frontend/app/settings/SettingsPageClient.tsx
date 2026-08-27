@@ -147,6 +147,78 @@ export function SettingsPageClient() {
           </CardContent>
         </Card>
 
+        {/* Developer & Feature Flag Help — issue #1297 */}
+        <Card data-testid="settings-feature-flags-help">
+          <CardHeader>
+            <CardTitle>Feature Flags &amp; URL Reference</CardTitle>
+            <CardDescription>
+              StellarRoute keeps a clean header without extra navigation chrome. You can access this page directly at <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">/settings</code>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Experimental UI capabilities are controlled via client feature flags configured via environment variables or remote flags configuration:
+            </p>
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">routes_beta</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FLAG_ROUTES_BETA</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Enables the experimental routing inspector and alternative path explorer.</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">batch_swaps</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FLAG_BATCH_SWAPS</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Enables multi-operation atomic batch swap execution capabilities.</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">swap_ui_v2</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FLAG_SWAP_UI_V2</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Enables the wide Stellar-centered cross-chain corridor and route deck view.</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">transaction_history</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Enables the user transaction history tab in the swap interface.</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">advanced_slippage</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Enables customized sub-basis point and dynamic slippage controls.</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">analytics</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FEATURE_ANALYTICS</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Enables aggregated liquidity and volume metrics analytics dashboard.</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-foreground">real_xdr</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">NEXT_PUBLIC_FLAG_REAL_XDR</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Security-pinned default (on): API prepare → Freighter wallet sign → API submit path.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="border-destructive/50">
           <CardHeader>
             <CardTitle className="text-destructive">{t('settings.reset.title')}</CardTitle>

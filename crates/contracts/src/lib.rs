@@ -26,3 +26,5 @@ mod fuzz_targets;
 mod test;
 #[cfg(test)]
 mod test_multihop_rollback;
+#[cfg(test)]
+mod e2e_harness_doc_props;

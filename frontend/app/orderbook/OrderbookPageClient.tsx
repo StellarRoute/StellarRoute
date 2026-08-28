@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ViewState } from '@/components/shared/ViewState';
+import { OrderbookSkeleton } from '@/components/shared/OrderbookSkeleton';
 import { useOrderbook, usePairs } from '@/hooks/useApi';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
@@ -240,11 +241,7 @@ export function OrderbookPageClient() {
           </div>
 
           {orderbookLoading ? (
-            <ViewState
-              variant="loading"
-              title={t('orderbook.loading')}
-              description=""
-            />
+            <OrderbookSkeleton />
           ) : !orderbook ? (
             <div className="text-center p-4 text-xs text-muted-foreground font-mono">
               {t('orderbook.standby')}

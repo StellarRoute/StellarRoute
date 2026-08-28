@@ -127,6 +127,16 @@ async fn openapi_spec_documents_swap_prepare_and_submit_under_swap_tag() {
         "SwapPrepareResponse must document network_passphrase, got {}",
         schemas["SwapPrepareResponse"]
     );
+    assert!(
+        prepare_props["xdr_envelope"].is_object(),
+        "SwapPrepareResponse must document xdr_envelope, got {}",
+        schemas["SwapPrepareResponse"]
+    );
+    assert!(
+        prepare_props["expires_at"].is_object(),
+        "SwapPrepareResponse must document expires_at, got {}",
+        schemas["SwapPrepareResponse"]
+    );
 }
 
 #[test]

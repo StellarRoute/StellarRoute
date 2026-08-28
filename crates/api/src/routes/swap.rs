@@ -34,15 +34,6 @@ use crate::{
 const DEFAULT_PREPARE_TTL_SECS: i64 = 120;
 const DEFAULT_SLIPPAGE_BPS: u32 = 50;
 
-// Quote submission status codes
-const STATUS_ALREADY_SUBMITTED: &str = "already_submitted";
-const STATUS_PERMANENTLY_FAILED: &str = "permanently_failed";
-const STATUS_SUBMITTING_WITHOUT_HASH: &str = "submitting_without_hash";
-const STATUS_MISSING_NETWORK_PASSPHRASE: &str = "missing_network_passphrase";
-const STATUS_ACTIVE_PREPARE_EXISTS: &str = "active_prepare_exists";
-const STATUS_INVALID_TRANSITION: &str = "invalid_transition";
-const STATUS_BAD_SEQUENCE: &str = "bad_sequence";
-
 /// POST /api/v1/swap/prepare
 #[utoipa::path(
     post,
@@ -73,13 +64,19 @@ pub async fn prepare_swap(
         Ok(_) => record_swap_prepare(elapsed, "none"),
         Err(e) => {
             record_swap_prepare(elapsed, prepare_error_class(e));
-            emit_prepare_rejected(
-                &state,
-                &AuditRedactor::redact_account(body.sender.trim()),
+            state.swap_submit_audit_writer.emit_swap_submit(
+                "none",
+                None::<String>,
+                AuditRedactor::redact_account(body.sender.trim()),
                 request_id.as_str(),
                 &trace_id,
-                started,
+                elapsed.as_millis() as u64,
+                SwapSubmitOutcome::Failed,
                 prepare_error_class(e),
+                serde_json::json!({
+                    "event": "prepare_rejected",
+                    "execution_mode": "classic_path_payment",
+                }),
             );
         }
     }
@@ -87,15 +84,21 @@ pub async fn prepare_swap(
 
     let prepared = result?;
 
-    emit_prepare_success(
-        &state,
+    state.swap_submit_audit_writer.emit_swap_submit(
         &prepared.quote_id,
-        &AuditRedactor::redact_account(body.sender.trim()),
+        None::<String>,
+        AuditRedactor::redact_account(body.sender.trim()),
         request_id.as_str(),
         &trace_id,
-        started,
-        &prepared.expected_output,
-        &prepared.min_output,
+        started.elapsed().as_millis() as u64,
+        SwapSubmitOutcome::Prepared,
+        "none",
+        serde_json::json!({
+            "expected_output": prepared.expected_output,
+            "min_output": prepared.min_output,
+            "execution_mode": prepared.execution_mode,
+            "expires_at": prepared.expires_at,
+        }),
     );
 
     Ok((
@@ -273,8 +276,8 @@ fn prepare_error_class(err: &ApiError) -> &'static str {
         ApiError::NotExecutable(_) => "simulation_failed",
         ApiError::StaleMarketData { .. } => "quote_expired",
         ApiError::DependencyUnavailable(_) => "rpc_error",
-        ApiError::Conflict { status, .. } if status == STATUS_ACTIVE_PREPARE_EXISTS => {
-            STATUS_ACTIVE_PREPARE_EXISTS
+        ApiError::Conflict { status, .. } if status == "active_prepare_exists" => {
+            "active_prepare_exists"
         }
         _ => "internal",
     }
@@ -310,17 +313,19 @@ pub async fn submit_swap(
     match &outcome {
         Ok((response, status, sender_hash)) => {
             record_swap_submit(elapsed, "none");
-            let event = if response.status == "pending" { "broadcast_pending" } else { "broadcast_success" };
-            emit_submit_success(
-                &state,
+            state.swap_submit_audit_writer.emit_swap_submit(
                 &body.quote_id,
-                &response.tx_hash,
+                Some(&response.tx_hash),
                 sender_hash,
                 request_id.as_str(),
                 &trace_id,
-                started,
-                &response.status,
-                event,
+                elapsed.as_millis() as u64,
+                SwapSubmitOutcome::Submitted,
+                "none",
+                serde_json::json!({
+                    "event": if response.status == "pending" { "broadcast_pending" } else { "broadcast_success" },
+                    "status": response.status,
+                }),
             );
             swap_inflight_dec("submit");
             return Ok((
@@ -380,7 +385,7 @@ async fn submit_swap_inner(
             message: "Quote has already been submitted".to_string(),
             quote_id: body.quote_id.clone(),
             tx_hash: quote.tx_hash.clone().unwrap_or_default(),
-            status: STATUS_ALREADY_SUBMITTED.to_string(),
+            status: "already_submitted".to_string(),
         });
     }
 
@@ -389,7 +394,7 @@ async fn submit_swap_inner(
             message: "Quote permanently failed; request a fresh prepare".to_string(),
             quote_id: body.quote_id.clone(),
             tx_hash: quote.tx_hash.clone().unwrap_or_default(),
-            status: STATUS_PERMANENTLY_FAILED.to_string(),
+            status: "permanently_failed".to_string(),
         });
     }
 
@@ -406,14 +411,14 @@ async fn submit_swap_inner(
                     message: "Quote submission window expired; request a fresh prepare".into(),
                     quote_id: body.quote_id.clone(),
                     tx_hash: String::new(),
-                    status: STATUS_PERMANENTLY_FAILED.into(),
+                    status: "permanently_failed".into(),
                 });
             }
             return Err(ApiError::Conflict {
                 message: "Quote is submitting without a bound transaction hash; request operator reconciliation or a fresh prepare".into(),
                 quote_id: body.quote_id.clone(),
                 tx_hash: String::new(),
-                status: STATUS_SUBMITTING_WITHOUT_HASH.into(),
+                status: "submitting_without_hash".into(),
             });
         };
         return reconcile_or_rebroadcast(
@@ -434,16 +439,16 @@ async fn submit_swap_inner(
             .swap_quote_store
             .mark_failed(body.quote_id.trim())
             .await;
-        emit_submit_failed(
-            &state,
+        state.swap_submit_audit_writer.emit_swap_submit(
             &body.quote_id,
-            None,
+            None::<String>,
             &quote.sender_account_hash,
             request_id,
             trace_id,
-            started,
+            started.elapsed().as_millis() as u64,
+            SwapSubmitOutcome::Failed,
             "quote_expired",
-            "quote_expired",
+            serde_json::json!({ "event": "quote_expired" }),
         );
         return Err(ApiError::QuoteExpired {
             quote_id: body.quote_id.clone(),
@@ -492,14 +497,14 @@ async fn submit_swap_inner(
                         message: "Quote submission window expired; request a fresh prepare".into(),
                         quote_id: body.quote_id.clone(),
                         tx_hash: String::new(),
-                        status: STATUS_PERMANENTLY_FAILED.into(),
+                        status: "permanently_failed".into(),
                     });
                 }
                 return Err(ApiError::Conflict {
                     message: "Quote is submitting without a bound transaction hash; request operator reconciliation or a fresh prepare".into(),
                     quote_id: body.quote_id.clone(),
                     tx_hash: String::new(),
-                    status: STATUS_SUBMITTING_WITHOUT_HASH.into(),
+                    status: "submitting_without_hash".into(),
                 });
             };
             return reconcile_or_rebroadcast(
@@ -518,7 +523,7 @@ async fn submit_swap_inner(
                 message: "Quote permanently failed; request a fresh prepare".to_string(),
                 quote_id: body.quote_id.clone(),
                 tx_hash: String::new(),
-                status: STATUS_PERMANENTLY_FAILED.to_string(),
+                status: "permanently_failed".to_string(),
             });
         }
     };
@@ -543,7 +548,7 @@ fn verify_submit_envelope(
                     .into(),
             quote_id: body.quote_id.clone(),
             tx_hash: quote.tx_hash.clone().unwrap_or_default(),
-            status: STATUS_MISSING_NETWORK_PASSPHRASE.into(),
+            status: "missing_network_passphrase".into(),
         });
     }
 
@@ -556,16 +561,16 @@ fn verify_submit_envelope(
         Ok(computed) => {
             if let Some(expected) = quote.tx_hash.as_deref() {
                 if computed != expected {
-                    emit_submit_failed(
-                        &state,
+                    state.swap_submit_audit_writer.emit_swap_submit(
                         &body.quote_id,
                         Some(expected),
                         &quote.sender_account_hash,
                         request_id,
                         trace_id,
-                        started,
+                        started.elapsed().as_millis() as u64,
+                        SwapSubmitOutcome::Failed,
                         "tx_hash_mismatch",
-                        "submit_tx_hash_mismatch",
+                        serde_json::json!({ "event": "submit_tx_hash_mismatch" }),
                     );
                     return Err(ApiError::Validation(
                         "signed transaction hash does not match the quote bound at claim".into(),
@@ -575,16 +580,16 @@ fn verify_submit_envelope(
             Ok(computed)
         }
         Err(err) => {
-            emit_submit_failed(
-                &state,
+            state.swap_submit_audit_writer.emit_swap_submit(
                 &body.quote_id,
-                None,
+                None::<String>,
                 &quote.sender_account_hash,
                 request_id,
                 trace_id,
-                started,
+                started.elapsed().as_millis() as u64,
+                SwapSubmitOutcome::Failed,
                 "auth_failure",
-                "submit_auth_failure",
+                serde_json::json!({ "event": "submit_auth_failure" }),
             );
             Err(map_envelope_error(err))
         }
@@ -616,16 +621,16 @@ async fn reconcile_or_rebroadcast(
                 .finalize_submit(body.quote_id.trim(), stored_hash)
                 .await
                 .map_err(|e| map_store_error_for_quote(e, body.quote_id.trim()))?;
-            emit_submit_success(
-                &state,
+            state.swap_submit_audit_writer.emit_swap_submit(
                 &body.quote_id,
-                stored_hash,
+                Some(stored_hash),
                 &quote.sender_account_hash,
                 request_id,
                 trace_id,
-                started,
-                &found.status,
-                "reconciliation_success",
+                started.elapsed().as_millis() as u64,
+                SwapSubmitOutcome::Submitted,
+                "none",
+                serde_json::json!({ "event": "reconciliation_success", "status": found.status }),
             );
             let (resp, status) = submit_response(body, quote, found);
             Ok((resp, status, quote.sender_account_hash.clone()))
@@ -638,35 +643,35 @@ async fn reconcile_or_rebroadcast(
                     .swap_quote_store
                     .mark_failed(body.quote_id.trim())
                     .await;
-                emit_submit_failed(
-                    &state,
+                state.swap_submit_audit_writer.emit_swap_submit(
                     &body.quote_id,
                     Some(stored_hash),
                     &quote.sender_account_hash,
                     request_id,
                     trace_id,
-                    started,
+                    started.elapsed().as_millis() as u64,
+                    SwapSubmitOutcome::Failed,
                     "timebounds_expired",
-                    "reconciliation_timebounds_expired",
+                    serde_json::json!({ "event": "reconciliation_timebounds_expired" }),
                 );
                 return Err(ApiError::Conflict {
                     message: "Transaction timebounds expired before confirmation; request a fresh prepare"
                         .into(),
                     quote_id: body.quote_id.clone(),
                     tx_hash: stored_hash.to_string(),
-                    status: STATUS_PERMANENTLY_FAILED.into(),
+                    status: "permanently_failed".into(),
                 });
             }
-            emit_submit_failed(
-                &state,
+            state.swap_submit_audit_writer.emit_swap_submit(
                 &body.quote_id,
                 Some(stored_hash),
                 &quote.sender_account_hash,
                 request_id,
                 trace_id,
-                started,
+                started.elapsed().as_millis() as u64,
+                SwapSubmitOutcome::Failed,
                 "reconcile_absent",
-                "reconciliation_absent_rebroadcast",
+                serde_json::json!({ "event": "reconciliation_absent_rebroadcast" }),
             );
             broadcast_and_finalize(
                 state,
@@ -680,16 +685,16 @@ async fn reconcile_or_rebroadcast(
             .await
         }
         Err(e) if e.is_transient_transport() => {
-            emit_submit_failed(
-                &state,
+            state.swap_submit_audit_writer.emit_swap_submit(
                 &body.quote_id,
                 Some(stored_hash),
                 &quote.sender_account_hash,
                 request_id,
                 trace_id,
-                started,
+                started.elapsed().as_millis() as u64,
+                SwapSubmitOutcome::Failed,
                 "reconcile_pending",
-                "reconciliation_pending",
+                serde_json::json!({ "event": "reconciliation_pending" }),
             );
             Err(ApiError::DependencyUnavailable(
                 "Horizon reconciliation pending; retry submit without re-preparing".into(),
@@ -736,31 +741,31 @@ async fn broadcast_and_finalize(
                         .finalize_submit(body.quote_id.trim(), expected_tx_hash)
                         .await
                         .map_err(|e| map_store_error_for_quote(e, body.quote_id.trim()))?;
-                    emit_submit_success(
-                        &state,
-                        &body.quote_id,
-                        expected_tx_hash,
-                        &quote.sender_account_hash,
-                        request_id,
-                        trace_id,
-                        started,
-                        "pending",
-                        "reconciliation_success_after_timeout",
-                    );
-                    let (resp, status) = submit_response(body, quote, found);
-                    return Ok((resp, status, quote.sender_account_hash.clone()));
-                }
-                Ok(None) | Err(_) => {
-                    emit_submit_failed(
-                        &state,
+                    state.swap_submit_audit_writer.emit_swap_submit(
                         &body.quote_id,
                         Some(expected_tx_hash),
                         &quote.sender_account_hash,
                         request_id,
                         trace_id,
-                        started,
+                        started.elapsed().as_millis() as u64,
+                        SwapSubmitOutcome::Submitted,
+                        "none",
+                        serde_json::json!({ "event": "reconciliation_success_after_timeout" }),
+                    );
+                    let (resp, status) = submit_response(body, quote, found);
+                    return Ok((resp, status, quote.sender_account_hash.clone()));
+                }
+                Ok(None) | Err(_) => {
+                    state.swap_submit_audit_writer.emit_swap_submit(
+                        &body.quote_id,
+                        Some(expected_tx_hash),
+                        &quote.sender_account_hash,
+                        request_id,
+                        trace_id,
+                        started.elapsed().as_millis() as u64,
+                        SwapSubmitOutcome::Failed,
                         "broadcast_pending_reconcile",
-                        "broadcast_pending_reconcile",
+                        serde_json::json!({ "event": "broadcast_pending_reconcile" }),
                     );
                     return Err(ApiError::DependencyUnavailable(
                         "Broadcast timed out; quote remains submitting for reconciliation — retry submit"
@@ -775,16 +780,16 @@ async fn broadcast_and_finalize(
                 .mark_failed(body.quote_id.trim())
                 .await;
             let class = err.metrics_class();
-            emit_submit_failed(
-                &state,
+            state.swap_submit_audit_writer.emit_swap_submit(
                 &body.quote_id,
-                None,
+                None::<String>,
                 &quote.sender_account_hash,
                 request_id,
                 trace_id,
-                started,
+                started.elapsed().as_millis() as u64,
+                SwapSubmitOutcome::Failed,
                 class,
-                "broadcast_permanent_failure",
+                serde_json::json!({ "event": "broadcast_permanent_failure" }),
             );
             return Err(map_broadcast_error(err));
         }
@@ -842,13 +847,13 @@ fn map_store_error(err: SwapStoreError) -> ApiError {
             message: "An active prepare already exists for this sender; wait for expiry or submit/fail it first".into(),
             quote_id: String::new(),
             tx_hash: String::new(),
-            status: STATUS_ACTIVE_PREPARE_EXISTS.into(),
+            status: "active_prepare_exists".into(),
         },
         SwapStoreError::InvalidTransition => ApiError::Conflict {
             message: "Invalid quote state transition".into(),
             quote_id: String::new(),
             tx_hash: String::new(),
-            status: STATUS_INVALID_TRANSITION.into(),
+            status: "invalid_transition".into(),
         },
         SwapStoreError::Database(e) => ApiError::Internal(Arc::new(anyhow::anyhow!(e))),
     }
@@ -886,7 +891,7 @@ fn map_broadcast_error(err: BroadcastError) -> ApiError {
             message: "Account sequence mismatch (tx_bad_seq); request a fresh prepare".into(),
             quote_id: String::new(),
             tx_hash: String::new(),
-            status: STATUS_BAD_SEQUENCE.into(),
+            status: "bad_sequence".into(),
         },
         BroadcastError::Malformed => {
             ApiError::Validation("Transaction is malformed and cannot be submitted".into())
@@ -936,8 +941,8 @@ fn submit_error_class(err: &ApiError) -> &'static str {
     match err {
         ApiError::QuoteExpired { .. } => "quote_expired",
         ApiError::QuoteNotFound { .. } => "quote_not_found",
-        ApiError::Conflict { status, .. } if status == STATUS_PERMANENTLY_FAILED => STATUS_PERMANENTLY_FAILED,
-        ApiError::Conflict { status, .. } if status == STATUS_BAD_SEQUENCE => STATUS_BAD_SEQUENCE,
+        ApiError::Conflict { status, .. } if status == "permanently_failed" => "permanently_failed",
+        ApiError::Conflict { status, .. } if status == "bad_sequence" => "bad_sequence",
         ApiError::Conflict { .. } => "duplicate_quote",
         ApiError::Validation(_) => "validation",
         ApiError::DependencyUnavailable(_) => "rpc_error",
@@ -954,144 +959,6 @@ fn validate_stellar_account(sender: &str) -> Result<()> {
         ));
     }
     Ok(())
-}
-
-/// Emit unified audit log entry with automatic elapsed time calculation.
-fn emit_audit_log(
-    state: &AppState,
-    quote_id: &str,
-    tx_hash: Option<&str>,
-    sender_hash: &str,
-    request_id: &str,
-    trace_id: &str,
-    started: Instant,
-    outcome: SwapSubmitOutcome,
-    error_class: &'static str,
-    event: &str,
-    details: serde_json::Value,
-) {
-    state.swap_submit_audit_writer.emit_swap_submit(
-        quote_id,
-        tx_hash,
-        sender_hash,
-        request_id,
-        trace_id,
-        started.elapsed().as_millis() as u64,
-        outcome,
-        error_class,
-        details.into_iter()
-            .chain(std::iter::once(("event".to_string(), serde_json::json!(event))))
-            .collect::<serde_json::Map<String, serde_json::Value>>()
-            .into(),
-    );
-}
-
-/// Emit prepare rejection audit log.
-fn emit_prepare_rejected(
-    state: &AppState,
-    sender_hash: &str,
-    request_id: &str,
-    trace_id: &str,
-    started: Instant,
-    error_class: &'static str,
-) {
-    emit_audit_log(
-        state,
-        "none",
-        None,
-        sender_hash,
-        request_id,
-        trace_id,
-        started,
-        SwapSubmitOutcome::Failed,
-        error_class,
-        "prepare_rejected",
-        serde_json::json!({ "execution_mode": "classic_path_payment" }),
-    );
-}
-
-/// Emit prepare success audit log.
-fn emit_prepare_success(
-    state: &AppState,
-    quote_id: &str,
-    sender_hash: &str,
-    request_id: &str,
-    trace_id: &str,
-    started: Instant,
-    expected_output: &str,
-    min_output: &str,
-) {
-    emit_audit_log(
-        state,
-        quote_id,
-        None,
-        sender_hash,
-        request_id,
-        trace_id,
-        started,
-        SwapSubmitOutcome::Prepared,
-        "none",
-        "prepare_success",
-        serde_json::json!({
-            "expected_output": expected_output,
-            "min_output": min_output,
-            "execution_mode": "classic_path_payment",
-        }),
-    );
-}
-
-/// Emit submit result audit log for various failure scenarios.
-fn emit_submit_failed(
-    state: &AppState,
-    quote_id: &str,
-    tx_hash: Option<&str>,
-    sender_hash: &str,
-    request_id: &str,
-    trace_id: &str,
-    started: Instant,
-    error_class: &'static str,
-    event: &str,
-) {
-    emit_audit_log(
-        state,
-        quote_id,
-        tx_hash,
-        sender_hash,
-        request_id,
-        trace_id,
-        started,
-        SwapSubmitOutcome::Failed,
-        error_class,
-        event,
-        serde_json::json!({}),
-    );
-}
-
-/// Emit submit success (reconciliation or broadcast accepted).
-fn emit_submit_success(
-    state: &AppState,
-    quote_id: &str,
-    tx_hash: &str,
-    sender_hash: &str,
-    request_id: &str,
-    trace_id: &str,
-    started: Instant,
-    status: &str,
-    event: &str,
-) {
-    emit_audit_log(
-        state,
-        quote_id,
-        Some(tx_hash),
-        sender_hash,
-        request_id,
-        trace_id,
-        started,
-        SwapSubmitOutcome::Submitted,
-        "none",
-        event,
-        serde_json::json!({ "status": status }),
-    );
 }
 
 #[cfg(test)]

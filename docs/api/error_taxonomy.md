@@ -102,6 +102,11 @@ The JS SDK (`@stellarroute/sdk-js`) maps these codes to the `StellarRouteApiErro
 | `isRateLimited()` | `status === 429 \|\| code === 'rate_limit_exceeded'` |
 | `isValidationError()` | `status === 400 \|\| ['validation_error', 'invalid_asset'].includes(code)` |
 
+The SDK also synthesizes three client-side error codes for transport/configuration failures that never reach the server:
+- `network_error`: The request failed at the transport layer (e.g. connection timeout, CORS, or DNS failure).
+- `network_mismatch`: The prepare quote's network passphrase does not match the active wallet's network (surfaced before signing).
+- `unknown_error`: An unclassified error occurred during SDK execution.
+
 ## WebSocket Errors
 
 WebSocket endpoints use the same error codes as REST endpoints, plus additional WebSocket-specific codes:
@@ -110,7 +115,7 @@ WebSocket endpoints use the same error codes as REST endpoints, plus additional 
 |------|-------------|
 | `unknown_action` | The `action` field in a client message is not recognized. |
 | `invalid_subscription` | Subscription object is malformed or missing required fields. |
-| `too_many_subscriptions` | Connection has reached the maximum subscriptions per connection limit. |
+| `too_many_subscriptions` | Connection has reached the maximum subscriptions per connection limit. (not currently emitted) |
 
 See [WebSocket Quote Stream API](websocket.md) for complete WebSocket protocol documentation and error handling guidance.
 

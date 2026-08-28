@@ -1,13 +1,13 @@
 'use client';
+
 import { RotateCcw, Settings2 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { useSwapI18n } from '@/lib/swap-i18n';
 import { DeadlineSettings } from './DeadlineSettings';
 import { ExpertSettings } from './ExpertSettings';
@@ -41,10 +41,9 @@ export function SettingsPanel({
   onReset,
 }: SettingsPanelProps) {
   const { t } = useSwapI18n();
-
   return (
-    <Dialog>
-      <DialogTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
@@ -53,15 +52,16 @@ export function SettingsPanel({
           <Settings2 className="h-5 w-5 text-muted-foreground transition-transform duration-300 hover:rotate-90" />
           <span className="sr-only">{t('swap.settings.buttonLabel')}</span>
         </Button>
-      </DialogTrigger>
-      <DialogContent
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
         data-testid="settings-panel"
         className="w-[min(360px,calc(100vw-2rem))] rounded-[24px] border-border/40 bg-background/95 p-6 shadow-2xl backdrop-blur-xl"
       >
-        <DialogHeader className="mb-6 flex flex-row items-center justify-between space-y-0">
-          <DialogTitle className="text-lg font-bold tracking-tight">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-lg font-bold tracking-tight">
             Advanced Settings
-          </DialogTitle>
+          </h3>
           <Button
             variant="ghost"
             size="sm"
@@ -71,7 +71,8 @@ export function SettingsPanel({
             <RotateCcw className="h-3 w-3" />
             {t('settings.panel.reset')}
           </Button>
-        </DialogHeader>
+        </div>
+
         <div className="space-y-6">
           <SlippageSettings value={slippage} onChange={onSlippageChange} />
           <DeadlineSettings value={deadline} onChange={onDeadlineChange} />
@@ -84,7 +85,7 @@ export function SettingsPanel({
             onExtendedRouteDetailsChange={onExtendedRouteDetailsChange}
           />
         </div>
-      </DialogContent>
-    </Dialog>
+      </PopoverContent>
+    </Popover>
   );
 }

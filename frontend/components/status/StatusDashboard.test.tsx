@@ -1,11 +1,10 @@
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StatusDashboard } from './StatusDashboard';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockRefreshHealth = vi.fn();
 const mockRefreshDeps = vi.fn();
-const mockRefreshCache = vi.fn();
-const mockRefreshPool = vi.fn();
 
 const mockHealthData = {
   status: 'healthy',
@@ -26,24 +25,6 @@ const mockDepsData = {
   },
 };
 
-const mockCacheData = {
-  quote_hits: 12345,
-  quote_misses: 2345,
-  hit_ratio: 0.84,
-  stale_quote_rejections: 150,
-  stale_inputs_excluded: 42,
-};
-
-const mockPoolData = {
-  primary: {
-    max_connections: 20,
-    size: 10,
-    idle: 3,
-    in_use: 7,
-    utilisation: 0.7,
-  },
-};
-
 vi.mock('@/hooks/useApi', () => ({
   useHealth: vi.fn(() => ({
     data: mockHealthData,
@@ -56,18 +37,6 @@ vi.mock('@/hooks/useApi', () => ({
     loading: false,
     error: null,
     refresh: mockRefreshDeps,
-  })),
-  useCacheMetrics: vi.fn(() => ({
-    data: mockCacheData,
-    loading: false,
-    error: null,
-    refresh: mockRefreshCache,
-  })),
-  usePoolStats: vi.fn(() => ({
-    data: mockPoolData,
-    loading: false,
-    error: null,
-    refresh: mockRefreshPool,
   })),
 }));
 
@@ -83,13 +52,13 @@ describe('StatusDashboard', () => {
   it('renders loading state initially', async () => {
     const { useHealth, useHealthDeps } = await import('@/hooks/useApi');
     vi.mocked(useHealth).mockReturnValueOnce({
-      data: undefined,
+      data: null,
       loading: true,
       error: null,
       refresh: mockRefreshHealth,
     });
     vi.mocked(useHealthDeps).mockReturnValueOnce({
-      data: undefined,
+      data: null,
       loading: true,
       error: null,
       refresh: mockRefreshDeps,
@@ -114,13 +83,13 @@ describe('StatusDashboard', () => {
   it('handles fetch errors gracefully', async () => {
     const { useHealth, useHealthDeps } = await import('@/hooks/useApi');
     vi.mocked(useHealth).mockReturnValueOnce({
-      data: undefined,
+      data: null,
       loading: false,
       error: new Error('Network error'),
       refresh: mockRefreshHealth,
     });
     vi.mocked(useHealthDeps).mockReturnValueOnce({
-      data: undefined,
+      data: null,
       loading: false,
       error: null,
       refresh: mockRefreshDeps,
@@ -169,39 +138,16 @@ describe('StatusDashboard', () => {
     expect(buttons.length).toBeGreaterThan(0);
   });
 
-  it('displays performance KPI cards', async () => {
+  it('refresh status button invokes health and dependency refresh', async () => {
+    const user = userEvent.setup();
     render(<StatusDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Performance KPIs')).toBeInTheDocument();
+      expect(screen.getByText('All Systems Operational')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Cache Hit Ratio')).toBeInTheDocument();
-    expect(screen.getByText('Stale Rejections')).toBeInTheDocument();
-    expect(screen.getByText('DB Connections (Primary)')).toBeInTheDocument();
-    expect(screen.getByText('DB Utilization (Primary)')).toBeInTheDocument();
-  });
-
-  it('formats cache metrics correctly', async () => {
-    render(<StatusDashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Performance KPIs')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText('84.0%')).toBeInTheDocument();
-    expect(screen.getByText('12.3K hits / 2.3K misses')).toBeInTheDocument();
-    expect(screen.getByText('150')).toBeInTheDocument();
-  });
-
-  it('formats pool stats correctly', async () => {
-    render(<StatusDashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Performance KPIs')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText('70%')).toBeInTheDocument();
-    expect(screen.getByText('10')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /refresh status/i }));
+    expect(mockRefreshHealth).toHaveBeenCalled();
+    expect(mockRefreshDeps).toHaveBeenCalled();
   });
 });

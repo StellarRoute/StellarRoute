@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import OrderbookPage from './page';
 import { TradingPairProvider } from '@/contexts/TradingPairContext';
 import * as useApiHooks from '@/hooks/useApi';
@@ -187,5 +188,67 @@ describe('OrderbookPage with highlighting', () => {
     bidRows.forEach(row => {
       expect(row.className).toContain('hover:bg-emerald-500/10');
     });
+  });
+
+  it('opens keyboard help dialog when ? is pressed and closes on Escape', async () => {
+    vi.mocked(useApiHooks.usePairs).mockReturnValue({
+      data: mockPairs,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
+      data: mockOrderbook,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(
+      <TradingPairProvider>
+        <OrderbookPage />
+      </TradingPairProvider>
+    );
+
+    expect(screen.queryByTestId('orderbook-shortcut-help')).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.keyboard('?');
+
+    expect(screen.getByTestId('orderbook-shortcut-help')).toBeInTheDocument();
+    expect(screen.getByText('Orderbook Shortcuts')).toBeInTheDocument();
+    expect(screen.getByText('Refresh orderbook & depth')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('orderbook-shortcut-help')).not.toBeInTheDocument();
+  });
+
+  it('triggers refresh when Alt+R is pressed', async () => {
+    const mockRefresh = vi.fn();
+    vi.mocked(useApiHooks.usePairs).mockReturnValue({
+      data: mockPairs,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
+      data: mockOrderbook,
+      loading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    render(
+      <TradingPairProvider>
+        <OrderbookPage />
+      </TradingPairProvider>
+    );
+
+    const user = userEvent.setup();
+    await user.keyboard('{Alt>}r{/Alt}');
+
+    expect(mockRefresh).toHaveBeenCalled();
   });
 });

@@ -477,6 +477,21 @@ pub mod tests {
     }
 
     #[test]
+    fn classify_default_threshold_boundary_cases() {
+        let t = LagThresholds::default();
+        let cases = [
+            (9, SyncStatus::Ok),
+            (10, SyncStatus::Warning),
+            (60, SyncStatus::Warning),
+            (61, SyncStatus::Critical),
+        ];
+
+        for (lag_ledgers, expected) in cases {
+            assert_eq!(t.classify(lag_ledgers), expected, "lag={lag_ledgers}");
+        }
+    }
+
+    #[test]
     fn custom_thresholds_are_respected() {
         let t = LagThresholds {
             warning_ledgers: 5,

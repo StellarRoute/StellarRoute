@@ -1,0 +1,205 @@
+name: Deploy EC2 Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git ref to deploy (default: main)"
+        required: false
+        default: "main"
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "deploy/**"
+      - "Dockerfile.api"
+      - "Dockerfile.indexer"
+      - "docker-compose.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/deploy-ec2-staging.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-ec2-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to staging EC2 via SSM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check configuration
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+        run: |
+          if [[ -z "${AWS_ROLE_ARN}" || -z "${STAGING_INSTANCE_ID}" ]]; then
+            echo "Missing required secrets AWS_ROLE_ARN and/or STAGING_INSTANCE_ID."
+            echo "SKIP=1" >> "${GITHUB_ENV}"
+          else
+            echo "SKIP=0" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Checkout
+        if: env.SKIP != '1'
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        if: env.SKIP != '1'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Resolve deploy inputs
+        if: env.SKIP != '1'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: ${{ github.event.inputs.git_ref }}
+          STAGING_API_BASE_URL: ${{ secrets.STAGING_API_BASE_URL }}
+          STAGING_EC2_HOST: ${{ secrets.STAGING_EC2_HOST }}
+        run: |
+          set -euo pipefail
+          DEPLOY_REF="${INPUT_REF}"
+          if [[ "${EVENT_NAME}" == "push" || -z "${DEPLOY_REF}" ]]; then
+            DEPLOY_REF="main"
+          fi
+
+          if [[ -n "${STAGING_API_BASE_URL}" ]]; then
+            DEPLOY_URL="${STAGING_API_BASE_URL}"
+          elif [[ -n "${STAGING_EC2_HOST}" ]]; then
+            DEPLOY_URL="https://${STAGING_EC2_HOST}.sslip.io"
+          else
+            echo "Set secrets.STAGING_API_BASE_URL or secrets.STAGING_EC2_HOST before running this workflow."
+            exit 1
+          fi
+
+          echo "DEPLOY_REF=${DEPLOY_REF}" >> "${GITHUB_ENV}"
+          echo "DEPLOY_URL=${DEPLOY_URL}" >> "${GITHUB_ENV}"
+
+      - name: Ensure instance running
+        if: env.SKIP != '1'
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          # Deploy role may lack ssm:DescribeInstanceInformation; do not gate on it.
+          STATE="$(aws ec2 describe-instances \
+            --region "${AWS_REGION}" \
+            --instance-ids "${STAGING_INSTANCE_ID}" \
+            --query 'Reservations[0].Instances[0].State.Name' \
+            --output text)"
+          echo "Instance state: ${STATE}"
+          if [[ "${STATE}" != "running" ]]; then
+            echo "Starting instance ${STAGING_INSTANCE_ID}..."
+            aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}" >/dev/null
+            aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${STAGING_INSTANCE_ID}"
+            echo "Instance is running; waiting 45s for guest services..."
+            sleep 45
+          fi
+          # NOTE: Deploy role cannot reboot/stop the instance or DescribeInstanceInformation.
+          # If SSM returns Failed with empty output, SSH to the host and recover the agent:
+          #   sudo systemctl restart amazon-ssm-agent
+          #   df -h
+          #   cd /opt/stellarroute && git fetch && git reset --hard origin/main
+          #   bash deploy/aws/scripts/deploy-ec2-staging.sh
+
+      - name: Send SSM deploy command
+        if: env.SKIP != '1'
+        id: ssm
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+          DEPLOY_REF: ${{ env.DEPLOY_REF }}
+          DEPLOY_URL: ${{ env.DEPLOY_URL }}
+        run: |
+          set -euo pipefail
+
+          # Keep commands short (SSM parameter size limits) and always print
+          # breadcrumbs. Avoid `set -x` — xtrace can overflow SSM stderr capture.
+          # shellcheck disable=SC2016
+          PREFLIGHT='echo PREFLIGHT_BEGIN; hostname; date -u; pwd; ls -la /opt; df -h /'
+          SYNC_CMD="export HOME=/root; echo SYNC_BEGIN; cd /opt/stellarroute || { echo MISSING_REPO; exit 1; }; git -c safe.directory=* fetch --all --prune; git -c safe.directory=* reset --hard HEAD; git -c safe.directory=* clean -fd -e .env.prod -e .env -e '.env.*'; git -c safe.directory=* checkout -B ${DEPLOY_REF} origin/${DEPLOY_REF}; git -c safe.directory=* log -1 --oneline; test \"\$(git -c safe.directory=* rev-parse HEAD)\" = \"\$(git -c safe.directory=* rev-parse origin/${DEPLOY_REF})\"; echo SYNC_OK"
+          HEALTH_WAIT='for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do code=$(curl -sS -o /tmp/sr-health.json -w "%{http_code}" http://127.0.0.1:8080/health || echo 000); echo health_http=$code; if [ "$code" != "000" ] && [ -s /tmp/sr-health.json ]; then echo API_responding; break; fi; sleep 5; done'
+
+          jq -n \
+            --arg preflight "${PREFLIGHT}" \
+            --arg sync "${SYNC_CMD}" \
+            --arg health "${HEALTH_WAIT}" \
+            --arg url "${DEPLOY_URL}" \
+            '{
+              commands: [
+                $preflight,
+                $sync,
+                "bash /opt/stellarroute/deploy/aws/scripts/deploy-ec2-staging.sh",
+                $health,
+                ("bash /opt/stellarroute/deploy/aws/scripts/ec2-postdeploy-smoke.sh " + $url)
+              ]
+            }' > /tmp/ssm-commands.json
+
+          echo "SSM parameters bytes: $(wc -c < /tmp/ssm-commands.json)"
+
+          COMMAND_ID="$(aws ssm send-command \
+            --region "${AWS_REGION}" \
+            --instance-ids "${STAGING_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy StellarRoute staging from ${GITHUB_REPOSITORY}@${GITHUB_SHA}" \
+            --timeout-seconds 3600 \
+            --parameters file:///tmp/ssm-commands.json \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          echo "command_id=${COMMAND_ID}" >> "${GITHUB_OUTPUT}"
+          echo "Started SSM command: ${COMMAND_ID}"
+
+      - name: Wait and print SSM output
+        if: env.SKIP != '1'
+        id: ssm_result
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          STAGING_INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+          COMMAND_ID: ${{ steps.ssm.outputs.command_id }}
+        run: |
+          set -euo pipefail
+
+          STATUS="Pending"
+          for _ in $(seq 1 180); do
+            STATUS="$(aws ssm get-command-invocation \
+              --region "${AWS_REGION}" \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${STAGING_INSTANCE_ID}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo Pending)"
+
+            case "${STATUS}" in
+              Pending|InProgress|Delayed)
+                sleep 10
+                ;;
+              *)
+                break
+                ;;
+            esac
+          done
+
+          echo "Final SSM status: ${STATUS}"
+
+          aws ssm get-command-invocation \
+            --region "${AWS_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${STAGING_INSTANCE_ID}" \
+            --query '{Status:Status,StatusDetails:StatusDetails,ResponseCode:ResponseCode,StandardOutputContent:StandardOutputContent,StandardErrorContent:StandardErrorContent}' \
+            --output json
+
+          if [[ "${STATUS}" != "Success" ]]; then
+            echo "Remote deploy failed with status: ${STATUS}."
+            exit 1
+          fi
+
+      - name: Skipped
+        if: env.SKIP == '1'
+        run: echo "Deploy skipped because required secrets are not configured."

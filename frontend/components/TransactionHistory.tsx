@@ -53,6 +53,7 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
     walletNetwork,
     network,
     setNetwork,
+    refreshWallets,
   } = useWallet()
   const { transactions, clearHistory } = useTransactionHistory(address)
   const [filterAsset, setFilterAsset] = useState<string>("ALL")
@@ -388,6 +389,7 @@ export function TransactionHistory({ onRetry }: { onRetry?: (tx: TransactionReco
         appNetwork={network}
         walletNetwork={walletNetwork}
         onNetworkSelection={setNetwork}
+        onRefreshWallets={refreshWallets}
       />
     </Card>
   )

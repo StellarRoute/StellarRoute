@@ -1,0 +1,223 @@
+name: Soroban Static Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      fail_on_warnings:
+        description: 'Treat warnings as failures'
+        required: false
+        default: false
+        type: boolean
+      run_clippy:
+        description: 'Run Clippy lints'
+        required: false
+        default: true
+        type: boolean
+      run_audit:
+        description: 'Run cargo-audit vulnerability scan'
+        required: false
+        default: true
+        type: boolean
+      run_wasm_size:
+        description: 'Check WASM binary size'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  SOROBAN_CONTRACTS_PATH: crates/contracts
+
+jobs:
+  static-analysis:
+    name: Soroban Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
+
+      # ── Formatting ────────────────────────────────────────────────────
+
+      - name: Check formatting
+        run: |
+          echo "::group::cargo fmt"
+          cargo fmt -- --check
+          echo "::endgroup::"
+
+      # ── Clippy ────────────────────────────────────────────────────────
+
+      - name: Run Clippy
+        if: ${{ inputs.run_clippy }}
+        run: |
+          echo "::group::clippy (contracts)"
+          cargo clippy -p stellarroute-contracts --all-targets -- -D warnings 2>&1 | tee clippy-output.txt
+          echo "::endgroup::"
+
+          if [ -f clippy-output.txt ] && grep -q "warning\[" clippy-output.txt; then
+            if [ "${{ inputs.fail_on_warnings }}" = "true" ]; then
+              echo "::error::Clippy warnings detected (fail_on_warnings=true)"
+              exit 1
+            else
+              echo "::warning::Clippy warnings detected (non-fatal)"
+            fi
+          fi
+
+      # ── cargo-audit ───────────────────────────────────────────────────
+
+      - name: Install cargo-audit
+        if: ${{ inputs.run_audit }}
+        run: cargo install cargo-audit
+
+      - name: Run cargo-audit
+        if: ${{ inputs.run_audit }}
+        run: |
+          echo "::group::cargo audit"
+          cargo audit 2>&1 | tee audit-output.txt
+          echo "::endgroup::"
+
+          if grep -q "error\[" audit-output.txt; then
+            echo "::error::Vulnerability audit failed"
+            exit 1
+          fi
+
+      # ── WASM Build + Size Check ──────────────────────────────────────
+
+      - name: Build WASM
+        if: ${{ inputs.run_wasm_size }}
+        run: |
+          echo "::group::build wasm"
+          cargo build \
+            -p stellarroute-contracts \
+            --release \
+            --target wasm32-unknown-unknown
+          echo "::endgroup::"
+
+      - name: Install Soroban CLI
+        if: ${{ inputs.run_wasm_size }}
+        run: |
+          cargo install --locked soroban-cli --features opt || true
+
+      - name: Optimize WASM
+        if: ${{ inputs.run_wasm_size }}
+        run: |
+          soroban contract optimize \
+            --wasm target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm \
+            --output optimized.wasm 2>/dev/null || \
+          wasm-opt -Oz target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm \
+            -o optimized.wasm
+
+      - name: Check WASM size
+        if: ${{ inputs.run_wasm_size }}
+        run: |
+          if [ ! -f optimized.wasm ]; then
+            echo "::warning::optimized.wasm not found — skipping size check"
+            exit 0
+          fi
+
+          SIZE=$(stat -c%s optimized.wasm)
+          SIZE_KB=$((SIZE / 1024))
+          echo "📦 Optimized WASM size: ${SIZE_KB}KB"
+
+          echo "## WASM Size" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Raw | $(stat -c%s target/wasm32-unknown-unknown/release/stellarroute_contracts.wasm | awk '{printf "%.1fKB", $1/1024}') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Optimized | ${SIZE_KB}KB |" >> $GITHUB_STEP_SUMMARY
+          echo "| Limit | 100KB |" >> $GITHUB_STEP_SUMMARY
+
+          if [ $SIZE -gt 102400 ]; then
+            echo "::error::WASM size ${SIZE_KB}KB exceeds 100KB limit"
+            exit 1
+          fi
+
+          echo "✅ WASM size is within limits (${SIZE_KB}KB / 100KB)"
+
+      # ── Contract Inspect ──────────────────────────────────────────────
+
+      - name: Inspect contract metadata
+        if: ${{ inputs.run_wasm_size }}
+        run: |
+          if [ ! -f optimized.wasm ]; then
+            echo "::warning::optimized.wasm not found — skipping inspect"
+            exit 0
+          fi
+
+          echo "::group::contract inspect"
+          soroban contract inspect --wasm optimized.wasm 2>&1 || true
+          echo "::endgroup::"
+
+      # ── Summary ──────────────────────────────────────────────────────
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Soroban Static Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.run_clippy }}" = "true" ]; then
+            if [ -f clippy-output.txt ] && ! grep -q "error" clippy-output.txt; then
+              echo "| Clippy | ✅ Pass |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Clippy | ⚠️ Warnings or not run |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          if [ "${{ inputs.run_audit }}" = "true" ]; then
+            if [ -f audit-output.txt ] && ! grep -q "error\[" audit-output.txt; then
+              echo "| cargo-audit | ✅ Pass |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| cargo-audit | ❌ Fail |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          if [ "${{ inputs.run_wasm_size }}" = "true" ]; then
+            if [ -f optimized.wasm ]; then
+              SIZE=$(stat -c%s optimized.wasm)
+              SIZE_KB=$((SIZE / 1024))
+              if [ $SIZE -le 102400 ]; then
+                echo "| WASM Size | ✅ ${SIZE_KB}KB |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| WASM Size | ❌ ${SIZE_KB}KB |" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+      - name: Upload artifacts
+        if: ${{ inputs.run_wasm_size }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-analysis
+          path: |
+            optimized.wasm
+            clippy-output.txt
+            audit-output.txt
+          if-no-files-found: ignore
+          retention-days: 7

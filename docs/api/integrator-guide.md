@@ -101,3 +101,13 @@ Behavior:
 - If the header is omitted, each request is processed normally (no deduplication).
 
 Integration coverage lives in `crates/api/tests/idempotent_quote_integration.rs`.
+
+## Go-Live Checklist (embedding swaps)
+
+Use this before enabling a production integrator against live StellarRoute:
+
+1. Pin API version headers and confirm CORS allowlists include the production origin.
+2. Point Horizon / Soroban RPC / network passphrase at the intended network (testnet vs pubnet).
+3. Handle `429` / `overloaded` with backoff; map other codes via `docs/api/error_taxonomy.md`.
+4. Rehearse a minimum-size swap on the target network before raising limits.
+5. Confirm webhook and idempotency keys (`Idempotency-Key` on `POST /api/v1/quote`) in staging first.

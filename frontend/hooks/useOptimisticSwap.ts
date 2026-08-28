@@ -6,6 +6,7 @@ import type { TradeParams } from './useTransactionLifecycle';
 import type { TransactionStatus } from '@/types/transaction';
 import type { PreSubmitSnapshot, RollbackTarget } from '@/types/transaction';
 import type { NotificationPreference } from '@/lib/notifications';
+import type { LifecycleError } from '@/lib/swap/lifecycle-error';
 
 export interface UseOptimisticSwapOptions {
   deadlineMs?: number;
@@ -27,6 +28,7 @@ export interface UseOptimisticSwapResult {
   status: TransactionStatus | 'review';
   txHash: string | undefined;
   errorMessage: string | undefined;
+  error: LifecycleError | undefined;
   tradeParams: TradeParams | undefined;
   submitLock: boolean;
   snapshot: PreSubmitSnapshot | null;
@@ -121,6 +123,7 @@ export function useOptimisticSwap(options: UseOptimisticSwapOptions): UseOptimis
     status: lifecycle.status,
     txHash: lifecycle.txHash,
     errorMessage: lifecycle.errorMessage,
+    error: lifecycle.error,
     tradeParams: lifecycle.tradeParams,
     submitLock,
     snapshot,

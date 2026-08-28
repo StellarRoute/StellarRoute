@@ -4,6 +4,12 @@ const useOptimisticE2EServer =
   process.env.PLAYWRIGHT_E2E === "true" ||
   process.argv.some((arg) => arg.includes("optimistic-swap"));
 
+const useCctpE2EServer = process.argv.some((arg) =>
+  arg.includes("cctp-swap"),
+);
+
+const useWebpackE2EServer = useOptimisticE2EServer || useCctpE2EServer;
+
 /**
  * Playwright configuration for mobile visual regression tests.
  * Feature: mobile-swap-experience
@@ -65,18 +71,28 @@ export default defineConfig({
       },
       testMatch: "**/optimistic-swap-pipeline.spec.ts",
     },
+    {
+      name: "cctp-swap",
+      timeout: 90_000,
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/cctp-swap-flow.spec.ts",
+    },
   ],
   /* Start the Next.js dev server before running tests */
   webServer: {
-    command: useOptimisticE2EServer
+    command: useWebpackE2EServer
       ? "npm run dev -- --webpack"
       : "npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !useWebpackE2EServer,
     timeout: 120_000,
     env: {
       ...process.env,
-      ...(useOptimisticE2EServer
+      ...(useWebpackE2EServer
         ? { PLAYWRIGHT_E2E: "true", NEXT_PUBLIC_API_PROXY: "true" }
         : {}),
     },

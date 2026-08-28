@@ -1,31 +1,60 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "@/components/ui/sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import ErrorBoundary from "../components/ErrorBoundary";
+import { JsonLd } from "@/components/seo/JsonLd";
+import {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_TITLE,
+  absoluteUrl,
+  getSiteUrl,
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+  websiteJsonLd,
+} from "@/lib/seo";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const display = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const sans = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const mono = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
-  title: "StellarRoute - DEX Aggregator for Stellar",
-  description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: DEFAULT_TITLE,
+    template: "%s | StellarRoute",
+  },
+  description: DEFAULT_DESCRIPTION,
+  alternates: {
+    canonical: absoluteUrl("/"),
+  },
 
   manifest: "/manifest.json",
-  themeColor: "#0b1220",
+  themeColor: "#060b11",
 
   icons: {
-    icon: "/icons/icon-192.svg",
-    apple: "/icons/icon-192.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" },
+      { url: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" }],
   },
 
   appleWebApp: {
@@ -35,9 +64,10 @@ export const metadata: Metadata = {
   },
 
   openGraph: {
-    title: "StellarRoute - DEX Aggregator for Stellar",
-    description: "Best-price routing across Stellar DEX and Soroban AMM pools",
-    url: "https://stellarroute.app",
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    url: absoluteUrl("/"),
+    siteName: "StellarRoute",
     type: "website",
     images: [
       {
@@ -51,8 +81,8 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "StellarRoute - DEX Aggregator for Stellar",
-    description: "Best-price routing across Stellar DEX and Soroban AMM pools",
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
     images: ["/icons/icon-512.svg"],
   },
 };
@@ -65,8 +95,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+        className={`${display.variable} ${sans.variable} ${mono.variable} antialiased min-h-screen flex flex-col`}
       >
+        <JsonLd data={organizationJsonLd()} />
+        <JsonLd data={websiteJsonLd()} />
+        <JsonLd data={softwareApplicationJsonLd()} />
         <ErrorBoundary>
           <Providers>
             <AppShell>{children}</AppShell>

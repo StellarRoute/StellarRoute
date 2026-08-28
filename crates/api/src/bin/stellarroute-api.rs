@@ -3,7 +3,106 @@
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use stellarroute_api::{state::DatabasePools, telemetry, PurgerConfig, Server, ServerConfig};
-use tracing::{error, info};
+use tracing::{error, info, warn};
+
+/// Resolve the bind host and port from environment variables.
+///
+/// PaaS platforms (Render, Fly, Railway, Kubernetes) inject a `PORT` env var
+/// and expect the process to listen on `0.0.0.0:$PORT`.  When `PORT` is
+/// present the default host becomes `0.0.0.0` so platform health-check probes
+/// can reach the process.  An explicit `API_HOST` always wins.
+///
+/// Priority order:
+/// 1. `PORT` present → host = `API_HOST` or `0.0.0.0`, port = `PORT`
+/// 2. `PORT` absent  → host = `API_HOST` or `127.0.0.1`, port = `API_PORT` or `3000`
+pub fn resolve_bind_address() -> (String, u16) {
+    let paas_port: Option<u16> = std::env::var("PORT").ok().and_then(|p| p.parse().ok());
+
+    if let Some(port) = paas_port {
+        let host = std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+        (host, port)
+    } else {
+        let host = std::env::var("API_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let port = std::env::var("API_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3000u16);
+        (host, port)
+    }
+}
+
+#[cfg(test)]
+mod bind_tests {
+    use super::*;
+
+    fn with_env<F: FnOnce()>(pairs: &[(&str, &str)], f: F) {
+        // Set vars
+        for (k, v) in pairs {
+            std::env::set_var(k, v);
+        }
+        f();
+        // Unset vars
+        for (k, _) in pairs {
+            std::env::remove_var(k);
+        }
+    }
+
+    fn without_env<F: FnOnce()>(keys: &[&str], f: F) {
+        for k in keys {
+            std::env::remove_var(k);
+        }
+        f();
+    }
+
+    #[test]
+    fn defaults_to_loopback_without_port_env() {
+        without_env(&["PORT", "API_HOST", "API_PORT"], || {
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "127.0.0.1");
+            assert_eq!(port, 3000);
+        });
+    }
+
+    #[test]
+    fn paas_port_env_binds_all_interfaces_by_default() {
+        with_env(&[("PORT", "8080")], || {
+            std::env::remove_var("API_HOST");
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "0.0.0.0");
+            assert_eq!(port, 8080);
+        });
+    }
+
+    #[test]
+    fn explicit_api_host_overrides_paas_default() {
+        with_env(&[("PORT", "9000"), ("API_HOST", "10.0.0.1")], || {
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "10.0.0.1");
+            assert_eq!(port, 9000);
+        });
+    }
+
+    #[test]
+    fn api_port_used_when_no_paas_port() {
+        with_env(&[("API_PORT", "4000")], || {
+            std::env::remove_var("PORT");
+            std::env::remove_var("API_HOST");
+            let (host, port) = resolve_bind_address();
+            assert_eq!(host, "127.0.0.1");
+            assert_eq!(port, 4000);
+        });
+    }
+}
+fn validate_auth_config() -> Result<(), String> {
+    match stellarroute_api::middleware::validate_auth_startup() {
+        Ok(Some(warning)) => {
+            warn!("{}", warning);
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(message) => Err(message),
+    }
+}
 
 fn parse_bool_env(name: &str) -> bool {
     std::env::var(name)
@@ -113,6 +212,21 @@ async fn main() {
         std::process::exit(1);
     }
 
+    if let Err(message) = stellarroute_api::server::validate_cors_config() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = validate_auth_config() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
+    if let Err(message) = stellarroute_api::middleware::validate_admin_auth_startup() {
+        error!("{}", message);
+        std::process::exit(1);
+    }
+
     // Get database URL from environment
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://localhost/stellarroute".to_string());
@@ -214,12 +328,19 @@ async fn main() {
     };
 
     // Create server configuration
+    // Resolve bind host/port — respects PaaS PORT convention.
+    let (resolved_host, resolved_port) = resolve_bind_address();
+    if resolved_host == "0.0.0.0" || resolved_host == "::" {
+        info!(
+            host = %resolved_host,
+            port = resolved_port,
+            "PaaS bind mode — listening on all interfaces"
+        );
+    }
+
     let config = ServerConfig {
-        host: std::env::var("API_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-        port: std::env::var("API_PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(3000),
+        host: resolved_host,
+        port: resolved_port,
         enable_cors: true,
         enable_compression: true,
         admin_auth_token: std::env::var("ADMIN_AUTH_TOKEN").ok(),

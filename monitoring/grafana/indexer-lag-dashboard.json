@@ -1,0 +1,143 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "StellarRoute Indexer Lag",
+  "description": "Indexer lag and sync status by source. Metrics are exposed by the StellarRoute Prometheus endpoint.",
+  "tags": ["stellarroute", "indexer", "slo"],
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "title": "Indexer Lag (ledgers)",
+      "description": "Number of ledgers each indexer source is behind Horizon. Warning above 10; critical above 60.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_lag_ledgers",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 60 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Indexer Sync Status",
+      "description": "Per-source sync state: 1=ok, 0=warning, -1=critical, -2=unknown.",
+      "type": "stat",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_sync_status",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "value": "1", "text": "OK", "color": "green" },
+            { "type": "value", "value": "0", "text": "WARNING", "color": "yellow" },
+            { "type": "value", "value": "-1", "text": "CRITICAL", "color": "red" },
+            { "type": "value", "value": "-2", "text": "UNKNOWN", "color": "gray" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "textMode": "name",
+        "colorMode": "background"
+      }
+    },
+    {
+      "title": "Indexer Lag by Source",
+      "description": "Current lag value for each source.",
+      "type": "stat",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_lag_ledgers{source=\"sdex\"}",
+          "legendFormat": "SDEX"
+        },
+        {
+          "expr": "stellarroute_indexer_lag_ledgers{source=\"amm\"}",
+          "legendFormat": "AMM"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 60 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value"
+      }
+    },
+    {
+      "title": "Critical or Unknown Sources",
+      "description": "Sources requiring attention due to critical lag or unavailable sync measurements.",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_sync_status < 1",
+          "legendFormat": "{{source}} status"
+        },
+        {
+          "expr": "stellarroute_indexer_lag_ledgers > 10",
+          "legendFormat": "{{source}} lag"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}

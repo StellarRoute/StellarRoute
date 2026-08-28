@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
 import { TokenSearchModal, AssetOption } from '@/components/shared/TokenSearchModal';
 import { usePairs } from '@/hooks/useApi';
+import { counterpartsFor } from '@/lib/trading-pairs';
 import { cn } from '@/lib/utils';
 
 interface TokenSelectorProps {
@@ -14,6 +15,11 @@ interface TokenSelectorProps {
   disabled?: boolean;
   /** Optional override for loading state (useful for stories/tests) */
   isLoading?: boolean;
+  /**
+   * When set, only show assets that share an indexed market with this asset
+   * (used for the receive-side selector so users can't pick dead pairs).
+   */
+  compatibleWith?: string;
 }
 
 export function TokenSelector({
@@ -22,51 +28,57 @@ export function TokenSelector({
   className,
   disabled = false,
   isLoading: propLoading,
+  compatibleWith,
 }: TokenSelectorProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { data: pairs, loading: hookLoading } = usePairs();
   const loading = propLoading ?? hookLoading;
 
-  // Extract unique assets from all pairs
+  // Extract unique assets from indexed pairs only (no synthetic XLM when
+  // staging has no native markets — avoids quoting dead XLM→USDC defaults).
   const assets: AssetOption[] = useMemo(() => {
     if (!pairs) return [];
 
     const assetMap = new Map<string, AssetOption>();
-    
-    // Add native XLM if not present
-    assetMap.set('native', {
-      code: 'XLM',
-      asset: 'native',
-      displayName: 'Stellar Lumens',
-    });
+
+    const allow = compatibleWith
+      ? new Set(counterpartsFor(compatibleWith, pairs))
+      : null;
 
     pairs.forEach((pair) => {
-      // Base asset
-      if (!assetMap.has(pair.base_asset)) {
-        assetMap.set(pair.base_asset, {
-          code: pair.base,
-          asset: pair.base_asset,
-          issuer: pair.base_asset.includes(':') ? pair.base_asset.split(':')[1] : undefined,
+      const maybeAdd = (canonical: string, code: string) => {
+        if (allow && !allow.has(canonical)) return;
+        if (assetMap.has(canonical)) return;
+        assetMap.set(canonical, {
+          code: code === 'native' ? 'XLM' : code,
+          asset: canonical,
+          issuer: canonical.includes(':')
+            ? canonical.split(':')[1]
+            : undefined,
+          displayName: code === 'native' ? 'Stellar Lumens' : undefined,
         });
-      }
-      // Counter asset
-      if (!assetMap.has(pair.counter_asset)) {
-        assetMap.set(pair.counter_asset, {
-          code: pair.counter,
-          asset: pair.counter_asset,
-          issuer: pair.counter_asset.includes(':') ? pair.counter_asset.split(':')[1] : undefined,
-        });
-      }
+      };
+
+      maybeAdd(pair.base_asset, pair.base);
+      maybeAdd(pair.counter_asset, pair.counter);
     });
 
-    return Array.from(assetMap.values());
-  }, [pairs]);
+    return Array.from(assetMap.values()).sort((a, b) =>
+      a.code.localeCompare(b.code)
+    );
+  }, [pairs, compatibleWith]);
 
   const selectedAssetOption = useMemo(() => {
     return assets.find((a) => a.asset === selectedAsset);
   }, [assets, selectedAsset]);
 
-  const displayCode = selectedAssetOption?.code || (selectedAsset === 'native' ? 'XLM' : 'Select');
+  const displayCode =
+    selectedAssetOption?.code ||
+    (selectedAsset === 'native'
+      ? 'XLM'
+      : selectedAsset.includes(':')
+        ? selectedAsset.split(':')[0]
+        : 'Select');
   
   // Simple icon generator based on code
   const renderIcon = (code: string) => {
@@ -98,8 +110,15 @@ export function TokenSelector({
         variant="secondary"
         onClick={() => setIsModalOpen(true)}
         disabled={disabled || loading}
+        aria-label={
+          selectedAssetOption
+            ? `Select token, currently ${selectedAssetOption.code}`
+            : selectedAsset === 'native'
+              ? 'Select token, currently XLM'
+              : 'Select token'
+        }
         className={cn(
-          "h-11 rounded-xl px-3 gap-2 bg-background/60 hover:bg-background/80 border-border/40 shadow-sm transition-all flex-shrink-0 min-w-[120px]",
+          "h-11 min-h-11 rounded-xl px-3 gap-2 bg-background/60 hover:bg-background/80 border-border/40 shadow-sm transition-all flex-shrink-0 min-w-[120px]",
           className
         )}
       >

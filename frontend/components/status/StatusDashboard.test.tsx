@@ -1,4 +1,5 @@
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StatusDashboard } from './StatusDashboard';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -135,5 +136,18 @@ describe('StatusDashboard', () => {
 
     const buttons = screen.getAllByRole('button');
     expect(buttons.length).toBeGreaterThan(0);
+  });
+
+  it('refresh status button invokes health and dependency refresh', async () => {
+    const user = userEvent.setup();
+    render(<StatusDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('All Systems Operational')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /refresh status/i }));
+    expect(mockRefreshHealth).toHaveBeenCalled();
+    expect(mockRefreshDeps).toHaveBeenCalled();
   });
 });

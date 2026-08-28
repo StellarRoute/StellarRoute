@@ -144,11 +144,41 @@ describe('useWalletBalance', () => {
     expect(result.current.spendableBalance).toBe('0');
   });
 
+  it('treats Horizon 404 as zero balance (unfunded account)', async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 404,
+        json: () => Promise.reject(new Error('not found')),
+      })
+    ) as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useWalletBalance({
+        address: TEST_ADDRESS,
+        asset: 'native',
+        isConnected: true,
+        network: 'testnet',
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.balance).toBe('0');
+    expect(result.current.spendableBalance).toBe(
+      Math.max(0, 0 - XLM_FEE_RESERVE).toFixed(7)
+    );
+    expect(result.current.error).toBeNull();
+  });
+
   it('sets error when Horizon responds with failure', async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve({
         ok: false,
-        json: () => Promise.reject(new Error('not found')),
+        status: 500,
+        json: () => Promise.reject(new Error('server error')),
       })
     ) as typeof fetch;
 

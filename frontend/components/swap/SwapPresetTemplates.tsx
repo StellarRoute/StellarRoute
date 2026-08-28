@@ -1,16 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { History, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SwapPreset } from "@/lib/presets";
 import { useSwapPresetTemplates } from "@/hooks/useSwapPresetTemplates";
+import { pairExists } from "@/lib/trading-pairs";
+import type { TradingPair } from "@/types";
 
 export interface SwapPresetTemplatesProps {
   onSelect: (base: string, quote: string) => void;
   selectedBase?: string;
   selectedQuote?: string;
   className?: string;
+  /** When provided, only show presets that exist in the indexed market list. */
+  availablePairs?: TradingPair[];
 }
 
 export function SwapPresetTemplates({
@@ -18,15 +22,23 @@ export function SwapPresetTemplates({
   selectedBase,
   selectedQuote,
   className,
+  availablePairs,
 }: SwapPresetTemplatesProps) {
   const { templates, recentTemplates, addRecentTemplate } = useSwapPresetTemplates();
+
+  const visibleTemplates = useMemo(() => {
+    if (!availablePairs) return templates;
+    return templates.filter((preset) =>
+      pairExists(preset.baseAsset, preset.quoteAsset, availablePairs)
+    );
+  }, [availablePairs, templates]);
 
   const handleSelect = (preset: SwapPreset) => {
     onSelect(preset.baseAsset, preset.quoteAsset);
     addRecentTemplate(preset);
   };
 
-  if (templates.length === 0) return null;
+  if (visibleTemplates.length === 0) return null;
 
   return (
     <div className={cn("flex flex-col gap-3 pb-2", className)}>
@@ -46,7 +58,7 @@ export function SwapPresetTemplates({
       </div>
       
       <div className="flex flex-wrap gap-2.5">
-        {templates.map((preset, index) => {
+        {visibleTemplates.map((preset, index) => {
           const isSelected = 
             selectedBase === preset.baseAsset && 
             selectedQuote === preset.quoteAsset;

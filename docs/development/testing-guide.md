@@ -167,19 +167,54 @@ This is the CI-oriented Ladle build command used for the frontend story/snapshot
 
 ## 7. CI workflow mapping
 
-The local commands above map to the GitHub Actions workflows in `.github/workflows/`:
+The local commands above map to the GitHub Actions workflows in `.github/workflows/`.
+**Full Rust CI is not restored** — `ci.yml` only has lean Rust bootstrap gates plus frontend/SDK jobs.
 
-| Workflow | What it covers | Local equivalent |
+### `.github/workflows/ci.yml` (PR + push to `main`/`develop`)
+
+| Job (GitHub UI name) | What it covers | Exact local commands |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | Rust backend checks, API integration tests (PR-only), frontend Vitest, frontend production build, SDK checks | `cargo test`, `cargo fmt --check`, `cargo clippy`, `npm --prefix frontend test`, `npm --prefix frontend run build` |
-| `.github/workflows/gas-benchmarks.yml` | Soroban gas/benchmark checks for contract changes (main/develop pushes and manual runs) | `cargo test -p stellarroute-contracts` and benchmark-oriented contract runs |
-| `.github/workflows/verify-contracts.yml` | Contract bytecode verification and on-chain comparison | `cargo build --release --target wasm32-unknown-unknown` in `crates/contracts` |
+| `Rust Format` | Workspace rustfmt check | `cargo fmt --all -- --check` |
+| `Rust Lean Clippy + Lib Tests (excl. api/contracts)` | Clippy on workspace libs/bins (exclude contracts), separate contracts libs/bins clippy, library unit tests excluding api + contracts | See commands below |
+| `Rust API Swap + OpenAPI Contract Tests (no external DB)` | Focused swap prepare/submit + OpenAPI/AssetPath wire contract tests + API lib tests | See commands below |
+| Frontend / SDK jobs | ESLint, Vitest matrix, production build, Ladle, JS SDK | `npm --prefix frontend …`, `npm --prefix sdk-js …` |
+
+Exact lean Rust CI commands (job `Rust Lean Clippy + Lib Tests (excl. api/contracts)`):
+
+```bash
+cargo clippy --workspace --all-features --exclude stellarroute-contracts -- -D warnings
+cargo clippy -p stellarroute-contracts -- -D warnings
+cargo test --workspace --lib --exclude stellarroute-contracts --exclude stellarroute-api
+```
+
+Exact focused swap/OpenAPI CI commands (job `Rust API Swap + OpenAPI Contract Tests (no external DB)`):
+
+```bash
+cargo test -p stellarroute-api --test swap_integration --test swap_submit_integration --test openapi_swap_contract
+cargo test -p stellarroute-api --lib
+```
+
+What lean CI does **not** cover:
+
+- `--all-targets` / `cfg(test)` clippy (deferred; indexer `amm_ingest`, contracts `fuzz_targets`)
+- contracts library tests
+- Broader integration tests under `crates/*/tests/` beyond the focused swap/OpenAPI set above
+- Postgres/Redis ignored API integration tests (no `api-integration-tests` job in `ci.yml`)
+
+### Specialized / manual Rust workflows (not PR lean coverage)
+
+| Workflow | What it covers | Trigger / notes |
+| --- | --- | --- |
+| `.github/workflows/gas-benchmarks.yml` | Soroban gas/benchmark-oriented contract runs | Path-filtered pushes to `main`/`develop` and manual; not the lean PR gate |
+| `.github/workflows/verify-contracts.yml` | Contract WASM build / on-chain bytecode compare | Nightly schedule and `workflow_dispatch` |
+| `.github/workflows/routing-benchmarks.yml` | Pathfinding latency gate | Path-filtered on routing changes |
+| `.github/workflows/dependency-audit.yml` | `cargo audit` / npm audit | Push/PR + schedule |
 
 ---
 
-## 8. Local parity for ignored API integration tests
+## 8. Local runbook for ignored API integration tests
 
-The `api-integration-tests` CI job runs on every pull request. To reproduce it locally with identical schema state:
+There is **no** `api-integration-tests` job in `.github/workflows/ci.yml`. Use this section to run ignored API integration tests locally (Postgres + Redis required).
 
 ### Prerequisites
 
@@ -202,7 +237,7 @@ The `api-integration-tests` CI job runs on every pull request. To reproduce it l
    until docker-compose exec postgres pg_isready -U stellarroute; do sleep 1; done
    ```
 
-3. **Apply indexer migrations** (base schema — same order as CI):
+3. **Apply indexer migrations** (base schema):
 
    ```bash
    for f in crates/indexer/migrations/*.sql; do
@@ -244,7 +279,7 @@ docker-compose up -d
 # then re-apply migrations as above
 ```
 
-Use `coverage expectations` are unchanged; these tests count toward the 70% backend target.
+These tests count toward the 70% backend coverage target when you run them locally.
 
 ---
 

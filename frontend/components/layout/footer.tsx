@@ -15,6 +15,9 @@ interface FooterLink {
 }
 
 const footerLinks: FooterLink[] = [
+  { label: "Swap", href: "/swap", external: false },
+  { label: "Cross-chain", href: "/cross-chain-swap", external: false },
+  { label: "Stellar DEX", href: "/stellar-dex-aggregator", external: false },
   { label: "Status", href: "/status", external: false },
   { label: "GitHub", href: "https://github.com/stellarroute/stellarroute", external: true },
   { label: "Docs", href: "/docs", external: false },

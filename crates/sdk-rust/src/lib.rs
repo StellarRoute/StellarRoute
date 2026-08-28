@@ -31,7 +31,8 @@ pub mod types;
 pub use client::{Client, ClientBuilder, StellarRouteClient};
 pub use error::{ApiErrorCode, RateLimitInfo, Result, SdkError};
 pub use types::{
-    AssetInfo, HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, PathStep,
-    QuoteRequest, QuoteResponse, QuoteType, Route, RouteHop, RoutesRequest, RoutesResponse,
-    TradingPair,
+    ApiV2Info, AssetInfo, BridgeVenueMeta, CanonicalizeAssetResponse, ChainAsset, HealthResponse,
+    OrderbookLevel, OrderbookResponse, PairsResponse, PathStep, QuoteRequest, QuoteResponse,
+    QuoteType, Route, RouteHop, RoutesRequest, RoutesResponse, SwapPrepareRequest,
+    SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse, TradingPair,
 };

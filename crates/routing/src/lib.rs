@@ -7,8 +7,10 @@ pub mod adaptive_routing;
 pub mod adaptive_timeout;
 pub mod amm_fallback;
 pub mod canary;
+pub mod chain_asset;
 pub mod compaction;
 pub mod consensus;
+pub mod cross_chain;
 pub mod error;
 pub mod execution_quality;
 pub mod fixtures;
@@ -28,9 +30,16 @@ pub use adaptive_routing::{AdaptiveError, AdaptivePolicy, AdaptiveRouter, Qualit
 pub use adaptive_timeout::{TimeoutConfig, TimeoutController};
 pub use amm_fallback::{AmmFallbackConfig, AmmFallbackTier, FallbackResult, TieredAmmFallback};
 pub use canary::{CanaryConfig, CanaryEvaluation, CanaryEvaluator};
+pub use chain_asset::{
+    canonicalize_asset_id, canonicalize_for_v1_cache, looks_like_caip, AssetReference, ChainAsset,
+    ChainId, SLIP44_BTC, SLIP44_ETH, SLIP44_SOL, SLIP44_TRX, SLIP44_XLM,
+};
 pub use compaction::{CompactedEdge, CompactedGraph};
 pub use consensus::{
     ConsensusDiagnostics, ConsensusEngine, ConsensusError, ConsensusPolicy, RouteCandidate,
+};
+pub use cross_chain::{
+    is_bridge_edge, should_exclude_provider, BridgeEdgeMeta, ProviderId, ProviderPolicy, VenueKind,
 };
 pub use execution_quality::{
     ExecutionQualityTracker, QualityObservation, QualityTrackerConfig, SourceState, WeightBounds,
@@ -274,14 +283,8 @@ mod tests {
     #[test]
     fn test_normalize_asset_with_issuer() {
         // The colon and issuer part is preserved as-is (uppercased as a whole)
-        assert_eq!(
-            normalize_asset("usdc:GA5ZSEJ"),
-            "USDC:GA5ZSEJ"
-        );
-        assert_eq!(
-            normalize_asset("USDC:ga5zsej"),
-            "USDC:GA5ZSEJ"
-        );
+        assert_eq!(normalize_asset("usdc:GA5ZSEJ"), "USDC:GA5ZSEJ");
+        assert_eq!(normalize_asset("USDC:ga5zsej"), "USDC:GA5ZSEJ");
     }
 
     // ── normalize_pair_owned tests ────────────────────────────────────

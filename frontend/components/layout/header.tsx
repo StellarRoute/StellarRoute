@@ -11,7 +11,6 @@ import { NetworkBadge } from '@/components/shared/network-badge';
 import { MobileNav } from './mobile-nav';
 import { getNavItems } from './nav-items';
 import { cn } from '@/lib/utils';
-import { ROUTES } from '@/lib/constants';
 import { ThemeToggle } from '../ThemeToggle';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
@@ -39,16 +38,16 @@ export function Header() {
 
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo and Navigation */}
         <div className="flex items-center gap-6 md:gap-8">
           <Link
-            href={ROUTES.SWAP}
-            className="flex items-center gap-2 font-semibold text-xl hover:opacity-80 transition-opacity"
-            aria-label="StellarRoute Swap"
+            href="/"
+            className="brand-wordmark text-xl text-foreground transition-opacity hover:opacity-80 sm:text-2xl"
+            aria-label="StellarRoute home"
           >
-            <span className="text-primary">StellarRoute</span>
+            StellarRoute
           </Link>
 
           {/* Desktop Navigation */}
@@ -67,7 +66,7 @@ export function Header() {
                     'hover:bg-accent hover:text-accent-foreground',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                     isActive
-                      ? 'bg-accent text-accent-foreground underline decoration-2 underline-offset-4'
+                      ? 'bg-accent text-accent-foreground underline decoration-2 underline-offset-4 decoration-primary'
                       : 'text-muted-foreground',
                     item.disabled &&
                       'opacity-50 cursor-not-allowed pointer-events-none'

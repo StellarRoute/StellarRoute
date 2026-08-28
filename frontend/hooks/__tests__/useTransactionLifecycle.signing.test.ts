@@ -17,6 +17,7 @@ import {
   defaultSignTransaction,
   defaultSubmitTransaction,
 } from "../useTransactionLifecycle";
+import { StellarRouteApiError } from "@/lib/api/client";
 
 vi.mock("@/lib/notifications", () => ({
   dispatchTransactionNotification: vi.fn(),
@@ -172,5 +173,70 @@ describe("useTransactionLifecycle — production signing guards (#735)", () => {
 
     expect(signFn).toHaveBeenCalledWith("mock_xdr");
     expect(result.current.txHash).toBe("stub_hash");
+  });
+
+  it("preserves API code and allowlisted status through build failure", async () => {
+    const buildXdr = vi.fn().mockRejectedValue(
+      new StellarRouteApiError(409, "duplicate_quote", "conflict", {
+        status: "active_prepare_exists",
+        secret: "do-not-leak",
+      }),
+    );
+    const signFn = vi.fn().mockResolvedValue("signed_xdr");
+
+    const { result } = renderHook(() =>
+      useTransactionLifecycle({
+        buildXdr,
+        signTransaction: signFn,
+        submitTransaction: vi.fn().mockResolvedValue({ hash: "hash" }),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.initiateSwap(tradeParams);
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("failed");
+    });
+
+    expect(result.current.errorMessage).toBe("conflict");
+    expect(result.current.error).toEqual({
+      message: "conflict",
+      code: "duplicate_quote",
+      status: "active_prepare_exists",
+    });
+    expect(JSON.stringify(result.current.error)).not.toMatch(/do-not-leak/);
+    expect(signFn).not.toHaveBeenCalled();
+  });
+
+  it("preserves unsupported_route code without leaking details", async () => {
+    const buildXdr = vi.fn().mockRejectedValue(
+      new StellarRouteApiError(422, "unsupported_route", "multi-hop blocked", {
+        path: ["internal", "leak"],
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useTransactionLifecycle({
+        buildXdr,
+        signTransaction: vi.fn().mockResolvedValue("signed_xdr"),
+        submitTransaction: vi.fn().mockResolvedValue({ hash: "hash" }),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.initiateSwap(tradeParams);
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("failed");
+    });
+
+    expect(result.current.error).toEqual({
+      message: "multi-hop blocked",
+      code: "unsupported_route",
+    });
+    expect(JSON.stringify(result.current.error)).not.toMatch(/internal/);
   });
 });

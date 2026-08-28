@@ -54,9 +54,23 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 
 ## Stellar / Horizon
 
+> **Mixed networks are unsupported.** `STELLAR_HORIZON_URL` and `SOROBAN_RPC_URL`
+> must resolve to the same Stellar network. Pairing (for example) mainnet Horizon
+> with testnet Soroban RPC makes the indexer write SDEX offers from one ledger and
+> AMM pools from another into the same tables — quotes then price against liquidity
+> that does not exist, and nothing in the pipeline errors. `.env.example` ships one
+> coherent block per network; copy a whole block rather than editing single URLs.
+> Canonical per-network URLs live in [`config/networks.json`](../../config/networks.json).
+
+| Network | `STELLAR_HORIZON_URL` | `SOROBAN_RPC_URL` | Network passphrase |
+|---------|-----------------------|-------------------|--------------------|
+| Testnet | `https://horizon-testnet.stellar.org` | `https://soroban-testnet.stellar.org:443` | `Test SDF Network ; September 2015` |
+| Mainnet | `https://horizon.stellar.org` | `https://soroban-rpc.mainnet.stellar.org:443` | `Public Global Stellar Network ; September 2015` |
+
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
 | `STELLAR_HORIZON_URL` | string (URL) | — | **Required** (indexer); optional (API health/lag) | Indexer, API | Stellar Horizon API base URL (e.g. `https://horizon.stellar.org` or `https://horizon-testnet.stellar.org`) |
+| `STELLAR_HORIZON_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Horizon URLs tried if the primary is unreachable. Example: `https://horizon-testnet.stellar.org,https://horizon.stellar.org`. The first reachable URL wins. |
 | `HORIZON_MODE` | string | `poll` | Optional | Indexer | SDEX ingestion mode: `poll` or `sse` |
 | `HORIZON_LIMIT` | integer | `200` | Optional | Indexer | Maximum records per Horizon API page request |
 | `POLL_INTERVAL_SECS` | integer (seconds) | `2` | Optional | Indexer | Poll interval when Horizon streaming is not used |
@@ -67,21 +81,73 @@ PostgreSQL connection strings and pool tuning. Used by the API, indexer, replay 
 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
-| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `SOROBAN_RPC_FALLBACK_URLS` | string (comma-separated URLs) | — | Optional | Indexer, API | Ordered failover Soroban RPC URLs tried if the primary is unreachable. Example: `https://soroban-rpc.stellar.org`. The first reachable URL wins. |
 | `ROUTER_CONTRACT_ADDRESS` | string (Stellar address) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery |
+| `SOROBAN_RPC_URL` | string (URL) | — | **Required** (indexer); optional health check (API) | Indexer, API | Soroban RPC endpoint (e.g. `https://soroban-rpc.testnet.stellar.org`). When set, the API validates reachability at startup if `STARTUP_CREDENTIAL_CHECK=true` |
+| `ROUTER_CONTRACT_ADDRESS` | string (Soroban contract ID) | — | **Required** (indexer) | Indexer | Deployed router contract ID for AMM pool discovery. Validated at indexer startup: must be a 56-character contract ID starting with `C`. Missing, empty, or malformed values abort startup with a non-zero exit before any SDEX/AMM loop runs. Read it from the committed deploy artifact: `jq -r .router_contract_id config/deployments/testnet.json` |
+| `ALLOW_EMPTY_ROUTER` | boolean | `false` | Optional (**dev only**) | Indexer | Escape hatch that lets the indexer boot with an unset/empty `ROUTER_CONTRACT_ADDRESS` (SDEX-only, no AMM discovery). Refused when `STELLARROUTE_ENV=production` — startup fails instead. Never set this in a deployed environment |
 | `AMM_POOLS` | string (comma-separated) | — | Optional | Indexer | Additional AMM pool addresses to index, appended to DB-discovered pools |
 
 ---
+
+## Circle CCTP v2 bridge (API)
+
+Default-off public bridge settlement. See [`docs/api/cctp-v2-contract.md`](../api/cctp-v2-contract.md). EC2 / Oracle staging copies: set these in repo-root `.env.prod` (see [`deploy/env.prod.example`](../../deploy/env.prod.example)). Staging enablement checklist: [`docs/deployment/cctp-staging-enablement-checklist.md`](../deployment/cctp-staging-enablement-checklist.md).
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `CCTP_ENABLED` | boolean | `false` | Optional | API | Master switch; when `false`, all `/api/v2/bridge/cctp/*` handlers return `503 cctp_not_enabled` |
+| `CCTP_ACCESS_TOKEN_HMAC_KEY` | string (hex / base64 / base64url) | — | **Required** when `CCTP_ENABLED=true` | API | HMAC key for deterministic idempotent quote tokens. Minimum **32 decoded bytes**. Generate: `python3 -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('='))"` |
+| `CCTP_ACCESS_TOKEN_HMAC_PREVIOUS_KEYS` | string (comma-separated keys) | — | Optional | API | Up to **2** prior HMAC keys for idempotent replay after rotation (same encodings as primary). See contract doc for drain procedure |
+| `CCTP_IDEMPOTENCY_LEASE_SECS` | integer (seconds) | `30` | Optional | API | Exclusive lease duration for in-flight idempotent quotes (tests often use `2`) |
+| `CCTP_IRIS_BASE_URL` | string (HTTPS URL) | `https://iris-api-sandbox.circle.com` | Optional | API | Circle Iris API base URL (sandbox host enforced on testnet) |
+| `CCTP_SEPOLIA_RPC_URL` | string (HTTPS URL) | — | **Required** when `CCTP_ENABLED=true` | API | Primary Sepolia JSON-RPC for EVM burn/mint builders, verifiers, and dependency probes. Precedence: `CCTP_SEPOLIA_RPC_URL` → `SEPOLIA_RPC_URL`. No implicit default (never `rpc.sepolia.org`). Optional fallbacks: `CCTP_SEPOLIA_RPC_FALLBACK_URLS` (comma-separated, max 8 total) |
+| `SEPOLIA_RPC_URL` | string (HTTPS URL) | — | Alias | API | Generic alias for `CCTP_SEPOLIA_RPC_URL` when the CCTP-specific name is unset |
+| `CCTP_STELLAR_RPC_URL` | string (HTTPS URL) | — | Optional | API | Primary Soroban RPC for Stellar CCTP builders/verifiers and dependency probes. Precedence: `CCTP_STELLAR_RPC_URL` → `STELLAR_RPC_URL` → `SOROBAN_RPC_URL` → `https://soroban-testnet.stellar.org`. Optional fallbacks: `CCTP_STELLAR_RPC_FALLBACK_URLS` |
+| `STELLAR_RPC_URL` | string (HTTPS URL) | — | Alias | API | Generic alias in the Stellar RPC precedence chain |
+
+---
+
+## Deployment profile & security (M5)
+
+Single switch that flips several hardened defaults on for public deployments. See
+[`docs/api/production-exposure.md`](../api/production-exposure.md) for the full
+endpoint-by-endpoint inventory.
+
+| Variable | Type | Default | Required | Service(s) | Description |
+|----------|------|---------|----------|------------|-------------|
+| `STELLARROUTE_ENV` | string | *(unset = dev)* | Optional | API | Set to `production` for public deployments. Flips `CORS_ALLOWED_ORIGINS` enforcement and the `REQUIRE_AUTH` default to `true`, and gates `/metrics` + `/api/v1/replay/*` behind `ADMIN_AUTH_TOKEN` |
+| `CORS_ALLOWED_ORIGINS` | string (comma-separated origins) | *(empty)* | **Required** when production/strict CORS | API | Explicit allowlist of browser origins permitted to call the API (e.g. `https://app.example.com`). Startup fails if empty while strict CORS is required |
+| `REQUIRE_STRICT_CORS` | boolean | `false` | Optional | API | Enforce the production CORS allowlist behavior without setting `STELLARROUTE_ENV=production` (e.g. an internet-facing staging environment) |
+| `API_KEYS` | string (comma-separated) | — | Optional | API | Integrator API keys accepted via `x-api-key` or `Authorization: Bearer <key>` |
+| `REQUIRE_AUTH` | boolean | `false` dev/test, `true` production | Optional | API | When `true`, reject requests without a valid API key. Explicit value always wins over the profile default |
+| `PUBLIC_GET_ROUTES` | string (comma-separated path prefixes) | *(empty)* | Optional | API | Explicit allowlist of routes that stay reachable via unauthenticated `GET` even when `REQUIRE_AUTH=true` (e.g. public quote/orderbook reads for a browser frontend). Never exempts non-GET methods, and never applies to `/api/v1/admin/*` or `/api/v1/system/*`. **CCTP** `/api/v2/bridge/cctp/*` is exempt from the global API-key gate separately: quote stays public+rate-limited; transfer routes use `x-cctp-transfer-access` |
+| `ALLOW_INSECURE_PUBLIC_API` | boolean | `false` | Optional | API | Break-glass override acknowledging `STELLARROUTE_ENV=production` with auth disabled. Without it, the API refuses to boot in that configuration; with it, it boots and logs a warning. Never set this in a real production deployment |
+| `ADMIN_AUTH_TOKEN` | string | — | Optional (required to use admin/operator endpoints) | API | Bearer/`x-admin-token` for `/api/v1/admin/*`, `/api/v1/system/*`, and (in production) `/metrics`, `/metrics/cache`, `/metrics/pool`, `/api/v1/replay/*`. Requests are denied when unset, even without a token |
+
+### Integrator API keys vs. browser public GETs
+
+There are two distinct read paths into the API, and they should not be conflated:
+
+- **Integrators** (server-to-server callers) authenticate with an API key from
+  `API_KEYS`, sent as `x-api-key` or `Authorization: Bearer <key>`. This is the
+  expected path when `REQUIRE_AUTH=true`.
+- **Browser-facing public reads** (e.g. the frontend calling `/api/v1/quote`
+  directly from the browser, where there's no key to keep secret) should be
+  exposed via `PUBLIC_GET_ROUTES` — an explicit, reviewed allowlist of GET
+  route prefixes — rather than by turning `REQUIRE_AUTH` off globally. Turning
+  auth off globally also exposes mutating routes that were never meant to be
+  public; `PUBLIC_GET_ROUTES` only ever exempts `GET` requests on the listed
+  prefixes.
 
 ## API server
 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
-| `API_HOST` | string | `127.0.0.1` | Optional | API | Bind address for the HTTP server |
-| `API_PORT` | integer | `3000` | Optional | API | Listen port for the HTTP server |
-| `ADMIN_AUTH_TOKEN` | string | — | Optional | API | Bearer token for protected admin/operator endpoints |
-| `API_KEYS` | string (comma-separated) | — | Optional | API | Valid API keys for authenticated requests |
-| `REQUIRE_AUTH` | boolean | `false` | Optional | API | When `true`, reject requests without a valid API key |
+| `API_HOST` | string | `127.0.0.1` (local) / `0.0.0.0` (when `PORT` is set) | Optional | API | Bind address for the HTTP server. Explicit value always wins. |
+| `API_PORT` | integer | `3000` | Optional | API | Listen port (used when `PORT` env is absent) |
+| `PORT` | integer | — | Optional (set by PaaS) | API | PaaS standard port variable (Render, Fly, Railway, K8s). When present, overrides `API_PORT` and defaults `API_HOST` to `0.0.0.0` so the platform health-check router can reach the process. Set `API_HOST` explicitly if a different bind address is required. |
 | `STARTUP_CREDENTIAL_CHECK` | boolean | `false` | Optional | API, Indexer | When `true`, verify dependencies (DB, Redis, Horizon, Soroban) are reachable before serving |
 | `SHUTDOWN_DRAIN_TIMEOUT_S` | integer (seconds) | `30` | Optional | API, Indexer | Graceful shutdown drain window for in-flight work |
 | `RATE_LIMIT_WINDOW_SECS` | integer (seconds) | `60` | Optional | API | Sliding-window length for HTTP rate limiting |
@@ -200,17 +266,25 @@ Deploy scripts also accept CLI flags (`--network`, `--identity`, `--dry-run`) ra
 
 ## Frontend
 
-Next.js public variables (prefixed with `NEXT_PUBLIC_` so they are exposed to the browser). See also [frontend/src/FEATURE_FLAGS.md](../../frontend/src/FEATURE_FLAGS.md).
+Next.js public variables (prefixed with `NEXT_PUBLIC_` so they are exposed to the browser). See also [frontend/docs/FEATURE_FLAGS.md](../../frontend/docs/FEATURE_FLAGS.md), [docs/deployment/vercel-frontend.md](../deployment/vercel-frontend.md), and `frontend/lib/env-guard.ts`.
 
 | Variable | Type | Default | Required | Service(s) | Description |
 |----------|------|---------|----------|------------|-------------|
-| `NEXT_PUBLIC_API_URL` | string (URL) | `http://localhost:8080/api/v1` | Optional | Frontend | Base URL for REST API requests |
+| `NEXT_PUBLIC_API_URL` | string (URL) | `http://localhost:8080/api/v1` (dev only) | **Required in production** | Frontend | Shared API origin or base including `/api/v1`. The client strips a trailing `/api/v1` when calling `/api/v2` CCTP routes |
+| `NEXT_PUBLIC_API_URL_TESTNET` | string (URL) | — | Recommended for testnet staging | Frontend | Per-network API URL; preferred when `NEXT_PUBLIC_STELLAR_NETWORK=testnet` |
+| `NEXT_PUBLIC_API_URL_MAINNET` | string (URL) | — | Required for mainnet UI | Frontend | Per-network API URL for mainnet |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | `testnet` \| `mainnet` | `testnet` | Recommended | Frontend | App network for wallets, badges, and env-guard resolution |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | string | — | Optional (required for WalletConnect) | Frontend | Reown Cloud project id enabling `evm-walletconnect` (QR / mobile EVM wallets). Create at https://cloud.reown.com |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | string (URL) | network default | Optional | Frontend | Override Horizon endpoint |
+| `STELLARROUTE_ENV` | string | — | Optional | Frontend | Set `production` to enforce the same API URL guard outside Vercel |
 | `NEXT_PUBLIC_FEATURE_ROUTES_BETA` | boolean | `false` | Optional | Frontend | Enable routes beta via `lib/feature-flags.ts` (`true`/`1`/`yes`/`on`) |
 | `NEXT_PUBLIC_FLAGS_URL` | string (URL) | — | Optional | Frontend | Remote JSON feature-flag config URL (highest priority) |
 | `NEXT_PUBLIC_FLAG_ROUTES_BETA` | boolean | `false` | Optional | Frontend | Enable routes beta via `useFeatureFlag` hook |
 | `NEXT_PUBLIC_FLAG_SWAP_UI_V2` | boolean | `false` | Optional | Frontend | Enable swap UI v2 experiment |
 | `NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY` | boolean | `false` | Optional | Frontend | Enable transaction history tab |
 | `NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE` | boolean | `false` | Optional | Frontend | Enable advanced slippage controls |
+
+**Production guard:** when `VERCEL_ENV=production` or `STELLARROUTE_ENV=production`, `next build` fails if the critical API URL is missing or points at localhost.
 
 ### Frontend / CI (testing only)
 
@@ -240,8 +314,9 @@ Postgres is exposed on host port **5432**; Redis on **6379**.
 Variables above were verified against:
 
 - `crates/api/src/bin/stellarroute-api.rs`
+- `crates/api/src/server.rs`, `env_profile.rs`, `routes/mod.rs`
 - `crates/api/src/routes/ws/mod.rs`
-- `crates/api/src/middleware/rate_limit.rs`, `middleware/auth.rs`, `middleware/api_versioning.rs`
+- `crates/api/src/middleware/rate_limit.rs`, `middleware/auth.rs`, `middleware/admin.rs`, `middleware/api_versioning.rs`
 - `crates/api/src/tracing_config.rs`, `shutdown.rs`
 - `crates/api/src/replay/capture.rs`, `purger/config.rs`
 - `crates/api/src/regions/config.rs`, `state.rs`

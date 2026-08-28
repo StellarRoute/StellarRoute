@@ -110,6 +110,7 @@ To point the frontend to a hosted testnet API and target the Stellar Testnet:
    - `NEXT_PUBLIC_API_URL`: Points to the hosted backend API (e.g., `https://api.testnet.stellarroute.com/api/v1`).
    - `NEXT_PUBLIC_STELLAR_NETWORK`: Defines the target network (`testnet` or `mainnet`). This drives default wallet connections, header/footer network badges, and network validation rules.
    - `NEXT_PUBLIC_STELLAR_HORIZON_URL`: Configures a custom Stellar Horizon endpoint (e.g., `https://horizon-testnet.stellar.org`).
+   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: Optional Reown Cloud project id for EVM WalletConnect (QR / mobile) on cross-chain flows. Create at https://cloud.reown.com.
 
 ## Next Steps
 
@@ -334,6 +335,16 @@ cargo build
 #### Build succeeds but binary panics at startup — missing env vars
 
 Make sure `.env` exists in the project root (see `.env.example`). The API requires `DATABASE_URL`; the indexer additionally requires `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL`, and `ROUTER_CONTRACT_ADDRESS`. See the [Environment Variables Reference](./environment-variables.md) for required vs optional settings per service.
+
+`.env.example` ships one coherent block per network (testnet enabled, mainnet commented out). **Copy a whole block — never mix networks.** Pointing `STELLAR_HORIZON_URL` at mainnet while `SOROBAN_RPC_URL` points at testnet indexes SDEX and AMM liquidity from two different ledgers into the same tables, and no component errors on the mismatch.
+
+The indexer also validates `ROUTER_CONTRACT_ADDRESS` at startup and exits non-zero if it is missing, empty, or not a well-formed Soroban contract ID. Populate it from the committed deploy artifact:
+
+```bash
+export ROUTER_CONTRACT_ADDRESS="$(jq -r .router_contract_id config/deployments/testnet.json)"
+```
+
+For SDEX-only local development, set `ALLOW_EMPTY_ROUTER=1` instead (dev only; refused when `STELLARROUTE_ENV=production`).
 
 ---
 

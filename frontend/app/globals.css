@@ -8,8 +8,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-figtree);
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-jetbrains);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -44,9 +45,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
 
-  /* Additional Stellar-specific colors */
-  --color-stellar-purple: #6366f1;
   --color-bid-green: var(--bid-green);
   --color-ask-red: var(--ask-red);
 
@@ -60,92 +61,96 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  /* Light Theme */
-  --background: #ffffff;
-  --bid-green: #059669;
-  --ask-red: #ef4444;
-  --foreground: #020617;
-  --card: #ffffff;
-  --card-foreground: #020617;
-  --popover: #ffffff;
-  --popover-foreground: #020617;
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f0f4f8;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
+  --radius: 0.5rem;
+  /* Navigation-chart light: cool paper, ink, seafoam signal */
+  --background: #eef3f6;
+  --bid-green: #0f7a5a;
+  --ask-red: #c23b3b;
+  --foreground: #0b1520;
+  --card: #f7fafc;
+  --card-foreground: #0b1520;
+  --popover: #f7fafc;
+  --popover-foreground: #0b1520;
+  --primary: #0d8f82;
+  --primary-foreground: #f4fffc;
+  --secondary: #dde7ee;
+  --secondary-foreground: #132231;
+  --muted: #e3ebf1;
+  --muted-foreground: #4a5d6e;
+  --accent: #d7e8e4;
+  --accent-foreground: #0b1520;
+  --destructive: #c23b3b;
   --destructive-foreground: #ffffff;
-  --success: #22c55e;
+  --success: #0f7a5a;
   --success-foreground: #ffffff;
-  --warning: #f59e0b;
-  --warning-foreground: #ffffff;
-  --border: #cbd5e0;
-  --input: #e2e8f0;
-  --ring: #6366f1;
+  --warning: #c98512;
+  --warning-foreground: #1a1205;
+  --signal: #c98512;
+  --signal-foreground: #1a1205;
+  --border: #c5d2dc;
+  --input: #d5e0e8;
+  --ring: #0d8f82;
 
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --chart-1: #0d8f82;
+  --chart-2: #c98512;
+  --chart-3: #2a6f97;
+  --chart-4: #5b7c6a;
+  --chart-5: #8a5a44;
 
-  --sidebar: #f8fafc;
-  --sidebar-foreground: #0f172a;
-  --sidebar-primary: #6366f1;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #6366f1;
+  --sidebar: #e8eef3;
+  --sidebar-foreground: #0b1520;
+  --sidebar-primary: #0d8f82;
+  --sidebar-primary-foreground: #f4fffc;
+  --sidebar-accent: #d7e8e4;
+  --sidebar-accent-foreground: #0b1520;
+  --sidebar-border: #c5d2dc;
+  --sidebar-ring: #0d8f82;
 }
 
 .dark {
-  /* Dark Theme Default */
-  --background: #0a0e1a;
-  --bid-green: #10b981;
-  --ask-red: #f87171;
-  --foreground: #f8fafc;
-  --card: #111827;
-  --card-foreground: #f8fafc;
-  --popover: #111827;
-  --popover-foreground: #f8fafc;
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --secondary: #1e293b;
-  --secondary-foreground: #f8fafc;
-  --muted: #1e293b;
-  --muted-foreground: #b8c5d6;
-  --accent: #1e293b;
-  --accent-foreground: #f8fafc;
-  --destructive: #ef4444;
+  /* Deep ink void — chart deck, not purple neon */
+  --background: #060b11;
+  --bid-green: #2ecf9a;
+  --ask-red: #f07178;
+  --foreground: #e8eef4;
+  --card: #0c141d;
+  --card-foreground: #e8eef4;
+  --popover: #0c141d;
+  --popover-foreground: #e8eef4;
+  --primary: #1ec9b0;
+  --primary-foreground: #041512;
+  --secondary: #15202b;
+  --secondary-foreground: #e8eef4;
+  --muted: #121c26;
+  --muted-foreground: #9aafc0;
+  --accent: #13261f;
+  --accent-foreground: #e8eef4;
+  --destructive: #e35d66;
   --destructive-foreground: #ffffff;
-  --success: #22c55e;
-  --success-foreground: #ffffff;
-  --warning: #f59e0b;
-  --warning-foreground: #ffffff;
-  --border: #334155;
-  --input: #1e293b;
-  --ring: #6366f1;
+  --success: #2ecf9a;
+  --success-foreground: #041512;
+  --warning: #e0a83a;
+  --warning-foreground: #1a1205;
+  --signal: #e0a83a;
+  --signal-foreground: #1a1205;
+  --border: #243442;
+  --input: #15202b;
+  --ring: #1ec9b0;
 
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --chart-1: #1ec9b0;
+  --chart-2: #e0a83a;
+  --chart-3: #5ba3c9;
+  --chart-4: #7d9b8c;
+  --chart-5: #c48a6a;
 
-  --sidebar: #0a0e1a;
-  --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #6366f1;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #6366f1;
+  --sidebar: #060b11;
+  --sidebar-foreground: #e8eef4;
+  --sidebar-primary: #1ec9b0;
+  --sidebar-primary-foreground: #041512;
+  --sidebar-accent: #13261f;
+  --sidebar-accent-foreground: #e8eef4;
+  --sidebar-border: #243442;
+  --sidebar-ring: #1ec9b0;
 }
 
 /* High Contrast Mode — light base */
@@ -158,7 +163,7 @@
   --card-foreground: #000000;
   --popover: #ffffff;
   --popover-foreground: #000000;
-  --primary: #0000cc;
+  --primary: #00665c;
   --primary-foreground: #ffffff;
   --secondary: #e8e8e8;
   --secondary-foreground: #000000;
@@ -172,17 +177,19 @@
   --success-foreground: #ffffff;
   --warning: #7a4f00;
   --warning-foreground: #ffffff;
+  --signal: #7a4f00;
+  --signal-foreground: #ffffff;
   --border: #000000;
   --input: #000000;
-  --ring: #0000cc;
+  --ring: #00665c;
   --sidebar: #f0f0f0;
   --sidebar-foreground: #000000;
-  --sidebar-primary: #0000cc;
+  --sidebar-primary: #00665c;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e8e8e8;
   --sidebar-accent-foreground: #000000;
   --sidebar-border: #000000;
-  --sidebar-ring: #0000cc;
+  --sidebar-ring: #00665c;
 }
 
 /* High Contrast Mode — dark base */
@@ -195,7 +202,7 @@
   --card-foreground: #ffffff;
   --popover: #0a0a0a;
   --popover-foreground: #ffffff;
-  --primary: #6699ff;
+  --primary: #5ef0d8;
   --primary-foreground: #000000;
   --secondary: #1a1a1a;
   --secondary-foreground: #ffffff;
@@ -209,17 +216,19 @@
   --success-foreground: #000000;
   --warning: #ffcc00;
   --warning-foreground: #000000;
+  --signal: #ffcc00;
+  --signal-foreground: #000000;
   --border: #ffffff;
   --input: #ffffff;
-  --ring: #6699ff;
+  --ring: #5ef0d8;
   --sidebar: #000000;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #6699ff;
+  --sidebar-primary: #5ef0d8;
   --sidebar-primary-foreground: #000000;
   --sidebar-accent: #1a1a1a;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #ffffff;
-  --sidebar-ring: #6699ff;
+  --sidebar-ring: #5ef0d8;
 }
 
 @layer base {
@@ -232,18 +241,47 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    background-image:
+      radial-gradient(ellipse 90% 55% at 12% -10%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 55%),
+      radial-gradient(ellipse 70% 45% at 92% 8%, color-mix(in srgb, var(--signal) 10%, transparent), transparent 50%),
+      linear-gradient(to bottom, transparent, var(--background));
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.35;
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, black 20%, transparent 75%);
+  }
+
+  #__next,
+  body > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .font-display {
+    font-family: var(--font-bricolage), var(--font-figtree), system-ui, sans-serif;
   }
 }
 
 @layer utilities {
   .glass-card {
-    background: color-mix(in srgb, white, transparent 95%);
-    backdrop-filter: blur(24px);
-    border: 1px solid color-mix(in srgb, white, transparent 90%);
-    box-shadow: var(--shadow-2xl);
+    background: color-mix(in srgb, var(--card), transparent 18%);
+    backdrop-filter: blur(18px);
+    border: 1px solid color-mix(in srgb, var(--border), transparent 40%);
+    box-shadow: 0 18px 50px color-mix(in srgb, var(--foreground) 8%, transparent);
   }
-  
+
   .glass-toast {
     background: color-mix(in srgb, var(--background), transparent 40%) !important;
     backdrop-filter: blur(24px) !important;
@@ -251,6 +289,52 @@
     box-shadow: var(--shadow-2xl) !important;
     border-radius: 1rem !important;
     color: var(--foreground) !important;
+  }
+
+  .chart-panel {
+    background: color-mix(in srgb, var(--card), transparent 8%);
+    border: 1px solid color-mix(in srgb, var(--border), transparent 25%);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
+      0 20px 40px color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  .brand-wordmark {
+    font-family: var(--font-bricolage), var(--font-figtree), system-ui, sans-serif;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+  }
+
+  .cross-chain-deck {
+    max-width: min(640px, 100%);
+  }
+
+  .cross-chain-deck-main {
+    display: block;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cross-chain-deck [class*="animate-"] {
+      animation: none !important;
+    }
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -100%;
+    z-index: 100;
+    border-radius: 0.5rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: top 120ms ease;
+  }
+
+  .skip-link:focus {
+    top: 1rem;
   }
 }
 
@@ -295,6 +379,140 @@
   border-color: color-mix(in srgb, var(--primary), transparent 80%) !important;
 }
 
+/* Swap confirmation waiting beacon — navigation-chart fix acquiring signal */
+@keyframes tcm-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tcm-signal-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.tcm-orbit-spin {
+  animation: tcm-orbit 2.6s linear infinite;
+}
+
+.tcm-signal-pulse {
+  animation: tcm-signal-pulse 1.8s ease-in-out infinite;
+}
+
+.tcm-wait-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  pointer-events: none;
+}
+
+.tcm-wait-ring-outer {
+  inset: 0;
+  opacity: 0.55;
+}
+
+.tcm-wait-ring-mid {
+  inset: 12px;
+  opacity: 0.7;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+}
+
+.tcm-wait-wallet .tcm-wait-ring-mid {
+  border-color: color-mix(in srgb, var(--signal) 40%, var(--border));
+}
+
+.tcm-wait-sweep {
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 210deg,
+    transparent 0deg,
+    transparent 280deg,
+    color-mix(in srgb, var(--primary) 55%, transparent) 320deg,
+    color-mix(in srgb, var(--primary) 85%, transparent) 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+}
+
+.tcm-wait-wallet .tcm-wait-sweep {
+  background: conic-gradient(
+    from 210deg,
+    transparent 0deg,
+    transparent 280deg,
+    color-mix(in srgb, var(--signal) 50%, transparent) 320deg,
+    color-mix(in srgb, var(--signal) 90%, transparent) 360deg
+  );
+}
+
+/* CCTP corridor journey — packet in transit */
+@keyframes cctp-journey-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes cctp-journey-shimmer {
+  0% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.25);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+.cctp-journey-grid {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 20%, transparent 75%);
+}
+
+.cctp-journey-ring {
+  border: 1px solid color-mix(in srgb, var(--signal) 70%, transparent);
+  animation: cctp-journey-ring 1.8s ease-out infinite;
+}
+
+.cctp-journey-progress {
+  animation: cctp-journey-shimmer 2.2s ease-in-out infinite;
+}
+
+.cctp-journey-packet {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 9999px;
+  background: var(--signal);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--signal) 25%, transparent),
+    0 0 12px color-mix(in srgb, var(--signal) 55%, transparent);
+  transition: left 600ms ease;
+}
 
 /**
  * Reduced-motion: disable all decorative animations and transitions.
@@ -302,7 +520,6 @@
  * Spinner/pulse animations on loading indicators are replaced with opacity.
  */
 @media (prefers-reduced-motion: reduce) {
-  /* Kill all transitions and animations by default */
   *,
   *::before,
   *::after {
@@ -312,27 +529,38 @@
     scroll-behavior: auto !important;
   }
 
-  /* Restore opacity-only transitions for state feedback (e.g. hover, focus) */
   .motion-safe-opacity {
     transition-duration: 150ms !important;
     transition-property: opacity !important;
   }
 
-  /* tw-animate-css animate-in / animate-out: collapse to instant opacity */
   [class*='animate-in'],
   [class*='animate-out'] {
     animation: none !important;
     opacity: 1 !important;
   }
 
-  /* Skeleton pulse: keep a static dimmed appearance */
   .animate-pulse {
     animation: none !important;
     opacity: 0.6 !important;
   }
 
-  /* Spinner: keep visible but static */
   .animate-spin {
     animation: none !important;
+  }
+
+  .tcm-orbit-spin,
+  .tcm-signal-pulse,
+  .cctp-journey-ring,
+  .cctp-journey-progress {
+    animation: none !important;
+  }
+
+  .tcm-wait-sweep {
+    opacity: 0.55;
+  }
+
+  .cctp-journey-packet {
+    transition: none !important;
   }
 }

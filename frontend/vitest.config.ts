@@ -29,6 +29,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "."),
       "lucide-react": path.resolve(__dirname, "__mocks__/lucide-react.tsx"),
       "@stellar/freighter-api": path.resolve(__dirname, "__mocks__/@stellar/freighter-api.ts"),
+      "@lobstrco/signer-extension-api": path.resolve(
+        __dirname,
+        "__mocks__/@lobstrco/signer-extension-api.ts"
+      ),
     },
   },
 });
+

@@ -120,7 +120,9 @@ fn contract_version_metadata_field_names_are_snake_case() {
         version: "1.2.3".to_string(),
         wasm_hash: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890".to_string(),
         network: "mainnet".to_string(),
-        contract_address: Some("CADDR00000000000000000000000000000000000000000000000000001".to_string()),
+        contract_address: Some(
+            "CADDR00000000000000000000000000000000000000000000000000001".to_string(),
+        ),
         deployed_at: Some(1_700_000_000),
         git_commit: Some("abc1234".to_string()),
     };
@@ -130,15 +132,33 @@ fn contract_version_metadata_field_names_are_snake_case() {
     // Required fields present with correct names
     assert_eq!(json["contract_name"], "stellar_router");
     assert_eq!(json["version"], "1.2.3");
-    assert_eq!(json["wasm_hash"], "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
+    assert_eq!(
+        json["wasm_hash"],
+        "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+    );
     assert_eq!(json["network"], "mainnet");
 
     // No camelCase leakage
-    assert!(json.get("contractName").is_none(), "must not have camelCase 'contractName'");
-    assert!(json.get("wasmHash").is_none(),     "must not have camelCase 'wasmHash'");
-    assert!(json.get("contractAddress").is_none(), "must not have camelCase 'contractAddress'");
-    assert!(json.get("deployedAt").is_none(),   "must not have camelCase 'deployedAt'");
-    assert!(json.get("gitCommit").is_none(),    "must not have camelCase 'gitCommit'");
+    assert!(
+        json.get("contractName").is_none(),
+        "must not have camelCase 'contractName'"
+    );
+    assert!(
+        json.get("wasmHash").is_none(),
+        "must not have camelCase 'wasmHash'"
+    );
+    assert!(
+        json.get("contractAddress").is_none(),
+        "must not have camelCase 'contractAddress'"
+    );
+    assert!(
+        json.get("deployedAt").is_none(),
+        "must not have camelCase 'deployedAt'"
+    );
+    assert!(
+        json.get("gitCommit").is_none(),
+        "must not have camelCase 'gitCommit'"
+    );
 }
 
 /// Optional fields serialize as JSON `null` when `None` (keys present, value null).
@@ -159,14 +179,32 @@ fn contract_version_metadata_none_fields_serialize_as_null() {
     let json = serde_json::to_value(&meta).expect("serialization must not fail");
 
     // Keys must be present
-    assert!(json.get("contract_address").is_some(), "contract_address key must be present");
-    assert!(json.get("deployed_at").is_some(),      "deployed_at key must be present");
-    assert!(json.get("git_commit").is_some(),       "git_commit key must be present");
+    assert!(
+        json.get("contract_address").is_some(),
+        "contract_address key must be present"
+    );
+    assert!(
+        json.get("deployed_at").is_some(),
+        "deployed_at key must be present"
+    );
+    assert!(
+        json.get("git_commit").is_some(),
+        "git_commit key must be present"
+    );
 
     // Values must be null (not omitted)
-    assert!(json["contract_address"].is_null(), "contract_address must be null when None");
-    assert!(json["deployed_at"].is_null(),      "deployed_at must be null when None");
-    assert!(json["git_commit"].is_null(),       "git_commit must be null when None");
+    assert!(
+        json["contract_address"].is_null(),
+        "contract_address must be null when None"
+    );
+    assert!(
+        json["deployed_at"].is_null(),
+        "deployed_at must be null when None"
+    );
+    assert!(
+        json["git_commit"].is_null(),
+        "git_commit must be null when None"
+    );
 }
 
 /// wasm_hash must round-trip verbatim as a plain hex string.
@@ -246,19 +284,27 @@ async fn list_includes_seeded_rows_with_correct_field_shape() {
     let name_b = format!("{prefix}amm");
 
     seed(
-        &pool, &name_a, "1.0.0",
+        &pool,
+        &name_a,
+        "1.0.0",
         "aabb0000000000000000000000000000000000000000000000000000000000aa",
         "testnet",
         Some("CTESTADDR000000000000000000000000000000000000000000000001"),
         Some(1_700_000_100),
         Some("abc111"),
-    ).await;
+    )
+    .await;
     seed(
-        &pool, &name_b, "2.1.0",
+        &pool,
+        &name_b,
+        "2.1.0",
         "ccdd0000000000000000000000000000000000000000000000000000000000cc",
         "testnet",
-        None, Some(1_700_000_200), None,
-    ).await;
+        None,
+        Some(1_700_000_200),
+        None,
+    )
+    .await;
 
     let router = live_router(pool.clone()).await;
 
@@ -291,13 +337,25 @@ async fn list_includes_seeded_rows_with_correct_field_shape() {
 
     // Verify spec field shape on one item
     let item = seeded[0];
-    assert!(item["contract_name"].is_string(), "contract_name must be a string");
-    assert!(item["version"].is_string(),       "version must be a string");
-    assert!(item["wasm_hash"].is_string(),     "wasm_hash must be a string");
-    assert!(item["network"].is_string(),       "network must be a string");
-    assert!(item.get("contract_address").is_some(), "contract_address key must be present");
-    assert!(item.get("deployed_at").is_some(),      "deployed_at key must be present");
-    assert!(item.get("git_commit").is_some(),       "git_commit key must be present");
+    assert!(
+        item["contract_name"].is_string(),
+        "contract_name must be a string"
+    );
+    assert!(item["version"].is_string(), "version must be a string");
+    assert!(item["wasm_hash"].is_string(), "wasm_hash must be a string");
+    assert!(item["network"].is_string(), "network must be a string");
+    assert!(
+        item.get("contract_address").is_some(),
+        "contract_address key must be present"
+    );
+    assert!(
+        item.get("deployed_at").is_some(),
+        "deployed_at key must be present"
+    );
+    assert!(
+        item.get("git_commit").is_some(),
+        "git_commit key must be present"
+    );
 
     cleanup(&pool, prefix).await;
 }
@@ -314,13 +372,16 @@ async fn get_by_name_returns_correct_fields() {
     let name = format!("{prefix}router");
 
     seed(
-        &pool, &name, "1.5.0",
+        &pool,
+        &name,
+        "1.5.0",
         "deadbeef00112233445566778899aabbccddeeff00112233445566778899aabb",
         "mainnet",
         Some("CMAINNET000000000000000000000000000000000000000000000002"),
         Some(1_700_001_000),
         Some("def5678"),
-    ).await;
+    )
+    .await;
 
     let router = live_router(pool.clone()).await;
 
@@ -334,7 +395,11 @@ async fn get_by_name_returns_correct_fields() {
         .await
         .expect("request failed");
 
-    assert_eq!(response.status(), StatusCode::OK, "known contract must return 200");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "known contract must return 200"
+    );
 
     let json = body_json(response).await;
 
@@ -382,7 +447,8 @@ async fn get_by_name_wasm_hash_is_verbatim_hex() {
     assert_eq!(response.status(), StatusCode::OK);
     let json = body_json(response).await;
     assert_eq!(
-        json["wasm_hash"].as_str().unwrap(), hex,
+        json["wasm_hash"].as_str().unwrap(),
+        hex,
         "wasm_hash must be returned verbatim without encoding transformation"
     );
 
@@ -410,12 +476,20 @@ async fn get_by_name_returns_404_for_unknown_contract() {
         .await
         .expect("request failed");
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND, "unknown contract must return 404");
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "unknown contract must return 404"
+    );
 
     let json = body_json(response).await;
 
     // Standard error envelope: { v, timestamp, request_id, data: { error, message } }
-    assert_eq!(json["v"].as_u64().unwrap_or(0), 1, "envelope version must be 1");
+    assert_eq!(
+        json["v"].as_u64().unwrap_or(0),
+        1,
+        "envelope version must be 1"
+    );
     assert_eq!(
         json["data"]["error"].as_str().unwrap_or(""),
         "not_found",
@@ -468,21 +542,27 @@ async fn get_by_network_returns_network_specific_row() {
 
     // Same contract, two networks, different hashes
     seed(
-        &pool, &name, "1.0.0",
+        &pool,
+        &name,
+        "1.0.0",
         "aaaa0000000000000000000000000000000000000000000000000000000000aa",
         "mainnet",
         Some("CMAINNET000000000000000000000000000000000000000000000003"),
         Some(1_700_002_000),
         Some("main111"),
-    ).await;
+    )
+    .await;
     seed(
-        &pool, &name, "1.0.0",
+        &pool,
+        &name,
+        "1.0.0",
         "bbbb0000000000000000000000000000000000000000000000000000000000bb",
         "testnet",
         Some("CTESTNET000000000000000000000000000000000000000000000004"),
         Some(1_700_002_100),
         Some("test222"),
-    ).await;
+    )
+    .await;
 
     let router = live_router(pool.clone()).await;
 
@@ -496,11 +576,19 @@ async fn get_by_network_returns_network_specific_row() {
         .await
         .expect("request failed");
 
-    assert_eq!(response.status(), StatusCode::OK, "known contract+network must return 200");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "known contract+network must return 200"
+    );
 
     let json = body_json(response).await;
     assert_eq!(json["contract_name"].as_str().unwrap(), name);
-    assert_eq!(json["network"].as_str().unwrap(), "testnet", "must return the requested network");
+    assert_eq!(
+        json["network"].as_str().unwrap(),
+        "testnet",
+        "must return the requested network"
+    );
     assert_eq!(
         json["wasm_hash"].as_str().unwrap(),
         "bbbb0000000000000000000000000000000000000000000000000000000000bb",
@@ -521,17 +609,25 @@ async fn get_by_network_returns_404_for_undeployed_network() {
 
     // Only mainnet seeded
     seed(
-        &pool, &name, "1.0.0",
+        &pool,
+        &name,
+        "1.0.0",
         "cccc0000000000000000000000000000000000000000000000000000000000cc",
-        "mainnet", None, Some(1_700_003_000), None,
-    ).await;
+        "mainnet",
+        None,
+        Some(1_700_003_000),
+        None,
+    )
+    .await;
 
     let router = live_router(pool.clone()).await;
 
     let response = router
         .oneshot(
             Request::builder()
-                .uri(format!("/api/v1/contracts/registry/{name}/network/futurenet"))
+                .uri(format!(
+                    "/api/v1/contracts/registry/{name}/network/futurenet"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -539,7 +635,8 @@ async fn get_by_network_returns_404_for_undeployed_network() {
         .expect("request failed");
 
     assert_eq!(
-        response.status(), StatusCode::NOT_FOUND,
+        response.status(),
+        StatusCode::NOT_FOUND,
         "contract on undeployed network must return 404"
     );
 
@@ -549,7 +646,10 @@ async fn get_by_network_returns_404_for_undeployed_network() {
         "not_found",
         "error code must be 'not_found'"
     );
-    assert!(json["data"]["message"].as_str().is_some(), "error must include a message");
+    assert!(
+        json["data"]["message"].as_str().is_some(),
+        "error must include a message"
+    );
 
     cleanup(&pool, prefix).await;
 }
@@ -561,7 +661,7 @@ async fn get_by_network_404_message_names_contract_and_network() {
     let pool = PgPool::connect(&default_db_url()).await.expect("connect");
     let router = live_router(pool).await;
 
-    let unknown_name    = "totally_unknown_835_xyz";
+    let unknown_name = "totally_unknown_835_xyz";
     let unknown_network = "futurenet";
 
     let response = router
@@ -580,6 +680,12 @@ async fn get_by_network_404_message_names_contract_and_network() {
 
     let json = body_json(response).await;
     let msg = json["data"]["message"].as_str().unwrap_or("");
-    assert!(msg.contains(unknown_name),    "404 message must name the contract; got: '{msg}'");
-    assert!(msg.contains(unknown_network), "404 message must name the network; got: '{msg}'");
+    assert!(
+        msg.contains(unknown_name),
+        "404 message must name the contract; got: '{msg}'"
+    );
+    assert!(
+        msg.contains(unknown_network),
+        "404 message must name the network; got: '{msg}'"
+    );
 }

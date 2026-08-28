@@ -10,7 +10,7 @@
 //!
 //! Request logs and decision stages include matching `request_id` values.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, Json};
 use opentelemetry::trace::TraceContextExt;
 use serde_json::{Map, Value};
 use sqlx::Row;
@@ -759,7 +759,9 @@ pub(crate) async fn compute_quote_response(
     ) = find_best_price(&state, &base_asset, &quote_asset, base_id, quote_id, amount).await?;
 
     let stale_count = freshness_outcome.stale.len();
-    if stale_count > 0 {
+    // Mixed freshness: stale venues are excluded from routing.
+    // All-stale soft-degrade keeps quoting those venues — do not count as excluded.
+    if stale_count > 0 && !freshness_outcome.fresh.is_empty() {
         state
             .cache_metrics
             .add_stale_inputs_excluded(stale_count as u64);
@@ -790,7 +792,9 @@ pub(crate) async fn compute_quote_response(
         price: format!("{:.7}", price),
         total: format!("{:.7}", total),
         quote_type: quote_type_str.to_string(),
-        degraded: state.external_dependency_health.soroban_breaker_is_open(),
+        degraded: state.external_dependency_health.soroban_breaker_is_open()
+            || degrade_due_to_indexer_lag
+            || (freshness_outcome.fresh.is_empty() && !freshness_outcome.stale.is_empty()),
         path,
         timestamp,
         expires_at,
@@ -1059,7 +1063,7 @@ async fn find_best_price(
                     reserve_a_e7: Some(c.available_amount_e7 as i128),
                     reserve_b_e7: Some(c.available_amount_e7 as i128),
                     tvl_e7: Some((c.available_amount_e7 * 2) as i128),
-                    last_updated_at: Some(now),
+                    last_updated_at: c.updated_at,
                 }
             } else {
                 VenueScorerInput {
@@ -1071,7 +1075,7 @@ async fn find_best_price(
                     reserve_a_e7: None,
                     reserve_b_e7: None,
                     tvl_e7: None,
-                    last_updated_at: Some(now),
+                    last_updated_at: c.updated_at,
                 }
             }
         })
@@ -1083,37 +1087,22 @@ async fn find_best_price(
         FreshnessGuard::evaluate(&scorer_inputs, &health_config.freshness_threshold_secs, now);
     budget_tracker.record(PipelineStage::FreshnessEval, freshness_guard.complete());
 
-    if freshness_outcome.fresh.is_empty() {
-        state.cache_metrics.inc_stale_rejection();
-        return Err(ApiError::StaleMarketData {
-            stale_count: freshness_outcome.stale.len(),
-            fresh_count: 0,
-            threshold_secs_sdex: health_config.freshness_threshold_secs.sdex,
-            threshold_secs_amm: health_config.freshness_threshold_secs.amm,
-        });
-    }
+    // Prefer fresh venues. If the orderbook/AMM snapshot is entirely stale but
+    // liquidity still exists, soft-degrade: quote anyway and surface `degraded`
+    // + data_freshness so the UI can warn without blocking the swap.
+    let (routing_indices, mut stale_exclusion_entries) =
+        select_routing_indices_after_freshness(&freshness_outcome, &direct_candidates)?;
 
-    let fresh_candidates: Vec<DirectVenueCandidate> = freshness_outcome
-        .fresh
+    let fresh_candidates: Vec<DirectVenueCandidate> = routing_indices
         .iter()
         .filter_map(|&idx| direct_candidates.get(idx).cloned())
         .collect();
 
     link_source_traces(&candidates);
 
-    let fresh_scorer_inputs: Vec<&VenueScorerInput> = freshness_outcome
-        .fresh
+    let fresh_scorer_inputs: Vec<&VenueScorerInput> = routing_indices
         .iter()
         .filter_map(|&idx| scorer_inputs.get(idx))
-        .collect();
-    let mut stale_exclusion_entries: Vec<ApiExcludedVenueInfo> = freshness_outcome
-        .stale
-        .iter()
-        .filter_map(|&idx| direct_candidates.get(idx))
-        .map(|candidate| ApiExcludedVenueInfo {
-            venue_ref: candidate.venue_ref.clone(),
-            reason: ApiExclusionReason::StaleData,
-        })
         .collect();
 
     let scorer = HealthScorer {
@@ -1166,17 +1155,35 @@ async fn find_best_price(
         circuit_breaker: Some(state.circuit_breaker.clone()),
     };
 
+    // Provider kill-switches from admin/Redis (bridges remain non-executable separately).
+    let provider_policy = state.kill_switch.get_provider_policy().await;
+
     // Stage 4: Policy filter
     let policy_filter_guard = budget_tracker.stage(PipelineStage::PolicyFilter);
-    // Apply filter (pass empty edges — we just need diagnostics for this single-hop path)
+    // Health exclusions remain diagnostic-only for single-hop quotes (pre-existing).
+    // Provider kill-switches actively remove candidates that carry provider metadata.
     let filter = GraphFilter::new(&policy);
-    let (_, routing_diagnostics) = filter.filter_edges(&[], &scored);
+    let (_, routing_diagnostics) =
+        filter.filter_edges_with_providers(&[], &scored, Some(&provider_policy));
+    let mut provider_excluded: Vec<ApiExcludedVenueInfo> = fresh_candidates
+        .iter()
+        .filter(|c| !provider_policy.is_provider_allowed(c.provider.as_deref()))
+        .map(|c| ApiExcludedVenueInfo {
+            venue_ref: c.venue_ref.clone(),
+            reason: ApiExclusionReason::Override,
+        })
+        .collect();
+    let fresh_candidates: Vec<DirectVenueCandidate> = fresh_candidates
+        .into_iter()
+        .filter(|c| provider_policy.is_provider_allowed(c.provider.as_deref()))
+        .collect();
     budget_tracker.record(PipelineStage::PolicyFilter, policy_filter_guard.complete());
 
     tracing::info!(
         stage = "policy_filter",
         excluded = routing_diagnostics.excluded_venues.len(),
-        "Applied policy and threshold filters"
+        provider_excluded = provider_excluded.len(),
+        "Applied policy/threshold diagnostics and provider kill-switch filters"
     );
 
     // Convert routing diagnostics to API types, then prepend stale exclusions (Req 6.2)
@@ -1208,13 +1215,14 @@ async fn find_best_price(
         .collect();
 
     stale_exclusion_entries.append(&mut health_exclusion_entries);
+    stale_exclusion_entries.append(&mut provider_excluded);
     let api_diagnostics = ApiExclusionDiagnostics {
         excluded_venues: stale_exclusion_entries,
     };
 
     // Stage 5: Venue selection
     let venue_selection_guard = budget_tracker.stage(PipelineStage::VenueSelection);
-    // Pass only fresh candidates to price evaluation (Req 2.2, 6.1)
+    // Pass only fresh, provider-allowed candidates to price evaluation (Req 2.2, 6.1)
     let (selected, rationale) = evaluate_single_hop_direct_venues(fresh_candidates, amount)?;
     budget_tracker.record(
         PipelineStage::VenueSelection,
@@ -1231,9 +1239,8 @@ async fn find_best_price(
         );
     }
 
-    // Collect last_updated_at timestamps for fresh scorer inputs (for source_timestamp, Req 3.1)
-    let fresh_timestamps: Vec<chrono::DateTime<chrono::Utc>> = freshness_outcome
-        .fresh
+    // Collect last_updated_at timestamps for routing candidates (for source_timestamp)
+    let fresh_timestamps: Vec<chrono::DateTime<chrono::Utc>> = routing_indices
         .iter()
         .filter_map(|&idx| scorer_inputs[idx].last_updated_at)
         .collect();
@@ -1261,23 +1268,23 @@ async fn find_best_price(
 
     // Optional Soroban simulation step for AMM venues. If configured and enabled,
     // run a dry-run and convert explicit simulation failures into a NotExecutable error.
-    if selected.venue_type == "amm" {
-        if state.soroban_simulation_enabled {
-            if let Some(sim) = &state.soroban_simulator {
-                // Build a lightweight simulation payload. The real transaction XDR
-                // builder lives elsewhere; for dry-run validation we encode key
-                // route identifiers so tests/mocks can inspect the request.
-                let tx_xdr = format!("simulate:amm:{}:{}:{}",
-                    selected.venue_ref, amount, selected.price);
+    if selected.venue_type == "amm" && state.soroban_simulation_enabled {
+        if let Some(sim) = &state.soroban_simulator {
+            // Build a lightweight simulation payload. The real transaction XDR
+            // builder lives elsewhere; for dry-run validation we encode key
+            // route identifiers so tests/mocks can inspect the request.
+            let tx_xdr = format!(
+                "simulate:amm:{}:{}:{}",
+                selected.venue_ref, amount, selected.price
+            );
 
-                let sim_res = sim.simulate(&tx_xdr).await;
+            let sim_res = sim.simulate(&tx_xdr).await;
 
-                if sim_res.simulated && !sim_res.success {
-                    let reason = sim_res
-                        .failure_reason
-                        .unwrap_or_else(|| "simulation_failure".to_string());
-                    return Err(ApiError::NotExecutable(reason));
-                }
+            if sim_res.simulated && !sim_res.success {
+                let reason = sim_res
+                    .failure_reason
+                    .unwrap_or_else(|| "simulation_failure".to_string());
+                return Err(ApiError::NotExecutable(reason));
             }
         }
     }
@@ -1316,6 +1323,15 @@ struct DirectVenueCandidate {
     source_span_id: String,
     is_inverse: bool,
     fee_bps: u32,
+    /// Optional liquidity provider id (when present, subject to kill-switch policy).
+    ///
+    /// Current `normalized_liquidity` has no provider column, so ingest sets this
+    /// to `None`. Provider kill-switches are forward-compatible and inert for
+    /// today's Stellar venues until ingest supplies provider metadata — do not
+    /// pretend current venues have providers.
+    provider: Option<String>,
+    /// Orderbook / pool snapshot time from `normalized_liquidity.updated_at`.
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl DirectVenueCandidate {
@@ -1334,6 +1350,48 @@ impl DirectVenueCandidate {
     fn source_trace_context(&self) -> Option<SourceTraceContext> {
         SourceTraceContext::from_parts(self.source_trace_id.clone(), self.source_span_id.clone())
     }
+}
+
+/// Choose which venue indices to route on after freshness classification.
+///
+/// Fresh venues win. If every venue is stale but liquidity rows still exist,
+/// soft-degrade onto the stale set instead of returning `StaleMarketData` — the
+/// quote response carries `degraded` + `data_freshness` so clients can warn.
+fn select_routing_indices_after_freshness(
+    freshness_outcome: &FreshnessOutcome,
+    direct_candidates: &[DirectVenueCandidate],
+) -> Result<(Vec<usize>, Vec<ApiExcludedVenueInfo>)> {
+    if !freshness_outcome.fresh.is_empty() {
+        let exclusions = freshness_outcome
+            .stale
+            .iter()
+            .filter_map(|&idx| direct_candidates.get(idx))
+            .map(|candidate| ApiExcludedVenueInfo {
+                venue_ref: candidate.venue_ref.clone(),
+                reason: ApiExclusionReason::StaleData,
+            })
+            .collect();
+        return Ok((freshness_outcome.fresh.clone(), exclusions));
+    }
+
+    if direct_candidates.is_empty() {
+        return Err(ApiError::NoRouteFound);
+    }
+
+    // Soft-degrade: keep quoting on the latest available orderbook/AMM snapshot.
+    warn!(
+        stale_count = freshness_outcome.stale.len(),
+        max_staleness_secs = freshness_outcome.max_staleness_secs,
+        "All market data is stale; returning degraded quote from available orderbook"
+    );
+
+    let routing_indices = if freshness_outcome.stale.is_empty() {
+        (0..direct_candidates.len()).collect()
+    } else {
+        freshness_outcome.stale.clone()
+    };
+
+    Ok((routing_indices, Vec::new()))
 }
 
 fn evaluate_single_hop_direct_venues(
@@ -1455,9 +1513,10 @@ async fn fetch_source_candidates(
                     price::text as price,
                     available_amount::text as available_amount,
                     price_e7,
-                                        available_amount_e7,
-                                        coalesce(source_trace_id, '') as source_trace_id,
-                                        coalesce(source_span_id, '') as source_span_id
+                    available_amount_e7,
+                    coalesce(source_trace_id, '') as source_trace_id,
+                    coalesce(source_span_id, '') as source_span_id,
+                    updated_at
                 from normalized_liquidity
         where selling_asset_id = $1
           and buying_asset_id = $2
@@ -1484,6 +1543,7 @@ async fn fetch_source_candidates(
             let available_amount_e7: i64 = row.get("available_amount_e7");
             let source_trace_id: String = row.get("source_trace_id");
             let source_span_id: String = row.get("source_span_id");
+            let updated_at: chrono::DateTime<chrono::Utc> = row.get("updated_at");
             DirectVenueCandidate {
                 venue_type,
                 venue_ref,
@@ -1495,6 +1555,9 @@ async fn fetch_source_candidates(
                 source_span_id,
                 is_inverse: false,
                 fee_bps: 0,
+                // Honest: no provider column in normalized_liquidity today.
+                provider: None,
+                updated_at: Some(updated_at),
             }
         })
         .collect())
@@ -1529,10 +1592,18 @@ async fn find_asset_id(state: &AppState, asset: &AssetPath) -> Result<uuid::Uuid
     let asset_type = asset.to_asset_type();
 
     let row = if asset.asset_code == "native" {
+        // Native rows were historically inserted with NULL code/issuer, so the
+        // unique constraint does not dedupe them. Prefer the asset id that
+        // actually backs live SDEX offers.
         sqlx::query(
             r#"
-            select id from assets
-            where asset_type = $1
+            select a.id
+            from assets a
+            left join sdex_offers o
+              on o.selling_asset_id = a.id or o.buying_asset_id = a.id
+            where a.asset_type = $1
+            group by a.id, a.created_at
+            order by count(o.offer_id) desc, a.created_at asc
             limit 1
             "#,
         )
@@ -1582,6 +1653,43 @@ pub(crate) async fn get_quote_for_pair_dry_run(
 ) -> Result<QuoteResponse> {
     let (prepared, _) = get_quote_inner(state, base_asset, quote_asset, params, false).await?;
     prepared.into_quote()
+}
+
+/// Identify the integrator consumer (if any) for quote-expiration webhook
+/// dispatch, using the same `api_key:<key>` scheme as webhook registration
+/// (see `integrator_webhooks::resolve_consumer_id`). Returns `None` when the
+/// caller didn't authenticate with an API key, since anonymous callers have
+/// no registered webhook to notify.
+fn extract_consumer_id(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-api-key")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("api_key:{value}"))
+}
+
+/// Build the payload dispatched to a consumer's registered webhook when
+/// their quote is expected to expire.
+fn build_quote_webhook_payload(
+    consumer_id: String,
+    base: &str,
+    quote: &str,
+    quote_resp: &QuoteResponse,
+) -> QuoteExpirationWebhookPayload {
+    QuoteExpirationWebhookPayload {
+        event_id: Uuid::new_v4().to_string(),
+        consumer_id,
+        quote_id: format!("{base}:{quote}:{}", quote_resp.timestamp),
+        pair: format!("{base}/{quote}"),
+        reason: "quote_expired".to_string(),
+        expired_at: quote_resp.expires_at.unwrap_or(quote_resp.timestamp),
+        event: "quote.expired".to_string(),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+        base_asset: base.to_string(),
+        quote_asset: quote.to_string(),
+        amount_in: quote_resp.amount.clone(),
+    }
 }
 
 /// Build an [`AuditSelected`] from a successful [`QuoteResponse`].
@@ -1697,7 +1805,66 @@ mod tests {
             is_inverse: false,
             source_trace_id: "".to_string(),
             source_span_id: "".to_string(),
+            provider: None,
+            updated_at: Some(chrono::Utc::now()),
         }
+    }
+
+    #[test]
+    fn all_stale_liquidity_soft_degrades_instead_of_rejecting() {
+        let now = chrono::Utc::now();
+        let stale = DirectVenueCandidate {
+            updated_at: Some(now - chrono::Duration::seconds(120)),
+            ..candidate("sdex", "offer1", 1.0, 100.0, 0)
+        };
+        let freshness = FreshnessOutcome {
+            fresh: vec![],
+            stale: vec![0],
+            max_staleness_secs: 120,
+        };
+
+        let (indices, exclusions) =
+            select_routing_indices_after_freshness(&freshness, &[stale]).expect("soft degrade");
+        assert_eq!(indices, vec![0]);
+        assert!(exclusions.is_empty());
+    }
+
+    #[test]
+    fn empty_candidates_after_freshness_are_no_route() {
+        let freshness = FreshnessOutcome {
+            fresh: vec![],
+            stale: vec![],
+            max_staleness_secs: 0,
+        };
+        let err = select_routing_indices_after_freshness(&freshness, &[])
+            .expect_err("empty book must be no_route");
+        assert!(matches!(err, ApiError::NoRouteFound));
+    }
+
+    #[test]
+    fn mixed_freshness_routes_on_fresh_and_excludes_stale() {
+        let now = chrono::Utc::now();
+        let candidates = vec![
+            DirectVenueCandidate {
+                updated_at: Some(now - chrono::Duration::seconds(5)),
+                ..candidate("sdex", "fresh", 1.0, 100.0, 0)
+            },
+            DirectVenueCandidate {
+                updated_at: Some(now - chrono::Duration::seconds(90)),
+                ..candidate("sdex", "stale", 1.01, 100.0, 0)
+            },
+        ];
+        let freshness = FreshnessOutcome {
+            fresh: vec![0],
+            stale: vec![1],
+            max_staleness_secs: 90,
+        };
+
+        let (indices, exclusions) =
+            select_routing_indices_after_freshness(&freshness, &candidates).expect("mixed");
+        assert_eq!(indices, vec![0]);
+        assert_eq!(exclusions.len(), 1);
+        assert_eq!(exclusions[0].venue_ref, "stale");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
+  DEFAULT_FROM_TOKEN,
   DEFAULT_TO_TOKEN,
   STORAGE_KEY,
   useTradeFormStorage,
@@ -22,7 +23,7 @@ describe("useTradeFormStorage", () => {
     expect(result.current.amount).toBe("");
     expect(result.current.slippage).toBe(0.5);
     expect(result.current.deadline).toBe(30);
-    expect(result.current.fromToken).toBe("native");
+    expect(result.current.fromToken).toBe(DEFAULT_FROM_TOKEN);
     expect(result.current.toToken).toBe(DEFAULT_TO_TOKEN);
     expect(result.current.side).toBe("sell");
     expect(result.current.pendingRecovery).toBeNull();

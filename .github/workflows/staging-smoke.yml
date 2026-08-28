@@ -1,0 +1,40 @@
+# Staging smoke — public Wave 0 API (issue #1037)
+#
+# Runs scripts/staging-smoke.sh against STAGING_API_BASE_URL.
+# Configure the repository variable or secret STAGING_API_BASE_URL
+# (e.g. https://api.your-tunnel-host) before enabling the schedule.
+
+name: Staging Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 6 hours — cheap keep-alive for free staging
+    - cron: '17 */6 * * *'
+
+jobs:
+  smoke:
+    name: health + quote
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require staging URL
+        env:
+          STAGING_API_BASE_URL: ${{ vars.STAGING_API_BASE_URL || secrets.STAGING_API_BASE_URL }}
+        run: |
+          if [[ -z "${STAGING_API_BASE_URL}" ]]; then
+            echo "Set repository variable or secret STAGING_API_BASE_URL to run staging smoke."
+            echo "Skipping until Wave 0 public API URL is configured."
+            echo "SKIP=1" >> "${GITHUB_ENV}"
+          else
+            echo "SKIP=0" >> "${GITHUB_ENV}"
+            echo "STAGING_API_BASE_URL=${STAGING_API_BASE_URL}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Run staging smoke
+        if: env.SKIP != '1'
+        run: |
+          chmod +x ./scripts/staging-smoke.sh
+          ./scripts/staging-smoke.sh

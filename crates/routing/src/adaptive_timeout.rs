@@ -77,3 +77,72 @@ impl TimeoutController {
         self.ema_latency_ms.load(Ordering::Relaxed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_values() {
+        let config = TimeoutConfig::default();
+        assert_eq!(config.base_timeout_ms, 500);
+        assert_eq!(config.min_timeout_ms, 100);
+        assert_eq!(config.max_timeout_ms, 2000);
+        assert!((config.ema_alpha - 0.1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn calculate_timeout_clamps_to_min() {
+        let controller = TimeoutController::new(TimeoutConfig {
+            base_timeout_ms: 500,
+            min_timeout_ms: 100,
+            max_timeout_ms: 2000,
+            ema_alpha: 1.0,
+        });
+        controller.record_latency(Duration::from_millis(1));
+        assert_eq!(
+            controller.calculate_timeout(0.0),
+            Duration::from_millis(100)
+        );
+    }
+
+    #[test]
+    fn calculate_timeout_clamps_to_max() {
+        let controller = TimeoutController::new(TimeoutConfig {
+            base_timeout_ms: 500,
+            min_timeout_ms: 100,
+            max_timeout_ms: 800,
+            ema_alpha: 1.0,
+        });
+        controller.record_latency(Duration::from_millis(10_000));
+        assert_eq!(
+            controller.calculate_timeout(1.0),
+            Duration::from_millis(800)
+        );
+    }
+
+    #[test]
+    fn record_latency_updates_ema() {
+        let controller = TimeoutController::new(TimeoutConfig {
+            base_timeout_ms: 500,
+            min_timeout_ms: 100,
+            max_timeout_ms: 2000,
+            ema_alpha: 1.0,
+        });
+        controller.record_latency(Duration::from_millis(1200));
+        assert_eq!(controller.current_ema_ms(), 1200);
+    }
+
+    #[test]
+    fn ema_smoothing_with_partial_alpha() {
+        let controller = TimeoutController::new(TimeoutConfig {
+            base_timeout_ms: 1000,
+            min_timeout_ms: 100,
+            max_timeout_ms: 5000,
+            ema_alpha: 0.5,
+        });
+        // EMA starts at base (1000); first sample 2000 → 0.5*1000 + 0.5*2000 = 1500
+        controller.record_latency(Duration::from_millis(2000));
+        assert_eq!(controller.current_ema_ms(), 1500);
+    }
+}

@@ -69,10 +69,10 @@ function TestComponent() {
           : 'none'}
       </span>
       
-      <button onClick={() => connect("freighter")}>Connect</button>
-      <button onClick={() => connect("xbull")}>Connect xBull</button>
-      <button onClick={() => connect("freighter")}>Connect Freighter</button>
-      <button onClick={reconnect}>Reconnect</button>
+      <button onClick={() => { void connect("freighter").catch(() => {}); }}>Connect</button>
+      <button onClick={() => { void connect("xbull").catch(() => {}); }}>Connect xBull</button>
+      <button onClick={() => { void connect("freighter").catch(() => {}); }}>Connect Freighter</button>
+      <button onClick={() => { void reconnect().catch(() => {}); }}>Reconnect</button>
       <button onClick={disconnect}>Disconnect</button>
       <button onClick={() => setAutoReconnectPreferred(false)}>Disable auto reconnect</button>
       <button onClick={() => setAutoReconnectPreferred(true)}>Enable auto reconnect</button>

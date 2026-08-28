@@ -72,20 +72,20 @@ describe('NetworkMismatchBanner', () => {
     expect(disconnect).toHaveBeenCalled();
   });
 
-  it('calls disconnect when close button clicked', async () => {
-    const user = userEvent.setup();
-    const disconnect = vi.fn();
+  it('does not offer a dismiss control for critical mismatch warnings', () => {
     vi.mocked(WalletProvider.useWallet).mockReturnValue({
       networkMismatch: true,
       network: 'testnet',
       walletNetwork: 'mainnet',
       walletId: 'freighter',
-      disconnect,
+      disconnect: vi.fn(),
     } as any);
 
     render(<NetworkMismatchBanner />);
-    await user.click(screen.getByRole('button', { name: /dismiss and disconnect/i }));
-    expect(disconnect).toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /dismiss/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot be hidden/i)).toBeInTheDocument();
   });
 
   it('has proper ARIA attributes', () => {
@@ -133,5 +133,21 @@ describe('NetworkMismatchBanner', () => {
     render(<NetworkMismatchBanner />);
     const link = screen.getByRole('link', { name: /how to switch network/i });
     expect(link).toHaveAttribute('href', 'https://xbull.app/docs');
+  });
+
+  it('renders mismatch banner for xBull public vs app testnet', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      networkMismatch: true,
+      network: 'testnet',
+      walletNetwork: 'public',
+      walletId: 'xbull',
+      disconnect: vi.fn(),
+      setNetwork: vi.fn(),
+    } as any);
+
+    render(<NetworkMismatchBanner />);
+    expect(screen.getByText(/network mismatch detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/mainnet/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'assertive');
   });
 });

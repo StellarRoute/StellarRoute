@@ -94,6 +94,7 @@ export type SwapTranslationKey =
   | "swap.card.refreshQuote"
   | "swap.card.diagnostics"
   | "swap.card.outdated"
+  | "swap.card.degradedOrderbook"
   | "swap.card.recoveringQuote"
   | "swap.card.recoveringQuoteCountdown"
   | "swap.card.cancelRetry"
@@ -183,9 +184,18 @@ export type SwapTranslationKey =
   | "swap.confirm.pending.heading"
   | "swap.confirm.pending.description"
   | "swap.confirm.pending.announcement"
+  | "swap.confirm.pending.tip"
   | "swap.confirm.submitted.heading"
   | "swap.confirm.submitted.description"
   | "swap.confirm.submitted.announcement"
+  | "swap.confirm.submitted.tip"
+  | "swap.confirm.wait.phase.wallet"
+  | "swap.confirm.wait.phase.network"
+  | "swap.confirm.wait.stepsLabel"
+  | "swap.confirm.wait.step.sign"
+  | "swap.confirm.wait.step.confirm"
+  | "swap.confirm.wait.tipLabel"
+  | "swap.confirm.wait.elapsed"
   | "swap.confirm.confirmed.heading"
   | "swap.confirm.confirmed.description"
   | "swap.confirm.confirmed.announcement"
@@ -337,6 +347,8 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.card.refreshQuote": "Refresh quote",
     "swap.card.diagnostics": "View quote diagnostics",
     "swap.card.outdated": "Quote outdated — refresh for latest price",
+    "swap.card.degradedOrderbook":
+      "Orderbook data is outdated — you can still swap, but the fill price may differ.",
     "swap.card.recoveringQuote": "Retrying quote...",
     "swap.card.recoveringQuoteCountdown": "Retrying quote in {seconds}s...",
     "swap.card.cancelRetry": "Cancel retry",
@@ -429,12 +441,21 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.confirm.review.heading": "Review Swap",
     "swap.confirm.review.description": "Please review your swap details before confirming.",
     "swap.confirm.review.announcement": "Review your swap details.",
-    "swap.confirm.pending.heading": "Waiting for wallet\u2026",
-    "swap.confirm.pending.description": "Waiting for wallet signature. Please approve the transaction in your wallet.",
+    "swap.confirm.pending.heading": "Approve in your wallet",
+    "swap.confirm.pending.description": "A signature request is waiting. Open your wallet and confirm the swap \u2014 this screen stays open until you sign.",
     "swap.confirm.pending.announcement": "Waiting for wallet signature.",
-    "swap.confirm.submitted.heading": "Awaiting confirmation",
-    "swap.confirm.submitted.description": "Transaction submitted, awaiting confirmation on the network.",
+    "swap.confirm.pending.tip": "Check your browser extensions for Freighter, LOBSTR, xBull, or Albedo. The popup can hide behind other windows.",
+    "swap.confirm.submitted.heading": "Confirming on Stellar",
+    "swap.confirm.submitted.description": "Signature received. We\u2019re waiting for the network to include your swap on the ledger.",
     "swap.confirm.submitted.announcement": "Transaction submitted, awaiting confirmation.",
+    "swap.confirm.submitted.tip": "This usually finishes in under a minute. Keep this tab open until confirmation lands.",
+    "swap.confirm.wait.phase.wallet": "Wallet signature",
+    "swap.confirm.wait.phase.network": "Network confirm",
+    "swap.confirm.wait.stepsLabel": "Swap progress",
+    "swap.confirm.wait.step.sign": "Sign in wallet",
+    "swap.confirm.wait.step.confirm": "Confirm on-chain",
+    "swap.confirm.wait.tipLabel": "What to do",
+    "swap.confirm.wait.elapsed": "Waiting {time}",
     "swap.confirm.confirmed.heading": "Swap confirmed",
     "swap.confirm.confirmed.description": "Your swap has been confirmed on the Stellar network.",
     "swap.confirm.confirmed.announcement": "Swap confirmed successfully.",
@@ -575,6 +596,8 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.card.refreshQuote": "Actualizar cotización",
     "swap.card.diagnostics": "View quote diagnostics",
     "swap.card.outdated": "Cotización desactualizada — actualiza para obtener el precio más reciente",
+    "swap.card.degradedOrderbook":
+      "El libro de órdenes está desactualizado — aún puedes intercambiar, pero el precio de ejecución puede diferir.",
     "swap.card.recoveringQuote": "Reintentando cotización...",
     "swap.card.recoveringQuoteCountdown": "Reintentando cotización en {seconds}s...",
     "swap.card.cancelRetry": "Cancelar reintento",
@@ -666,12 +689,21 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.confirm.review.heading": "Revisar intercambio",
     "swap.confirm.review.description": "Por favor, revisa los detalles de tu intercambio antes de confirmar.",
     "swap.confirm.review.announcement": "Revisa los detalles del intercambio.",
-    "swap.confirm.pending.heading": "Esperando a la cartera\u2026",
-    "swap.confirm.pending.description": "Esperando la firma de la cartera. Por favor, aprueba la transacci\u00f3n en tu cartera.",
+    "swap.confirm.pending.heading": "Aprueba en tu cartera",
+    "swap.confirm.pending.description": "Hay una solicitud de firma pendiente. Abre tu cartera y confirma el intercambio: esta pantalla permanece abierta hasta que firmes.",
     "swap.confirm.pending.announcement": "Esperando la firma de la cartera.",
-    "swap.confirm.submitted.heading": "Esperando confirmaci\u00f3n",
-    "swap.confirm.submitted.description": "Transacci\u00f3n enviada, esperando confirmaci\u00f3n en la red.",
+    "swap.confirm.pending.tip": "Revisa las extensiones del navegador (Freighter, LOBSTR, xBull o Albedo). El popup puede quedar detr\u00e1s de otras ventanas.",
+    "swap.confirm.submitted.heading": "Confirmando en Stellar",
+    "swap.confirm.submitted.description": "Firma recibida. Estamos esperando a que la red incluya tu intercambio en el ledger.",
     "swap.confirm.submitted.announcement": "Transacci\u00f3n enviada, esperando confirmaci\u00f3n.",
+    "swap.confirm.submitted.tip": "Suele tardar menos de un minuto. Mant\u00e9n esta pesta\u00f1a abierta hasta la confirmaci\u00f3n.",
+    "swap.confirm.wait.phase.wallet": "Firma de cartera",
+    "swap.confirm.wait.phase.network": "Confirmaci\u00f3n de red",
+    "swap.confirm.wait.stepsLabel": "Progreso del intercambio",
+    "swap.confirm.wait.step.sign": "Firmar en cartera",
+    "swap.confirm.wait.step.confirm": "Confirmar on-chain",
+    "swap.confirm.wait.tipLabel": "Qu\u00e9 hacer",
+    "swap.confirm.wait.elapsed": "Esperando {time}",
     "swap.confirm.confirmed.heading": "Intercambio confirmado",
     "swap.confirm.confirmed.description": "Tu intercambio ha sido confirmado en la red Stellar.",
     "swap.confirm.confirmed.announcement": "Intercambio confirmado correctamente.",
@@ -816,6 +848,8 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.card.refreshQuote": "刷新报价",
     "swap.card.diagnostics": "查看报价诊断信息",
     "swap.card.outdated": "报价已过期——请刷新获取最新价格",
+    "swap.card.degradedOrderbook":
+      "订单簿数据已过时——仍可兑换，但成交价可能有偏差。",
     "swap.card.recoveringQuote": "正在重试报价...",
     "swap.card.recoveringQuoteCountdown": "{seconds} 秒后重试报价...",
     "swap.card.cancelRetry": "取消重试",
@@ -907,12 +941,21 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "swap.confirm.review.heading": "检查兑换",
     "swap.confirm.review.description": "确认前请检查兑换详情。",
     "swap.confirm.review.announcement": "请检查兑换详情。",
-    "swap.confirm.pending.heading": "等待钱包\u2026",
-    "swap.confirm.pending.description": "等待钱包签名，请在钱包中批准此交易。",
+    "swap.confirm.pending.heading": "请在钱包中批准",
+    "swap.confirm.pending.description": "签名请求已发出。打开钱包并确认兑换——此界面会保持打开，直到你签名。",
     "swap.confirm.pending.announcement": "等待钱包签名。",
-    "swap.confirm.submitted.heading": "等待确认",
-    "swap.confirm.submitted.description": "交易已提交，等待网络确认。",
+    "swap.confirm.pending.tip": "请检查浏览器扩展中的 Freighter、LOBSTR、xBull 或 Albedo。弹窗可能被其他窗口遮挡。",
+    "swap.confirm.submitted.heading": "正在 Stellar 上确认",
+    "swap.confirm.submitted.description": "已收到签名。我们正在等待网络将兑换写入账本。",
     "swap.confirm.submitted.announcement": "交易已提交，等待确认。",
+    "swap.confirm.submitted.tip": "通常不到一分钟。请保持此标签页打开直到确认完成。",
+    "swap.confirm.wait.phase.wallet": "钱包签名",
+    "swap.confirm.wait.phase.network": "网络确认",
+    "swap.confirm.wait.stepsLabel": "兑换进度",
+    "swap.confirm.wait.step.sign": "钱包签名",
+    "swap.confirm.wait.step.confirm": "链上确认",
+    "swap.confirm.wait.tipLabel": "接下来",
+    "swap.confirm.wait.elapsed": "已等待 {time}",
     "swap.confirm.confirmed.heading": "兑换已确认",
     "swap.confirm.confirmed.description": "您的兑换已在 Stellar 网络上确认。",
     "swap.confirm.confirmed.announcement": "兑换已成功确认。",

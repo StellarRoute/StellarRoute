@@ -9,6 +9,28 @@ import {
   type NotificationPreference,
 } from "@/lib/notifications";
 import { XdrBuildError } from "@/lib/wallet/xdr-builder";
+import {
+  emitSwapFunnelEvent,
+  getPriceImpactTier,
+  type SwapFunnelPayload,
+} from "@/lib/telemetry";
+import {
+  toLifecycleError,
+  type LifecycleError,
+} from "@/lib/swap/lifecycle-error";
+
+function funnelPayloadFromTrade(
+  params: TradeParams,
+  extra: Partial<SwapFunnelPayload> = {},
+): SwapFunnelPayload {
+  return {
+    fromAssetCode: params.fromAsset,
+    toAssetCode: params.toAsset,
+    hopCount: params.routePath?.length || 1,
+    priceImpactTier: getPriceImpactTier(params.priceImpact),
+    ...extra,
+  };
+}
 
 export interface TradeParams {
   fromAsset: string;
@@ -26,7 +48,10 @@ export interface TradeParams {
 export interface UseTransactionLifecycleResult {
   status: TransactionStatus | "review";
   txHash: string | undefined;
+  /** Backward-compatible string message for non-swap consumers. */
   errorMessage: string | undefined;
+  /** Structured error preserving API code + allowlisted status. */
+  error: LifecycleError | undefined;
   tradeParams: TradeParams | undefined;
   initiateSwap: (params: TradeParams) => Promise<void>;
   cancel: () => void;
@@ -115,9 +140,25 @@ export function useTransactionLifecycle(
   const [errorMessage, setErrorMessage] = useState<string | undefined>(
     undefined
   );
+  const [error, setError] = useState<LifecycleError | undefined>(undefined);
   const [tradeParams, setTradeParams] = useState<TradeParams | undefined>(
     undefined
   );
+
+  const clearError = useCallback(() => {
+    setErrorMessage(undefined);
+    setError(undefined);
+  }, []);
+
+  const failWith = useCallback((err: unknown, messageOverride?: string) => {
+    const lifecycleErr = toLifecycleError(err);
+    if (messageOverride) {
+      lifecycleErr.message = messageOverride;
+    }
+    setError(lifecycleErr);
+    setErrorMessage(lifecycleErr.message);
+    return lifecycleErr.message;
+  }, []);
 
   // Ref to track the current transaction id for history updates
   const txIdRef = useRef<string | undefined>(undefined);
@@ -127,6 +168,8 @@ export function useTransactionLifecycle(
   );
   // Ref to allow cancel() to abort an in-progress signing
   const cancelledRef = useRef(false);
+  /** Preserved after Freighter signs so pending_reconcile can retry submit only. */
+  const lastSignedXdrRef = useRef<string | null>(null);
 
   const { addTransaction, updateTransactionStatus } = useTransactionHistory(
     tradeParams?.walletAddress ?? null
@@ -142,26 +185,41 @@ export function useTransactionLifecycle(
   const initiateSwap = useCallback(
     async (params: TradeParams) => {
       cancelledRef.current = false;
+      lastSignedXdrRef.current = null;
       setTradeParams(params);
       setTxHash(undefined);
-      setErrorMessage(undefined);
+      clearError();
 
       if (params.walletAddress) {
         if (!buildXdr) {
-          setErrorMessage(
-            "Transaction could not be built. Please refresh and try again."
+          failWith(
+            new Error(
+              "Transaction could not be built. Please refresh and try again.",
+            ),
           );
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "config" }),
+          );
           return;
         }
         if (isDefaultSignTransaction(signTransaction)) {
-          setErrorMessage("Wallet not ready for signing.");
+          failWith(new Error("Wallet not ready for signing."));
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "config" }),
+          );
           return;
         }
         if (isDefaultSubmitTransaction(submitTransaction)) {
-          setErrorMessage("Transaction submission is not configured.");
+          failWith(new Error("Transaction submission is not configured."));
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "config" }),
+          );
           return;
         }
       }
@@ -194,11 +252,18 @@ export function useTransactionLifecycle(
           xdrToSign = await buildXdr(params);
         } catch (err: unknown) {
           if (cancelledRef.current) return;
-          const msg = err instanceof XdrBuildError
-            ? `Transaction build failed (${err.code}): ${err.message}`
-            : err instanceof Error ? err.message : 'Failed to build transaction';
-          setErrorMessage(msg);
+          const msg =
+            err instanceof XdrBuildError
+              ? failWith(
+                  err,
+                  `Transaction build failed (${err.code}): ${err.message}`,
+                )
+              : failWith(err, undefined);
           setStatus("failed");
+          emitSwapFunnelEvent(
+            "swap_failed",
+            funnelPayloadFromTrade(params, { failureStage: "build" }),
+          );
           updateTransactionStatus(tempId, "failed", { errorMessage: msg });
           dispatchTransactionNotification(
             {
@@ -223,17 +288,23 @@ export function useTransactionLifecycle(
       let signedXdr: string;
       try {
         signedXdr = await signTransaction(xdrToSign);
+        lastSignedXdrRef.current = signedXdr;
       } catch (err: unknown) {
         if (cancelledRef.current) return;
-        const msg =
+        lastSignedXdrRef.current = null;
+        const rawMsg =
           err instanceof Error ? err.message : "Signature failed";
-        const userFacingMsg = isRejectionError(msg)
+        const userFacingMsg = isRejectionError(rawMsg)
           ? "Signature rejected. You can try again or dismiss."
-          : msg;
-        setErrorMessage(userFacingMsg);
+          : undefined;
+        const msg = failWith(err, userFacingMsg);
         setStatus("failed");
+        emitSwapFunnelEvent(
+          "swap_failed",
+          funnelPayloadFromTrade(params, { failureStage: "sign" }),
+        );
         updateTransactionStatus(tempId, "failed", {
-          errorMessage: userFacingMsg,
+          errorMessage: msg,
         });
         dispatchTransactionNotification(
           {
@@ -251,8 +322,9 @@ export function useTransactionLifecycle(
 
       if (cancelledRef.current) return;
 
-      // Step 2: Submit
+      // Step 3: Submit
       setStatus("submitted");
+      emitSwapFunnelEvent("swap_submitted", funnelPayloadFromTrade(params));
       updateTransactionStatus(tempId, "submitted");
 
       // Start deadline timer
@@ -286,6 +358,7 @@ export function useTransactionLifecycle(
         const hash = result.hash;
         setTxHash(hash);
         setStatus("confirmed");
+        emitSwapFunnelEvent("swap_finalized", funnelPayloadFromTrade(params));
         updateTransactionStatus(tempId, "confirmed", { hash });
         dispatchTransactionNotification(
           {
@@ -303,10 +376,12 @@ export function useTransactionLifecycle(
         clearDeadlineTimer();
         if (cancelledRef.current) return;
 
-        const msg =
-          err instanceof Error ? err.message : "Transaction submission failed";
-        setErrorMessage(msg);
+        const msg = failWith(err);
         setStatus("failed");
+        emitSwapFunnelEvent(
+          "swap_failed",
+          funnelPayloadFromTrade(params, { failureStage: "submit" }),
+        );
         updateTransactionStatus(tempId, "failed", { errorMessage: msg });
         dispatchTransactionNotification(
           {
@@ -330,6 +405,8 @@ export function useTransactionLifecycle(
       addTransaction,
       updateTransactionStatus,
       clearDeadlineTimer,
+      clearError,
+      failWith,
     ]
   );
 
@@ -338,36 +415,101 @@ export function useTransactionLifecycle(
       cancelledRef.current = true;
       clearDeadlineTimer();
       setStatus("review");
-      setErrorMessage(undefined);
+      clearError();
     }
-  }, [status, clearDeadlineTimer]);
+  }, [status, clearDeadlineTimer, clearError]);
 
   const resubmit = useCallback(async () => {
+    // After Horizon broadcast ambiguity the quote stays `submitting` server-side.
+    // Retry the same signed envelope — never prepare/sign again.
+    if (
+      status === "failed" &&
+      error?.status === "pending_reconcile" &&
+      tradeParams &&
+      lastSignedXdrRef.current
+    ) {
+      cancelledRef.current = false;
+      clearError();
+      clearDeadlineTimer();
+      const tempId = txIdRef.current ?? `pending_${Date.now()}`;
+      txIdRef.current = tempId;
+      setStatus("submitted");
+      updateTransactionStatus(tempId, "submitted");
+      deadlineTimerRef.current = setTimeout(() => {
+        setStatus((current) => {
+          if (current === "submitted") {
+            updateTransactionStatus(tempId, "dropped");
+            return "dropped";
+          }
+          return current;
+        });
+      }, deadlineMs);
+      try {
+        const result = await submitTransaction(lastSignedXdrRef.current);
+        clearDeadlineTimer();
+        if (cancelledRef.current) return;
+        setTxHash(result.hash);
+        setStatus("confirmed");
+        updateTransactionStatus(tempId, "confirmed", { hash: result.hash });
+      } catch (err: unknown) {
+        clearDeadlineTimer();
+        if (cancelledRef.current) return;
+        const msg = failWith(err);
+        setStatus("failed");
+        updateTransactionStatus(tempId, "failed", { errorMessage: msg });
+      }
+      return;
+    }
+
     if (status === "dropped" && tradeParams) {
       await initiateSwap(tradeParams);
     }
-  }, [status, tradeParams, initiateSwap]);
+  }, [
+    status,
+    error?.status,
+    tradeParams,
+    initiateSwap,
+    submitTransaction,
+    clearError,
+    clearDeadlineTimer,
+    updateTransactionStatus,
+    deadlineMs,
+    failWith,
+  ]);
 
   const tryAgain = useCallback(() => {
+    // Prefer reconcile retry when we still hold the signed envelope.
+    if (
+      status === "failed" &&
+      error?.status === "pending_reconcile" &&
+      lastSignedXdrRef.current
+    ) {
+      void resubmit();
+      return;
+    }
+    // Permanent failures must start a fresh prepare/sign — drop the old envelope.
+    lastSignedXdrRef.current = null;
     clearDeadlineTimer();
     setStatus("review");
-    setErrorMessage(undefined);
+    clearError();
     setTxHash(undefined);
     // tradeParams is preserved so the modal can pre-populate
-  }, [clearDeadlineTimer]);
+  }, [status, error?.status, resubmit, clearDeadlineTimer, clearError]);
 
   const dismiss = useCallback(() => {
     clearDeadlineTimer();
     setStatus("review");
-    setErrorMessage(undefined);
+    clearError();
     setTxHash(undefined);
     setTradeParams(undefined);
-  }, [clearDeadlineTimer]);
+    lastSignedXdrRef.current = null;
+  }, [clearDeadlineTimer, clearError]);
 
   return {
     status,
     txHash,
     errorMessage,
+    error,
     tradeParams,
     initiateSwap,
     cancel,

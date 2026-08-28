@@ -98,6 +98,10 @@ export function useWalletBalance({
       signal: controller.signal,
     })
       .then(async (response) => {
+        // Unfunded accounts are normal on testnet — treat as zero balance.
+        if (response.status === 404) {
+          return { balances: [] } as HorizonAccountResponse;
+        }
         if (!response.ok) {
           throw new Error('Unable to load wallet balance.');
         }

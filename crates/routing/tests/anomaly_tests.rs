@@ -50,6 +50,7 @@ fn test_optimizer_flags_anomalies() {
             liquidity: 10_000_000_000,
             price: 1.0,
             fee_bps: 30,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -59,6 +60,7 @@ fn test_optimizer_flags_anomalies() {
             liquidity: 10_000_000_000,
             price: 1.01,
             fee_bps: 20,
+            ..Default::default()
         },
     ];
 

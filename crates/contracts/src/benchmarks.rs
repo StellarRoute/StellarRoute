@@ -5,6 +5,17 @@ use soroban_sdk::{testutils::Address as _, Address};
 // Import test utilities from the test module
 use crate::test::{deploy_mock_pool, deploy_router, make_route, setup_env};
 
+/// Emitted to stderr as a JSON line for machine-parseable CSV export.
+fn emit_benchmark(name: &str, cpu_cost: u64, threshold: u64) {
+    eprintln!(
+        r#"{{"name":"{}","cpu_cost":{},"threshold":{},"passed":{}}}"#,
+        name,
+        cpu_cost,
+        threshold,
+        cpu_cost < threshold,
+    );
+}
+
 #[test]
 fn bench_initialize() {
     let env = setup_env();
@@ -17,7 +28,9 @@ fn bench_initialize() {
     client.initialize(&admin, &30, &fee_to, &None, &None, &None, &None, &None);
 
     // Assert: Should complete without exceeding budget
-    assert!(env.budget().cpu_instruction_cost() < 10_000_000);
+    let cpu_cost = env.budget().cpu_instruction_cost();
+    assert!(cpu_cost < 10_000_000);
+    emit_benchmark("initialize", cpu_cost, 10_000_000);
 }
 
 #[test]
@@ -33,6 +46,7 @@ fn bench_register_pool() {
 
     let cpu_cost = env.budget().cpu_instruction_cost();
     assert!(cpu_cost < 5_000_000, "register_pool CPU cost: {}", cpu_cost);
+    emit_benchmark("register_pool", cpu_cost, 5_000_000);
 }
 
 #[test]
@@ -55,6 +69,7 @@ fn bench_get_quote_1_hop() {
         "get_quote (1 hop) CPU cost: {}",
         cpu_cost
     );
+    emit_benchmark("get_quote_1_hop", cpu_cost, 15_000_000);
 }
 
 #[test]
@@ -77,6 +92,7 @@ fn bench_get_quote_2_hops() {
         "get_quote (2 hops) CPU cost: {}",
         cpu_cost
     );
+    emit_benchmark("get_quote_2_hops", cpu_cost, 25_000_000);
 }
 
 #[test]
@@ -99,6 +115,7 @@ fn bench_get_quote_4_hops() {
         "get_quote (4 hops) CPU cost: {}",
         cpu_cost
     );
+    emit_benchmark("get_quote_4_hops", cpu_cost, 50_000_000);
 }
 
 #[test]
@@ -132,6 +149,7 @@ fn bench_execute_swap_1_hop() {
         "execute_swap (1 hop) CPU cost: {}",
         cpu_cost
     );
+    emit_benchmark("execute_swap_1_hop", cpu_cost, 20_000_000);
 }
 
 #[test]
@@ -165,6 +183,7 @@ fn bench_execute_swap_4_hops() {
         "execute_swap (4 hops) CPU cost: {}",
         cpu_cost
     );
+    emit_benchmark("execute_swap_4_hops", cpu_cost, 80_000_000);
 }
 
 #[test]
@@ -188,6 +207,7 @@ fn bench_estimate_resources() {
         cpu_cost
     );
     assert!(estimate.will_succeed);
+    emit_benchmark("estimate_resources", cpu_cost, 5_000_000);
 }
 
 #[test]
@@ -224,6 +244,7 @@ fn stress_test_max_complexity() {
         cpu_cost
     );
     assert!(result.is_ok(), "Max complexity swap should succeed");
+    emit_benchmark("stress_test_max_complexity", cpu_cost, 100_000_000);
 }
 
 #[test]
@@ -250,4 +271,5 @@ fn regression_test_gas_increase() {
         baseline_cpu,
         max_allowed
     );
+    emit_benchmark("regression_test_gas_increase", baseline_cpu, max_allowed);
 }

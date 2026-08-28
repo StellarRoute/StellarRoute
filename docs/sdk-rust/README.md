@@ -140,6 +140,60 @@ let quote = client
 println!("quote price: {}", quote.price);
 ```
 
+### Execute a swap (prepare → sign → submit)
+
+Backend integrators get the same two-step execution path as the JS SDK. The SDK never
+touches signing keys — `prepare_swap` returns an unsigned XDR envelope, you sign it with
+your own keypair, and `submit_swap` broadcasts it.
+
+```rust
+use stellarroute_sdk::{Client, RoutesRequest, SwapPrepareRequest, SwapSubmitRequest};
+
+# async fn run() -> stellarroute_sdk::Result<()> {
+let client = Client::new("https://api.stellarroute.io")?;
+
+// 1. Pick a route.
+let routes = client
+    .routes(RoutesRequest {
+        base: "native",
+        quote: "USDC",
+        amount: 1_000_000,
+        slippage_bps: Some(50),
+        quote_type: None,
+    })
+    .await?;
+let best = routes.routes.first().expect("at least one route");
+
+// 2. Prepare — server validates the path and returns an unsigned envelope.
+let prepared = client
+    .prepare_swap(
+        SwapPrepareRequest::from_route(best, "100", "GABC...")
+            .slippage_bps(50)
+            .min_output("98"),
+    )
+    .await?;
+
+// 3. Sign `prepared.xdr_envelope` with your own keypair, then submit.
+let signed_xdr = my_signer(&prepared.xdr_envelope);
+let receipt = client.submit_swap(SwapSubmitRequest::new(signed_xdr)).await?;
+
+if receipt.is_success() {
+    println!("swap confirmed: {}", receipt.tx_hash);
+}
+# Ok(())
+# }
+# fn my_signer(xdr: &str) -> String { xdr.to_string() }
+```
+
+Notes:
+
+- `SwapPrepareResponse::valid_until_ledger` bounds how long the envelope stays valid —
+  re-prepare rather than submitting a stale envelope.
+- `submit_swap` may return `status == "pending"`; poll or watch the tx hash on Horizon
+  before treating the swap as final.
+- `prepare_swap` surfaces `ApiErrorCode::NoRoute` when the path went stale between
+  `routes` and `prepare`, and `ApiErrorCode::ValidationError` for a malformed request.
+
 ## Error handling patterns
 
 The SDK returns `stellarroute_sdk::Result<T>` and `stellarroute_sdk::SdkError`.

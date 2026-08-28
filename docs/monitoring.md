@@ -46,6 +46,37 @@ StellarRoute exposes Prometheus metrics for monitoring system performance and he
   - `cache_hit`: "true" or "false"
 - **Description**: Total number of quote requests
 
+### Swap Prepare / Submit
+
+- **Metrics**:
+  - `stellarroute_swap_prepare_total` (counter)
+  - `stellarroute_swap_submit_total` (counter)
+  - `stellarroute_swap_prepare_duration_seconds` (histogram)
+  - `stellarroute_swap_submit_duration_seconds` (histogram)
+  - `stellarroute_swap_inflight` (gauge)
+- **Labels**:
+  - `outcome`: "success" or "error"
+  - `error_class`: machine-readable error category (e.g. `none`, `validation`, `simulation_failed`, `bad_signature`, `timeout`, `rpc_error`, `internal`)
+  - `phase`: "prepare" or "submit" (on the `stellarroute_swap_inflight` gauge)
+- **Description**: Outcomes, latency, and concurrency of the two-phase swap flow (`POST /swap/prepare` and `POST /swap/submit`).
+
+| Error Class | Phase | Meaning |
+|-------------|-------|---------|
+| `none` | both | Request succeeded |
+| `validation` | both | Request validation failed |
+| `quote_expired` | prepare | Referenced quote is stale/expired |
+| `quote_not_found` | prepare | Referenced `quote_id` does not exist |
+| `simulation_failed` | prepare | Soroban simulation failed |
+| `build_failed` | prepare | Transaction build failed |
+| `duplicate_quote` | submit | `quote_id` was already submitted |
+| `bad_signature` | submit | Supplied signature is invalid |
+| `insufficient_fee` | submit | Transaction fee too low |
+| `insufficient_balance` | submit | Source account lacks funds |
+| `slippage_exceeded` | submit | On-chain execution exceeded slippage |
+| `timeout` | both | Upstream Soroban/Horizon timeout |
+| `rpc_error` | both | Generic RPC error |
+| `internal` | both | Internal/unexpected error |
+
 ### Indexer Lag
 
 See [indexer-lag-monitoring.md](indexer-lag-monitoring.md) for full documentation of indexer lag metrics (`stellarroute_indexer_lag_ledgers`, `stellarroute_indexer_lag_seconds`, `stellarroute_indexer_sync_status`, etc.).
@@ -81,6 +112,8 @@ SLO definitions are maintained as code in [`config/slo.yaml`](../config/slo.yaml
 | Route Compute P95 | < 1s | 5m | 99.0% | 2x over 30m | 4x over 30m |
 | Cache Hit Ratio | > 70% | 10m | 99.0% | 2x over 30m | 4x over 30m |
 | Indexer Sync Health | >= 0 | 5m | 99.5% | — | — |
+| Swap Prepare Success Rate | > 99% | 5m | 99.9% | 2x over 30m | 4x over 30m |
+| Swap Submit Success Rate | > 99% | 5m | 99.9% | 2x over 30m | 4x over 30m |
 
 ### Burn-Rate Alerting Strategy
 
@@ -108,6 +141,10 @@ Alerting rules are defined in [`monitoring/prometheus/slo-alerts.yml`](../monito
 | `SLORouteComputeP95LatencyBurnWarning` | warning | P95 > 1s (1m & 30m windows) | 1m |
 | `SLOCacheHitRatioBurnWarning` | warning | hit ratio < 70% (1m & 10m windows) | 2m |
 | `SLOIndexerSyncCritical` | critical | sync_status < 0 | 2m |
+| `SLOSwapPrepareFailureRateBurnWarning` | warning | prepare failure rate > 1% (1m & 30m windows) | 1m |
+| `SLOSwapPrepareFailureRateBurnCritical` | critical | prepare failure rate > 1% (5m & 30m windows) | 1m |
+| `SLOSwapSubmitFailureRateBurnWarning` | warning | submit failure rate > 1% (1m & 30m windows) | 1m |
+| `SLOSwapSubmitFailureRateBurnCritical` | critical | submit failure rate > 1% (5m & 30m windows) | 1m |
 
 ### Direct Threshold Alerts (`stellarroute_direct_alerts`)
 
@@ -115,6 +152,8 @@ Alerting rules are defined in [`monitoring/prometheus/slo-alerts.yml`](../monito
 |-------|----------|-----------|-----|
 | `HighQuoteLatency` | warning | P95 > 1s over 5m | 5m |
 | `LowCacheHitRatio` | warning | hit ratio < 50% over 5m | 10m |
+| `HighSwapPrepareFailureRate` | warning | prepare failure rate > 5% over 5m | 5m |
+| `HighSwapSubmitFailureRate` | warning | submit failure rate > 5% over 5m | 5m |
 
 ## Synthetic Probes
 
@@ -183,6 +222,21 @@ rate(stellarroute_cache_hits_total[5m]) / (rate(stellarroute_cache_hits_total[5m
 **Quote Error Rate:**
 ```promql
 rate(stellarroute_quote_requests_total{outcome="error"}[5m]) / rate(stellarroute_quote_requests_total[5m])
+```
+
+**Swap Prepare Failure Rate:**
+```promql
+rate(stellarroute_swap_prepare_total{outcome="error"}[5m]) / rate(stellarroute_swap_prepare_total[5m])
+```
+
+**Swap Submit Failure Rate:**
+```promql
+rate(stellarroute_swap_submit_total{outcome="error"}[5m]) / rate(stellarroute_swap_submit_total[5m])
+```
+
+**Swap Failure Rate by Error Class:**
+```promql
+sum by (error_class) (rate(stellarroute_swap_prepare_total{outcome="error"}[5m]))
 ```
 
 ## Alerting

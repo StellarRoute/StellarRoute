@@ -9,6 +9,17 @@ vi.mock('@/components/providers/wallet-provider', () => ({
 }));
 
 describe('WalletCapabilitiesBanner', () => {
+  it('does not render when walletId is null', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: null,
+      walletId: null,
+      refreshCapabilities: vi.fn(),
+    } as any);
+
+    const { container } = render(<WalletCapabilitiesBanner />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('does not render when capabilities are null', () => {
     vi.mocked(WalletProvider.useWallet).mockReturnValue({
       capabilities: null,

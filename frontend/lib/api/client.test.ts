@@ -551,6 +551,48 @@ describe('StellarRouteClient URL construction', () => {
     expect(spy.mock.calls[0]?.[0]).toBe('https://api.example.com/health');
   });
 
+  it('unwraps the health ApiResponse envelope', async () => {
+    mockOk(
+      envelope({
+        status: 'healthy',
+        version: '0.1.0',
+        timestamp: '2026-01-01T00:00:00Z',
+        components: { database: 'healthy' },
+      }),
+    );
+    const health = await new StellarRouteClient({
+      baseUrl: 'https://api.example.com',
+    }).getHealth();
+    expect(health).toEqual({
+      status: 'healthy',
+      version: '0.1.0',
+      timestamp: '2026-01-01T00:00:00Z',
+      components: { database: 'healthy' },
+    });
+  });
+
+  it('returns health payload even when the API responds with HTTP 503', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          envelope({
+            status: 'unhealthy',
+            version: '0.1.0',
+            timestamp: '2026-01-01T00:00:00Z',
+            components: { indexer_lag_sdex: 'unhealthy (lag: 10 ledgers)' },
+          }),
+        ),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const health = await new StellarRouteClient({
+      baseUrl: 'https://api.example.com',
+    }).getHealth();
+    expect(health.status).toBe('unhealthy');
+    expect(health.components.indexer_lag_sdex).toContain('unhealthy');
+  });
+
   it('calls /health from a baseUrl with trailing slash removed', async () => {
     // The constructor normalises the baseUrl by stripping the trailing slash.
     const spy = mockOk({ status: 'healthy', version: '1.0.0', timestamp: '', components: {} });

@@ -30,8 +30,8 @@ describe("deriveRawStatus", () => {
     expect(deriveRawStatus(true, null, true)).toBe("reconnecting");
   });
 
-  it("returns reconnecting when online and error is set", () => {
-    expect(deriveRawStatus(false, new Error("oops"), true)).toBe("reconnecting");
+  it("returns connected when online with a terminal error (not recovering)", () => {
+    expect(deriveRawStatus(false, new Error("oops"), true)).toBe("connected");
   });
 
   it("returns reconnecting when online, recovering AND error is set", () => {

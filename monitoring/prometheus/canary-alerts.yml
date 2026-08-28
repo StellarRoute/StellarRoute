@@ -1,0 +1,60 @@
+# StellarRoute Canary Live Quote Comparison — Alert Rules
+# =========================================================
+# Fires when StellarRoute quote prices diverge from the Horizon SDEX
+# reference price for a sustained period.
+#
+# Metrics produced by POST /api/v1/system/canary/live-compare:
+#   stellarroute_canary_quote_divergence_bps{pair} — latest divergence in bps
+#   stellarroute_canary_comparison_total{pair,outcome} — cumulative run counts
+#
+# Thresholds:
+#   Warning:  > 50 bps sustained for 5 minutes
+#   Critical: > 200 bps sustained for 2 minutes
+#
+# See docs/routing_canary.md — "Live Quote Comparison Job" for the runbook.
+
+groups:
+  - name: stellarroute_canary_live_compare
+    interval: 30s
+    rules:
+      # ── Warning: divergence > 50 bps for 5 minutes ───────────────────────
+      - alert: CanaryQuoteDivergenceWarning
+        expr: stellarroute_canary_quote_divergence_bps > 50
+        for: 5m
+        labels:
+          severity: warning
+          subsystem: canary_live_compare
+        annotations:
+          summary: >
+            Canary: {{ $labels.pair }} divergence {{ $value | humanize }}bps
+            exceeds warning threshold (50bps)
+          description: >
+            StellarRoute quote price has diverged from the Horizon reference
+            price by {{ $value | humanize }}bps for {{ $labels.pair }}
+            continuously for 5 minutes. This may indicate stale indexer data
+            or a routing anomaly. Check
+            GET /api/v1/system/canary/live-compare/report for recent results
+            and correlate with stellarroute_indexer_sync_status.
+          runbook_url: "https://links.internal/runbooks/canary-divergence"
+
+      # ── Critical: divergence > 200 bps for 2 minutes ─────────────────────
+      - alert: CanaryQuoteDivergenceCritical
+        expr: stellarroute_canary_quote_divergence_bps > 200
+        for: 2m
+        labels:
+          severity: critical
+          subsystem: canary_live_compare
+        annotations:
+          summary: >
+            Canary CRITICAL: {{ $labels.pair }} divergence
+            {{ $value | humanize }}bps exceeds critical threshold (200bps)
+          description: >
+            StellarRoute quote price has diverged from the Horizon reference
+            price by {{ $value | humanize }}bps for {{ $labels.pair }}
+            continuously for 2 minutes. This level of divergence indicates a
+            probable routing bug, mis-indexed liquidity, or stale data.
+            Immediate investigation required. Check
+            GET /api/v1/system/canary/live-compare/report for recent results
+            and the indexer sync status
+            (stellarroute_indexer_sync_status) for root-cause clues.
+          runbook_url: "https://links.internal/runbooks/canary-divergence"

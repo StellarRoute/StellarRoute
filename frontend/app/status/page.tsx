@@ -1,15 +1,12 @@
-import { Metadata } from 'next';
 import { StatusDashboard } from '@/components/status/StatusDashboard';
+import { buildPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'API Status | StellarRoute',
-  description: 'Live health status of StellarRoute API and dependencies',
-  openGraph: {
-    title: 'API Status | StellarRoute',
-    description: 'Monitor the health of StellarRoute services in real-time',
-    type: 'website',
-  },
-};
+export const metadata = buildPageMetadata({
+  title: 'API Status',
+  description:
+    'Live health status of the StellarRoute Stellar DEX aggregator API and dependencies',
+  path: '/status',
+});
 
 export default function StatusPage() {
   return (

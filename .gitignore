@@ -19,6 +19,9 @@ Cargo.lock
 .env
 .env.local
 .env.*.local
+.env.prod
+.env.production
+.env.staging
 
 # Database
 *.db
@@ -56,7 +59,9 @@ sdk-js/node_modules/
 tarpaulin-report.html
 coverage/
 
-# Deployment artifacts (generated at runtime)
+# Deployment artifacts (generated at runtime, may contain local build paths).
+# The reviewable, non-secret artifacts in config/deployments/ are tracked on
+# purpose — see config/deployments/README.md.
 config/deployment-*.json
 logs/
 
@@ -64,6 +69,10 @@ logs/
 .soroban/
 *.secret-key
 identity.toml
+
+# Local smoke / readiness evidence (never commit secrets or run artifacts)
+tmp/
+tmp/**
 
 # Local development
 .local/
@@ -87,3 +96,4 @@ GITHUB_ISSUES.md
 issue.md
 commit.md
 skills-lock.json
+.worktrees/

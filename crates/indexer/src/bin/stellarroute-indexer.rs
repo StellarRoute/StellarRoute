@@ -3,7 +3,7 @@
 //! Main entry point for the SDEX orderbook indexer service.
 
 use std::process;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use std::time::Duration;
 use stellarroute_indexer::amm::{AmmAggregator, AmmConfig};
@@ -46,21 +46,53 @@ async fn run_startup_reachability_checks(
         .build()
         .map_err(|_| "Startup check failed: unable to create HTTP client".to_string())?;
 
-    let horizon = format!("{}/", config.stellar_horizon_url.trim_end_matches('/'));
-    let horizon_status =
-        http.get(&horizon).send().await.map_err(|_| {
-            "Startup check failed: STELLAR_HORIZON_URL is not reachable".to_string()
-        })?;
-    if !horizon_status.status().is_success() {
-        return Err(
-            "Startup check failed: STELLAR_HORIZON_URL returned non-success status".to_string(),
-        );
+    // Try each Horizon URL in order; succeed as soon as one responds.
+    let horizon_urls = config.horizon_urls();
+    let mut horizon_ok = false;
+    for url in &horizon_urls {
+        let probe = format!("{}/", url.trim_end_matches('/'));
+        if let Ok(resp) = http.get(&probe).send().await {
+            if resp.status().is_success() {
+                horizon_ok = true;
+                break;
+            }
+        }
+    }
+    if !horizon_ok {
+        return Err(format!(
+            "Startup check failed: none of the Horizon URL(s) are reachable ({} tried)",
+            horizon_urls.len()
+        ));
     }
 
-    soroban
-        .get_latest_ledger()
-        .await
-        .map_err(|_| "Startup check failed: SOROBAN_RPC_URL is not reachable".to_string())?;
+    // Try each Soroban RPC URL in order; succeed as soon as one responds.
+    let soroban_urls = config.soroban_rpc_urls();
+    let mut soroban_ok = false;
+    for url in &soroban_urls {
+        let tmp_client = SorobanRpcClient::new(SorobanRpcConfig {
+            base_url: url.clone(),
+            timeout_secs: 5,
+            retry: RetryPolicy {
+                max_retries: 0,
+                ..RetryPolicy::default()
+            },
+        });
+        if let Ok(client) = tmp_client {
+            if client.get_latest_ledger().await.is_ok() {
+                soroban_ok = true;
+                break;
+            }
+        }
+    }
+    if !soroban_ok {
+        return Err(format!(
+            "Startup check failed: none of the Soroban RPC URL(s) are reachable ({} tried)",
+            soroban_urls.len()
+        ));
+    }
+
+    // The provided primary soroban client is already warmed up — keep using it.
+    let _ = soroban;
 
     Ok(())
 }
@@ -98,6 +130,16 @@ async fn main() {
 
     // Initialize Horizon client
     let horizon = HorizonClient::new(&config.stellar_horizon_url);
+    {
+        let fallbacks = config.horizon_urls();
+        if fallbacks.len() > 1 {
+            info!(
+                primary = %config.stellar_horizon_url,
+                fallback_count = fallbacks.len() - 1,
+                "Horizon failover URLs configured"
+            );
+        }
+    }
 
     // Initialize Soroban RPC client
     let soroban = match SorobanRpcClient::new(SorobanRpcConfig {
@@ -111,6 +153,16 @@ async fn main() {
             process::exit(1);
         }
     };
+    {
+        let fallbacks = config.soroban_rpc_urls();
+        if fallbacks.len() > 1 {
+            info!(
+                primary = %config.soroban_rpc_url,
+                fallback_count = fallbacks.len() - 1,
+                "Soroban RPC failover URLs configured"
+            );
+        }
+    }
 
     if parse_bool_env("STARTUP_CREDENTIAL_CHECK") {
         info!("Running startup dependency reachability checks");
@@ -139,7 +191,10 @@ async fn main() {
     let partition_manager = stellarroute_indexer::partition::PartitionManager::from_config(&config);
     let sdex_indexer = SdexIndexer::with_mode(horizon, db.clone(), sdex_mode, partition_manager);
 
-    // Create AMM aggregator
+    // Create AMM aggregator. An empty router here means `ALLOW_EMPTY_ROUTER` was
+    // honored (dev only — `from_env` rejects it otherwise), so run SDEX-only
+    // rather than starting an aggregation loop against no contract.
+    let amm_enabled = !config.router_contract_address.trim().is_empty();
     let amm_config = AmmConfig {
         router_contract: config.router_contract_address.clone(),
         poll_interval_secs: config.amm_poll_interval_secs,
@@ -162,6 +217,13 @@ async fn main() {
 
     let amm_shutdown = shutdown.clone();
     let amm_handle = tokio::spawn(async move {
+        if !amm_enabled {
+            warn!(
+                "ALLOW_EMPTY_ROUTER is set and ROUTER_CONTRACT_ADDRESS is empty — \
+                 running SDEX-only, AMM pool discovery is disabled"
+            );
+            return;
+        }
         info!("Starting AMM aggregation loop");
         if let Err(e) = amm_aggregator.start_aggregation().await {
             if !amm_shutdown.is_stopping() {

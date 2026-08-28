@@ -1,5 +1,6 @@
 //! Pathfinding algorithms for swap routing with N-hop support and safety bounds
 
+use crate::cross_chain::{is_bridge_edge, BridgeEdgeMeta};
 use crate::error::{Result, RoutingError};
 use crate::policy::{RouteDiagnostic, RoutingPolicy};
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,9 @@ impl Default for PathfinderConfig {
 }
 
 /// Represents a liquidity edge in the routing graph
+///
+/// `from` / `to` may be legacy Stellar identifiers or CAIP-19 chain-scoped ids.
+/// Bridge/cross-chain edges optionally carry [`BridgeEdgeMeta`] (abstraction only).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LiquidityEdge {
     pub from: String,
@@ -32,6 +36,28 @@ pub struct LiquidityEdge {
     pub price: f64,
     #[serde(default = "default_fee_bps")]
     pub fee_bps: u32,
+    /// Optional liquidity provider id (DEX venue operator or bridge adapter).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Optional bridge / cross-chain metadata. Absent for same-chain DEX edges.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge: Option<BridgeEdgeMeta>,
+}
+
+impl Default for LiquidityEdge {
+    fn default() -> Self {
+        Self {
+            from: String::new(),
+            to: String::new(),
+            venue_type: String::new(),
+            venue_ref: String::new(),
+            liquidity: 0,
+            price: 0.0,
+            fee_bps: default_fee_bps(),
+            provider: None,
+            bridge: None,
+        }
+    }
 }
 
 fn default_fee_bps() -> u32 {
@@ -45,7 +71,7 @@ pub struct SwapPath {
     pub estimated_output: i128,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct PathHop {
     pub source_asset: String,
     pub destination_asset: String,
@@ -53,6 +79,10 @@ pub struct PathHop {
     pub venue_ref: String,
     pub price: f64,
     pub fee_bps: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge: Option<BridgeEdgeMeta>,
 }
 
 /// N-hop pathfinder with safety bounds
@@ -120,6 +150,11 @@ impl Pathfinder {
                     .map(|h| crate::policy::RouteHop {
                         venue_type: h.venue_type.clone(),
                         asset: h.destination_asset.clone(),
+                        provider: h
+                            .provider
+                            .clone()
+                            .or_else(|| h.bridge.as_ref().and_then(|b| b.provider.clone())),
+                        bridge: h.bridge.clone(),
                     })
                     .collect::<Vec<_>>();
 
@@ -159,7 +194,31 @@ impl Pathfinder {
         let mut graph: HashMap<String, Vec<LiquidityEdge>> = HashMap::new();
 
         for edge in edges {
+            // Hard-disable bridges unless explicitly opted in (default: false).
+            if is_bridge_edge(&edge.venue_type, edge.bridge.as_ref()) && !policy.allow_bridge_edges
+            {
+                continue;
+            }
+
+            // Even when opted in, reject contradictory bridge metadata.
+            if let Some(bridge) = edge.bridge.as_ref() {
+                if bridge
+                    .validate_against_endpoints(&edge.from, &edge.to)
+                    .is_err()
+                {
+                    continue;
+                }
+            }
+
             if !policy.is_venue_allowed(&edge.venue_type) {
+                continue;
+            }
+
+            let provider = edge
+                .provider
+                .as_deref()
+                .or_else(|| edge.bridge.as_ref().and_then(|b| b.provider.as_deref()));
+            if !policy.is_provider_allowed(provider) {
                 continue;
             }
 
@@ -221,6 +280,8 @@ impl Pathfinder {
                         venue_ref: edge.venue_ref.clone(),
                         price: edge.price,
                         fee_bps: edge.fee_bps,
+                        provider: edge.provider.clone(),
+                        bridge: edge.bridge.clone(),
                     };
 
                     let estimated_after_hop = (estimated_output * 9950) / 10000;
@@ -234,5 +295,154 @@ impl Pathfinder {
         }
 
         Ok(paths)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::policy::RoutingPolicy;
+
+    fn test_policy() -> RoutingPolicy {
+        RoutingPolicy::default()
+    }
+
+    fn thin_book_edges() -> Vec<LiquidityEdge> {
+        vec![
+            LiquidityEdge {
+                from: "native".to_string(),
+                to: "USDC:issuer".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "sdex:1001".to_string(),
+                liquidity: 100, // Very thin liquidity
+                price: 0.1,
+                fee_bps: 0,
+            },
+        ]
+    }
+
+    fn normal_edges() -> Vec<LiquidityEdge> {
+        vec![
+            LiquidityEdge {
+                from: "native".to_string(),
+                to: "USDC:issuer".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "sdex:1001".to_string(),
+                liquidity: 10_000_000,
+                price: 0.1,
+                fee_bps: 0,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_thin_book_no_panic() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy();
+        let edges = thin_book_edges();
+        
+        // Should not panic even with thin liquidity
+        let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 1_000_000, &policy);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_thin_book_respects_min_liquidity() {
+        let config = PathfinderConfig {
+            min_liquidity_threshold: 1_000, // Higher than thin book liquidity
+        };
+        let pathfinder = Pathfinder::new(config);
+        let policy = test_policy();
+        let edges = thin_book_edges();
+        
+        // Thin liquidity edge should be filtered out
+        let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 1_000_000, &policy);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_oversized_amount_no_panic() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy();
+        let edges = normal_edges();
+        
+        // Should not panic with very large amounts
+        let oversized = i128::MAX / 2;
+        let result = pathfinder.find_paths("native", "USDC:issuer", &edges, oversized, &policy);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_oversized_amount_respects_max_hops() {
+        let mut policy = test_policy();
+        policy.max_hops = 1;
+        
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        
+        // Multi-hop edges
+        let edges = vec![
+            LiquidityEdge {
+                from: "A".to_string(),
+                to: "B".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "sdex:1".to_string(),
+                liquidity: 10_000_000,
+                price: 1.0,
+                fee_bps: 0,
+            },
+            LiquidityEdge {
+                from: "B".to_string(),
+                to: "C".to_string(),
+                venue_type: "sdex".to_string(),
+                venue_ref: "sdex:2".to_string(),
+                liquidity: 10_000_000,
+                price: 1.0,
+                fee_bps: 0,
+            },
+        ];
+        
+        // Should not find 2-hop path when max_hops=1
+        let result = pathfinder.find_paths("A", "C", &edges, 1_000_000, &policy);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_edges_returns_no_route() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy();
+        let edges: Vec<LiquidityEdge> = vec![];
+        
+        let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 1_000_000, &policy);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_same_source_dest_returns_error() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy();
+        let edges = normal_edges();
+        
+        let result = pathfinder.find_paths("native", "native", &edges, 1_000_000, &policy);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zero_amount_returns_error() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy();
+        let edges = normal_edges();
+        
+        let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 0, &policy);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_negative_amount_returns_error() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy();
+        let edges = normal_edges();
+        
+        let result = pathfinder.find_paths("native", "USDC:issuer", &edges, -1_000_000, &policy);
+        assert!(result.is_err());
     }
 }

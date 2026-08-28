@@ -1,6 +1,6 @@
 use crate::admin_audit::{build_admin_audit_entry, emit_admin_audit};
 use crate::error::Result;
-use crate::middleware::RequestId;
+use crate::middleware::{AdminAuth, RequestId};
 use crate::state::AppState;
 use axum::http::HeaderMap;
 use axum::{extract::State, Json};
@@ -17,6 +17,7 @@ pub struct CacheFlushRequest {
 /// POST /api/v1/admin/cache/flush
 pub async fn flush_cache(
     State(state): State<Arc<AppState>>,
+    _admin: AdminAuth,
     headers: HeaderMap,
     request_id: RequestId,
     Json(payload): Json<CacheFlushRequest>,

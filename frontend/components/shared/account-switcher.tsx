@@ -9,16 +9,19 @@ interface AccountSwitcherProps {
   onAccountChange?: (newAddress: string) => void;
 }
 
+/**
+ * Only surfaces UI when something needs attention (account change / txn lock).
+ * Idle refresh lives in the wallet dropdown to keep the header uncluttered.
+ */
 export function AccountSwitcher({ onAccountChange }: AccountSwitcherProps) {
-  const { 
-    address, 
-    walletId, 
-    isConnected, 
-    refreshAccount, 
+  const {
+    address,
+    walletId,
+    isConnected,
+    refreshAccount,
     isTransactionPending,
-    accountSwitchState 
   } = useWallet();
-  
+
   const [localSwitchState, setLocalSwitchState] = React.useState<AccountSwitchState>({
     isDetecting: false,
     hasChanged: false,
@@ -26,13 +29,12 @@ export function AccountSwitcher({ onAccountChange }: AccountSwitcherProps) {
   });
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
-  // Monitor for account changes
   React.useEffect(() => {
     if (!isConnected || !walletId || !address || isTransactionPending) return;
 
     const checkForChanges = async () => {
-      setLocalSwitchState(prev => ({ ...prev, isDetecting: true }));
-      
+      setLocalSwitchState((prev) => ({ ...prev, isDetecting: true }));
+
       try {
         const newAddress = await checkAddressChange(walletId, address);
         if (newAddress && newAddress !== address) {
@@ -42,14 +44,13 @@ export function AccountSwitcher({ onAccountChange }: AccountSwitcherProps) {
             previousAddress: address,
           });
         } else {
-          setLocalSwitchState(prev => ({ ...prev, isDetecting: false }));
+          setLocalSwitchState((prev) => ({ ...prev, isDetecting: false }));
         }
       } catch {
-        setLocalSwitchState(prev => ({ ...prev, isDetecting: false }));
+        setLocalSwitchState((prev) => ({ ...prev, isDetecting: false }));
       }
     };
 
-    // Check every 3 seconds for account changes
     const interval = setInterval(checkForChanges, 3000);
     return () => clearInterval(interval);
   }, [isConnected, walletId, address, isTransactionPending]);
@@ -61,14 +62,13 @@ export function AccountSwitcher({ onAccountChange }: AccountSwitcherProps) {
     try {
       const previousAddress = address;
       await refreshAccount();
-      
+
       setLocalSwitchState({
         isDetecting: false,
         hasChanged: false,
         previousAddress: null,
       });
 
-      // Call the callback if address actually changed
       if (previousAddress && address && previousAddress !== address && onAccountChange) {
         onAccountChange(address);
       }
@@ -89,77 +89,48 @@ export function AccountSwitcher({ onAccountChange }: AccountSwitcherProps) {
 
   if (!isConnected) return null;
 
-  // Show transaction warning if trying to switch during transaction
   if (isTransactionPending) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-red-700">
-            Account switching disabled during transaction
-          </span>
-        </div>
+      <div className="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive lg:block">
+        Account switching paused while a transaction is pending
       </div>
     );
   }
 
   if (localSwitchState.hasChanged) {
     return (
-      <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3">
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
-            <h4 className="text-sm font-medium text-yellow-800">
-              Account Change Detected
-            </h4>
-            <p className="mt-1 text-sm text-yellow-700">
-              Your wallet account appears to have changed. Refresh to use the new account.
-            </p>
-            {localSwitchState.previousAddress && (
-              <p className="mt-1 text-xs text-yellow-600">
-                Previous: {localSwitchState.previousAddress.slice(0, 8)}...{localSwitchState.previousAddress.slice(-8)}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleRefreshAccount}
-              disabled={isRefreshing}
-              className="rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
-            >
-              {isRefreshing ? "Refreshing..." : "Refresh Account"}
-            </button>
-            <button
-              onClick={handleDismissChange}
-              className="rounded-md border border-yellow-300 px-3 py-1 text-xs font-medium text-yellow-700 hover:bg-yellow-100"
-            >
-              Dismiss
-            </button>
-          </div>
+      <div className="absolute top-full right-0 z-50 mt-2 w-72 rounded-xl border border-signal/35 bg-card p-3 shadow-lg">
+        <p className="text-sm font-semibold text-foreground">Account changed</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Your wallet switched accounts. Refresh to use the new one.
+        </p>
+        {localSwitchState.previousAddress && (
+          <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+            Previous: {localSwitchState.previousAddress.slice(0, 6)}…
+            {localSwitchState.previousAddress.slice(-6)}
+          </p>
+        )}
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={handleRefreshAccount}
+            disabled={isRefreshing}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {isRefreshing ? "Refreshing…" : "Refresh account"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDismissChange}
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );
   }
 
-  if (localSwitchState.isDetecting) {
-    return (
-      <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-          <span className="text-sm text-blue-700">Checking for account changes...</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={handleRefreshAccount}
-        disabled={isRefreshing}
-        className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-        title="Refresh to check for account changes"
-      >
-        {isRefreshing ? "Refreshing..." : "↻ Refresh Account"}
-      </button>
-    </div>
-  );
+  // Keep detection running silently — no idle chrome in the header.
+  return null;
 }

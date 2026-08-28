@@ -16,6 +16,9 @@ pub enum RoutingError {
     #[error("Invalid asset pair: {0}")]
     InvalidPair(String),
 
+    #[error("Invalid asset identifier: {0}")]
+    InvalidAsset(String),
+
     #[error("Normalization failed: {0}")]
     Normalization(String),
 

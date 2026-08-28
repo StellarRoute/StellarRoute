@@ -70,10 +70,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // Apply accent color variables on change
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      const hex = ACCENT_COLORS[settings.accentColor];
+      const hex = ACCENT_COLORS[settings.accentColor] ?? ACCENT_COLORS.teal;
       if (hex) {
         document.documentElement.style.setProperty('--primary', hex);
         document.documentElement.style.setProperty('--ring', hex);
+        document.documentElement.style.setProperty('--sidebar-primary', hex);
+        // Dark ink on bright teal accents for readable CTA text
+        document.documentElement.style.setProperty(
+          '--primary-foreground',
+          '#041512'
+        );
       }
     }
   }, [settings.accentColor]);

@@ -39,8 +39,32 @@ The indexer requires these variables:
 - `SOROBAN_RPC_URL`
 - `ROUTER_CONTRACT_ADDRESS`
 
+`STELLAR_HORIZON_URL` and `SOROBAN_RPC_URL` must point at the **same** network.
+Mixing them (mainnet Horizon with testnet Soroban, say) writes SDEX offers and AMM
+pools from two different ledgers into the same tables. Copy a whole network block
+from `.env.example` instead of editing individual URLs.
+
+### `ROUTER_CONTRACT_ADDRESS` is validated at startup
+
+The indexer refuses to start when `ROUTER_CONTRACT_ADDRESS` is missing, empty,
+whitespace-only, or not shaped like a Soroban contract ID (56 base32 characters
+beginning with `C`). It exits non-zero with a message naming the variable, and no
+SDEX or AMM loop is started. This prevents the confusing half-running state where
+the process looks healthy but the AMM side is silently empty.
+
+Read the value from the committed deploy artifact:
+
+```bash
+export ROUTER_CONTRACT_ADDRESS="$(jq -r .router_contract_id config/deployments/testnet.json)"
+```
+
+For SDEX-only local work you can set `ALLOW_EMPTY_ROUTER=1`, which permits an empty
+router and disables AMM discovery. It is a **development-only** hatch: when
+`STELLARROUTE_ENV=production` it is refused and startup still fails.
+
 Optional operational variables:
 
+- `ALLOW_EMPTY_ROUTER=1` — dev-only; boot SDEX-only with no router (refused in production)
 - `STARTUP_CREDENTIAL_CHECK=true` to run startup reachability checks for DB/Horizon/Soroban
 - `RUST_LOG=stellarroute_indexer=info` (or `debug`) for log verbosity
 - `LOG_FORMAT=json` for structured JSON logs
@@ -50,7 +74,7 @@ PowerShell example:
 ```powershell
 $env:DATABASE_URL = "postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute"
 $env:STELLAR_HORIZON_URL = "https://horizon-testnet.stellar.org"
-$env:SOROBAN_RPC_URL = "https://soroban-rpc.testnet.stellar.org"
+$env:SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org:443"
 $env:ROUTER_CONTRACT_ADDRESS = "<your-router-contract-address>"
 $env:STARTUP_CREDENTIAL_CHECK = "true"
 ```
@@ -60,7 +84,7 @@ Bash example:
 ```bash
 export DATABASE_URL="postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute"
 export STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org"
-export SOROBAN_RPC_URL="https://soroban-rpc.testnet.stellar.org"
+export SOROBAN_RPC_URL="https://soroban-testnet.stellar.org:443"
 export ROUTER_CONTRACT_ADDRESS="<your-router-contract-address>"
 export STARTUP_CREDENTIAL_CHECK=true
 ```
@@ -291,6 +315,50 @@ Remediation:
 2. Confirm Horizon/Soroban endpoints are reachable.
 3. Restart indexer if ingestion does not recover.
 4. Use reconciliation diagnostics for deeper drift analysis.
+
+## 7b. Verify AMM ingestion
+
+The queries above tell you *whether* reserves look stale. This test proves the AMM loop
+actually populates `amm_pool_reserves` end-to-end for a registered router on **testnet** —
+useful before declaring a router live, and as a nightly CI gate.
+
+It is `#[ignore]`d by default (it needs network + a live database) and refuses to run
+against anything that looks like mainnet.
+
+```bash
+export DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute
+export ROUTER_CONTRACT_ADDRESS=C...                      # required — the router under test
+export SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+
+cargo test -p stellarroute-indexer amm_ingest -- --ignored --nocapture
+```
+
+Tunables:
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `AMM_INGEST_TIMEOUT_SECS` | `600` (10 min) | Give up after this long |
+| `AMM_INGEST_POLL_SECS` | `15` | Delay between aggregation cycles |
+
+**What it asserts.** It records the *database* clock at start (not the test host's, so
+clock skew cannot fake a pass), then runs `AmmAggregator::aggregate_once()` on a loop.
+It passes as soon as at least one row in `amm_pool_reserves` has `reserve_selling > 0`,
+`reserve_buying > 0`, and `updated_at` newer than that start timestamp.
+
+**On failure** it prints the router contract ID, the Soroban RPC URL, every pool address
+currently tracked in `amm_pool_reserves`, and the last error returned by the RPC — enough
+to tell "the router has no registered pools" apart from "the RPC is rejecting our calls".
+
+Typical causes of a failure:
+
+1. The router genuinely has no registered pools — check the registry fallback and
+   `PoolRegistered` events.
+2. Discovery never reached the ledger where pools were registered — inspect
+   `soroban_sync_cursors`.
+3. The RPC rejected `getEvents` / `simulateTransaction` — the printed last error will
+   carry the JSON-RPC code.
+
+Source: [`crates/indexer/tests/amm_ingest.rs`](../../crates/indexer/tests/amm_ingest.rs).
 
 ## 8. Health Verification Checklist
 

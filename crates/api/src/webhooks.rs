@@ -7,8 +7,8 @@ use sha2::Sha256;
 use sqlx::{PgPool, Row};
 use tracing::{debug, error, warn};
 
-use crate::models::QuoteExpirationWebhookPayload;
 use crate::metrics;
+use crate::models::QuoteExpirationWebhookPayload;
 
 const WEBHOOK_EVENT_NAME: &str = "quote.expired";
 const MAX_DELIVERY_RETRIES: usize = 3;
@@ -184,7 +184,7 @@ impl QuoteExpirationWebhookService {
 
         for attempt in 1..=MAX_DELIVERY_RETRIES {
             metrics::record_webhook_delivery_attempt(&registration.consumer_id, attempt as u32);
-            
+
             let attempt_start = std::time::Instant::now();
             let response = self
                 .client
@@ -221,11 +221,15 @@ impl QuoteExpirationWebhookService {
                         duration_ms = duration.as_millis(),
                         "Webhook delivery failed"
                     );
-                    
+
                     // Don't retry on 4xx (client errors)
                     if resp.status().is_client_error() {
                         let total_duration = start.elapsed();
-                        metrics::record_webhook_delivery_failure(&registration.consumer_id, "client_error_4xx", total_duration);
+                        metrics::record_webhook_delivery_failure(
+                            &registration.consumer_id,
+                            "client_error_4xx",
+                            total_duration,
+                        );
                         error!(
                             consumer_id = %registration.consumer_id,
                             status = %resp.status(),
@@ -265,7 +269,11 @@ impl QuoteExpirationWebhookService {
         } else {
             "connection_error"
         };
-        metrics::record_webhook_delivery_failure(&registration.consumer_id, failure_reason, total_duration);
+        metrics::record_webhook_delivery_failure(
+            &registration.consumer_id,
+            failure_reason,
+            total_duration,
+        );
         error!(
             consumer_id = %registration.consumer_id,
             quote_id = %payload.quote_id,

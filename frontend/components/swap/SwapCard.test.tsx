@@ -1,16 +1,40 @@
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, Mock } from 'vitest';
 import { SwapCard } from './SwapCard';
 import { fireEvent } from '@testing-library/react';
 import * as useSwapStateModule from '@/hooks/useSwapState';
-import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
 import { signTransactionWithWallet } from '@/lib/wallet';
-import { submitToHorizon } from '@/lib/wallet/submit';
 
 import { WalletProvider } from '@/components/providers/wallet-provider';
 import { SettingsProvider } from '@/components/providers/settings-provider';
+
+const BTC_ISSUER = 'GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS';
+const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+
+const defaultHorizonBalances = [
+  { balance: '50.0000000', asset_type: 'native' as const },
+  {
+    balance: '50.0000000',
+    asset_type: 'credit_alphanum4' as const,
+    asset_code: 'BTC',
+    asset_issuer: BTC_ISSUER,
+  },
+];
+
+const classicPath = [
+  {
+    from_asset: { asset_type: 'native' as const },
+    to_asset: {
+      asset_type: 'credit_alphanum4' as const,
+      asset_code: 'USDC',
+      asset_issuer: 'GABC',
+    },
+    source: 'sdex',
+    fee_bps: 30,
+    price: '0.95',
+  },
+];
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -21,7 +45,7 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
-const { mockWalletState, mockQuoteRefresh } = vi.hoisted(() => ({
+const { mockWalletState, mockQuoteRefresh, prepareSwapMock } = vi.hoisted(() => ({
   mockWalletState: {
     capabilities: null as {
       checkedAt: number;
@@ -34,6 +58,7 @@ const { mockWalletState, mockQuoteRefresh } = vi.hoisted(() => ({
     } | null,
   },
   mockQuoteRefresh: vi.fn(),
+  prepareSwapMock: vi.fn(),
 }));
 
 const defaultAllowedCapabilities = {
@@ -53,6 +78,28 @@ vi.mock('@/hooks/useApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useApi')>();
   return {
     ...actual,
+    usePairs: () => ({
+      data: [
+        {
+          base: 'XLM',
+          base_asset: 'native',
+          counter: 'USDC',
+          counter_asset:
+            'USDC:GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ65JJLDHKHRUZI3EUEKMTCH',
+        },
+        {
+          base: 'BTC',
+          base_asset:
+            'BTC:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS',
+          counter: 'EXT',
+          counter_asset:
+            'EXT:GDMVY5CPSEY6IDQBEX7KMJSOVFNHMOMT5QY4MTOCSDFORV24AOFYDDGS',
+        },
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    }),
     useQuoteStream: () => ({
       data: undefined,
       isConnected: false,
@@ -121,6 +168,7 @@ vi.mock('@/components/providers/wallet-provider', () => {
         isConnected: connected,
         walletId: connected ? 'freighter' : null,
         network: 'testnet',
+        walletNetwork: 'testnet',
         networkMismatch: false,
         connect,
         disconnect,
@@ -151,23 +199,22 @@ vi.mock('@/lib/wallet', () => ({
   signTransactionWithWallet: vi.fn(),
 }));
 
-vi.mock('@/lib/wallet/xdr-builder', () => ({
-  buildPathPaymentXdr: vi.fn().mockResolvedValue('AAAAtest_unsigned_xdr'),
-  XdrBuildError: class XdrBuildError extends Error {
-    code: string;
-    constructor(code: string, message: string) {
-      super(message);
-      this.code = code;
-      this.name = 'XdrBuildError';
-    }
-  },
-}));
-
-vi.mock('@/lib/wallet/submit', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/wallet/submit')>();
+vi.mock('@/lib/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/client')>();
+  const makeMockClient = () => {
+    const client = actual.createStellarRouteClient();
+    client.prepareSwap = (...args: unknown[]) => prepareSwapMock(...args);
+    client.submitSwap = vi.fn().mockResolvedValue({
+      quote_id: 'q-1',
+      tx_hash: 'test_submit_hash',
+      status: 'pending',
+    });
+    return client;
+  };
   return {
     ...actual,
-    submitToHorizon: vi.fn().mockResolvedValue({ hash: 'test_submit_hash' }),
+    createStellarRouteClient: makeMockClient,
+    stellarRouteClient: makeMockClient(),
   };
 });
 
@@ -203,7 +250,7 @@ function mockQuoteRefreshState(
         price: '0.95',
         total: options?.total ?? '9.5',
         price_impact: options?.priceImpact ?? '0.5',
-        path: [],
+        path: classicPath,
         quote_type: 'sell' as const,
         timestamp: Date.now(),
       }
@@ -261,12 +308,7 @@ describe('SwapCard network resilience and states', () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              balances: [
-                {
-                  balance: '50.0000000',
-                  asset_type: 'native',
-                },
-              ],
+              balances: defaultHorizonBalances,
             }),
         });
       }
@@ -318,6 +360,20 @@ describe('SwapCard network resilience and states', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /review swap/i })).toBeEnabled();
+    });
+  });
+
+  it('announces quote refreshes via the polite live region (#673)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SwapCard />);
+
+    await connectWalletAndWaitForBalance(user);
+
+    const payInput = screen.getByLabelText(/you pay/i);
+    fireEvent.change(payInput, { target: { value: '10' } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/quote updated/i)).toBeInTheDocument();
     });
   });
 
@@ -497,12 +553,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              balances: [
-                {
-                  balance: '50.0000000',
-                  asset_type: 'native',
-                },
-              ],
+              balances: defaultHorizonBalances,
             }),
         });
       }
@@ -546,7 +597,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
               ok: true,
               json: () =>
                 Promise.resolve({
-                  balances: [{ balance: '50.0000000', asset_type: 'native' }],
+                  balances: defaultHorizonBalances,
                 }),
             });
           }, 100)
@@ -683,6 +734,15 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
   });
 
   it('MAX button sets amount to spendable balance for native XLM', async () => {
+    const originalUseSwapState = useSwapStateModule.useSwapState;
+    vi.spyOn(useSwapStateModule, 'useSwapState').mockImplementation(() => {
+      const state = originalUseSwapState();
+      return {
+        ...state,
+        fromToken: 'native',
+      };
+    });
+
     global.fetch = vi.fn((url: string) => {
       if (url.includes('/accounts/')) {
         return Promise.resolve({
@@ -758,7 +818,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
                       asset_issuer: 'GABC',
                     },
                   ]
-                : [{ balance: '50.0000000', asset_type: 'native' }],
+                : defaultHorizonBalances,
             }),
         });
       }
@@ -801,7 +861,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              balances: [{ balance: '50.0000000', asset_type: 'native' }],
+              balances: defaultHorizonBalances,
             }),
         });
       }
@@ -832,7 +892,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
           json: () =>
             Promise.resolve({
               balances: [
-                { balance: '50.0000000', asset_type: 'native' },
+                ...defaultHorizonBalances,
                 {
                   balance: '1000.0000000',
                   asset_type: 'credit_alphanum12',
@@ -864,7 +924,7 @@ describe('SwapCard Wallet Balance Integration (#644/#705)', () => {
     });
     await user.click(connectButton);
 
-    // Should display native XLM balance initially
+    // Should display default pay-asset balance initially
     await waitFor(() => {
       expect(screen.getByText(/50\.0000000/)).toBeInTheDocument();
     });
@@ -880,7 +940,17 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
           json: () =>
             Promise.resolve({
               sequence: '12345',
-              balances: [{ balance: '50.0000000', asset_type: 'native' }],
+              balances: defaultHorizonBalances,
+            }),
+        });
+      }
+      if (typeof url === 'string' && url.includes('/transactions/')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              successful: true,
+              hash: 'test_submit_hash',
             }),
         });
       }
@@ -888,9 +958,17 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
     }) as Mock;
 
   beforeEach(() => {
-    vi.mocked(buildPathPaymentXdr).mockResolvedValue('AAAAtest_unsigned_xdr');
+    localStorage.clear();
+    prepareSwapMock.mockResolvedValue({
+      quote_id: 'q-1',
+      xdr_envelope: 'AAAAtest_unsigned_xdr',
+      expected_output: '9.5',
+      min_output: '9.4',
+      expires_at: Date.now() + 60_000,
+      execution_mode: 'classic_path_payment',
+      network_passphrase: TESTNET_PASSPHRASE,
+    });
     vi.mocked(signTransactionWithWallet).mockResolvedValue('AAAAtest_signed_xdr');
-    vi.mocked(submitToHorizon).mockResolvedValue({ hash: 'test_submit_hash' });
     configureQuoteRefresh();
     global.fetch = horizonFetchMock();
   });
@@ -900,7 +978,7 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
     vi.clearAllMocks();
   });
 
-  it('calls buildPathPaymentXdr and signTransactionWithWallet when swap is confirmed', async () => {
+  it('calls API prepare and signTransactionWithWallet when swap is confirmed', async () => {
     const user = userEvent.setup();
     renderWithProviders(<SwapCard />);
 
@@ -917,14 +995,17 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
 
     await user.click(screen.getByRole('button', { name: /review swap/i }));
 
-    await waitFor(() => {
-      expect(buildPathPaymentXdr).toHaveBeenCalled();
-      expect(signTransactionWithWallet).toHaveBeenCalledWith(
-        'AAAAtest_unsigned_xdr',
-        'freighter',
-        expect.any(String)
-      );
-    });
+    await waitFor(
+      () => {
+        expect(prepareSwapMock).toHaveBeenCalled();
+        expect(signTransactionWithWallet).toHaveBeenCalledWith(
+          'AAAAtest_unsigned_xdr',
+          'freighter',
+          expect.any(String)
+        );
+      },
+      { timeout: 5000 }
+    );
   });
 
   it('does not call signTransactionWithWallet when wallet is disconnected', async () => {
@@ -934,6 +1015,6 @@ describe('SwapCard Freighter signing wiring (#735)', () => {
       screen.getByRole('button', { name: /connect wallet/i })
     ).toBeInTheDocument();
     expect(signTransactionWithWallet).not.toHaveBeenCalled();
-    expect(buildPathPaymentXdr).not.toHaveBeenCalled();
+    expect(prepareSwapMock).not.toHaveBeenCalled();
   });
 });

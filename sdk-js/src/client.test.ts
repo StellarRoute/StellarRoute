@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { StellarRouteClient, StellarRouteApiError, isStellarRouteApiError } from './client.js';
+import {
+  StellarRouteClient,
+  StellarRouteApiError,
+  isStellarRouteApiError,
+  parseApiErrorBody,
+} from './client.js';
 import type {
   BatchOrderbookResponse,
   HealthStatus,
@@ -620,45 +625,398 @@ describe('simulateRoute', () => {
   });
 });
 
-// ── executeSwap ───────────────────────────────────────────────────────────────
+// ── prepareSwap / submitSwap / executeSwap / confirmSwap ─────────────────────
+
+function enveloped<T>(data: T) {
+  return {
+    v: 1,
+    timestamp: 1_740_312_000_000,
+    request_id: 'req-test',
+    data,
+  };
+}
+
+function apiErrorEnveloped(
+  code: string,
+  message: string,
+  status: number,
+  details?: unknown,
+): Response {
+  return ok(
+    enveloped({
+      error: code,
+      message,
+      ...(details !== undefined ? { details } : {}),
+    }),
+    status,
+  );
+}
+
+const classicPrepare = {
+  quote_id: 'q123',
+  xdr_envelope: 'opaque_unsigned_xdr',
+  expected_output: '98',
+  min_output: '97',
+  expires_at: 1234567890,
+  execution_mode: 'classic_path_payment' as const,
+  network_passphrase: 'Test SDF Network ; September 2015',
+};
+
+describe('parseApiErrorBody', () => {
+  it('parses flat and nested { data: { error, message, details } } forms', () => {
+    expect(
+      parseApiErrorBody({
+        error: 'quote_expired',
+        message: 'expired',
+        details: { status: 'expired' },
+      }),
+    ).toEqual({
+      error: 'quote_expired',
+      message: 'expired',
+      details: { status: 'expired' },
+    });
+    expect(
+      parseApiErrorBody(
+        enveloped({
+          error: 'duplicate_quote',
+          message: 'conflict',
+          details: { status: 'active_prepare_exists' },
+        }),
+      ),
+    ).toEqual({
+      error: 'duplicate_quote',
+      message: 'conflict',
+      details: { status: 'active_prepare_exists' },
+    });
+  });
+});
+
+describe('nested API error envelope', () => {
+  it.each([
+    ['unsupported_route', 422, { hops: 2 }],
+    ['unsupported_execution_mode', 422, { source: 'amm' }],
+    ['quote_expired', 422, { quote_id: 'q1' }],
+    ['dependency_unavailable', 503, { dependency: 'horizon' }],
+  ] as const)(
+    'preserves code/details/status for %s',
+    async (code, status, details) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        apiErrorEnveloped(code, `${code} message`, status, details),
+      );
+
+      const err = await new StellarRouteClient({ retries: 0 })
+        .prepareSwap({
+          route: sampleSimulateRequest.route,
+          amount: '1',
+          sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        })
+        .catch((e: unknown) => e);
+
+      expect(isStellarRouteApiError(err)).toBe(true);
+      expect((err as StellarRouteApiError).code).toBe(code);
+      expect((err as StellarRouteApiError).status).toBe(status);
+      expect((err as StellarRouteApiError).details).toEqual(details);
+      expect((err as StellarRouteApiError).message).toBe(`${code} message`);
+    },
+  );
+
+  it('preserves conflict details.status for active_prepare_exists', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiErrorEnveloped('duplicate_quote', 'active prepare', 409, {
+        status: 'active_prepare_exists',
+        quote_id: '',
+      }),
+    );
+
+    const err = await new StellarRouteClient({ retries: 0 })
+      .prepareSwap({
+        route: sampleSimulateRequest.route,
+        amount: '1',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      })
+      .catch((e: unknown) => e);
+
+    expect((err as StellarRouteApiError).status).toBe(409);
+    expect((err as StellarRouteApiError).code).toBe('duplicate_quote');
+    expect((err as StellarRouteApiError).details).toMatchObject({
+      status: 'active_prepare_exists',
+    });
+  });
+});
+
+describe('prepareSwap', () => {
+  it('POSTs to /api/v1/swap/prepare and unwraps ApiResponse.data', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)));
+
+    const result = await new StellarRouteClient({ retries: 0 }).prepareSwap({
+      route: sampleSimulateRequest.route,
+      amount: '100',
+      sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      slippage_bps: 50,
+    });
+
+    expect(spy.mock.calls[0]?.[0]).toContain('/api/v1/swap/prepare');
+    expect(result).toEqual(classicPrepare);
+  });
+});
+
+describe('submitSwap', () => {
+  it('POSTs to /api/v1/swap/submit and unwraps ApiResponse.data', async () => {
+    const payload = {
+      quote_id: 'q123',
+      tx_hash: 'tx456',
+      status: 'pending',
+    };
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok(enveloped(payload)));
+
+    const result = await new StellarRouteClient({ retries: 0 }).submitSwap({
+      quote_id: 'q123',
+      signed_xdr: 'signed_xdr',
+    });
+
+    expect(spy.mock.calls[0]?.[0]).toContain('/api/v1/swap/submit');
+    const body = JSON.parse((spy.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body).toEqual({ quote_id: 'q123', signed_xdr: 'signed_xdr' });
+    expect(result).toEqual(payload);
+  });
+});
 
 describe('executeSwap', () => {
-  it('calls simulateRoute first, then throws not_implemented stub', async () => {
-    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok(sampleSimulateResponse));
-    const err = await new StellarRouteClient({ retries: 0 })
-      .executeSwap({
-        route: sampleSimulateRequest.route,
-        amount: '100',
-        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
-        slippage_bps: 50,
-      })
-      .catch((e: unknown) => e);
+  const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 
-    // simulateRoute was called
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]?.[0]).toContain('/api/v1/simulate/route');
+  it('classic happy path: prepare → sign server XDR → submit', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)))
+      .mockResolvedValueOnce(
+        ok(
+          enveloped({
+            quote_id: 'q123',
+            tx_hash: 'tx456',
+            status: 'pending',
+          }),
+        ),
+      );
 
-    // Stub error is returned
-    expect(isStellarRouteApiError(err)).toBe(true);
-    expect((err as StellarRouteApiError).status).toBe(501);
-    expect((err as StellarRouteApiError).code).toBe('not_implemented');
+    const signTransaction = vi.fn().mockResolvedValue('opaque_signed_xdr');
+
+    const result = await new StellarRouteClient({ retries: 0 }).executeSwap({
+      route: sampleSimulateRequest.route,
+      amount: '100',
+      sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      slippage_bps: 50,
+      networkPassphrase: TESTNET_PASSPHRASE,
+      signTransaction,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(signTransaction).toHaveBeenCalledWith('opaque_unsigned_xdr');
+    expect(result).toMatchObject({
+      quote_id: 'q123',
+      execution_mode: 'classic_path_payment',
+      expected_output: '98',
+      min_output: '97',
+      tx_hash: 'tx456',
+    });
   });
 
-  it('propagates simulation failure without reaching the stub', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      apiError('not_found', 'No route', 404),
-    );
+  it('accepts networkPassphrase callback when it matches prepare', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)))
+      .mockResolvedValueOnce(
+        ok(
+          enveloped({
+            quote_id: 'q123',
+            tx_hash: 'tx456',
+            status: 'pending',
+          }),
+        ),
+      );
+    const signTransaction = vi.fn().mockResolvedValue('opaque_signed_xdr');
+    const getPassphrase = vi.fn().mockResolvedValue(TESTNET_PASSPHRASE);
+
+    await new StellarRouteClient({ retries: 0 }).executeSwap({
+      route: sampleSimulateRequest.route,
+      amount: '100',
+      sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      networkPassphrase: getPassphrase,
+      signTransaction,
+    });
+
+    expect(getPassphrase).toHaveBeenCalled();
+    expect(signTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns network_mismatch without signing or submitting on passphrase mismatch', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)));
+    const signTransaction = vi.fn();
+
     const err = await new StellarRouteClient({ retries: 0 })
       .executeSwap({
         route: sampleSimulateRequest.route,
         amount: '100',
         sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        networkPassphrase: 'Public Global Stellar Network ; September 2015',
+        signTransaction,
       })
       .catch((e: unknown) => e);
 
     expect(isStellarRouteApiError(err)).toBe(true);
-    expect((err as StellarRouteApiError).isNotFound()).toBe(true);
-    expect((err as StellarRouteApiError).code).not.toBe('not_implemented');
+    expect((err as StellarRouteApiError).code).toBe('network_mismatch');
+    expect((err as StellarRouteApiError).details).toMatchObject({
+      status: 'network_mismatch',
+    });
+    expect(signTransaction).not.toHaveBeenCalled();
+    expect(
+      fetchSpy.mock.calls.filter((c) => String(c[0]).includes('/swap/submit')),
+    ).toHaveLength(0);
+  });
+
+  it('refuses to sign non-classic execution_mode', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok(
+        enveloped({
+          ...classicPrepare,
+          execution_mode: 'soroban_router',
+        }),
+      ),
+    );
+    const signTransaction = vi.fn();
+    const err = await new StellarRouteClient({ retries: 0 })
+      .executeSwap({
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        networkPassphrase: TESTNET_PASSPHRASE,
+        signTransaction,
+      })
+      .catch((e: unknown) => e);
+
+    expect((err as StellarRouteApiError).code).toBe('unsupported_execution_mode');
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it('ambiguous submit retries reuse the exact same body without re-prepare/sign', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)))
+      .mockResolvedValueOnce(
+        apiErrorEnveloped('dependency_unavailable', 'Horizon down', 503),
+      )
+      .mockResolvedValueOnce(
+        ok(
+          enveloped({
+            quote_id: 'q123',
+            tx_hash: 'tx456',
+            status: 'pending',
+          }),
+        ),
+      );
+
+    const signTransaction = vi.fn().mockResolvedValue('opaque_signed_xdr');
+    await new StellarRouteClient({ retries: 0 }).executeSwap({
+      route: sampleSimulateRequest.route,
+      amount: '100',
+      sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      networkPassphrase: TESTNET_PASSPHRASE,
+      signTransaction,
+      ambiguousSubmitRetries: 2,
+    });
+
+    expect(signTransaction).toHaveBeenCalledTimes(1);
+    const prepareCalls = fetchSpy.mock.calls.filter((c) =>
+      String(c[0]).includes('/swap/prepare'),
+    );
+    const submitCalls = fetchSpy.mock.calls.filter((c) =>
+      String(c[0]).includes('/swap/submit'),
+    );
+    expect(prepareCalls).toHaveLength(1);
+    expect(submitCalls).toHaveLength(2);
+    const body1 = JSON.parse((submitCalls[0]?.[1] as RequestInit).body as string);
+    const body2 = JSON.parse((submitCalls[1]?.[1] as RequestInit).body as string);
+    expect(body1).toEqual(body2);
+    expect(body1).toEqual({
+      quote_id: 'q123',
+      signed_xdr: 'opaque_signed_xdr',
+    });
+  });
+
+  it('propagates prepare failure without calling sign', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      apiErrorEnveloped('validation_error', 'Invalid sender', 400),
+    );
+
+    const signTransaction = vi.fn();
+    const err = await new StellarRouteClient({ retries: 0 })
+      .executeSwap({
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'invalid',
+        networkPassphrase: TESTNET_PASSPHRASE,
+        signTransaction,
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect(signTransaction).not.toHaveBeenCalled();
+    expect((err as StellarRouteApiError).code).toBe('validation_error');
+  });
+});
+
+describe('confirmSwap', () => {
+  it('polls Horizon until the transaction is found', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(ok({}, 404))
+      .mockResolvedValueOnce(
+        ok({
+          hash: 'tx456',
+          successful: true,
+          ledger: 12345,
+        }),
+      );
+
+    const result = await new StellarRouteClient({ retries: 0 }).confirmSwap(
+      'tx456',
+      {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+        expectedTxHash: 'tx456',
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      tx_hash: 'tx456',
+      successful: true,
+      ledger: 12345,
+      horizon_url: 'https://horizon-testnet.stellar.org/transactions/tx456',
+    });
+  });
+
+  it('throws when Horizon never returns the transaction', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
+
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('missing', {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        pollIntervalMs: 1,
+        timeoutMs: 5,
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('network_error');
+    expect((err as StellarRouteApiError).details).toMatchObject({
+      status: 'confirm_timeout',
+    });
   });
 });
 

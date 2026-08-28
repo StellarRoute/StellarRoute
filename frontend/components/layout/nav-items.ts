@@ -8,6 +8,7 @@ export interface NavItem {
 
 const BASE_NAV_ITEMS: NavItem[] = [
   { label: 'Swap', href: ROUTES.SWAP },
+  { label: 'Offramp', href: ROUTES.OFFRAMP },
   { label: "Orderbook", href: "/orderbook" },
   { label: "History", href: "/history" },
 ];

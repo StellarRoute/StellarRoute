@@ -35,13 +35,13 @@ describe("AccentColorPicker", () => {
     expect(radios.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("marks the default (indigo) as checked initially", () => {
+  it("marks the default (teal) as checked initially", () => {
     render(
       <Wrapper>
         <AccentColorPicker />
       </Wrapper>
     );
-    expect(screen.getByRole("radio", { name: /indigo/i })).toHaveAttribute(
+    expect(screen.getByRole("radio", { name: /teal/i })).toHaveAttribute(
       "aria-checked",
       "true"
     );
@@ -61,7 +61,7 @@ describe("AccentColorPicker", () => {
       "aria-checked",
       "true"
     );
-    expect(screen.getByRole("radio", { name: /indigo/i })).toHaveAttribute(
+    expect(screen.getByRole("radio", { name: /teal/i })).toHaveAttribute(
       "aria-checked",
       "false"
     );
@@ -78,7 +78,7 @@ describe("AccentColorPicker", () => {
     await user.click(screen.getByRole("radio", { name: /emerald/i }));
 
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
-      "#10b981"
+      "#2ecf9a"
     );
   });
 

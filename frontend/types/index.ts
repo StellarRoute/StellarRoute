@@ -171,10 +171,30 @@ export type ApiErrorCode =
   | 'overloaded'
   | 'unauthorized'
   | 'invalid_asset'
+  | 'invalid_amount'
+  | 'invalid_slippage'
+  | 'invalid_asset_format'
   | 'no_route'
+  | 'not_executable'
   | 'stale_market_data'
+  | 'not_implemented'
+  | 'quote_not_found'
+  | 'quote_expired'
+  | 'duplicate_quote'
+  | 'dependency_unavailable'
+  | 'unsupported_execution_mode'
+  | 'unsupported_route'
   | 'network_error'
-  | 'unknown_error';
+  | 'unknown_error'
+  | 'cctp_not_enabled'
+  | 'transfer_not_found'
+  | 'provider_killed'
+  | 'payload_expired'
+  | 'attestation_pending'
+  | 'network_mismatch'
+  | 'idempotency_conflict'
+  | 'reattest_cooldown'
+  | 'reattest_conflict';
 
 export interface ApiError {
   error: ApiErrorCode;
@@ -229,6 +249,25 @@ export interface PoolStats {
 export interface PoolStatsResponse {
   primary: PoolStats;
   replica?: PoolStats;
+}
+
+export interface SwapActivityItem {
+  event_id: string;
+  contract_id: string;
+  ledger: number;
+  ledger_closed_at?: string;
+  paging_token: string;
+  sender: string;
+  amount_in: string;
+  amount_out: string;
+  fee_amount: string;
+  route: unknown;
+  source_asset?: string;
+  destination_asset?: string;
+}
+
+export interface SwapActivityResponse {
+  swaps: SwapActivityItem[];
 }
 
 export * from './route';

@@ -13,7 +13,9 @@ use std::sync::Arc;
 
 use crate::error::{ApiError, Result};
 
-use super::schema::{AuditExclusion, AuditInputs, AuditOutcome, AuditSelected, RouteAuditEntry};
+use super::schema::{
+    AuditExclusion, AuditInputs, AuditOutcome, AuditSelected, RouteAuditEntry, SwapSubmitAuditEntry,
+};
 
 /// PostgreSQL-backed store for [`RouteAuditEntry`] records.
 #[derive(Clone)]
@@ -281,6 +283,98 @@ impl AuditStore {
             .map_err(|e| {
                 ApiError::Internal(Arc::new(anyhow::anyhow!(
                     "Failed to count audit entries: {}",
+                    e
+                )))
+            })?;
+        Ok(row.get("n"))
+    }
+
+    /// Insert a single swap submit audit entry.
+    ///
+    /// The entry's `account` field **must** already be redacted by
+    /// [`super::AuditRedactor::redact_account`] before calling this method.
+    pub async fn insert_swap_submit(&self, entry: &SwapSubmitAuditEntry) -> Result<i64> {
+        let metadata_json = serde_json::to_value(&entry.metadata).map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to serialize swap submit audit metadata: {}",
+                e
+            )))
+        })?;
+
+        let row = sqlx::query(
+            r#"
+            INSERT INTO swap_submit_audit_log (
+                quote_id, tx_hash, account, request_id, trace_id,
+                logged_at, latency_ms, outcome, error_class, metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id
+            "#,
+        )
+        .bind(&entry.quote_id)
+        .bind(&entry.tx_hash)
+        .bind(&entry.account)
+        .bind(&entry.request_id)
+        .bind(&entry.trace_id)
+        .bind(entry.logged_at)
+        .bind(entry.latency_ms as i32)
+        .bind(entry.outcome.as_str())
+        .bind(&entry.error_class)
+        .bind(metadata_json)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| {
+            ApiError::Internal(Arc::new(anyhow::anyhow!(
+                "Failed to insert swap submit audit entry: {}",
+                e
+            )))
+        })?;
+
+        Ok(row.get::<i64, _>("id"))
+    }
+
+    /// Delete swap submit audit entries whose `retained_until` timestamp is in
+    /// the past.
+    pub async fn prune_swap_submit_expired(&self) -> Result<u64> {
+        let result =
+            sqlx::query(r#"DELETE FROM swap_submit_audit_log WHERE retained_until <= NOW()"#)
+                .execute(&self.db)
+                .await
+                .map_err(|e| {
+                    ApiError::Internal(Arc::new(anyhow::anyhow!(
+                        "Failed to prune swap submit audit log: {}",
+                        e
+                    )))
+                })?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Delete swap submit audit entries older than `retention` duration.
+    pub async fn prune_swap_submit_older_than(&self, retention: Duration) -> Result<u64> {
+        let cutoff = chrono::Utc::now() - retention;
+        let result = sqlx::query(r#"DELETE FROM swap_submit_audit_log WHERE logged_at < $1"#)
+            .bind(cutoff)
+            .execute(&self.db)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(Arc::new(anyhow::anyhow!(
+                    "Failed to prune swap submit audit log: {}",
+                    e
+                )))
+            })?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Return the total number of swap submit audit entries.
+    pub async fn count_swap_submit(&self) -> Result<i64> {
+        let row = sqlx::query(r#"SELECT COUNT(*) AS n FROM swap_submit_audit_log"#)
+            .fetch_one(&self.db)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(Arc::new(anyhow::anyhow!(
+                    "Failed to count swap submit audit entries: {}",
                     e
                 )))
             })?;

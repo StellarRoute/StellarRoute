@@ -10,5 +10,7 @@ export { RouteRow } from './RouteRow';
 export { SlippageControl } from './SlippageControl';
 export { ExplorerLink } from './ExplorerLink';
 export { WalletSyncBanner } from './WalletSyncBanner';
+export { NetworkStatusBanner } from './NetworkStatusBanner';
+export { NetworkMismatchBanner } from './NetworkMismatchBanner';
 export { DiagnosticsPanel } from './DiagnosticsPanel';
 export * from './ViewState';

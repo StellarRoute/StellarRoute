@@ -1,0 +1,125 @@
+# render.yaml — StellarRoute single-region hosting blueprint (Issue #1035)
+#
+# Defines: managed Postgres, Redis, API web service, indexer worker.
+#
+# ⚠️  SECURITY NOTE (read before deploying)
+# ──────────────────────────────────────────
+# Admin kill-switch routes (/admin/*) are present in the codebase but are NOT
+# enabled by default in this blueprint. The env var ENABLE_ADMIN_ROUTES is set
+# to "false". Do not set it to "true" until the related security issues are
+# resolved and reviewed. See docs/RUNBOOK_KILL_SWITCH.md and
+# docs/deployment/README.md §Security for the linked tracking issues.
+#
+# DRY-RUN / VALIDATE
+# ──────────────────
+# Render does not ship a local CLI validator, but you can sanity-check the
+# YAML with:
+#
+#   pip install pyyaml
+#   python3 -c "import yaml, sys; yaml.safe_load(open('render.yaml'))" && echo OK
+#
+# Or use the Render dashboard → "Blueprint" → "Validate" before deploying.
+# See docs/deployment/README.md for the full secrets checklist.
+
+version: "1"
+
+databases:
+  - name: stellarroute-postgres
+    databaseName: stellarroute
+    user: stellarroute
+    plan: starter          # upgrade to standard/pro for production workloads
+    region: oregon         # change to match your target region
+    ipAllowList: []        # empty = Render services only (recommended)
+    # postgresMajorVersion defaults to the current Render-managed version (16)
+
+services:
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  - type: redis
+    name: stellarroute-redis
+    plan: starter          # upgrade to standard for production
+    region: oregon
+    ipAllowList: []        # Render services only
+    maxmemoryPolicy: allkeys-lru
+
+  # ── API web service ──────────────────────────────────────────────────────────
+  - type: web
+    name: stellarroute-api
+    runtime: rust
+    region: oregon
+    plan: starter          # upgrade to standard for production
+    rootDir: .
+    buildCommand: cargo build --release --bin stellarroute-api
+    startCommand: ./target/release/stellarroute-api
+    healthCheckPath: /health        # liveness probe
+    # Render also performs readiness checks using the HTTP health endpoint.
+    # The API exposes /health/deps for dependency readiness (Postgres + Redis).
+    numInstances: 1
+    autoDeploy: true
+
+    envVars:
+      # ── Database ────────────────────────────────────────────────────────────
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stellarroute-postgres
+          property: connectionString
+
+      # ── Redis ───────────────────────────────────────────────────────────────
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: stellarroute-redis
+          property: connectionString
+
+      # ── Server ──────────────────────────────────────────────────────────────
+      - key: API_PORT
+        value: "3000"
+      - key: RUST_LOG
+        value: "stellarroute=info,warn"
+
+      # ── Soroban / Stellar (set in Render dashboard or via render CLI secrets)
+      - key: SOROBAN_RPC_URL
+        sync: false        # injected via Render secrets at deploy time
+
+      # ── Admin routes — DISABLED until security issues are resolved ───────────
+      # See docs/deployment/README.md §Security before enabling.
+      - key: ENABLE_ADMIN_ROUTES
+        value: "false"
+
+      # ── Optional observability ───────────────────────────────────────────────
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false        # leave unset to disable trace export
+
+  # ── Indexer worker ───────────────────────────────────────────────────────────
+  - type: worker
+    name: stellarroute-indexer
+    runtime: rust
+    region: oregon
+    plan: starter          # upgrade to standard for production
+    rootDir: .
+    buildCommand: cargo build --release --bin stellarroute-indexer
+    startCommand: ./target/release/stellarroute-indexer
+    numInstances: 1
+    autoDeploy: true
+
+    envVars:
+      # ── Database ────────────────────────────────────────────────────────────
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stellarroute-postgres
+          property: connectionString
+
+      # ── Stellar / Soroban (set via Render secrets at deploy time) ───────────
+      - key: SOROBAN_RPC_URL
+        sync: false
+      - key: STELLAR_HORIZON_URL
+        sync: false
+      - key: ROUTER_CONTRACT_ADDRESS
+        sync: false
+
+      # ── Logging ─────────────────────────────────────────────────────────────
+      - key: RUST_LOG
+        value: "stellarroute_indexer=info,warn"
+
+      # ── Optional observability ───────────────────────────────────────────────
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false

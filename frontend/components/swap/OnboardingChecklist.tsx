@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef } from "react";
+import Link from "next/link";
 import { X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ROUTES } from "@/lib/constants";
 import {
   ONBOARDING_STEPS,
   useOnboardingChecklist,
@@ -81,14 +83,22 @@ export function OnboardingChecklist({ completedSteps = [] }: OnboardingChecklist
         })}
       </ol>
 
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mt-3 w-full text-xs text-muted-foreground"
-        onClick={dismiss}
-      >
-        Skip — I know what I&apos;m doing
-      </Button>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Link
+          href={ROUTES.GUIDE}
+          className="text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+        >
+          First swap guide — wallet, trustline, slippage
+        </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={dismiss}
+        >
+          Skip — I know what I&apos;m doing
+        </Button>
+      </div>
     </section>
   );
 }

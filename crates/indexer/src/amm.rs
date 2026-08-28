@@ -333,10 +333,12 @@ impl AmmAggregator {
     }
 
     /// Process a single pool
-    #[tracing::instrument(skip(self), fields(pool_address = %pool_address))]
+    #[tracing::instrument(skip(self), fields(pool_address = %pool_address, pair = tracing::field::Empty))]
     async fn process_pool(&self, pool_address: &str) -> Result<()> {
         // Get pool state from Soroban RPC
         let state = self.get_pool_state(pool_address).await?;
+        let pair = format!("{}:{}", state.token_a, state.token_b);
+        tracing::Span::current().record("pair", &pair);
 
         // Resolve asset IDs
         let selling_asset_id = self.resolve_asset_id(&state.token_a).await?;

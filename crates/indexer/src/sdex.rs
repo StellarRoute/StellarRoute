@@ -380,7 +380,7 @@ impl SdexIndexer {
     }
 
     /// Upsert an offer into the database
-    #[tracing::instrument(skip(self, pool, offer), fields(offer_id = offer.id))]
+    #[tracing::instrument(skip(self, pool, offer), fields(offer_id = offer.id, pair = tracing::field::Empty))]
     async fn upsert_offer(
         &self,
         pool: &PgPool,
@@ -388,6 +388,23 @@ impl SdexIndexer {
         selling_asset_id: uuid::Uuid,
         buying_asset_id: uuid::Uuid,
     ) -> Result<()> {
+        let selling_str = match &offer.selling {
+            Asset::Native => "native".to_string(),
+            Asset::CreditAlphanum4 { asset_code, asset_issuer }
+            | Asset::CreditAlphanum12 { asset_code, asset_issuer } => {
+                format!("{asset_code}:{asset_issuer}")
+            }
+        };
+        let buying_str = match &offer.buying {
+            Asset::Native => "native".to_string(),
+            Asset::CreditAlphanum4 { asset_code, asset_issuer }
+            | Asset::CreditAlphanum12 { asset_code, asset_issuer } => {
+                format!("{asset_code}:{asset_issuer}")
+            }
+        };
+        let pair = format!("{selling_str}:{buying_str}");
+        tracing::Span::current().record("pair", &pair);
+
         let trace_context = TraceContext::current();
 
         sqlx::query(

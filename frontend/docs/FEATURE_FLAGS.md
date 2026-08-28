@@ -121,7 +121,7 @@ export function SwapPage() {
 | `NEXT_PUBLIC_FLAG_ROUTES_BETA` | Enable routes beta (`true`/`false`) |
 | `NEXT_PUBLIC_FLAG_BATCH_SWAPS` | Enable batch swaps (`true`/`false`) |
 | `NEXT_PUBLIC_FLAG_SWAP_UI_V2` | Enable swap UI v2 cross-chain route deck (`true`/`false`). When on, `/swap` renders the wide Stellar-centered corridor UI; when off, the legacy swap card experience is unchanged. |
-| `NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY` | Enable transaction history tab |
+| `NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY` | Enable transaction history filters and controls on `/history` (`true`/`false`) |
 | `NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE` | Enable advanced slippage controls |
 | `NEXT_PUBLIC_FLAG_REAL_XDR` | **Default on** when unset. Classic API prepare → Freighter sign → API submit → Horizon confirm (`real_xdr`; one-hop SDEX only). Security-pinned: remote flags cannot disable. When false, product swaps fail closed (no client-XDR fallback). |
 

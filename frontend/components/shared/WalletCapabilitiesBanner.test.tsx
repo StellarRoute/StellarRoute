@@ -1,87 +1,187 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { WalletProvider, useWallet } from "../providers/wallet-provider";
-import { WalletCapabilitiesBanner } from "./WalletCapabilitiesBanner";
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { WalletCapabilitiesBanner } from './WalletCapabilitiesBanner';
+import * as WalletProvider from '@/components/providers/wallet-provider';
 
-import * as freighter from "@stellar/freighter-api";
+vi.mock('@/components/providers/wallet-provider', () => ({
+  useWallet: vi.fn(),
+}));
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+describe('WalletCapabilitiesBanner', () => {
+  it('does not render when walletId is null', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: null,
+      walletId: null,
+      refreshCapabilities: vi.fn(),
+    } as any);
 
-afterEach(() => {
-  cleanup();
-});
-
-function WalletConsumer() {
-  const { isConnected, capabilities, connect, disconnect } = useWallet();
-
-  return (
-    <div>
-      <WalletCapabilitiesBanner />
-      <span data-testid="connected">{String(isConnected)}</span>
-      <span data-testid="canSign">{String(capabilities?.canSign ?? false)}</span>
-      <button onClick={() => connect("freighter")}>Connect Freighter</button>
-      <button onClick={() => connect("xbull")}>Connect xBull</button>
-      <button onClick={disconnect}>Disconnect</button>
-    </div>
-  );
-}
-
-function renderComponent() {
-  return render(
-    <WalletProvider defaultNetwork="testnet">
-      <WalletConsumer />
-    </WalletProvider>
-  );
-}
-
-describe("WalletCapabilities", () => {
-  it("does not display banner when disconnected", () => {
-    renderComponent();
-    expect(screen.queryByTestId("wallet-capabilities-banner")).toBeNull();
+    const { container } = render(<WalletCapabilitiesBanner />);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("does not display banner when wallet has full signing and network capabilities", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
-    });
+  it('does not render when capabilities are null', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: null,
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
 
-    const user = userEvent.setup();
-    renderComponent();
-
-    await user.click(screen.getByRole("button", { name: "Connect Freighter" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("connected").textContent).toBe("true");
-    });
-    expect(screen.getByTestId("canSign").textContent).toBe("true");
-    expect(screen.queryByTestId("wallet-capabilities-banner")).toBeNull();
+    const { container } = render(<WalletCapabilitiesBanner />);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("displays banner warning when wallet lacks signing capability", async () => {
-    (window as unknown as Record<string, unknown>).xbull = {
-      connect: vi.fn().mockResolvedValue({ publicKey: "GXBULLTESTADDRESS123" }),
-    };
+  it('does not render when all capabilities are allowed', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'request_access', allowed: true },
+          { capability: 'view_address', allowed: true },
+          { capability: 'view_network', allowed: true },
+          { capability: 'sign_transaction', allowed: true },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
 
+    const { container } = render(<WalletCapabilitiesBanner />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders banner when capability is denied', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'request_access', allowed: true },
+          { capability: 'view_address', allowed: false, reason: 'Access denied', resolution: 'Reconnect wallet' },
+          { capability: 'view_network', allowed: true },
+          { capability: 'sign_transaction', allowed: false },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
+
+    render(<WalletCapabilitiesBanner />);
+    expect(screen.getByText(/wallet permissions required/i)).toBeInTheDocument();
+    expect(screen.getByText(/view address/i)).toBeInTheDocument();
+    expect(screen.getByText(/access denied/i)).toBeInTheDocument();
+    expect(screen.getByText(/reconnect wallet/i)).toBeInTheDocument();
+  });
+
+  it('shows sign_transaction denial with resolution', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'request_access', allowed: true },
+          { capability: 'view_address', allowed: true },
+          { capability: 'view_network', allowed: false, reason: 'Network mismatch', resolution: 'Switch wallet network' },
+          { capability: 'sign_transaction', allowed: false, reason: 'Network mismatch', resolution: 'Switch wallet network' },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
+
+    render(<WalletCapabilitiesBanner />);
+    expect(screen.getByText(/sign transactions/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/network mismatch/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/switch wallet network/i).length).toBeGreaterThan(0);
+  });
+
+  it('calls refreshCapabilities when check again button clicked', async () => {
     const user = userEvent.setup();
-    renderComponent();
+    const refreshCapabilities = vi.fn();
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'sign_transaction', allowed: false, resolution: 'Reconnect wallet' },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities,
+    } as any);
 
-    await user.click(screen.getByRole("button", { name: "Connect xBull" }));
+    render(<WalletCapabilitiesBanner />);
+    await user.click(screen.getByRole('button', { name: /check again/i }));
+    expect(refreshCapabilities).toHaveBeenCalled();
+  });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("connected").textContent).toBe("true");
-    });
+  it('shows wallet docs link when available', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'sign_transaction', allowed: false, resolution: 'Allow signing' },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
 
-    expect(screen.getByTestId("canSign").textContent).toBe("false");
-    expect(screen.getByTestId("wallet-capabilities-banner")).toBeDefined();
-    expect(screen.getByTestId("capability-warning").textContent).toContain(
-      "Transaction signing is not supported"
-    );
+    render(<WalletCapabilitiesBanner />);
+    const link = screen.getByRole('link', { name: /wallet docs/i });
+    expect(link).toHaveAttribute('href', 'https://docs.freighter.app/docs/guide/gettingStarted');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('shows xbull wallet docs', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'sign_transaction', allowed: false },
+        ],
+      },
+      walletId: 'xbull',
+      refreshCapabilities: vi.fn(),
+    } as any);
+
+    render(<WalletCapabilitiesBanner />);
+    const link = screen.getByRole('link', { name: /wallet docs/i });
+    expect(link).toHaveAttribute('href', 'https://xbull.app/docs');
+  });
+
+  it('has proper ARIA attributes', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'sign_transaction', allowed: false },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
+
+    render(<WalletCapabilitiesBanner />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('shows multiple denied capabilities', () => {
+    vi.mocked(WalletProvider.useWallet).mockReturnValue({
+      capabilities: {
+        checkedAt: Date.now(),
+        statuses: [
+          { capability: 'request_access', allowed: false, reason: 'Not granted' },
+          { capability: 'view_address', allowed: false, reason: 'Address hidden' },
+          { capability: 'view_network', allowed: true },
+          { capability: 'sign_transaction', allowed: false },
+        ],
+      },
+      walletId: 'freighter',
+      refreshCapabilities: vi.fn(),
+    } as any);
+
+    render(<WalletCapabilitiesBanner />);
+    expect(screen.getByText(/wallet access/i)).toBeInTheDocument();
+    expect(screen.getByText(/view address/i)).toBeInTheDocument();
+    expect(screen.getByText(/sign transactions/i)).toBeInTheDocument();
   });
 });

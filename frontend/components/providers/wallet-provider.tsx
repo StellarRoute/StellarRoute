@@ -7,6 +7,7 @@ import {
   connectWallet,
   disconnectWallet,
   getAvailableWallets,
+  refreshWalletSession,
   checkWalletCapabilities,
 } from '@/lib/wallet';
 import {
@@ -19,7 +20,6 @@ import {
 import type {
   AvailableWallet,
   SupportedWallet,
-  WalletCapabilityStatus,
   WalletError,
   WalletNetwork,
   AccountSwitchState,
@@ -36,7 +36,6 @@ interface WalletContextValue {
   availableWallets: AvailableWallet[];
   isLoading: boolean;
   error: WalletError | null;
-  capabilities: WalletCapabilityStatus | null;
   connect: (walletId: SupportedWallet) => Promise<void>;
   reconnect: () => Promise<void>;
   disconnect: () => void;
@@ -44,7 +43,7 @@ interface WalletContextValue {
   autoReconnectPreferred: boolean;
   setAutoReconnectPreferred: (enabled: boolean) => void;
   refreshWallets: () => Promise<void>;
-  refreshCapabilities: () => void;
+  refreshAccount: () => Promise<void>;
   networkMismatch: boolean;
   accountSwitchState: AccountSwitchState;
   isTransactionPending: boolean;
@@ -106,7 +105,6 @@ export function WalletProvider({
   const [walletNetwork, setWalletNetwork] = React.useState<WalletNetwork | null>(null);
   const [walletId, setWalletId] = React.useState<SupportedWallet | null>(null);
   const [availableWallets, setAvailableWallets] = React.useState<AvailableWallet[]>([]);
-  const [capabilities, setCapabilities] = React.useState<WalletCapabilityStatus | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<WalletError | null>(null);
   const [autoReconnectPreferred, setAutoReconnectPreferredState] = React.useState(true);
@@ -175,22 +173,9 @@ export function WalletProvider({
     setAvailableWallets(wallets);
   }, []);
 
-  const refreshCapabilities = React.useCallback(() => {
-    if (walletId) {
-      const status = checkWalletCapabilities(walletId, network);
-      setCapabilities(status);
-    } else {
-      setCapabilities(null);
-    }
-  }, [walletId, network]);
-
   React.useEffect(() => {
     void refreshWallets();
   }, [refreshWallets]);
-
-  React.useEffect(() => {
-    refreshCapabilities();
-  }, [refreshCapabilities]);
 
   const connect = React.useCallback(async (selectedWalletId: SupportedWallet) => {
     // Prevent account switching during transactions
@@ -483,7 +468,6 @@ export function WalletProvider({
     availableWallets,
     isLoading,
     error,
-    capabilities,
     connect,
     reconnect,
     disconnect,
@@ -491,7 +475,7 @@ export function WalletProvider({
     autoReconnectPreferred,
     setAutoReconnectPreferred,
     refreshWallets,
-    refreshCapabilities,
+    refreshAccount,
     networkMismatch,
     accountSwitchState,
     isTransactionPending,

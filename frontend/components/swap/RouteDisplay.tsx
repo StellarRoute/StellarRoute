@@ -30,7 +30,6 @@ export interface AlternativeRoute {
 }
 
 interface RouteDisplayProps {
-  route?: string[];
   amountOut: string;
   /** Live API quote. When present, render its real hop/split-route data. */
   quote?: PriceQuote | null;
@@ -151,7 +150,6 @@ function AlternativeRouteButton({
 }
 
 export function RouteDisplay({
-  route,
   amountOut,
   quote,
   confidenceScore = 85,

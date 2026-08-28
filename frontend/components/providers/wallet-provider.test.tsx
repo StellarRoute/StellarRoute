@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { WalletProvider, useWallet } from "./wallet-provider";
-import { WalletCapabilitiesBanner } from "@/components/shared/WalletCapabilitiesBanner";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import * as freighter from '@stellar/freighter-api';
+import { WalletProvider, useWallet } from './wallet-provider';
+import * as walletLib from '@/lib/wallet';
+import { NETWORK_STORAGE_KEY } from '@/lib/network-policy';
 
 vi.unmock('@/components/providers/wallet-provider');
 
@@ -35,7 +37,6 @@ function TestComponent() {
     walletId,
     error,
     isLoading,
-    capabilities,
     networkMismatch,
     autoReconnectPreferred,
     connect,
@@ -51,18 +52,27 @@ function TestComponent() {
 
   return (
     <div>
-      <WalletCapabilitiesBanner />
-      <span data-testid="connected">{String(isConnected)}</span>
+      <span data-testid="connected">{isConnected ? 'Connected' : 'Disconnected'}</span>
       <span data-testid="address">{address ?? "none"}</span>
       <span data-testid="network">{network}</span>
       <span data-testid="walletId">{walletId ?? "none"}</span>
-      <span data-testid="canSign">{String(capabilities?.canSign ?? false)}</span>
       <span data-testid="error">{error?.message ?? "none"}</span>
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="mismatch">{String(networkMismatch)}</span>
-      <span data-testid="balance">{stubSpendableBalance ?? "none"}</span>
-      <button onClick={() => connect("freighter")}>Connect Freighter</button>
-      <button onClick={() => connect("xbull")}>Connect xBull</button>
+      <span data-testid="autoReconnect">{String(autoReconnectPreferred)}</span>
+      <span data-testid="transaction-pending">{isTransactionPending ? 'Pending' : 'Not pending'}</span>
+      <span data-testid="capabilities">
+        {capabilities
+          ? JSON.stringify(
+              capabilities.statuses.find((s) => s.capability === 'sign_transaction')
+            )
+          : 'none'}
+      </span>
+      
+      <button onClick={() => { void connect("freighter").catch(() => {}); }}>Connect</button>
+      <button onClick={() => { void connect("xbull").catch(() => {}); }}>Connect xBull</button>
+      <button onClick={() => { void connect("freighter").catch(() => {}); }}>Connect Freighter</button>
+      <button onClick={() => { void reconnect().catch(() => {}); }}>Reconnect</button>
       <button onClick={disconnect}>Disconnect</button>
       <button onClick={() => setAutoReconnectPreferred(false)}>Disable auto reconnect</button>
       <button onClick={() => setAutoReconnectPreferred(true)}>Enable auto reconnect</button>
@@ -82,23 +92,242 @@ function renderWithProvider() {
   );
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
-describe("WalletCapabilities & Provider", () => {
-  it("provides disconnected state by default", () => {
-    renderWithProvider();
-    expect(screen.getByTestId("connected").textContent).toBe("false");
-    expect(screen.getByTestId("address").textContent).toBe("none");
-    expect(screen.getByTestId("network").textContent).toBe("testnet");
-    expect(screen.queryByTestId("wallet-capabilities-banner")).toBeNull();
+describe('WalletProvider Account Switching', () => {
+  const mockAddress1 = 'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const mockAddress2 = 'GDEF456GHIJKLMNOPQRSTUVWXYZ789ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWalletLib.getAvailableWallets.mockResolvedValue([
+      { id: 'freighter', label: 'Freighter', installed: true }
+    ]);
+    mockWalletLib.disconnectWallet.mockReturnValue({
+      walletId: null,
+      address: null,
+      network: null,
+      isConnected: false,
+    });
   });
 
-  it("connects Freighter with full capabilities", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
+  it('should prevent connection during pending transaction', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Start a transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    // Try to connect during transaction
+    fireEvent.click(screen.getByText('Connect'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.connectWallet).not.toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId('connected')).toHaveTextContent('Disconnected');
+  });
+
+  it('should prevent disconnection during pending transaction', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Start a transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    // Try to disconnect during transaction
+    fireEvent.click(screen.getByText('Disconnect'));
+
+    // Should still be connected
+    expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+  });
+
+  it('should prevent account refresh during pending transaction', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress2,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Start a transaction
+    fireEvent.click(screen.getByText('Start Transaction'));
+    expect(screen.getByTestId('transaction-pending')).toHaveTextContent('Pending');
+
+    // Try to refresh account during transaction
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should successfully refresh account when no transaction is pending', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress2,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+      expect(screen.getByTestId('address')).toHaveTextContent(mockAddress1);
+    });
+
+    // Refresh account
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalledWith('freighter');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('address')).toHaveTextContent(mockAddress2);
+    });
+  });
+
+  it('should handle refresh account errors gracefully', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockRejectedValue(new Error('Refresh failed'));
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Try to refresh account (should fail)
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalled();
+    });
+
+    // Should still be connected with original address
+    expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    expect(screen.getByTestId('address')).toHaveTextContent(mockAddress1);
+  });
+
+  it('should reset account switch state after successful refresh', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress2,
+      network: 'testnet',
+      isConnected: true,
+    });
+
+    render(
+      <WalletProvider>
+        <TestComponent />
+      </WalletProvider>
+    );
+
+    // Connect first
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    // Refresh account
+    fireEvent.click(screen.getByText('Refresh Account'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalled();
+    });
+
+    // Account switch state should be reset (this would need to be exposed in the test component)
+    // For now, we verify that the refresh completed successfully
+    await waitFor(() => {
+      expect(screen.getByTestId('address')).toHaveTextContent(mockAddress2);
+    });
+  });
+
+  it('should allow normal operations after transaction ends', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
     });
 
     render(
@@ -164,42 +393,76 @@ describe("WalletCapabilities & Provider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("connected").textContent).toBe("Connected");
     });
-    expect(screen.getByTestId("canSign").textContent).toBe("true");
-    expect(screen.queryByTestId("wallet-capabilities-banner")).toBeNull();
+    expect(screen.getByTestId("walletId").textContent).toBe("freighter");
   });
 
-  it("warns about missing sign capability when wallet lacks signing support", async () => {
-    // Mock window.xbull for connectWallet
-    (window as unknown as Record<string, unknown>).xbull = {
-      connect: vi.fn().mockResolvedValue({ publicKey: "GXBULLTESTADDRESS123" }),
-    };
+  it("does not auto reconnect on mount when preference is disabled", async () => {
+    window.localStorage.setItem("stellarroute.wallet.autoReconnect", "false");
+    window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
+
+    renderWithProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connected").textContent).toBe("Disconnected");
+    });
+    expect(freighter.requestAccess).not.toHaveBeenCalled();
+  });
+
+  it("recovers disconnected session when reconnect is triggered", async () => {
+    window.localStorage.setItem("stellarroute.wallet.lastWalletId", "freighter");
+
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
+      address: "GABCDEFGHIJKLMNOPWXYZ",
+      network: 'testnet',
+      isConnected: true,
+    });
 
     const user = userEvent.setup();
     renderWithProvider();
 
-    await user.click(screen.getByRole("button", { name: "Connect xBull" }));
+    await user.click(screen.getByRole("button", { name: "Reconnect" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("connected").textContent).toBe("true");
+      expect(screen.getByTestId("connected").textContent).toBe("Connected");
+    });
+    expect(screen.getByTestId("walletId").textContent).toBe("freighter");
+  });
+});
+
+describe('WalletProvider network selection', () => {
+  it('persists allowed network changes to localStorage', async () => {
+    process.env.NEXT_PUBLIC_MAINNET_LIMITED = 'true';
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Set Mainnet' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('network').textContent).toBe('mainnet');
     });
     expect(window.localStorage.getItem(NETWORK_STORAGE_KEY)).toBe('mainnet');
     delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
   });
 
-    expect(screen.getByTestId("canSign").textContent).toBe("false");
-    expect(screen.getByTestId("wallet-capabilities-banner")).toBeDefined();
-    expect(screen.getByTestId("capability-warning").textContent).toContain(
-      "Transaction signing is not supported"
-    );
+  it('rejects disallowed mainnet when phase A flag is off', async () => {
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Set Mainnet' }));
+
+    expect(screen.getByTestId('network').textContent).toBe('testnet');
+    expect(window.localStorage.getItem(NETWORK_STORAGE_KEY)).toBeNull();
+    expect(screen.getByTestId('error').textContent).toContain('not available');
   });
 
-  it("disconnects and clears state", async () => {
-    vi.mocked(freighter.requestAccess).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getAddress).mockResolvedValueOnce({ address: "GABCDEFGHIJKLMNOPWXYZ" });
-    vi.mocked(freighter.getNetworkDetails).mockResolvedValueOnce({
-      network: "testnet",
-      networkUrl: "",
-      networkPassphrase: "",
+  it('treats wallet network casing as equivalent to app network', async () => {
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
+      address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'TESTNET',
+      isConnected: true,
     });
 
     const user = userEvent.setup();
@@ -207,10 +470,134 @@ describe("WalletCapabilities & Provider", () => {
 
     await user.click(screen.getByRole('button', { name: 'Connect Freighter' }));
 
-    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => {
+      expect(screen.getByTestId('connected').textContent).toBe('Connected');
+    });
+    expect(screen.getByTestId('mismatch').textContent).toBe('false');
+  });
 
-    expect(screen.getByTestId("connected").textContent).toBe("false");
-    expect(screen.getByTestId("address").textContent).toBe("none");
-    expect(screen.queryByTestId("wallet-capabilities-banner")).toBeNull();
+  it('treats Freighter PUBLIC label as mainnet when app is on mainnet', async () => {
+    process.env.NEXT_PUBLIC_MAINNET_LIMITED = 'true';
+
+    mockWalletLib.connectWallet.mockResolvedValueOnce({
+      walletId: 'freighter',
+      address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'PUBLIC',
+      isConnected: true,
+    });
+
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByRole('button', { name: 'Set Mainnet' }));
+    await user.click(screen.getByRole('button', { name: 'Connect Freighter' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('connected').textContent).toBe('Connected');
+    });
+    expect(screen.getByTestId('mismatch').textContent).toBe('false');
+
+    delete process.env.NEXT_PUBLIC_MAINNET_LIMITED;
+  });
+});
+
+describe('WalletProvider capabilities', () => {
+  const mockAddress =
+    'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWalletLib.getAvailableWallets.mockResolvedValue([
+      { id: 'xbull', label: 'xBull', installed: true },
+    ]);
+    mockWalletLib.disconnectWallet.mockReturnValue({
+      walletId: null,
+      address: null,
+      network: null,
+      isConnected: false,
+    });
+  });
+
+  it('populates capabilities after xBull connect', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'xbull',
+      address: mockAddress,
+      network: 'testnet',
+      isConnected: true,
+    });
+    mockWalletLib.checkWalletCapabilities.mockResolvedValue({
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'request_access', allowed: true },
+        { capability: 'view_address', allowed: true },
+        { capability: 'view_network', allowed: true },
+        { capability: 'sign_transaction', allowed: true },
+      ],
+    });
+
+    renderWithProvider();
+    fireEvent.click(screen.getByText('Connect xBull'));
+
+    await waitFor(() => {
+      expect(mockWalletLib.checkWalletCapabilities).toHaveBeenCalledWith(
+        'xbull',
+        'testnet'
+      );
+    });
+
+    await waitFor(() => {
+      const capText = screen.getByTestId('capabilities').textContent;
+      expect(capText).toContain('"allowed":true');
+      expect(capText).toContain('sign_transaction');
+    });
+  });
+
+  it('clears capabilities on disconnect', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'xbull',
+      address: mockAddress,
+      network: 'testnet',
+      isConnected: true,
+    });
+    mockWalletLib.checkWalletCapabilities.mockResolvedValue({
+      checkedAt: Date.now(),
+      statuses: [
+        { capability: 'sign_transaction', allowed: true },
+      ],
+    });
+
+    renderWithProvider();
+    fireEvent.click(screen.getByText('Connect xBull'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('connected')).toHaveTextContent('Connected');
+    });
+
+    fireEvent.click(screen.getByText('Disconnect'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('capabilities')).toHaveTextContent('none');
+    });
+  });
+
+  it('sets denied capabilities when capability check fails', async () => {
+    mockWalletLib.connectWallet.mockResolvedValue({
+      walletId: 'xbull',
+      address: mockAddress,
+      network: 'testnet',
+      isConnected: true,
+    });
+    mockWalletLib.checkWalletCapabilities.mockRejectedValue(
+      new Error('Extension unavailable')
+    );
+
+    renderWithProvider();
+    fireEvent.click(screen.getByText('Connect xBull'));
+
+    await waitFor(() => {
+      const capText = screen.getByTestId('capabilities').textContent;
+      expect(capText).toContain('"allowed":false');
+      expect(capText).toContain('Extension unavailable');
+    });
   });
 });

@@ -5,12 +5,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
 
-import { Button } from "@/components/ui/button"
-import { WalletButton } from "@/components/shared/wallet-button"
-import { NetworkBadge } from "@/components/shared/network-badge"
-import { MobileNav } from "./mobile-nav"
-import { cn } from "@/lib/utils"
-import { ThemeToggle } from "../ThemeToggle"
+import { Button } from '@/components/ui/button';
+import { WalletButton } from '@/components/shared/wallet-button';
+import { NetworkBadge } from '@/components/shared/network-badge';
+import { MobileNav } from './mobile-nav';
+import { getNavItems } from './nav-items';
+import { cn } from '@/lib/utils';
+import { ThemeToggle } from '../ThemeToggle';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
 
 /**
@@ -86,7 +88,7 @@ export function Header() {
           </div>
           <ThemeToggle />
           <div className="hidden md:block">
-           { <WalletButton /> }
+            <WalletButton />
           </div>
 
           {/* Mobile Menu Button */}

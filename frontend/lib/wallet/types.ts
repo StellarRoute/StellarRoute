@@ -25,14 +25,26 @@ export type WalletError = {
   code?: string;
 };
 
-export interface WalletCapabilities {
-  canSign: boolean;
-  supportedNetworks: WalletNetwork[];
-  supportsNetworkSwitching: boolean;
-}
+export type AccountSwitchState = {
+  isDetecting: boolean;
+  hasChanged: boolean;
+  previousAddress: string | null;
+};
 
-export interface WalletCapabilityStatus {
-  canSign: boolean;
-  networkSupported: boolean;
-  missingCapabilities: string[];
-}
+export type Capability =
+  | 'sign_transaction'
+  | 'view_address'
+  | 'view_network'
+  | 'request_access';
+
+export type CapabilityStatus = {
+  capability: Capability;
+  allowed: boolean;
+  reason?: string;
+  resolution?: string;
+};
+
+export type Capabilities = {
+  checkedAt: number;
+  statuses: CapabilityStatus[];
+};

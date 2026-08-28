@@ -8,11 +8,159 @@ import {
 import type {
   AvailableWallet,
   SupportedWallet,
-  WalletCapabilities,
-  WalletCapabilityStatus,
-  WalletNetwork,
   WalletSession,
-} from "./types";
+  Capabilities,
+  Capability,
+  CapabilityStatus,
+} from './types';
+import { resolveFreighterApi, type FreighterApi } from './freighter-api';
+import { normalizeAppNetwork } from '@/lib/network-policy';
+
+let freighterApiCache: FreighterApi | null = null;
+
+function freighterApi(): FreighterApi {
+  if (!freighterApiCache) {
+    freighterApiCache = resolveFreighterApi(freighterModule);
+  }
+  return freighterApiCache;
+}
+
+/** Freighter reports `TESTNET` / `PUBLIC`; app policy uses lowercase `testnet` / `mainnet`. */
+function normalizeFreighterNetwork(network: string): string {
+  return normalizeAppNetwork(network) ?? network.trim().toLowerCase();
+}
+
+type AlbedoClient = {
+  publicKey: () => Promise<{ pubkey?: string; publicKey?: string }>;
+  tx: (opts: { xdr: string; network?: string; pubkey?: string }) => Promise<{
+    signed_envelope_xdr?: string;
+    signedXdr?: string;
+    xdr?: string;
+  }>;
+};
+
+declare global {
+  interface Window {
+    albedo?: AlbedoClient;
+  }
+}
+
+const ALBEDO_INTENT_SCRIPT_URL =
+  'https://unpkg.com/@albedo-link/intent/lib/albedo.intent.js';
+
+let albedoScriptPromise: Promise<AlbedoClient> | null = null;
+
+function getWindowRecord(): Record<string, unknown> | null {
+  return typeof window === 'undefined'
+    ? null
+    : (window as unknown as Record<string, unknown>);
+}
+
+type XBullClient = {
+  connect: () => Promise<{ publicKey: string }>;
+  sign?: (opts: {
+    xdr: string;
+    network?: string;
+    publicKey?: string;
+  }) => Promise<string>;
+  getNetwork?: () => Promise<
+    | { network: string; networkPassphrase?: string; error?: undefined }
+    | { error: { message?: string; code?: number }; network?: undefined }
+  >;
+};
+
+/** Resolve the injected xBull client (`window.xbull` or SEP-43 `window.xBullSDK`). */
+function getXBullClient(): XBullClient | undefined {
+  const win = getWindowRecord();
+  if (!win) return undefined;
+  const client = (win.xbull ?? win.xBullSDK) as XBullClient | undefined;
+  return client?.connect ? client : undefined;
+}
+
+/**
+ * Map xBull network identifiers (PUBLIC/TESTNET, public/testnet, passphrases)
+ * onto Freighter-compatible session network strings.
+ */
+function normalizeXbullNetworkName(
+  network: string,
+  networkPassphrase?: string
+): string {
+  const key = network.trim().toLowerCase();
+  if (
+    key === 'public' ||
+    key === 'pubnet' ||
+    key === 'mainnet' ||
+    key === 'production'
+  ) {
+    return 'public';
+  }
+  if (key === 'testnet' || key === 'test') {
+    return 'testnet';
+  }
+  if (networkPassphrase?.includes('Public Global Stellar Network')) {
+    return 'public';
+  }
+  if (networkPassphrase?.includes('Test SDF Network')) {
+    return 'testnet';
+  }
+  return key;
+}
+
+/**
+ * Read the wallet's currently selected network via getNetwork when available.
+ * Falls back to the app-configured network only when the API is missing.
+ */
+async function resolveXbullNetwork(xbull: XBullClient): Promise<string> {
+  if (typeof xbull.getNetwork === 'function') {
+    try {
+      const res = await xbull.getNetwork();
+      if (res && !res.error && res.network) {
+        return normalizeXbullNetworkName(res.network, res.networkPassphrase);
+      }
+    } catch {
+      // Fall through to app network fallback.
+    }
+  }
+  return process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+}
+
+function getInjectedAlbedo(): AlbedoClient | null {
+  if (typeof window === 'undefined') return null;
+  return window.albedo ?? null;
+}
+
+async function getAlbedoClient(): Promise<AlbedoClient> {
+  const injected = getInjectedAlbedo();
+  if (injected) return injected;
+
+  if (typeof document === 'undefined') {
+    throw new Error('Albedo requires a browser environment');
+  }
+
+  if (!albedoScriptPromise) {
+    albedoScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = ALBEDO_INTENT_SCRIPT_URL;
+      script.async = true;
+      script.onload = () => {
+        const client = getInjectedAlbedo();
+        if (client) resolve(client);
+        else reject(new Error('Albedo intent client failed to initialize'));
+      };
+      script.onerror = () =>
+        reject(new Error('Failed to load Albedo intent client'));
+      document.head.appendChild(script);
+    });
+  }
+
+  return albedoScriptPromise;
+}
+
+function networkPassphraseToAlbedoNetwork(networkPassphrase?: string): string {
+  return networkPassphrase?.includes('Public Global Stellar Network')
+    ? 'public'
+    : 'testnet';
+}
 
 export const WALLET_LABELS: Record<SupportedWallet, string> = {
   freighter: 'Freighter',
@@ -21,59 +169,39 @@ export const WALLET_LABELS: Record<SupportedWallet, string> = {
   lobstr: 'LOBSTR',
 };
 
-export const WALLET_CAPABILITIES_MAP: Record<SupportedWallet, WalletCapabilities> = {
-  freighter: {
-    canSign: true,
-    supportedNetworks: ["testnet", "mainnet", "futurenet"],
-    supportsNetworkSwitching: true,
-  },
-  xbull: {
-    canSign: false, // xBull signTransaction not yet supported in-app
-    supportedNetworks: ["testnet", "mainnet"],
-    supportsNetworkSwitching: false,
-  },
+export const WALLET_INSTALL_URLS: Record<SupportedWallet, string> = {
+  freighter: 'https://www.freighter.app/',
+  xbull: 'https://wallet.xbull.app/',
+  albedo: 'https://albedo.link/',
+  lobstr: 'https://lobstr.co/',
 };
 
-export function checkWalletCapabilities(
-  walletId: SupportedWallet | null,
-  network: WalletNetwork
-): WalletCapabilityStatus {
-  if (!walletId) {
-    return {
-      canSign: false,
-      networkSupported: false,
-      missingCapabilities: ["No wallet connected"],
-    };
-  }
+const FREIGHTER_DETECT_TIMEOUT_MS = 800;
+const LOBSTR_DETECT_TIMEOUT_MS = 800;
 
-  const capabilities = WALLET_CAPABILITIES_MAP[walletId];
-  if (!capabilities) {
-    return {
-      canSign: false,
-      networkSupported: false,
-      missingCapabilities: ["Unsupported wallet"],
-    };
-  }
-
-  const missing: string[] = [];
-  const networkSupported = capabilities.supportedNetworks.includes(network);
-
-  if (!capabilities.canSign) {
-    missing.push("Transaction signing is not supported for this wallet.");
-  }
-  if (!networkSupported) {
-    missing.push(`Network "${network}" is not supported by ${WALLET_LABELS[walletId] || walletId}.`);
-  }
-
-  return {
-    canSign: capabilities.canSign,
-    networkSupported,
-    missingCapabilities: missing,
-  };
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(fallback), ms);
+    promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(() => {
+        window.clearTimeout(timer);
+        resolve(fallback);
+      });
+  });
 }
 
-export async function getAvailableWallets(): Promise<AvailableWallet[]> {
-  const wallets: AvailableWallet[] = [];
+function isFreighterInjected(): boolean {
+  const win = getWindowRecord();
+  return Boolean(win?.freighter);
+}
+
+async function detectFreighterInstalled(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (isFreighterInjected()) return true;
 
   try {
     // Freighter's isConnected() means "extension present" (not app authorization).
@@ -594,4 +722,110 @@ export async function signTransactionStub(xdr: string) {
     message: 'Signing stub only (out of scope)',
     xdr,
   };
+}
+
+/** Check if the current wallet address has changed */
+export async function checkAddressChange(
+  walletId: SupportedWallet,
+  currentAddress: string | null
+): Promise<string | null> {
+  if (!currentAddress) return null;
+
+  try {
+    if (walletId === 'freighter') {
+      const addressRes = await freighterApi().getAddress();
+      if (addressRes.error) return null;
+      return addressRes.address !== currentAddress ? addressRes.address : null;
+    }
+
+    if (walletId === 'xbull' || walletId === 'albedo' || walletId === 'lobstr') {
+      // These wallets do not expose a reliable passive address check; reconnect instead.
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/** Refresh the current session to get updated account info */
+export async function refreshWalletSession(
+  walletId: SupportedWallet
+): Promise<WalletSession> {
+  if (walletId === 'freighter') {
+    const addressRes = await freighterApi().getAddress();
+    if (addressRes.error) {
+      throw new Error(addressRes.error.message ?? 'Failed to get address');
+    }
+
+    const networkRes = await freighterApi().getNetworkDetails();
+    if (networkRes.error) {
+      throw new Error(networkRes.error.message ?? 'Failed to get network');
+    }
+
+    return {
+      walletId,
+      address: addressRes.address,
+      network: normalizeFreighterNetwork(networkRes.network),
+      isConnected: true,
+    };
+  }
+
+  if (walletId === 'xbull') {
+    const xbull = getXBullClient();
+
+    if (!xbull) {
+      throw new Error('xBull not installed');
+    }
+
+    const result = await xbull.connect();
+    const network = await resolveXbullNetwork(xbull);
+    return {
+      walletId,
+      address: result.publicKey,
+      network,
+      isConnected: true,
+    };
+  }
+
+  if (walletId === 'albedo') {
+    const albedo = await getAlbedoClient();
+    const result = await albedo.publicKey();
+    const address = result.pubkey ?? result.publicKey;
+
+    if (!address) {
+      throw new Error('Albedo did not return a public key');
+    }
+
+    return {
+      walletId,
+      address,
+      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
+      isConnected: true,
+    };
+  }
+
+  if (walletId === 'lobstr') {
+    const installed = await detectLobstrInstalled(0);
+    if (!installed) {
+      throw new Error('LOBSTR extension is not installed');
+    }
+
+    const address = await getLobstrPublicKey();
+    if (!address) {
+      throw new Error(
+        'LOBSTR did not return a public key. Open the LOBSTR extension and unlock your account.'
+      );
+    }
+
+    return {
+      walletId,
+      address,
+      network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet',
+      isConnected: true,
+    };
+  }
+
+  throw new Error(`Unsupported wallet: ${walletId}`);
 }

@@ -1,7 +1,7 @@
 import { PathStep } from '@/types';
 import { Card } from '@/components/ui/card';
 import { getAssetCode, parseSource } from '@/lib/route-helpers';
-import { SwapViewState } from '@/components/shared/ViewState';
+import { SwapViewState } from './ViewState';
 
 export interface RouteRowProps {
   step?: PathStep;
@@ -12,34 +12,29 @@ export interface RouteRowProps {
 export function RouteRow({ step, isLoading, error }: RouteRowProps) {
   if (isLoading) {
     return (
-      <SwapViewState
-        variant="loading"
-        title="Loading Route"
-        description="Fetching best route step details…"
-        className="p-3"
-      />
+      <Card className="p-3">
+        <SwapViewState kind="routes" variant="loading" />
+      </Card>
     );
   }
 
   if (error) {
     return (
-      <SwapViewState
-        variant="error"
-        title="Route Error"
-        description={error}
-        className="p-3 border-destructive"
-      />
+      <Card className="p-3 border-destructive">
+        <SwapViewState
+          kind="routes"
+          variant="error"
+          message={error}
+        />
+      </Card>
     );
   }
 
   if (!step) {
     return (
-      <SwapViewState
-        variant="empty"
-        title="No Route Step"
-        description="No route step available to display."
-        className="p-3"
-      />
+      <Card className="p-3">
+        <SwapViewState kind="routes" variant="empty" />
+      </Card>
     );
   }
 
@@ -54,9 +49,7 @@ export function RouteRow({ step, isLoading, error }: RouteRowProps) {
           <div className="text-sm font-semibold">{from} → {to}</div>
           <div className="text-xs text-muted-foreground">Price {step.price}</div>
         </div>
-        <div className="text-xs rounded px-2 py-1 bg-muted/40">
-          {sourceMeta.isSDEX ? 'SDEX' : sourceMeta.poolName || 'AMM'}
-        </div>
+        <div className="text-xs rounded px-2 py-1 bg-muted/40">{sourceMeta.isSDEX ? 'SDEX' : sourceMeta.poolName || 'AMM'}</div>
       </div>
     </Card>
   );

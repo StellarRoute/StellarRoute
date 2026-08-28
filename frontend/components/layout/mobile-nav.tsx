@@ -8,11 +8,11 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
-import { WalletButton } from "@/components/shared/wallet-button"
-import { NetworkBadge } from "@/components/shared/network-badge"
-import { cn } from "@/lib/utils"
-import { ThemeToggle } from "../ThemeToggle"
+} from '@/components/ui/sheet';
+import { WalletButton } from '@/components/shared/wallet-button';
+import { NetworkBadge } from '@/components/shared/network-badge';
+import { cn } from '@/lib/utils';
+import { ThemeToggle } from '../ThemeToggle';
 
 interface NavItem {
   label: string;
@@ -102,7 +102,7 @@ export function MobileNav({
             <ThemeToggle data-testid="mobile-theme-toggle" />
           </div>
           <div className="pt-2">
-            { <WalletButton /> }
+            <WalletButton />
           </div>
         </div>
       </SheetContent>

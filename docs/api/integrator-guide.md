@@ -1,23 +1,113 @@
-# Integrator Guide: Embedding Swaps
+# Integrator API Guide
 
-This guide provides third-party applications with integration steps and a pre-flight checklist for safely embedding StellarRoute swaps in production environments.
+This guide documents integration-specific API behavior for partner systems.
 
----
+## Quote Expiration Webhooks
 
-## Go-Live Checklist for Embedding Swaps
+Integrators can register an HTTPS webhook endpoint to receive quote expiration events.
 
-Complete the following verification steps before enabling production traffic:
+### Register or update webhook
 
-### 1. Production Credentials & Network Setup
-* **API Keys:** Replace testnet credentials with live production API keys.
-* **Network Endpoints:** Direct Horizon and Soroban RPC requests to production endpoints.
-* **CORS & Domain Whitelisting:** Ensure your application domain is allowlisted for API communication and webhook events.
+- **Method:** `POST`
+- **Path:** `/api/v1/integrator/webhooks/quote-expiration`
+- **Required header:** `X-API-Key`
 
-### 2. Sample Production Environment (`.env.production`)
+Request body:
 
-```env
-STELLAR_NETWORK=PUBLIC
-STELLAR_HORIZON_URL=[https://horizon.stellar.org](https://horizon.stellar.org)
-STELLAR_SOROBAN_RPC_URL=[https://mainnet.soroban.rpc.org](https://mainnet.soroban.rpc.org)
-STELLARROUTE_API_KEY=sr_live_your_production_api_key
-STELLARROUTE_API_URL=[https://api.stellarroute.io/v1](https://api.stellarroute.io/v1)
+```json
+{
+  "webhook_url": "https://integrator.example/webhooks/quotes",
+  "signing_secret": "optional-shared-secret",
+  "enabled": true
+}
+```
+
+Behavior:
+
+- If `signing_secret` is omitted or blank, the API generates one and returns it once in `generated_signing_secret`.
+- Registrations are stored per consumer (`X-API-Key`).
+- `webhook_url` must use `https://`.
+
+Successful response:
+
+```json
+{
+  "v": 1,
+  "timestamp": 1740312000000,
+  "request_id": "req_01hyxk6bzv4n9p8m8j1f4c0a2r",
+  "data": {
+    "consumer_id": "api_key:your-key",
+    "webhook_url": "https://integrator.example/webhooks/quotes",
+    "enabled": true,
+    "generated_signing_secret": "2d4ad5fd-99d1-4d6a-9d84-7bbcc90a2d9c"
+  }
+}
+```
+
+### Webhook event payload
+
+Events are posted with JSON payload:
+
+```json
+{
+  "event_id": "f30f7d86-c604-4a0a-bd4a-7381f09542f1",
+  "consumer_id": "api_key:your-key",
+  "quote_id": "native:USDC:1740312000000:100",
+  "pair": "native/USDC",
+  "reason": "ttl_expired",
+  "expired_at": 1740312002000
+}
+```
+
+`reason` values:
+
+- `ttl_expired` when a quote naturally reaches its TTL.
+- `cache_invalidated` when underlying liquidity changes invalidate cached quotes.
+
+### Signature verification
+
+Each webhook request includes:
+
+- `X-StellarRoute-Event: quote.expired`
+- `X-StellarRoute-Consumer: <consumer_id>`
+- `X-StellarRoute-Signature: sha256=<hex_digest>`
+
+Signature is computed as `HMAC-SHA256(secret, raw_request_body)`.
+
+### Retry policy
+
+Failed deliveries are retried with exponential backoff:
+
+- attempt 1: immediate
+- attempt 2: 500ms
+- attempt 3: 1000ms
+- attempt 4: 2000ms
+
+A delivery is considered successful for any HTTP 2xx response.
+
+## POST /api/v1/quote idempotency
+
+`POST /api/v1/quote` accepts an optional `Idempotency-Key` header for safe retries.
+
+- Header name: `Idempotency-Key` (case-insensitive)
+- Maximum key length: 128 characters (after trimming whitespace)
+- TTL: 5 minutes by default (`IDEMPOTENCY_TTL_SECS` env override)
+- Scoped storage key prefix: `post_quote:` (prevents collision with other endpoints)
+
+Behavior:
+
+- Duplicate requests with the same normalized key within the TTL return the same quote payload in `data` without re-running the quote pipeline.
+- The outer response envelope (`request_id`, `timestamp`) may differ between the original request and replays.
+- If the header is omitted, each request is processed normally (no deduplication).
+
+Integration coverage lives in `crates/api/tests/idempotent_quote_integration.rs`.
+
+## Go-Live Checklist (embedding swaps)
+
+Use this before enabling a production integrator against live StellarRoute:
+
+1. Pin API version headers and confirm CORS allowlists include the production origin.
+2. Point Horizon / Soroban RPC / network passphrase at the intended network (testnet vs pubnet).
+3. Handle `429` / `overloaded` with backoff; map other codes via `docs/api/error_taxonomy.md`.
+4. Rehearse a minimum-size swap on the target network before raising limits.
+5. Confirm webhook and idempotency keys (`Idempotency-Key` on `POST /api/v1/quote`) in staging first.

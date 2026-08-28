@@ -39,6 +39,8 @@ This directory is the documentation hub for StellarRoute. It organizes design, d
 
 ### Cross-chain / CCTP
 
+- [Paycrest offramp corridor](offramp/paycrest-corridor.md) — supported deposit networks, institution codes, and the Stellar bridge-then-offramp flow.
+
 - [Signed-live Stellar → Sepolia proof](cctp/signed-live-stellar-to-sepolia.md) — testnet destination mint milestone (`0x713cc8b1…bed6`).
 - [Signed-live Sepolia → Stellar proof](cctp/signed-live-sepolia-to-stellar.md) — reverse corridor signed-live (MetaMask + Freighter; Fast).
 - [CCTP staging enablement checklist](deployment/cctp-staging-enablement-checklist.md) — flip `CCTP_ENABLED` after reverse proof.

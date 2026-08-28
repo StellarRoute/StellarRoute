@@ -88,3 +88,7 @@ curl -X POST http://localhost:8080/api/v1/admin/kill-switch \
 
 - **State not syncing:** Ensure Redis is reachable and all API instances have a connection to the same Redis cluster.
 - **Immediate effect not seen:** Propagation delay is up to 5 seconds. If longer, check API instance connectivity.
+
+## Incident Response
+
+For overall incident triage, severity matrix, Horizon outage, and indexer lag procedures, refer to the [Live Trading Outage Runbook](runbooks/live-trading-outage.md).

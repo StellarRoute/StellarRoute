@@ -221,3 +221,4 @@ annotations:
 - **Probe runner script**: [`scripts/slo-probe.sh`](../scripts/slo-probe.sh)
 - **CI workflow**: [`.github/workflows/slo-probes.yml`](../.github/workflows/slo-probes.yml)
 - **Indexer lag monitoring**: [`docs/indexer-lag-monitoring.md`](indexer-lag-monitoring.md)
+- **Live trading outage runbook**: [`docs/runbooks/live-trading-outage.md`](runbooks/live-trading-outage.md)

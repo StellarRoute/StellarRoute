@@ -88,7 +88,7 @@ cargo run -p stellarroute-sdk --bin stellarroute -- quote native USDC --amount 1
 # Buy 50 base units, JSON output
 cargo run -p stellarroute-sdk --bin stellarroute -- --output json quote native USDC --amount 50 --quote-type buy
 
-# Issues assets: CODE or CODE:ISSUER
+# Issued assets: CODE or CODE:ISSUER
 cargo run -p stellarroute-sdk --bin stellarroute -- quote USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN USDC --amount 25 --output table
 ```
 

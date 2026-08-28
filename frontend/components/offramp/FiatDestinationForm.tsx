@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/select';
 import { OFFRAMP_FIAT } from '@/lib/offramp/assets';
 import { NIGERIAN_BANKS } from '@/lib/offramp/nigerian-banks';
-import { useOfframpI18n } from '@/lib/offramp-i18n';
 import { cn } from '@/lib/utils';
 
 interface FiatDestinationFormProps {
@@ -35,8 +34,6 @@ export function FiatDestinationForm({
   accountNumberError,
   className,
 }: FiatDestinationFormProps) {
-  const { t } = useOfframpI18n();
-
   return (
     <div
       className={cn('space-y-4', className)}
@@ -44,13 +41,11 @@ export function FiatDestinationForm({
     >
       <div>
         <h2 className="font-display text-lg font-semibold tracking-tight">
-          {t('offramp.destination.title')}
+          You receive
         </h2>
         <p className="text-sm text-muted-foreground">
-          {t('offramp.destination.description', {
-            flag: OFFRAMP_FIAT.flag,
-            name: OFFRAMP_FIAT.name,
-          })}
+          First corridor: {OFFRAMP_FIAT.flag} {OFFRAMP_FIAT.name} to a Nigerian
+          bank account.
         </p>
       </div>
 
@@ -65,19 +60,19 @@ export function FiatDestinationForm({
           <p className="text-xs text-muted-foreground">{OFFRAMP_FIAT.country}</p>
         </div>
         <span className="ml-auto font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
-          {t('offramp.destination.liveCorridor')}
+          Live corridor
         </span>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="offramp-bank">{t('offramp.destination.bankLabel')}</Label>
+        <Label htmlFor="offramp-bank">Bank</Label>
         <Select value={bankCode || undefined} onValueChange={onBankCodeChange}>
           <SelectTrigger
             id="offramp-bank"
             className="w-full"
             data-testid="offramp-bank-select"
           >
-            <SelectValue placeholder={t('offramp.destination.bankPlaceholder')} />
+            <SelectValue placeholder="Select your bank" />
           </SelectTrigger>
           <SelectContent>
             {NIGERIAN_BANKS.map((bank) => (
@@ -90,12 +85,12 @@ export function FiatDestinationForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="offramp-account-number">{t('offramp.destination.accountNumberLabel')}</Label>
+        <Label htmlFor="offramp-account-number">Account number</Label>
         <Input
           id="offramp-account-number"
           inputMode="numeric"
           autoComplete="off"
-          placeholder={t('offramp.destination.accountNumberPlaceholder')}
+          placeholder="10-digit NUBAN"
           value={accountNumber}
           onChange={(e) =>
             onAccountNumberChange(e.target.value.replace(/\D/g, '').slice(0, 10))
@@ -109,17 +104,17 @@ export function FiatDestinationForm({
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {t('offramp.destination.accountNumberHelp')}
+            Nigerian bank accounts use a 10-digit NUBAN.
           </p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="offramp-account-name">{t('offramp.destination.accountNameLabel')}</Label>
+        <Label htmlFor="offramp-account-name">Account name</Label>
         <Input
           id="offramp-account-name"
           autoComplete="name"
-          placeholder={t('offramp.destination.accountNamePlaceholder')}
+          placeholder="Name on the bank account"
           value={accountName}
           onChange={(e) => onAccountNameChange(e.target.value)}
           data-testid="offramp-account-name"
@@ -128,4 +123,3 @@ export function FiatDestinationForm({
     </div>
   );
 }
-

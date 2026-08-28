@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SettingsProvider } from '@/components/providers/settings-provider';
+
 import { OfframpDashboard } from './OfframpDashboard';
 
 describe('OfframpDashboard', () => {
   it('renders the cash corridor hero and default direct path', () => {
-    render(
-      <SettingsProvider>
-        <OfframpDashboard />
-      </SettingsProvider>
-    );
+    render(<OfframpDashboard />);
     expect(screen.getByTestId('offramp-dashboard')).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: /stablecoin to local fiat/i }),
@@ -23,11 +19,7 @@ describe('OfframpDashboard', () => {
 
   it('switches to bridge mode and unlocks non-Stellar assets', async () => {
     const user = userEvent.setup();
-    render(
-      <SettingsProvider>
-        <OfframpDashboard />
-      </SettingsProvider>
-    );
+    render(<OfframpDashboard />);
 
     await user.click(screen.getByTestId('offramp-mode-bridge'));
     expect(screen.getByTestId('offramp-mode-bridge')).toHaveAttribute(
@@ -43,11 +35,7 @@ describe('OfframpDashboard', () => {
 
   it('previews an indicative Naira quote after amount entry', async () => {
     const user = userEvent.setup();
-    render(
-      <SettingsProvider>
-        <OfframpDashboard />
-      </SettingsProvider>
-    );
+    render(<OfframpDashboard />);
 
     await user.type(screen.getByTestId('offramp-amount'), '100');
     expect(screen.getByTestId('offramp-quote-summary')).toHaveTextContent('₦');

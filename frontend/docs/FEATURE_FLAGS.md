@@ -125,8 +125,6 @@ export function SwapPage() {
 | `NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE` | Enable advanced slippage controls |
 | `NEXT_PUBLIC_FLAG_REAL_XDR` | **Default on** when unset. Classic API prepare → Freighter sign → API submit → Horizon confirm (`real_xdr`; one-hop SDEX only). Security-pinned: remote flags cannot disable. When false, product swaps fail closed (no client-XDR fallback). |
 
-> **In-Page Reference**: An overview of all flags and direct link access is also displayed in-page at `/settings` without adding extra navigation links to the header.
-
 ---
 
 ## Cleaning up flags
@@ -137,4 +135,3 @@ Once a feature is stable and fully rolled out:
 2. Remove the `useFeatureFlag` call from the component
 3. Delete the gate wrapper if one was created
 4. Remove the env var from `.env` files and CI config
-

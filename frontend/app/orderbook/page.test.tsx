@@ -188,37 +188,4 @@ describe('OrderbookPage with highlighting', () => {
       expect(row.className).toContain('hover:bg-emerald-500/10');
     });
   });
-
-  it('renders VenueBadgeLegend on the orderbook page', async () => {
-    vi.mocked(useApiHooks.usePairs).mockReturnValue({
-      data: mockPairs,
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
-      data: mockOrderbook,
-      loading: false,
-      error: null,
-      refresh: vi.fn(),
-    });
-
-    render(
-      <TradingPairProvider>
-        <OrderbookPage />
-      </TradingPairProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('orderbook-venue-legend')).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole('region', { name: /Venue badge legend/i })).toBeInTheDocument();
-    expect(screen.getByText('Venue & Route Badges')).toBeInTheDocument();
-    expect(screen.getByText('Optimal')).toBeInTheDocument();
-    expect(screen.getByText('SDEX')).toBeInTheDocument();
-    expect(screen.getByText('AMM')).toBeInTheDocument();
-  });
 });
-

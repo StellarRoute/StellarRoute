@@ -9,7 +9,6 @@ import { useOrderbook, usePairs } from '@/hooks/useApi';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
 import { useSwapI18n } from '@/lib/swap-i18n';
-import { VenueBadgeLegend } from '@/components/swap/VenueBadgeLegend';
 import type { OrderbookEntry, TradingPair } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -307,12 +306,6 @@ export function OrderbookPageClient() {
           )}
         </>
       )}
-
-      {/* Venue Badge Legend — issue #1267 */}
-      <Card className="p-4" data-testid="orderbook-venue-legend">
-        <VenueBadgeLegend />
-      </Card>
     </div>
   );
 }
-

@@ -10,6 +10,7 @@ use axum::{
 };
 use serde_json::Value;
 use stellarroute_api::middleware::{EndpointConfig, RateLimitConfig, RateLimitLayer};
+use stellarroute_api::models::ApiErrorCode;
 use tower::ServiceExt;
 
 // ---------------------------------------------------------------------------
@@ -258,7 +259,15 @@ async fn rate_limit_returns_429_after_limit_exceeded() {
     let headers = resp.headers().clone();
     assert!(headers.contains_key("x-ratelimit-limit"));
     assert!(headers.contains_key("x-ratelimit-remaining"));
+    assert!(headers.contains_key("x-ratelimit-reset"));
     assert!(headers.contains_key("retry-after"));
+
+    let limit: u64 = headers
+        .get("x-ratelimit-limit")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .expect("X-RateLimit-Limit must be numeric");
+    assert_eq!(limit, 2);
 
     let remaining: u64 = headers
         .get("x-ratelimit-remaining")
@@ -266,6 +275,20 @@ async fn rate_limit_returns_429_after_limit_exceeded() {
         .and_then(|s| s.parse().ok())
         .expect("X-RateLimit-Remaining must be numeric");
     assert_eq!(remaining, 0);
+
+    let reset: u64 = headers
+        .get("x-ratelimit-reset")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .expect("X-RateLimit-Reset must be numeric");
+    assert!(reset > 0, "X-RateLimit-Reset timestamp must be positive");
+
+    let retry_after: u64 = headers
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .expect("Retry-After must be numeric");
+    assert!(retry_after <= 60, "Retry-After should be within window");
 
     // Body must be JSON with the error key
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
@@ -276,9 +299,52 @@ async fn rate_limit_returns_429_after_limit_exceeded() {
         json["error"], "rate_limit_exceeded",
         "error key must be rate_limit_exceeded"
     );
+    assert_eq!(
+        json["error"].as_str().unwrap(),
+        ApiErrorCode::RateLimitExceeded.as_str(),
+        "error code must match ApiErrorCode::RateLimitExceeded serialization"
+    );
     assert!(
         json["message"].as_str().is_some(),
         "message must be present"
+    );
+}
+
+#[tokio::test]
+async fn rate_limit_header_names_snapshot() {
+    let cfg = EndpointConfig::default();
+    let router = build_test_router(cfg);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Snapshot exact header names present on 200 OK responses
+    let header_names: Vec<String> = response
+        .headers()
+        .keys()
+        .map(|k| k.as_str().to_ascii_lowercase())
+        .collect();
+
+    assert!(
+        header_names.contains(&"x-ratelimit-limit".to_string()),
+        "x-ratelimit-limit header must be present in response header names"
+    );
+    assert!(
+        header_names.contains(&"x-ratelimit-remaining".to_string()),
+        "x-ratelimit-remaining header must be present in response header names"
+    );
+    assert!(
+        header_names.contains(&"x-ratelimit-reset".to_string()),
+        "x-ratelimit-reset header must be present in response header names"
     );
 }
 

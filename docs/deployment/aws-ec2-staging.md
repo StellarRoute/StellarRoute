@@ -200,6 +200,28 @@ bash deploy/aws/scripts/ec2-health-check.sh
 This is the default recommendation for EC2 staging. It is simpler than managing
 Nginx yourself and gives you automatic HTTPS.
 
+## Optional: file-based indexer health sidecar
+
+If you want a process-supervisor health signal without exposing an HTTP port, set
+`INDEXER_HEALTH_FILE` on the indexer service. When the variable is unset, the
+indexer keeps its exact default behavior and writes nothing.
+
+Example:
+
+```bash
+export INDEXER_HEALTH_FILE=/var/run/stellarroute/indexer-health.json
+```
+
+When enabled, the indexer writes periodic JSON like:
+
+```json
+{"ok":true,"sdex_lag":3,"amm_lag":4,"ts":"2026-08-29T00:00:00Z"}
+```
+
+This is additive-only and does not change ingest semantics, quote ranking, swap
+flow, or OpenAPI contracts. It is intended for EC2/Oracle supervisors that only
+need a file-based liveness signal.
+
 Requirements:
 
 - your DNS record already points to the EC2 public IP

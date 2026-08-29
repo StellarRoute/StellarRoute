@@ -191,6 +191,20 @@ async fn main() {
     let partition_manager = stellarroute_indexer::partition::PartitionManager::from_config(&config);
     let sdex_indexer = SdexIndexer::with_mode(horizon, db.clone(), sdex_mode, partition_manager);
 
+    if let Some(sidecar) = stellarroute_indexer::health_sidecar::HealthSidecar::from_config(&config) {
+        let db_for_sidecar = db.clone();
+        let horizon_url = config.stellar_horizon_url.clone();
+        info!(path = %sidecar.path(), "Starting indexer health sidecar writer");
+        sidecar.start(move || {
+            let db = db_for_sidecar.clone();
+            let horizon_url = horizon_url.clone();
+            async move {
+                let snapshot = stellarroute_indexer::health_sidecar::snapshot_from_db(&db, &horizon_url).await?;
+                Ok(snapshot)
+            }
+        });
+    }
+
     // Create AMM aggregator. An empty router here means `ALLOW_EMPTY_ROUTER` was
     // honored (dev only — `from_env` rejects it otherwise), so run SDEX-only
     // rather than starting an aggregation loop against no contract.

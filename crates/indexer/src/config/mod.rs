@@ -118,6 +118,12 @@ pub struct IndexerConfig {
     /// Identifier of this partition instance (env: `INDEXER_PARTITION_ID`).
     #[serde(default = "default_partition_id")]
     pub partition_id: usize,
+
+    /// Optional JSON health sidecar path. When unset, the indexer keeps the
+    /// original behavior and writes no health file.
+    /// Env: `INDEXER_HEALTH_FILE`.
+    #[serde(default)]
+    pub indexer_health_file: Option<String>,
 }
 
 impl std::fmt::Debug for IndexerConfig {
@@ -145,6 +151,7 @@ impl std::fmt::Debug for IndexerConfig {
             .field("maintenance_interval_mins", &self.maintenance_interval_mins)
             .field("snapshot_retention_days", &self.snapshot_retention_days)
             .field("snapshot_compaction_hours", &self.snapshot_compaction_hours)
+            .field("indexer_health_file", &self.indexer_health_file)
             .finish()
     }
 }
@@ -286,6 +293,13 @@ impl IndexerConfig {
         let mut urls = vec![self.stellar_horizon_url.trim_end_matches('/').to_string()];
         urls.extend(parse_url_list(&self.stellar_horizon_fallback_urls));
         urls
+    }
+
+    /// Returns whether the optional JSON health sidecar is enabled.
+    pub fn health_file_enabled(&self) -> bool {
+        self.indexer_health_file
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty())
     }
 
     /// Returns all Soroban RPC URLs to try in priority order: primary first, then fallbacks.

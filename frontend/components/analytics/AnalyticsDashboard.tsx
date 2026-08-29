@@ -14,6 +14,7 @@ import { ViewState } from "@/components/shared/ViewState";
 import { useCacheMetrics, usePoolStats } from "@/hooks/useApi";
 import type { PoolStats } from "@/types";
 import { cn } from "@/lib/utils";
+import { PairSelector } from "./PairSelector";
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -100,6 +101,12 @@ export function AnalyticsDashboard() {
           Refresh
         </Button>
       </div>
+
+      {/* Additive: Pair selector for future sparkline/history integration */}
+      <PairSelector onPairChange={(base, quote) => {
+        // Future sparkline/history integration will use this callback
+        console.log("Selected analytics pair:", base, quote);
+      }} />
 
       {loading && !cacheMetrics && !poolStats ? (
         <ViewState

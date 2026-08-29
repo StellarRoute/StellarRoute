@@ -9,6 +9,7 @@ pub mod config;
 pub mod db;
 pub mod deduplication;
 pub mod error;
+pub mod health_sidecar;
 pub mod horizon;
 pub mod metrics;
 pub mod models;

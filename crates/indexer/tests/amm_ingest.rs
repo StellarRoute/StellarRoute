@@ -87,6 +87,7 @@ fn test_config(database_url: String, soroban_rpc_url: String, router: String) ->
         hot_pair_volume_threshold: 1_000_000_000,
         hot_pair_window_secs: 300,
         partition_id: 0,
+        indexer_health_file: None,
     }
 }
 

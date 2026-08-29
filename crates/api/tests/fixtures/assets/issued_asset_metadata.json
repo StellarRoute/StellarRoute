@@ -1,0 +1,9 @@
+{
+  "code": "TST1306",
+  "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "decimals": 7,
+  "asset_type": "credit_alphanum4",
+  "display_name": "TST1306",
+  "icon_url": "https://example.com/tst1306.svg",
+  "domain": "example.com"
+}

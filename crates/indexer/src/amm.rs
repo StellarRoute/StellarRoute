@@ -17,6 +17,10 @@ use tracing::{debug, error, info, warn};
 
 const DISCOVERY_CURSOR_JOB: &str = "soroban_pool_discovery";
 
+/// `source` label used for the AMM refresh metrics, matching the value the
+/// indexer already reports for AMM lag (`stellarroute_indexer_lag_ledgers`).
+const AMM_METRIC_SOURCE: &str = "amm";
+
 /// Configuration for AMM pool indexing
 #[derive(Clone, Debug)]
 pub struct AmmConfig {
@@ -64,10 +68,24 @@ impl AmmAggregator {
     pub async fn start_aggregation(&self) -> Result<()> {
         info!("Starting AMM pool aggregation loop");
 
+        // Consecutive failed cycles. Observability only: it drives the
+        // `stellarroute_indexer_amm_*` metrics so a silently stuck refresh loop
+        // is visible in Prometheus. It never changes the poll cadence and never
+        // aborts the loop.
+        let mut consecutive_failures: u64 = 0;
+
         // Run one immediate aggregation at startup to bootstrap configured pools,
         // then continue on the configured interval.
-        if let Err(e) = self.aggregate_once().await {
-            error!("Initial AMM aggregation failed: {}", e);
+        match self.aggregate_once().await {
+            Ok(()) => crate::metrics::record_amm_refresh_success(AMM_METRIC_SOURCE),
+            Err(e) => {
+                consecutive_failures += 1;
+                error!("Initial AMM aggregation failed: {}", e);
+                crate::metrics::record_amm_refresh_failure(
+                    AMM_METRIC_SOURCE,
+                    consecutive_failures,
+                );
+            }
         }
 
         let mut interval =
@@ -76,9 +94,29 @@ impl AmmAggregator {
         loop {
             interval.tick().await;
 
-            if let Err(e) = self.aggregate_once().await {
-                error!("AMM aggregation cycle failed: {}", e);
-                // Continue the loop despite errors
+            match self.aggregate_once().await {
+                Ok(()) => {
+                    if consecutive_failures > 0 {
+                        info!(
+                            recovered_after = consecutive_failures,
+                            "AMM aggregation cycle recovered"
+                        );
+                    }
+                    consecutive_failures = 0;
+                    crate::metrics::record_amm_refresh_success(AMM_METRIC_SOURCE);
+                }
+                Err(e) => {
+                    consecutive_failures += 1;
+                    error!(
+                        consecutive_failures,
+                        "AMM aggregation cycle failed: {}", e
+                    );
+                    crate::metrics::record_amm_refresh_failure(
+                        AMM_METRIC_SOURCE,
+                        consecutive_failures,
+                    );
+                    // Continue the loop despite errors
+                }
             }
         }
     }

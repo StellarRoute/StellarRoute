@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 96" role="img" fill="none">
+  <title>An orderbook with no bids or asks</title>
+  <!-- Referenced via <img>, which isolates the SVG from page CSS, so
+       `currentColor` is not available. #94a3b8 (slate-400) is chosen to stay
+       legible against both the light and dark app backgrounds; callers dim it
+       further with a Tailwind opacity class. -->
+  <g stroke="#94a3b8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8.5" y="14.5" width="45" height="67" rx="6" stroke-width="2" opacity="0.5" />
+    <rect x="66.5" y="14.5" width="45" height="67" rx="6" stroke-width="2" opacity="0.5" />
+    <path d="M8.5 30.5h45M66.5 30.5h45" stroke-width="2" opacity="0.5" />
+    <g stroke-width="3" opacity="0.28">
+      <path d="M17 44h28M17 55h20M17 66h24" />
+      <path d="M75 44h28M75 55h20M75 66h24" />
+    </g>
+    <path d="M60 8v80" stroke-width="2" stroke-dasharray="4 6" opacity="0.4" />
+  </g>
+  <circle cx="60" cy="48" r="15" fill="#94a3b8" opacity="0.12" />
+  <path d="M53 48h14" stroke="#94a3b8" stroke-linecap="round" stroke-width="2.5" opacity="0.6" />
+</svg>

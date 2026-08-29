@@ -4,6 +4,7 @@
 //! - Horizon throttle events (429 responses)
 //! - Throttle wait time
 //! - Indexer lag
+//! - AMM pool refresh failure streaks
 
 use lazy_static::lazy_static;
 use prometheus::{
@@ -66,6 +67,30 @@ lazy_static! {
     )
     .expect("Can't create SSE_EVENTS_RECEIVED counter");
 
+    /// Number of times the AMM refresh loop has hit a run of consecutive
+    /// failures long enough to be worth paging on.
+    ///
+    /// Incremented once per streak, when the consecutive-failure count reaches
+    /// [`AMM_REFRESH_FAILURE_STREAK_THRESHOLD`], and again on every further
+    /// failure while the streak continues. It never resets — use `rate()`/
+    /// `increase()` to alert. Observability only: the refresh loop keeps its
+    /// cadence and the process does not exit.
+    pub static ref AMM_REFRESH_FAILURE_STREAKS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_indexer_amm_refresh_failure_streaks_total",
+        "Total AMM pool refresh cycles that failed while a consecutive-failure streak was active",
+        &["source"]
+    )
+    .expect("Can't create AMM_REFRESH_FAILURE_STREAKS counter");
+
+    /// Current number of consecutive AMM refresh failures (resets to 0 on the
+    /// next successful cycle).
+    pub static ref AMM_CONSECUTIVE_REFRESH_FAILURES: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_indexer_amm_consecutive_refresh_failures",
+        "Current number of consecutive AMM pool refresh failures",
+        &["source"]
+    )
+    .expect("Can't create AMM_CONSECUTIVE_REFRESH_FAILURES gauge");
+
     /// Queue depth per partition (placeholder for future implementation)
     pub static ref PARTITION_QUEUE_DEPTH: IntGaugeVec = register_int_gauge_vec!(
         "stellarroute_indexer_partition_queue_depth",
@@ -117,6 +142,37 @@ pub fn record_sse_disconnect(source: &str) {
 /// Record an SSE event received.
 pub fn record_sse_event(source: &str) {
     SSE_EVENTS_RECEIVED.with_label_values(&[source]).inc();
+}
+
+/// Number of back-to-back AMM refresh failures before the streak counter starts
+/// incrementing. One transient RPC blip should not page anyone; a sustained run
+/// should.
+pub const AMM_REFRESH_FAILURE_STREAK_THRESHOLD: u64 = 3;
+
+/// Record a failed AMM refresh cycle.
+///
+/// `consecutive` is the running count of back-to-back failures including this
+/// one. Once it reaches [`AMM_REFRESH_FAILURE_STREAK_THRESHOLD`] the streak
+/// counter is incremented, so `increase(...[15m]) > 0` is a usable alert.
+///
+/// Observability only — the caller keeps polling on its normal interval.
+pub fn record_amm_refresh_failure(source: &str, consecutive: u64) {
+    AMM_CONSECUTIVE_REFRESH_FAILURES
+        .with_label_values(&[source])
+        .set(consecutive as i64);
+
+    if consecutive >= AMM_REFRESH_FAILURE_STREAK_THRESHOLD {
+        AMM_REFRESH_FAILURE_STREAKS
+            .with_label_values(&[source])
+            .inc();
+    }
+}
+
+/// Reset the consecutive AMM refresh failure gauge after a successful cycle.
+pub fn record_amm_refresh_success(source: &str) {
+    AMM_CONSECUTIVE_REFRESH_FAILURES
+        .with_label_values(&[source])
+        .set(0);
 }
 
 /// Encode all metrics in Prometheus text format.

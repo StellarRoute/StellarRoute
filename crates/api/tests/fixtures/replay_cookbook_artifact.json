@@ -1,0 +1,75 @@
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "schema_version": 1,
+  "incident_id": "INC-20260327-001",
+  "captured_at": "2026-03-27T10:02:34.123Z",
+  "base": "native",
+  "quote": "USDC:[REDACTED]",
+  "amount": "1000.0000000",
+  "slippage_bps": 50,
+  "quote_type": "sell",
+  "liquidity_snapshot": [
+    {
+      "venue_type": "sdex",
+      "venue_ref": "offer1",
+      "price": "0.9950000",
+      "available_amount": "5000.0000000",
+      "fee_bps": 0
+    },
+    {
+      "venue_type": "amm",
+      "venue_ref": "pool1",
+      "price": "0.9960000",
+      "available_amount": "50000.0000000",
+      "fee_bps": 30
+    }
+  ],
+  "decision_graph": {
+    "nodes": [
+      {
+        "stage": "venue_selection_input",
+        "payload": [
+          {
+            "venue_type": "sdex",
+            "venue_ref": "offer1",
+            "price": 0.995,
+            "available_amount": 5000.0,
+            "fee_bps": 0
+          },
+          {
+            "venue_type": "amm",
+            "venue_ref": "pool1",
+            "price": 0.996,
+            "available_amount": 50000.0,
+            "fee_bps": 30
+          }
+        ]
+      }
+    ]
+  },
+  "health_config_snapshot": {
+    "freshness_threshold_secs_sdex": 30,
+    "freshness_threshold_secs_amm": 60,
+    "staleness_threshold_secs": 30,
+    "min_tvl_threshold_e7": 1000000000
+  },
+  "original_output": {
+    "price": "0.9950000",
+    "selected_source": "sdex:offer1",
+    "path": [
+      {
+        "from_asset": {
+          "type": "native",
+          "code": "XLM"
+        },
+        "to_asset": {
+          "type": "credit_alphanum4",
+          "code": "USDC",
+          "issuer": "[REDACTED]"
+        },
+        "price": "0.9950000",
+        "source": "sdex"
+      }
+    ]
+  }
+}

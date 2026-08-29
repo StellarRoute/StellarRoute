@@ -1,8 +1,10 @@
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -204,6 +206,7 @@ fn read_secure_key(path: &Path) -> Result<SigningKey> {
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         bail!("key path must be a regular file, not a symlink");
     }
+    #[cfg(unix)]
     if metadata.permissions().mode() & 0o777 != 0o600 {
         bail!("key file mode must be exactly 0600");
     }

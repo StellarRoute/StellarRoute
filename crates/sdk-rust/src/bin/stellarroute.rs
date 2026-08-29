@@ -4,7 +4,7 @@ use std::ffi::OsStr;
 use std::num::NonZeroUsize;
 use stellarroute_sdk::{
     HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, QuoteRequest, QuoteResponse,
-    QuoteType, SdkError, StellarRouteClient,
+    QuoteType, Route, RouteHop, RoutesRequest, RoutesResponse, SdkError, StellarRouteClient,
 };
 
 const EXIT_SUCCESS: i32 = 0;
@@ -106,6 +106,40 @@ enum Commands {
             help = "Maximum number of levels to print per side"
         )]
         levels: NonZeroUsize,
+    },
+    #[command(
+        about = "Show ranked execution routes for a trading pair",
+        long_about = "Calls GET /api/v1/routes/{base}/{quote} and prints the ranked route candidates.\n\nRoutes are ordered best-first by composite score. Use --output json for\nmachine-readable output suitable for piping into swap tooling."
+    )]
+    Routes {
+        #[arg(
+            value_parser = parse_asset,
+            help = "Base asset: native, CODE, or CODE:ISSUER"
+        )]
+        base: String,
+        #[arg(
+            value_parser = parse_asset,
+            help = "Quote asset: native, CODE, or CODE:ISSUER"
+        )]
+        quote: String,
+        #[arg(
+            long,
+            value_parser = parse_route_amount,
+            help = "Amount of the base asset in atomic units (stroops for XLM, i.e. 1 XLM = 10_000_000)",
+            long_help = "Amount of the base asset expressed in its smallest atomic unit.\n\nStellar uses 7 decimal places: 1 XLM = 10,000,000 stroops.\nExample: --amount 10000000 requests routes for 1 XLM."
+        )]
+        amount: u64,
+        #[arg(
+            long,
+            value_enum,
+            help = "Direction of the route: sell or buy the base asset (default: sell)"
+        )]
+        quote_type: Option<QuoteTypeArg>,
+        #[arg(
+            long,
+            help = "Maximum acceptable slippage in basis points (e.g. 50 = 0.50%)"
+        )]
+        slippage_bps: Option<u16>,
     },
 }
 
@@ -225,6 +259,25 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
         } => render_orderbook(&client, &base, &quote, levels.get(), cli.output)
             .await
             .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
+        Commands::Routes {
+            base,
+            quote,
+            amount,
+            quote_type,
+            slippage_bps,
+        } => render_routes(
+            &client,
+            RoutesRequest {
+                base: &base,
+                quote: &quote,
+                amount,
+                slippage_bps,
+                quote_type: quote_type.map(Into::into),
+            },
+            cli.output,
+        )
+        .await
+        .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
     }
 }
 
@@ -269,6 +322,15 @@ async fn render_orderbook(
     response.bids.truncate(levels);
 
     format_orderbook(&response, output)
+}
+
+async fn render_routes(
+    client: &StellarRouteClient,
+    request: RoutesRequest<'_>,
+    output: OutputFormat,
+) -> Result<String, SdkError> {
+    let response = client.routes(request).await?;
+    format_routes(&response, output)
 }
 
 fn format_health(response: &HealthResponse, output: OutputFormat) -> Result<String, SdkError> {
@@ -548,6 +610,164 @@ fn level_to_row(level: &OrderbookLevel) -> Vec<String> {
     ]
 }
 
+fn format_routes(response: &RoutesResponse, output: OutputFormat) -> Result<String, SdkError> {
+    match output {
+        OutputFormat::Human => {
+            if response.routes.is_empty() {
+                return Ok("no routes found".to_string());
+            }
+
+            let base_name = response
+                .base_asset
+                .as_ref()
+                .map(|a| a.display_name())
+                .unwrap_or_default();
+            let quote_name = response
+                .quote_asset
+                .as_ref()
+                .map(|a| a.display_name())
+                .unwrap_or_default();
+
+            let mut lines = vec![
+                format!(
+                    "pair: {} / {}",
+                    if base_name.is_empty() { "(base)" } else { &base_name },
+                    if quote_name.is_empty() { "(quote)" } else { &quote_name }
+                ),
+                format!("amount: {}", response.amount),
+                format!("routes: {}", response.routes.len()),
+            ];
+
+            for (idx, route) in response.routes.iter().enumerate() {
+                lines.push(format!(
+                    "\nroute #{}: output={} impact_bps={} score={:.4} policy={}",
+                    idx + 1,
+                    route.estimated_output,
+                    route.impact_bps,
+                    route.score,
+                    route.policy_used
+                ));
+                for (hop_idx, hop) in route.path.iter().enumerate() {
+                    let from = hop
+                        .from_asset
+                        .as_ref()
+                        .map(|a| a.display_name())
+                        .unwrap_or_default();
+                    let to = hop
+                        .to_asset
+                        .as_ref()
+                        .map(|a| a.display_name())
+                        .unwrap_or_default();
+                    let fee = hop
+                        .fee_bps
+                        .map(|f| format!(" fee_bps={f}"))
+                        .unwrap_or_default();
+                    lines.push(format!(
+                        "  hop {}: {} -> {} @ {} via {}{}",
+                        hop_idx + 1,
+                        from,
+                        to,
+                        hop.price,
+                        hop.source,
+                        fee
+                    ));
+                }
+            }
+
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Table => {
+            if response.routes.is_empty() {
+                return Ok("no routes found".to_string());
+            }
+
+            let mut sections: Vec<String> = Vec::new();
+
+            let route_rows: Vec<Vec<String>> = response
+                .routes
+                .iter()
+                .enumerate()
+                .map(|(idx, route)| {
+                    vec![
+                        (idx + 1).to_string(),
+                        route.estimated_output.clone(),
+                        route.impact_bps.to_string(),
+                        format!("{:.4}", route.score),
+                        route.policy_used.clone(),
+                        route.path.len().to_string(),
+                    ]
+                })
+                .collect();
+
+            sections.push(format!(
+                "amount: {}\nroutes: {}\n\n{}",
+                response.amount,
+                response.routes.len(),
+                format_table(
+                    &["rank", "output", "impact_bps", "score", "policy", "hops"],
+                    route_rows
+                )
+            ));
+
+            for (idx, route) in response.routes.iter().enumerate() {
+                let hop_rows: Vec<Vec<String>> = route
+                    .path
+                    .iter()
+                    .enumerate()
+                    .map(|(hop_idx, hop)| {
+                        let from = hop
+                            .from_asset
+                            .as_ref()
+                            .map(|a| a.display_name())
+                            .unwrap_or_default();
+                        let to = hop
+                            .to_asset
+                            .as_ref()
+                            .map(|a| a.display_name())
+                            .unwrap_or_default();
+                        vec![
+                            (hop_idx + 1).to_string(),
+                            from,
+                            to,
+                            hop.price.clone(),
+                            hop.source.clone(),
+                            hop.fee_bps
+                                .map(|f| f.to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            hop.amount_out_of_hop.clone(),
+                        ]
+                    })
+                    .collect();
+
+                if !hop_rows.is_empty() {
+                    sections.push(format!(
+                        "route #{} hops\n{}",
+                        idx + 1,
+                        format_table(
+                            &["hop", "from", "to", "price", "source", "fee_bps", "amount_out"],
+                            hop_rows
+                        )
+                    ));
+                }
+            }
+
+            Ok(sections.join("\n\n"))
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(response).map_err(Into::into),
+    }
+}
+
+/// Parse a strictly positive integer amount (atomic units) for the `routes` subcommand.
+fn parse_route_amount(value: &str) -> Result<u64, String> {
+    match value.trim().parse::<u64>() {
+        Ok(n) if n > 0 => Ok(n),
+        Ok(_) => Err("amount must be greater than zero".to_string()),
+        Err(_) => Err(format!(
+            "invalid amount '{value}'; expected a positive integer in atomic units (e.g. 10000000 for 1 XLM)"
+        )),
+    }
+}
+
 fn format_table(headers: &[&str], rows: Vec<Vec<String>>) -> String {
     let mut widths = headers
         .iter()
@@ -803,6 +1023,207 @@ step | from   | to   | price     | source
             }),
             EXIT_RUNTIME_ERROR
         );
+    }
+
+    // ── routes subcommand tests ───────────────────────────────────────────────
+
+    #[test]
+    fn parses_valid_routes_command_minimal() {
+        let cli = Cli::try_parse_from([
+            "stellarroute",
+            "routes",
+            "native",
+            "USDC:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+            "--amount",
+            "10000000",
+        ])
+        .expect("command should parse");
+
+        match cli.command {
+            Commands::Routes {
+                base,
+                quote,
+                amount,
+                quote_type,
+                slippage_bps,
+            } => {
+                assert_eq!(base, "native");
+                assert_eq!(
+                    quote,
+                    "USDC:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                );
+                assert_eq!(amount, 10_000_000);
+                assert!(quote_type.is_none());
+                assert!(slippage_bps.is_none());
+            }
+            _ => panic!("expected routes command"),
+        }
+    }
+
+    #[test]
+    fn parses_routes_command_with_all_options() {
+        let cli = Cli::try_parse_from([
+            "stellarroute",
+            "routes",
+            "native",
+            "USDC",
+            "--amount",
+            "50000000",
+            "--quote-type",
+            "buy",
+            "--slippage-bps",
+            "100",
+        ])
+        .expect("command should parse");
+
+        match cli.command {
+            Commands::Routes {
+                amount,
+                quote_type,
+                slippage_bps,
+                ..
+            } => {
+                assert_eq!(amount, 50_000_000);
+                assert!(matches!(quote_type, Some(QuoteTypeArg::Buy)));
+                assert_eq!(slippage_bps, Some(100));
+            }
+            _ => panic!("expected routes command"),
+        }
+    }
+
+    #[test]
+    fn rejects_zero_route_amount() {
+        let error =
+            Cli::try_parse_from(["stellarroute", "routes", "native", "USDC", "--amount", "0"])
+                .expect_err("amount=0 should fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    #[test]
+    fn rejects_non_integer_route_amount() {
+        let error =
+            Cli::try_parse_from(["stellarroute", "routes", "native", "USDC", "--amount", "1.5"])
+                .expect_err("decimal amount should fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    #[test]
+    fn snapshot_routes_output_human() {
+        let rendered =
+            format_routes(&sample_routes_response(), OutputFormat::Human).expect("should format");
+        insta::assert_snapshot!(rendered, @r###"
+        pair: native / USDC
+        amount: 10000000
+        routes: 2
+
+        route #1: output=1.0500000 impact_bps=3 score=0.9800 policy=best_price
+          hop 1: native -> USDC @ 0.1050000 via sdex fee_bps=30
+
+        route #2: output=1.0480000 impact_bps=5 score=0.9600 policy=best_price
+          hop 1: native -> USDC @ 0.1048000 via amm:CAMM1 fee_bps=30
+        "###);
+    }
+
+    #[test]
+    fn snapshot_routes_output_table() {
+        let rendered = normalize_for_snapshot(
+            &format_routes(&sample_routes_response(), OutputFormat::Table)
+                .expect("should format"),
+        );
+        insta::assert_snapshot!(rendered, @r###"
+        amount: 10000000
+        routes: 2
+
+        rank | output    | impact_bps | score  | policy     | hops
+        <sep>
+        1    | 1.0500000 | 3          | 0.9800 | best_price | 1
+        2    | 1.0480000 | 5          | 0.9600 | best_price | 1
+
+        route #1 hops
+        hop | from   | to   | price     | source | fee_bps | amount_out
+        <sep>
+        1   | native | USDC | 0.1050000 | sdex   | 30      | 1.0500000
+
+        route #2 hops
+        hop | from   | to   | price     | source  | fee_bps | amount_out
+        <sep>
+        1   | native | USDC | 0.1048000 | amm:CAMM1 | 30      | 1.0480000
+        "###);
+    }
+
+    #[test]
+    fn snapshot_routes_output_json() {
+        let rendered =
+            format_routes(&sample_routes_response(), OutputFormat::Json).expect("should format");
+        // Verify the JSON is well-formed and contains expected keys.
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("JSON should be valid");
+        assert!(parsed["routes"].is_array());
+        assert_eq!(parsed["routes"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["routes"][0]["estimated_output"], "1.0500000");
+        assert_eq!(parsed["routes"][0]["policy_used"], "best_price");
+    }
+
+    #[test]
+    fn routes_empty_response_human() {
+        let empty = RoutesResponse {
+            base_asset: None,
+            quote_asset: None,
+            amount: String::new(),
+            routes: vec![],
+            timestamp: 0,
+        };
+        let rendered = format_routes(&empty, OutputFormat::Human).expect("should format");
+        assert_eq!(rendered, "no routes found");
+    }
+
+    fn sample_routes_response() -> RoutesResponse {
+        let native = AssetInfo {
+            asset_type: "native".to_string(),
+            asset_code: None,
+            asset_issuer: None,
+        };
+        let usdc = AssetInfo {
+            asset_type: "credit_alphanum4".to_string(),
+            asset_code: Some("USDC".to_string()),
+            asset_issuer: None,
+        };
+        RoutesResponse {
+            base_asset: Some(native.clone()),
+            quote_asset: Some(usdc.clone()),
+            amount: "10000000".to_string(),
+            timestamp: 1_742_908_400,
+            routes: vec![
+                Route {
+                    estimated_output: "1.0500000".to_string(),
+                    impact_bps: 3,
+                    score: 0.98,
+                    policy_used: "best_price".to_string(),
+                    path: vec![RouteHop {
+                        from_asset: Some(native.clone()),
+                        to_asset: Some(usdc.clone()),
+                        price: "0.1050000".to_string(),
+                        fee_bps: Some(30),
+                        amount_out_of_hop: "1.0500000".to_string(),
+                        source: "sdex".to_string(),
+                    }],
+                },
+                Route {
+                    estimated_output: "1.0480000".to_string(),
+                    impact_bps: 5,
+                    score: 0.96,
+                    policy_used: "best_price".to_string(),
+                    path: vec![RouteHop {
+                        from_asset: Some(native.clone()),
+                        to_asset: Some(usdc.clone()),
+                        price: "0.1048000".to_string(),
+                        fee_bps: Some(30),
+                        amount_out_of_hop: "1.0480000".to_string(),
+                        source: "amm:CAMM1".to_string(),
+                    }],
+                },
+            ],
+        }
     }
 
     fn sample_pairs_response() -> PairsResponse {

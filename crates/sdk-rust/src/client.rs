@@ -26,9 +26,10 @@ use reqwest::{header, Url};
 use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
-        BatchQuoteRequest, BatchQuoteResponse, ErrorResponse, HealthResponse, OrderbookResponse,
-        PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest, RoutesResponse,
-        SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse,
+        AssetMetadataResponse, BatchQuoteRequest, BatchQuoteResponse, ErrorResponse,
+        HealthResponse, OrderbookResponse, PairsResponse, QuoteRequest, QuoteResponse,
+        RoutesRequest, RoutesResponse, SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest,
+        SwapSubmitResponse,
     },
 };
 
@@ -173,6 +174,45 @@ impl StellarRouteClient {
     /// has no active offers.
     pub async fn orderbook(&self, base: &str, quote: &str) -> Result<OrderbookResponse> {
         self.get(&format!("api/v1/orderbook/{base}/{quote}")).await
+    }
+
+    /// `GET /api/v1/assets/{code}` — fetch metadata for a single asset.
+    ///
+    /// `issuer` disambiguates a code issued by more than one account; pass
+    /// `None` for the native asset or when the code is unambiguous. It is sent
+    /// as the optional `issuer` query parameter, matching the OpenAPI shape.
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::NotFound`] when no
+    /// metadata is registered for the asset.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stellarroute_sdk::Client;
+    ///
+    /// # async fn example() -> stellarroute_sdk::Result<()> {
+    /// let client = Client::new("https://api.stellarroute.com")?;
+    /// let usdc = client.asset_metadata("USDC", None).await?;
+    /// println!("{} has {} decimals", usdc.code, usdc.decimals);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn asset_metadata(
+        &self,
+        code: &str,
+        issuer: Option<&str>,
+    ) -> Result<AssetMetadataResponse> {
+        let url = self.url(&format!("api/v1/assets/{code}"))?;
+        let issuer = issuer.map(String::from);
+
+        self.execute_with_retry(|| {
+            let mut req = self.http.get(url.clone());
+            if let Some(ref issuer) = issuer {
+                req = req.query(&[("issuer", issuer.as_str())]);
+            }
+            req
+        })
+        .await
     }
 
     /// `GET /api/v1/quote/{base}/{quote}` — get best price quote.

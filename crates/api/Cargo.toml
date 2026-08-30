@@ -18,6 +18,14 @@ path = "src/bin/replay_cli.rs"
 name = "m2-readiness"
 path = "src/bin/m2_readiness.rs"
 
+[[bin]]
+name = "cctp-live-readiness-probe"
+path = "src/bin/cctp-live-readiness-probe.rs"
+
+[[bin]]
+name = "cctp-evm-signer"
+path = "src/bin/cctp-evm-signer.rs"
+
 [dependencies]
 # Workspace dependencies
 tokio.workspace = true
@@ -46,12 +54,19 @@ rand.workspace = true
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+base64 = "0.22"
+urlencoding = "2.1"
 flate2 = "1"
 brotli = "8"
 
 # Internal dependencies
 stellarroute-indexer = { path = "../indexer" }
 stellarroute-routing = { path = "../routing" }
+
+# Stellar transaction construction / envelope validation
+stellar-xdr = { version = "23.0.0", features = ["std", "base64"] }
+stellar-strkey = "0.0.16"
+ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc"] }
 
 # API documentation
 utoipa = { version = "4", features = ["axum_extras"] }
@@ -63,8 +78,16 @@ arc-swap = { workspace = true }
 dashmap = "5.5"
 
 # Metrics
-prometheus = "0.13"
+prometheus = { version = "0.14", default-features = false }
 lazy_static = "1.4"
+
+# EVM ABI encoding (Circle CCTP v2 calldata)
+alloy-primitives = "0.8"
+alloy-sol-types = "0.8"
+
+# CCTP attestation crypto (Apache-2.0 / MIT)
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "arithmetic"] }
 
 # Async utilities
 futures-util = "0.3"
@@ -80,6 +103,11 @@ tokio-tungstenite = "0.20"
 futures-util = "0.3"
 criterion = { version = "0.5", features = ["html_reports"] }
 wiremock = "0.6"
+# Integration-test signing helpers (tests/common) — not exported from the lib.
+ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc"] }
+stellar-xdr = { version = "23.0.0", features = ["std", "base64"] }
+stellar-strkey = "0.0.16"
+sha2 = "0.10"
 
 [[bench]]
 name = "quote_serialization"

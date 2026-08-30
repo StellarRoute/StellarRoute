@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QuoteType } from "@/types";
+import { STAGING_DEMO_ISSUER } from "@/lib/trading-pairs";
 
 export const STORAGE_KEY = "stellar-route-trade-form";
 export const DEFAULT_AMOUNT = "";
 export const DEFAULT_SLIPPAGE = 0.5;
 export const DEFAULT_DEADLINE = 30;
-export const DEFAULT_FROM_TOKEN = "native";
-export const DEFAULT_TO_TOKEN =
-  "USDC:GA5ZSEJYB37JRC5AVCIAZDL2Y343IFRMA2EO3HJWV2XG7H5V5CQRUP7W";
+
+/** Prefer a staged demo market that currently quotes successfully (not native/XLM). */
+export const DEFAULT_FROM_TOKEN = `EUR:${STAGING_DEMO_ISSUER}`;
+/** Staging USDy — Circle USDC is not on the staging orderbook. */
+export const DEFAULT_TO_TOKEN = `USDy:${STAGING_DEMO_ISSUER}`;
+/** Prior Circle-USDC defaults — migrate away when indexed pairs load. */
+export const LEGACY_DEFAULT_FROM_TOKEN = "native";
+export const LEGACY_DEFAULT_TO_TOKEN =
+  "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 export const DEFAULT_SIDE: QuoteType = "sell";
 export const SESSION_RECOVERY_THRESHOLD_MS = 60_000;
 

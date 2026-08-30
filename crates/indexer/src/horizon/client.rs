@@ -177,6 +177,38 @@ impl HorizonClient {
 
     /// Fetch offers page with retry logic.
     ///
+    /// Fetch the latest ledger sequence from Horizon (`GET /ledgers?order=desc&limit=1`).
+    pub async fn get_latest_ledger(&self) -> Result<u64> {
+        let url = format!("{}/ledgers?order=desc&limit=1", self.base_url);
+        let url_c = url.clone();
+        self.retry_request(|| async {
+            let resp = self.execute_with_backpressure(&url_c).await?;
+            let status = resp.status();
+            if !status.is_success() {
+                let error_body = resp.text().await.unwrap_or_default();
+                return Err(IndexerError::StellarApi {
+                    endpoint: url_c.clone(),
+                    status: status.as_u16(),
+                    message: error_body,
+                });
+            }
+            let body: serde_json::Value =
+                resp.json().await.map_err(|e| IndexerError::StellarApi {
+                    endpoint: url_c.clone(),
+                    status: 0,
+                    message: format!("failed to parse ledgers JSON: {e}"),
+                })?;
+            body["_embedded"]["records"][0]["sequence"]
+                .as_u64()
+                .ok_or_else(|| IndexerError::StellarApi {
+                    endpoint: url_c.clone(),
+                    status: 0,
+                    message: "missing sequence in Horizon ledgers response".to_string(),
+                })
+        })
+        .await
+    }
+
     /// Confirmed endpoint: `GET /offers`
     /// Parameters:
     /// - `limit`: Number of offers to fetch (default: 200)

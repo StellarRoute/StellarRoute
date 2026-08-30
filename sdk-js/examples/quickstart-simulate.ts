@@ -51,8 +51,7 @@ async function main(): Promise<void> {
     );
   }
 
-  // 3. Attempt executeSwap — currently returns a documented stub error until
-  //    the swap-build endpoint is deployed.
+  // 3. Attempt executeSwap (prepare → sign callback → submit).
   console.log('\nAttempting executeSwap...');
   try {
     const swapResult = await client.executeSwap({
@@ -61,15 +60,18 @@ async function main(): Promise<void> {
       sender: 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
       min_output: String(Number(quote.total) * 0.995), // 0.5 % slippage guard
       slippage_bps: 50,
+      networkPassphrase: 'Test SDF Network ; September 2015',
+      signTransaction: async (xdr) => {
+        // Replace with Freighter / Keypair signing before calling submit for real.
+        console.log('Unsigned XDR received (first 40 chars):', xdr.slice(0, 40) + '…');
+        return xdr;
+      },
     });
-    // When the endpoint ships, sign and submit swapResult.xdr_envelope.
-    console.log('XDR envelope ready to sign:', swapResult.xdr_envelope.slice(0, 40) + '…');
+    console.log(`Submitted tx_hash=${swapResult.tx_hash} status=${swapResult.status}`);
   } catch (err) {
-    if (isStellarRouteApiError(err) && err.code === 'not_implemented') {
-      console.log(
-        'executeSwap is not yet available on this API instance.\n' +
-          'Simulation succeeded — build and sign the transaction via the Stellar SDK.',
-      );
+    if (isStellarRouteApiError(err)) {
+      console.log(`executeSwap failed: [${err.code}] ${err.message}`);
+      console.log('Simulation still succeeded — inspect prepare/submit errors above.');
     } else {
       throw err;
     }

@@ -55,6 +55,87 @@ describe('HeroSection — reduced-motion', () => {
     expect(screen.getByTestId('hero-gradient-1')).toBeInTheDocument();
     expect(screen.getByTestId('hero-gradient-2')).toBeInTheDocument();
   });
+
+  it('does not render motion classes when reduced motion is active', () => {
+    setReducedMotion(true);
+    const { container } = render(<HeroSection />);
+    expect(container.querySelectorAll('[class*="animate-"]')).toHaveLength(0);
+  });
+});
+
+describe('HeroSection — product positioning', () => {
+  afterEach(() => setReducedMotion(false));
+
+  it('positions StellarRoute as a non-custodial Stellar DEX aggregator', () => {
+    render(<HeroSection />);
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /Stellar DEX aggregator\. Cross-chain swaps beyond it\./i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Non-custodial Stellar DEX aggregator/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Stellar DEX \(SDEX\) and Soroban AMMs/i)
+    ).not.toHaveLength(0);
+    expect(
+      screen.getByRole('link', { name: /Stellar DEX aggregator/i })
+    ).toHaveAttribute('href', '/stellar-dex-aggregator');
+    expect(
+      screen.getByRole('link', { name: /Cross-chain swap/i })
+    ).toHaveAttribute('href', '/cross-chain-swap');
+  });
+
+  it('links both primary calls to action directly to the swap deck', () => {
+    render(<HeroSection />);
+    const links = screen.getAllByRole('link', {
+      name: /Open execution deck/i,
+    });
+    expect(links).toHaveLength(2);
+    links.forEach((link) => expect(link).toHaveAttribute('href', '/swap'));
+  });
+
+  it('labels the live corridor as testnet and states its limits', () => {
+    render(<HeroSection />);
+    expect(screen.getAllByText('TESTNET CORRIDOR')).not.toHaveLength(0);
+    expect(screen.getAllByText(/Stellar ↔ Ethereum Sepolia/i)).not.toHaveLength(0);
+    expect(
+      screen.getByText(/CCTP is disabled by default at the API layer/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not claim mainnet availability/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Both directions are signed-live on testnet/i)
+    ).toBeInTheDocument();
+  });
+
+  it('shows the signed-live testnet evidence metrics', () => {
+    render(<HeroSection />);
+    expect(screen.getByText('Signed-live / testnet evidence')).toBeInTheDocument();
+    expect(screen.getByText('Total saga')).toBeInTheDocument();
+    expect(screen.getByText('Burn → attestation')).toBeInTheDocument();
+    expect(screen.getByText('63')).toBeInTheDocument();
+    expect(screen.getByText('33')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', {
+        name: /0x713cc8b174d775bf7a3a97f33c53a37f698c93bc66b378dfa55ccfcc7f1cbed6/i,
+      })
+    ).toHaveAttribute(
+      'href',
+      'https://sepolia.etherscan.io/tx/0x713cc8b174d775bf7a3a97f33c53a37f698c93bc66b378dfa55ccfcc7f1cbed6'
+    );
+    expect(
+      screen.getByRole('link', {
+        name: /13d2025db39b461756954e1266864ea39c126cada55ddf24db9ec364138d16f2/i,
+      })
+    ).toHaveAttribute(
+      'href',
+      'https://stellar.expert/explorer/testnet/tx/13d2025db39b461756954e1266864ea39c126cada55ddf24db9ec364138d16f2'
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,15 +1,16 @@
 'use client';
 
-import { ShieldAlert, ShieldCheck, RefreshCw, ExternalLink } from 'lucide-react';
+import { ShieldAlert, RefreshCw, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { cn } from '@/lib/utils';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 const WALLET_DOCS: Record<string, string> = {
   freighter: 'https://docs.freighter.app/docs/guide/gettingStarted',
   xbull: 'https://xbull.app/docs',
+  albedo: 'https://albedo.link/',
+  lobstr: 'https://lobstr.co/',
 };
 
 interface WalletCapabilitiesBannerProps {
@@ -31,106 +32,117 @@ function getCapabilityLabel(capability: string): string {
   }
 }
 
-function getCapabilityIcon(capability: string): typeof ShieldCheck {
-  switch (capability) {
-    case 'sign_transaction':
-      return ShieldAlert;
-    case 'view_address':
-      return ShieldAlert;
-    case 'view_network':
-      return ShieldAlert;
-    case 'request_access':
-      return ShieldAlert;
-    default:
-      return ShieldCheck;
-  }
+function isNetworkRelatedDenial(reason?: string, resolution?: string): boolean {
+  const haystack = `${reason ?? ''} ${resolution ?? ''}`.toLowerCase();
+  return (
+    haystack.includes('network mismatch') ||
+    haystack.includes('switch wallet network') ||
+    haystack.includes('expected testnet') ||
+    haystack.includes('expected mainnet')
+  );
 }
 
 export function WalletCapabilitiesBanner({ className }: WalletCapabilitiesBannerProps) {
-  const { capabilities, walletId, refreshCapabilities } = useWallet();
+  const { capabilities, walletId, refreshCapabilities, networkMismatch } = useWallet();
 
   const handleRefresh = useCallback(() => {
     void refreshCapabilities();
   }, [refreshCapabilities]);
 
-  if (!capabilities) return null;
+  const denied = useMemo(() => {
+    if (!capabilities) return [];
+    return capabilities.statuses.filter((s) => {
+      if (s.allowed) return false;
+      // Avoid duplicating the dedicated network-mismatch banners
+      if (networkMismatch && isNetworkRelatedDenial(s.reason, s.resolution)) {
+        return false;
+      }
+      return true;
+    });
+  }, [capabilities, networkMismatch]);
 
-  const denied = capabilities.statuses.filter((s) => !s.allowed);
-  if (denied.length === 0) return null;
+  if (!capabilities || denied.length === 0) return null;
 
   const walletDocsUrl = walletId ? WALLET_DOCS[walletId] : null;
 
   return (
-    <Alert
-      variant="destructive"
-      className={cn(
-        'relative border-red-500/50 bg-red-500/10 text-red-900 dark:text-red-100',
-        className
-      )}
+    <div
       role="alert"
       aria-live="polite"
+      className={cn(
+        'relative overflow-hidden rounded-2xl border border-destructive/30 bg-destructive/8 p-4 text-foreground',
+        className
+      )}
     >
-      <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
-      <AlertDescription className="flex flex-col gap-3 pr-8">
-        <div className="text-sm font-medium">
-          Wallet permissions required
-        </div>
-        <div className="flex flex-col gap-2 text-xs text-red-800 dark:text-red-200">
-          {denied.map((status) => {
-            const Icon = getCapabilityIcon(status.capability);
-            return (
-              <div
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-destructive/50 to-transparent" />
+
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-destructive/15 text-destructive">
+          <ShieldAlert className="h-4 w-4" aria-hidden />
+        </span>
+
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold tracking-tight">
+              Wallet permissions required
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Approve the missing permissions in your wallet, then check again.
+            </p>
+          </div>
+
+          <ul className="space-y-2">
+            {denied.map((status) => (
+              <li
                 key={status.capability}
-                className="flex items-start gap-2"
+                className="rounded-lg border border-border/40 bg-background/35 px-3 py-2"
               >
-                <Icon className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <div className="flex flex-col">
-                  <span className="font-medium">
-                    {getCapabilityLabel(status.capability)}
-                  </span>
-                  {status.reason && (
-                    <span className="opacity-80">{status.reason}</span>
-                  )}
-                  {status.resolution && (
-                    <span className="font-medium text-red-700 dark:text-red-300">
-                      {status.resolution}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {walletDocsUrl && (
+                <p className="text-xs font-semibold">
+                  {getCapabilityLabel(status.capability)}
+                </p>
+                {status.reason && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{status.reason}</p>
+                )}
+                {status.resolution && (
+                  <p className="mt-1 text-xs font-medium text-foreground/90">
+                    {status.resolution}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {walletDocsUrl && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="h-9 border-border/50 bg-background/50 text-xs"
+              >
+                <a
+                  href={walletDocsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5"
+                >
+                  Wallet docs
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
-              asChild
-              className="h-8 text-xs border-red-600/30 hover:bg-red-500/20"
+              onClick={handleRefresh}
+              className="h-9 border-border/50 bg-background/50 text-xs"
             >
-              <a
-                href={walletDocsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5"
-              >
-                Wallet docs
-                <ExternalLink className="h-3 w-3" />
-              </a>
+              <RefreshCw className="mr-1.5 h-3 w-3" />
+              Check again
             </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="h-8 text-xs border-red-600/30 hover:bg-red-500/20"
-          >
-            <RefreshCw className="h-3 w-3 mr-1" />
-            Check again
-          </Button>
+          </div>
         </div>
-      </AlertDescription>
-    </Alert>
+      </div>
+    </div>
   );
 }

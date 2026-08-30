@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getHorizonUrl, getNetworkPassphrase, submitToHorizon } from './submit';
+import {
+  getHorizonUrl,
+  getNetworkPassphrase,
+  HorizonSubmitError,
+  submitToHorizon,
+} from './submit';
 
 describe('getHorizonUrl', () => {
   it('returns testnet URL for testnet', () => {
@@ -54,7 +59,7 @@ describe('submitToHorizon', () => {
   });
 
   it('throws with Horizon result_codes on failure', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 400,
       json: async () => ({
@@ -65,6 +70,67 @@ describe('submitToHorizon', () => {
     await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toThrow(
       'Transaction failed: tx_bad_auth'
     );
+
+    await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toMatchObject({
+      name: 'HorizonSubmitError',
+      code: 'tx_bad_auth',
+      transactionCode: 'tx_bad_auth',
+    });
+  });
+
+  it('classifies tx_bad_seq as typed submit errors', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        extras: { result_codes: { transaction: 'tx_bad_seq' } },
+      }),
+    } as Response);
+
+    await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toMatchObject({
+      code: 'tx_bad_seq',
+      transactionCode: 'tx_bad_seq',
+    });
+  });
+
+  it('classifies op_underfunded operation failures', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        extras: {
+          result_codes: {
+            transaction: 'tx_failed',
+            operations: ['op_underfunded'],
+          },
+        },
+      }),
+    } as Response);
+
+    await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toMatchObject({
+      code: 'op_underfunded',
+      transactionCode: 'tx_failed',
+      operationCodes: ['op_underfunded'],
+    });
+  });
+
+  it('classifies network timeouts as typed submit errors', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('timeout'));
+
+    await expect(submitToHorizon('xdr', 'testnet')).rejects.toBeInstanceOf(
+      HorizonSubmitError
+    );
+    await expect(submitToHorizon('xdr', 'testnet')).rejects.toMatchObject({
+      code: 'timeout',
+    });
+  });
+
+  it('classifies unreachable Horizon as horizon_error', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('Failed to fetch'));
+
+    await expect(submitToHorizon('xdr', 'testnet')).rejects.toMatchObject({
+      code: 'horizon_error',
+    });
   });
 
   it('throws with HTTP status when no JSON body', async () => {

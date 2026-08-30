@@ -21,21 +21,24 @@ fn create_sample_liquidity_graph() -> Vec<LiquidityEdge> {
             to: "USDC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_xlm_usdc".to_string(),
-            liquidity: 2_000_000_000, // 200 XLM
+            liquidity: 2_000_000_000, // 200 XLM,
+                    ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
             to: "EURT".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book_xlm_eurt".to_string(),
-            liquidity: 1_500_000_000, // 150 XLM
+            liquidity: 1_500_000_000, // 150 XLM,
+                    ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
             to: "BTC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_xlm_btc".to_string(),
-            liquidity: 500_000_000, // 50 XLM
+            liquidity: 500_000_000, // 50 XLM,
+                    ..Default::default()
         },
         
         // USDC liquidity pools
@@ -44,21 +47,24 @@ fn create_sample_liquidity_graph() -> Vec<LiquidityEdge> {
             to: "EURT".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_usdc_eurt".to_string(),
-            liquidity: 1_800_000_000, // 180 USDC
+            liquidity: 1_800_000_000, // 180 USDC,
+                    ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "BTC".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book_usdc_btc".to_string(),
-            liquidity: 800_000_000, // 80 USDC
+            liquidity: 800_000_000, // 80 USDC,
+                    ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
             to: "ETH".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_usdc_eth".to_string(),
-            liquidity: 1_200_000_000, // 120 USDC
+            liquidity: 1_200_000_000, // 120 USDC,
+                    ..Default::default()
         },
         
         // EURT liquidity pools
@@ -67,14 +73,16 @@ fn create_sample_liquidity_graph() -> Vec<LiquidityEdge> {
             to: "BTC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_eurt_btc".to_string(),
-            liquidity: 600_000_000, // 60 EURT
+            liquidity: 600_000_000, // 60 EURT,
+                    ..Default::default()
         },
         LiquidityEdge {
             from: "EURT".to_string(),
             to: "ETH".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book_eurt_eth".to_string(),
-            liquidity: 400_000_000, // 40 EURT
+            liquidity: 400_000_000, // 40 EURT,
+                    ..Default::default()
         },
         
         // BTC liquidity pools
@@ -83,7 +91,8 @@ fn create_sample_liquidity_graph() -> Vec<LiquidityEdge> {
             to: "ETH".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_btc_eth".to_string(),
-            liquidity: 300_000_000, // 30 BTC
+            liquidity: 300_000_000, // 30 BTC,
+                    ..Default::default()
         },
         
         // Additional paths for complexity
@@ -92,14 +101,16 @@ fn create_sample_liquidity_graph() -> Vec<LiquidityEdge> {
             to: "USDT".to_string(),
             venue_type: "orderbook".to_string(),
             venue_ref: "book_eth_usdt".to_string(),
-            liquidity: 900_000_000, // 90 ETH
+            liquidity: 900_000_000, // 90 ETH,
+                    ..Default::default()
         },
         LiquidityEdge {
             from: "USDT".to_string(),
             to: "USDC".to_string(),
             venue_type: "amm".to_string(),
             venue_ref: "pool_usdt_usdc".to_string(),
-            liquidity: 3_000_000_000, // 300 USDT
+            liquidity: 3_000_000_000, // 300 USDT,
+                    ..Default::default()
         },
     ]
 }

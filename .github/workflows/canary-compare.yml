@@ -1,0 +1,59 @@
+name: Canary Live Quote Compare
+# Runs every 5 minutes against the production API to detect quote price
+# divergence between StellarRoute and the Horizon SDEX order book.
+#
+# See docs/routing_canary.md — "Live Quote Comparison Job" for full context,
+# threshold guidance, and the alert runbook.
+
+on:
+  schedule:
+    # Every 5 minutes, all day, every day.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Target StellarRoute API base URL'
+        required: false
+        default: 'https://api.stellarroute.io'
+      verbose:
+        description: 'Enable verbose diagnostic output'
+        type: boolean
+        default: false
+
+jobs:
+  canary-compare:
+    name: Compare Live Quotes vs Horizon Reference
+    runs-on: ubuntu-latest
+    # Python 3 is pre-installed on ubuntu-latest; no pip install required.
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Fail immediately with a clear message if the secret is missing.
+      # This prevents the script from running in an unauthenticated state
+      # and makes misconfiguration obvious in the workflow summary.
+      - name: Verify admin token secret is configured
+        run: |
+          if [ -z "${{ secrets.STELLARROUTE_CANARY_ADMIN_TOKEN }}" ]; then
+            echo "ERROR: The STELLARROUTE_CANARY_ADMIN_TOKEN secret is not set."
+            echo "Set it in the repository Settings → Secrets and variables → Actions."
+            echo "See docs/routing_canary.md for setup instructions."
+            exit 1
+          fi
+
+      # Run the comparison script against the target API.
+      # Exit code 0 = within threshold; exit code 1 = sustained divergence.
+      - name: Run canary live quote comparison
+        env:
+          CANARY_SR_BASE_URL: ${{ github.event.inputs.base_url || 'https://api.stellarroute.io' }}
+          CANARY_ADMIN_TOKEN: ${{ secrets.STELLARROUTE_CANARY_ADMIN_TOKEN }}
+        run: |
+          VERBOSE_FLAG=""
+          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
+            VERBOSE_FLAG="--verbose"
+          fi
+          python3 monitoring/canary-compare/canary_compare.py \
+            --sr-base-url "$CANARY_SR_BASE_URL" \
+            --admin-token "$CANARY_ADMIN_TOKEN" \
+            $VERBOSE_FLAG

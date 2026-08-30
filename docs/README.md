@@ -37,9 +37,19 @@ This directory is the documentation hub for StellarRoute. It organizes design, d
 - [Gas benchmarks](contracts/gas-benchmarks.md) — gas cost and performance benchmarks.
 - [Gas optimization](contracts/gas-optimization-usage.md) — WASM and gas optimization guidance.
 
+### Cross-chain / CCTP
+
+- [Signed-live Stellar → Sepolia proof](cctp/signed-live-stellar-to-sepolia.md) — testnet destination mint milestone (`0x713cc8b1…bed6`).
+- [Signed-live Sepolia → Stellar proof](cctp/signed-live-sepolia-to-stellar.md) — reverse corridor signed-live (MetaMask + Freighter; Fast).
+- [CCTP staging enablement checklist](deployment/cctp-staging-enablement-checklist.md) — flip `CCTP_ENABLED` after reverse proof.
+- [Attestation verification](cctp/attestation-verification.md) — Iris + on-chain attester trust model.
+- [Stellar verifier status](cctp/stellar-verifier-blockers.md) — burn/approval/mint verifier readiness.
+- [CCTP v2 API contract](api/cctp-v2-contract.md) — `/api/v2/bridge/cctp/*` HTTP contract.
+
 ### Deployment
 
 - [Deployment overview](deployment/README.md) — deployment and production guides.
+- [Gradual rollout plan](deployment/gradual-rollout-plan.md) — limited pairs → full markets, metric gates, rollback, status-page templates.
 - [DB pool tuning](deployment/db-pool-tuning.md) — PostgreSQL pool sizing and tuning.
 - [Database timeout guardrails](deployment/database-timeout-guardrails.md) — runtime timeout strategies.
 - [Tracing troubleshooting](deployment/tracing-troubleshooting.md) — observability and tracing guidance.
@@ -60,6 +70,10 @@ This directory is the documentation hub for StellarRoute. It organizes design, d
 ### Operational runbooks
 
 - [Kill switch runbook](RUNBOOK_KILL_SWITCH.md) — emergency kill-switch activation and recovery procedure.
+- [Swap submitting sender-lock recovery](runbooks/swap-submitting-sender-lock.md) — reconcile bound tx hash / guarded release after timebounds (classic PathPayment only; Soroban unsupported).
+- [Live swap testnet checklist](readiness/live-swap-testnet-checklist.md) — E2E classic prepare/sign/submit on testnet.
+- [CCTP signed-live evidence (forward)](cctp/signed-live-stellar-to-sepolia.md) — Stellar → Sepolia USDC mint proof + evidence JSON.
+- [CCTP signed-live evidence (reverse)](cctp/signed-live-sepolia-to-stellar.md) — Sepolia → Stellar burn/mint hashes + evidence JSON.
 - [Quote purger runbook](QUOTE_PURGER_RUNBOOK.md) — quote purger operation, scheduling, and troubleshooting.
 - [Routing canary](routing_canary.md) — canary routing configuration, promotion, and rollback.
 - [Indexer lag monitoring](indexer-lag-monitoring.md) — indexer lag alerting thresholds and remediation steps.
@@ -77,10 +91,14 @@ This directory is the documentation hub for StellarRoute. It organizes design, d
 - [Performance budget](performance_budget.md) — frontend and API performance targets.
 - [Readiness](readiness/M2_GUIDE.md) — readiness and runbook content.
 
+### User guides
+
+- [First live swap](user-guide-first-live-swap.md) — wallet, trustline, slippage, and confirm for non-developer traders (also `/guide` in the app).
+
 ### Design
 
 - [Information architecture](design/information-architecture.md) — sitemap, navigation hierarchy, and UX structure.
-- [Empty states spec](design/empty-states-spec.md) — design specification for empty and error states.
+- [Empty states spec](design/empty-states-spec.md) — design specification for empty and error states (links the first-swap guide from swap empty state).
 - [Accessibility contrast audit](design/accessibility-contrast-audit.md) — WCAG colour contrast audit results.
 
 ### Frontend documentation

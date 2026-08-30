@@ -1,8 +1,7 @@
 'use client';
 
-import { AlertTriangle, ExternalLink, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { isNetworkAllowed } from '@/lib/network-policy';
 import { cn } from '@/lib/utils';
@@ -10,15 +9,26 @@ import { cn } from '@/lib/utils';
 const WALLET_DOCS: Record<string, string> = {
   freighter: 'https://docs.freighter.app/docs/guide/gettingStarted',
   xbull: 'https://xbull.app/docs',
+  albedo: 'https://albedo.link/',
+  lobstr: 'https://lobstr.co/',
 };
+
+function formatNetworkLabel(value: string | null | undefined): string {
+  if (!value) return 'Unknown';
+  const key = value.toLowerCase();
+  if (key === 'public' || key === 'mainnet' || key === 'pubnet') return 'Mainnet';
+  if (key === 'testnet' || key === 'test') return 'Testnet';
+  return value;
+}
 
 interface NetworkMismatchBannerProps {
   className?: string;
 }
 
 /**
- * Banner shown when connected wallet network differs from app target network
- * Blocks swap until resolved or user disconnects
+ * In-card network mismatch panel.
+ * Shell already shows NetworkStatusBanner; this stays compact and action-focused.
+ * Critical mismatch cannot be dismissed away.
  */
 export function NetworkMismatchBanner({ className }: NetworkMismatchBannerProps) {
   const { networkMismatch, network, walletNetwork, walletId, disconnect, setNetwork } =
@@ -31,72 +41,91 @@ export function NetworkMismatchBanner({ className }: NetworkMismatchBannerProps)
     walletNetwork !== null && isNetworkAllowed(walletNetwork);
 
   return (
-    <Alert
-      variant="destructive"
-      className={cn(
-        'relative border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-100',
-        className
-      )}
+    <div
       role="alert"
       aria-live="assertive"
+      className={cn(
+        'relative overflow-hidden rounded-2xl border border-signal/35 bg-signal/8 p-4 text-foreground',
+        className
+      )}
     >
-      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-      <AlertDescription className="flex flex-col gap-3 pr-8">
-        <div className="text-sm font-medium">
-          Network mismatch detected
-        </div>
-        <div className="text-xs text-amber-800 dark:text-amber-200">
-          Your wallet is connected to <strong>{walletNetwork}</strong>, but this app is set to{' '}
-          <strong>{network}</strong>. Please switch your wallet network to continue.
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canUseWalletNetwork && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNetwork(walletNetwork)}
-              className="h-8 text-xs border-amber-600/30 hover:bg-amber-500/20"
-            >
-              Use wallet network
-            </Button>
-          )}
-          {walletDocsUrl && (
-            <Button
-              variant="outline"
-              size="sm"
-              asChild
-              className="h-8 text-xs border-amber-600/30 hover:bg-amber-500/20"
-            >
-              <a
-                href={walletDocsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5"
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-signal/60 to-transparent" />
+
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-signal/15 text-signal">
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+        </span>
+
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold tracking-tight">
+              Network mismatch detected
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Switch your wallet network to continue — this warning cannot be hidden.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-lg border border-border/50 bg-background/40 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Wallet
+              </p>
+              <p className="font-mono text-sm font-semibold uppercase">
+                {formatNetworkLabel(walletNetwork)}
+              </p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-signal" aria-hidden />
+            <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                App
+              </p>
+              <p className="font-mono text-sm font-semibold uppercase text-primary">
+                {formatNetworkLabel(network)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {canUseWalletNetwork && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setNetwork(walletNetwork)}
+                className="h-9 border-signal/35 bg-background/50 text-xs"
               >
-                How to switch network
-                <ExternalLink className="h-3 w-3" />
-              </a>
+                Use wallet network
+              </Button>
+            )}
+            {walletDocsUrl && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="h-9 border-border/50 bg-background/50 text-xs"
+              >
+                <a
+                  href={walletDocsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5"
+                >
+                  How to switch network
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={disconnect}
+              className="h-9 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Disconnect wallet
             </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={disconnect}
-            className="h-8 text-xs border-amber-600/30 hover:bg-amber-500/20"
-          >
-            Disconnect wallet
-          </Button>
+          </div>
         </div>
-      </AlertDescription>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={disconnect}
-        className="absolute top-2 right-2 h-6 w-6 rounded-md hover:bg-amber-500/20"
-        aria-label="Dismiss and disconnect"
-      >
-        <X className="h-4 w-4" />
-      </Button>
-    </Alert>
+      </div>
+    </div>
   );
 }

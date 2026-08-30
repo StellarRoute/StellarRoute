@@ -191,7 +191,11 @@ export function StatusDashboard() {
                 <CardTitle className="text-2xl">
                   {overallStatusKey === 'healthy' || overallStatusKey === 'ok'
                     ? 'All Systems Operational'
-                    : 'Service Degraded'}
+                    : overallStatusKey === 'unhealthy'
+                      ? 'Service Unhealthy'
+                      : overallStatusKey === 'unknown'
+                        ? 'Status Unavailable'
+                        : 'Service Degraded'}
                 </CardTitle>
                 <CardDescription>
                   {lastUpdated && (
@@ -237,9 +241,15 @@ export function StatusDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(healthData.components ?? {}).map(([name, status]) => (
-              <ComponentStatusItem key={name} name={name} status={status} />
-            ))}
+            {Object.keys(healthData.components ?? {}).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No component details returned by the API.
+              </p>
+            ) : (
+              Object.entries(healthData.components ?? {}).map(([name, status]) => (
+                <ComponentStatusItem key={name} name={name} status={status} />
+              ))
+            )}
           </CardContent>
         </Card>
       )}

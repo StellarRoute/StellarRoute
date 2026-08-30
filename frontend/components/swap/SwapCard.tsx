@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowUpDown, RefreshCw, Stethoscope } from 'lucide-react';
 import { AmountInput } from './AmountInput';
 import { TokenSelector } from './TokenSelector';
+import { SwapPresetTemplates } from './SwapPresetTemplates';
 import { PriceInfoPanel } from './PriceInfoPanel';
 import type { AlternativeRoute } from './RouteDisplay';
 import RouteDisplay from './RoutePanelAsync';
@@ -16,40 +18,57 @@ import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
 import { TransactionConfirmationModal } from './TransactionConfirmationModal';
 import { QuoteStreamStatusIndicator } from './QuoteStreamStatusIndicator';
+import { QuoteRefreshLiveRegion } from './QuoteRefreshLiveRegion';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
-import type { TradeParams } from '@/hooks/useTransactionLifecycle';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
 import { useWalletBalance } from '@/hooks/useWalletBalance';
 import {
   DEFAULT_DEADLINE,
+  DEFAULT_FROM_TOKEN,
   DEFAULT_SLIPPAGE,
+  DEFAULT_TO_TOKEN,
+  LEGACY_DEFAULT_FROM_TOKEN,
+  LEGACY_DEFAULT_TO_TOKEN,
   SESSION_RECOVERY_THRESHOLD_MS,
   type TradeFormSnapshot,
 } from '@/hooks/useTradeFormStorage';
-import { useBatchQuote } from '@/hooks/useApi';
+import {
+  counterpartsFor,
+  pairExists,
+  pickPreferredDemoPair,
+} from '@/lib/trading-pairs';
+import { useBatchQuote, usePairs, useRoutes } from '@/hooks/useApi';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
 import type { QuoteRequestItem } from '@/lib/api/client';
+import { StellarRouteApiError } from '@/lib/api/client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useQuoteStreamStatus } from '@/hooks/useQuoteStreamStatus';
+import { useQuoteRefreshAnnouncements } from '@/hooks/useQuoteRefreshAnnouncements';
+import { useQuoteRefreshTransition } from '@/hooks/useQuoteRefreshTransition';
 import { useCompactMode } from '@/hooks/useCompactMode';
 import { useShareableQuote } from '@/hooks/useShareableQuote';
 import { ShareQuoteButton } from './ShareQuoteButton';
-import { NetworkMismatchBanner } from '@/components/shared/NetworkMismatchBanner';
 import { WalletCapabilitiesBanner } from '@/components/shared/WalletCapabilitiesBanner';
 import { DiagnosticsPanel } from '@/components/shared/DiagnosticsPanel';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { signTransactionWithWallet } from '@/lib/wallet';
-import { submitToHorizon, getNetworkPassphrase, getHorizonUrl } from '@/lib/wallet/submit';
-import { buildPathPaymentXdr } from '@/lib/wallet/xdr-builder';
+import { getNetworkPassphrase } from '@/lib/wallet/submit';
+import {
+  createApiSwapExecution,
+  preflightClassicOneHop,
+  resolveSwapExecutionMode,
+  userCopyForSwapExecutionError,
+} from '@/lib/swap/api-execution';
+import { isProductionFrontendEnv } from '@/lib/env-guard';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSwapI18n } from '@/lib/swap-i18n';
-import { useRoutes } from '@/hooks/useApi';
-import { emitRouteEvent } from '@/lib/telemetry';
+import { emitRouteEvent, emitSwapFunnelEvent, getPriceImpactTier } from '@/lib/telemetry';
 import { SwapWarningCenter, type SwapWarning } from './SwapWarningCenter';
 import { quoteExportToCsv, type QuoteExportPayload } from '@/lib/quote-export';
 import { getTraderErrorCopy, toTraderErrorLine } from '@/lib/api/trader-error-copy';
@@ -103,11 +122,10 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     setFromToken,
     toToken,
     setToToken,
+    setTokenPair,
     fromAmount,
     setFromAmount,
     toAmount,
-    side,
-    setSide,
     slippage,
     setSlippage,
     deadline,
@@ -122,6 +140,54 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     snapshotCurrent,
     reset,
   } = useSwapState();
+
+  const { data: indexedPairs } = usePairs();
+
+  // Prefer an indexed demo market that currently quotes (EUR/USDy, BTC/EXT, …).
+  // Avoid legacy Circle-USDC defaults and unpaired token combinations.
+  useEffect(() => {
+    if (!indexedPairs?.length) return;
+
+    const isLegacyDefaultPair =
+      (fromToken === LEGACY_DEFAULT_FROM_TOKEN &&
+        toToken === LEGACY_DEFAULT_TO_TOKEN) ||
+      toToken === LEGACY_DEFAULT_TO_TOKEN;
+
+    if (pairExists(fromToken, toToken, indexedPairs) && !isLegacyDefaultPair) {
+      return;
+    }
+
+    if (pairExists(DEFAULT_FROM_TOKEN, DEFAULT_TO_TOKEN, indexedPairs)) {
+      setTokenPair(DEFAULT_FROM_TOKEN, DEFAULT_TO_TOKEN);
+      return;
+    }
+
+    const preferred = pickPreferredDemoPair(indexedPairs);
+    if (preferred) {
+      setTokenPair(preferred.from, preferred.to);
+      return;
+    }
+
+    setTokenPair(DEFAULT_FROM_TOKEN, DEFAULT_TO_TOKEN);
+  }, [indexedPairs, fromToken, toToken, setTokenPair]);
+
+  // When pay asset changes, keep receive asset on a real indexed market.
+  const handleFromTokenSelect = useCallback(
+    (asset: string) => {
+      const counterparts = counterpartsFor(asset, indexedPairs);
+      if (counterparts.includes(toToken)) {
+        setFromToken(asset);
+        return;
+      }
+      const nextTo = counterparts[0];
+      if (nextTo) {
+        setTokenPair(asset, nextTo);
+        return;
+      }
+      setFromToken(asset);
+    },
+    [indexedPairs, setFromToken, setTokenPair, toToken]
+  );
 
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
     null
@@ -260,6 +326,10 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     updateExtendedRouteDetails,
   } = useExpertSettings();
   const { enabled: batchSwapsEnabled } = useFeatureFlag('batch_swaps');
+  const {
+    enabled: apiSwapExecutionEnabled,
+    loading: apiSwapFlagsLoading,
+  } = useFeatureFlag('real_xdr');
   const batchRequests = useMemo<QuoteRequestItem[]>(() => {
     const amount = Number.parseFloat(fromAmount);
     if (
@@ -315,18 +385,27 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     isConnected,
     walletId,
     network: walletAppNetwork,
+    walletNetwork,
     networkMismatch,
     capabilities,
     connect,
     setTransactionPending,
   } = useWallet();
 
+  // Same network-aware origin as quotes — never fall back to the singleton's
+  // localhost default when only NEXT_PUBLIC_API_URL_TESTNET is set.
+  const apiClient = useStellarRouteClient();
+
+  // Horizon lookup must follow the wallet's network (where funds live), not
+  // only the app toggle — otherwise balances show Unavailable / zero.
+  const balanceHorizonNetwork = walletNetwork ?? walletAppNetwork;
+
   // Fetch real wallet balance for the selected from-asset
   const balanceState = useWalletBalance({
     address: walletAddress,
     asset: fromToken,
     isConnected,
-    network: walletAppNetwork,
+    network: balanceHorizonNetwork,
   });
 
   // --- Issue #506: Memo State Management ---
@@ -374,6 +453,27 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       quote.lastQuotedAtMs < recoveryRequestedAt ||
       quote.loading ||
       quote.isStale);
+
+  // Clear session-recovery gate once a usable quote lands (prevents sticky
+  // "Session restored — fetching a fresh quote" + disabled CTA).
+  useEffect(() => {
+    if (recoveryRequestedAt === null) return;
+    if (
+      quote.lastQuotedAtMs !== null &&
+      quote.lastQuotedAtMs >= recoveryRequestedAt &&
+      !quote.loading &&
+      !quote.error &&
+      !quote.isStale
+    ) {
+      setRecoveryRequestedAt(null);
+    }
+  }, [
+    recoveryRequestedAt,
+    quote.lastQuotedAtMs,
+    quote.loading,
+    quote.error,
+    quote.isStale,
+  ]);
 
   // --- Issue #745: Swap Warning Center Logic ---
   const [warnings, setWarnings] = useState<SwapWarning[]>([]);
@@ -436,6 +536,27 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
         });
       }
 
+      // 3b. Degraded / stale orderbook — notify, do not block swap
+      const freshness = quote.data?.data_freshness;
+      const degradedOrderbook =
+        quote.data?.degraded === true ||
+        (freshness != null &&
+          freshness.fresh_count === 0 &&
+          freshness.stale_count > 0);
+      if (degradedOrderbook && quote.data) {
+        const id = 'degraded_orderbook';
+        if (!dismissedWarningIds.has(id)) {
+          list.push({
+            id,
+            type: 'warning',
+            title: 'Orderbook outdated',
+            message: t('swap.card.degradedOrderbook'),
+            timestamp: Date.now(),
+            dismissible: true,
+          });
+        }
+      }
+
       // 4. Quote error response from API
       if (quote.error) {
         const copy = getTraderErrorCopy(quote.error);
@@ -463,7 +584,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     checkWarnings();
     const interval = setInterval(checkWarnings, 1000);
     return () => clearInterval(interval);
-  }, [slippage, quote.lastQuotedAtMs, quote.error, dismissedWarningIds]);
+  }, [slippage, quote.lastQuotedAtMs, quote.error, quote.data, dismissedWarningIds, t]);
 
   // Connection status indicator
   const { isOnline } = useOnlineStatus();
@@ -477,31 +598,73 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const walletReady =
     isConnected && !!walletId && !!walletAddress && !networkMismatch;
 
+  const classicPreflight = useMemo(() => {
+    const path = selectedRoute?.rawPath ?? quote.data?.path ?? [];
+    return preflightClassicOneHop(path);
+  }, [selectedRoute?.rawPath, quote.data?.path]);
+
+  const swapExecutionMode = useMemo(
+    () =>
+      resolveSwapExecutionMode({
+        realXdrEnabled: apiSwapExecutionEnabled,
+        flagsLoading: apiSwapFlagsLoading,
+        isProduction: isProductionFrontendEnv(process.env),
+      }),
+    [apiSwapExecutionEnabled, apiSwapFlagsLoading],
+  );
+
   const productionSwapDeps = useMemo(() => {
     if (!walletReady || !walletId || !walletAddress) return null;
     const networkPassphrase = getNetworkPassphrase(walletAppNetwork);
-    const horizonUrl = getHorizonUrl(walletAppNetwork);
-    return {
-      buildXdr: (params: TradeParams) =>
-        buildPathPaymentXdr({
-          walletAddress: params.walletAddress || walletAddress,
-          fromAsset: params.fromAsset,
-          fromAmount: params.fromAmount,
-          toAsset: params.toAsset,
-          minReceived: params.minReceived,
-          routePath: params.routePath,
-          networkPassphrase,
-          horizonUrl,
-        }),
-      signTransaction: (xdr: string) =>
-        signTransactionWithWallet(xdr, walletId, networkPassphrase),
-      submitTransaction: (signedXdr: string) =>
-        submitToHorizon(signedXdr, walletAppNetwork),
+    const signTransaction = (xdr: string) =>
+      signTransactionWithWallet(xdr, walletId, networkPassphrase);
+
+    // Classic API prepare → Freighter (wallet passphrase) → API submit → Horizon confirm.
+    // No client-built XDR / direct-Horizon product path — fail closed when unavailable.
+    if (swapExecutionMode.mode === 'api_prepare_submit') {
+      const apiDeps = createApiSwapExecution({
+        client: apiClient,
+        sender: walletAddress,
+        slippageBps: Math.round(slippage * 100),
+        network: walletAppNetwork,
+        signTransaction,
+      });
+      return {
+        buildXdr: apiDeps.buildXdr,
+        signTransaction: apiDeps.signTransaction,
+        submitTransaction: apiDeps.submitTransaction,
+        getPreparedAmounts: apiDeps.getPreparedAmounts,
+      };
+    }
+
+    const disabledMessage = swapExecutionMode.message;
+    const reject = async () => {
+      throw new Error(disabledMessage);
     };
-  }, [walletReady, walletId, walletAddress, walletAppNetwork]);
+    return {
+      buildXdr: reject,
+      signTransaction: reject,
+      submitTransaction: reject,
+      getPreparedAmounts: () => null,
+    };
+  }, [
+    apiClient,
+    walletReady,
+    walletId,
+    walletAddress,
+    walletAppNetwork,
+    swapExecutionMode,
+    slippage,
+  ]);
 
   const optimistic = useOptimisticSwap({
-    ...(productionSwapDeps ?? {}),
+    ...(productionSwapDeps
+      ? {
+          buildXdr: productionSwapDeps.buildXdr,
+          signTransaction: productionSwapDeps.signTransaction,
+          submitTransaction: productionSwapDeps.submitTransaction,
+        }
+      : {}),
     rollbackTarget: {
       setFromToken,
       setToToken,
@@ -545,8 +708,12 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       reset();
       setSelectedRoute(null);
     } else if (optimistic.status === 'failed') {
-      const errorObj = optimistic.errorMessage ? new Error(optimistic.errorMessage) : new Error('Unknown error');
-      const copy = getTraderErrorCopy(errorObj);
+      const copy = getTraderErrorCopy(
+        optimistic.error ??
+          (optimistic.errorMessage
+            ? { message: optimistic.errorMessage }
+            : new Error('Unknown error')),
+      );
       toast.error(toTraderErrorLine(copy), {
         id: 'swap-toast',
       });
@@ -557,6 +724,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     }
   }, [
     optimistic.status,
+    optimistic.error,
     optimistic.errorMessage,
     bypassConfirmation,
     isModalOpen,
@@ -581,13 +749,27 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     if (signBlocked) return 'permission_blocked';
     if (memoError) return 'error'; // Block swap if there is a memo validation error
     if (!fromAmount || parseFloat(fromAmount) === 0) return 'no_amount';
-    if (quote.error) return 'error';
-    if (requiresFreshQuote) return 'refreshing_quote';
-    if (parseFloat(fromAmount) > parseFloat(fromBalance))
+    if (requiresFreshQuote || quote.loading || quote.isRecovering) {
+      return 'refreshing_quote';
+    }
+    const refreshableQuoteError =
+      quote.error instanceof StellarRouteApiError &&
+      (quote.error.code === 'stale_market_data' ||
+        quote.error.code === 'quote_expired');
+    // Client-expired quote → refresh CTA. Successful degraded orderbook quotes
+    // keep `quote.data` and must remain swappable (warning is shown separately).
+    if (quote.isStale || (refreshableQuoteError && !quote.data)) return 'stale_quote';
+    // Hard quote errors only when there is nothing usable on screen.
+    if (quote.error && !quote.data) return 'error';
+    if (
+      !balanceState.error &&
+      parseFloat(fromAmount) > parseFloat(fromBalance)
+    )
       return 'insufficient_balance';
     if (quote.priceImpact > 10) return 'high_impact_warning';
-    if (quote.loading) return 'refreshing_quote';
-    if (quote.isStale) return 'error';
+    // One-hop classic preflight always applies — AMM/multi-hop never bypass gates.
+    if (!classicPreflight.ok) return 'error';
+    if (swapExecutionMode.mode === 'disabled') return 'error';
     return 'ready';
   }, [
     fromAmount,
@@ -596,28 +778,86 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     networkMismatch,
     capabilities,
     optimistic.submitLock,
+    quote.data,
     quote.error,
+    quote.isRecovering,
     quote.isStale,
     quote.loading,
     quote.priceImpact,
     requiresFreshQuote,
     memoError,
+    balanceState.error,
+    classicPreflight.ok,
+    swapExecutionMode.mode,
   ]);
 
   const displayButtonState = storyPresentation?.buttonState ?? buttonState;
   const displayQuoteLoading = storyPresentation?.quoteLoading ?? quote.loading;
   const displayQuoteStale = storyPresentation?.quoteStale ?? quote.isStale;
-  const displayQuoteError = storyPresentation?.quoteError ?? quote.error;
+  // Soft-fail: keep numbers, hide hard error copy while a quote is still shown.
+  const displayQuoteError =
+    storyPresentation?.quoteError ??
+    (quote.data ? null : quote.error);
   const displayQuotePriceImpact =
     storyPresentation?.quotePriceImpact ?? quote.priceImpact;
   const displayToAmount = storyPresentation?.toAmount ?? toAmount;
   const displayFormattedRate =
     storyPresentation?.formattedRate ?? formattedRate;
+
+  // Animated quote refresh feedback: pulse the receive amount when it
+  // changes, and announce the outcome for screen reader users.
+  const receiveAmount = selectedRoute?.expectedAmount ?? displayToAmount;
+  const { isRefreshing: isReceiveAmountRefreshing, transitionStyle: receiveAmountTransitionStyle } =
+    useQuoteRefreshTransition(receiveAmount);
+  const { politeMessage: quoteRefreshPoliteMessage, assertiveMessage: quoteRefreshAssertiveMessage } =
+    useQuoteRefreshAnnouncements({
+      canAnnounce: parseFloat(fromAmount) > 0,
+      loading: quote.loading,
+      error: quote.error,
+      isRecovering: quote.isRecovering,
+      hasPendingRetry: quote.hasPendingRetry,
+      lastQuotedAtMs: quote.lastQuotedAtMs,
+      requestKey: `${fromToken}:${toToken}:${fromAmount}`,
+      rateSummary: displayFormattedRate,
+      t,
+    });
   const displayIsModalOpen = storyPresentation?.confirmModalOpen ?? isModalOpen;
   const displayOptimisticStatus =
     storyPresentation?.optimisticStatus ?? optimistic.status;
-  const displayTradeParams =
-    storyPresentation?.tradeParams ?? optimistic.tradeParams;
+  // Prefer authoritative prepare amounts once API prepare completes (status advances).
+  const displayTradeParams = useMemo(() => {
+    const base = storyPresentation?.tradeParams ?? optimistic.tradeParams;
+    if (!base) return base;
+    if (swapExecutionMode.mode !== 'api_prepare_submit') return base;
+    const prepared = productionSwapDeps?.getPreparedAmounts?.();
+    if (!prepared) return base;
+    return {
+      ...base,
+      toAmount: prepared.expected_output,
+      minReceived: prepared.min_output
+        ? `${prepared.min_output} ${toSymbol}`
+        : base.minReceived,
+    };
+    // optimistic.status re-renders after prepare so getPreparedAmounts() is fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- status is a prepare-completion signal
+  }, [
+    storyPresentation?.tradeParams,
+    optimistic.tradeParams,
+    optimistic.status,
+    swapExecutionMode.mode,
+    productionSwapDeps,
+    toSymbol,
+  ]);
+
+  const swapExecutionErrorMessage = useMemo(() => {
+    if (!optimistic.error && !optimistic.errorMessage) return undefined;
+    if (swapExecutionMode.mode !== 'api_prepare_submit') {
+      return optimistic.errorMessage;
+    }
+    return userCopyForSwapExecutionError(
+      optimistic.error ?? { message: optimistic.errorMessage! },
+    );
+  }, [optimistic.error, optimistic.errorMessage, swapExecutionMode.mode]);
 
   useEffect(() => {
     if (!storyPresentation?.seedFromAmount) return;
@@ -705,6 +945,17 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       );
       return;
     }
+    if (!classicPreflight.ok) {
+      toast.error(
+        classicPreflight.message ??
+          'This route cannot be executed as a classic one-hop SDEX swap.',
+      );
+      return;
+    }
+    if (swapExecutionMode.mode === 'disabled') {
+      toast.error(swapExecutionMode.message);
+      return;
+    }
     const snap: PreSubmitSnapshot = {
       fromToken,
       toToken,
@@ -716,6 +967,14 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     const finalToAmount = selectedRoute?.expectedAmount
       ? selectedRoute.expectedAmount.replace('≈ ', '')
       : toAmount;
+    emitSwapFunnelEvent('confirm_clicked', {
+      quoteId: quote.requestId ?? undefined,
+      routeId: selectedRoute?.id,
+      fromAssetCode: fromToken,
+      toAssetCode: toToken,
+      hopCount: selectedRoute?.rawPath?.length ?? quote.data?.path?.length ?? 1,
+      priceImpactTier: getPriceImpactTier(quote.priceImpact),
+    });
     optimistic.initiateSwap({
       fromAsset: fromToken,
       fromAmount,
@@ -742,6 +1001,8 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
     optimistic,
     walletAddress,
     productionSwapDeps,
+    swapExecutionMode,
+    classicPreflight,
   ]);
 
   const handleSwap = useCallback(() => {
@@ -896,8 +1157,6 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
       data-testid="swap-card"
       className="w-full max-w-[480px] mx-auto perspective-1000"
     >
-      {/* Network Mismatch Banner */}
-      <NetworkMismatchBanner className="mb-4" />
       <WalletCapabilitiesBanner className="mb-4" />
 
       {/* Shared Quote Stale Warning */}
@@ -919,24 +1178,26 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
 
       <Card
         className={cn(
-          'relative overflow-hidden border-border/40 bg-background/60 backdrop-blur-xl shadow-2xl rounded-[32px] transition-all duration-500 hover:shadow-primary/5',
-          isCompact && 'rounded-2xl',
-          expertMode &&
-            'border-amber-500/30 hover:shadow-amber-500/10 shadow-amber-500/5'
+          'relative overflow-hidden chart-panel rounded-2xl transition-all duration-300 sm:rounded-3xl',
+          isCompact && 'rounded-xl',
+          expertMode && 'border-signal/40'
         )}
       >
-        {/* Animated Background Gradients */}
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-700" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
 
-        <CardContent className={cn('space-y-4', isCompact ? 'p-4' : 'p-6')}>
+        <CardContent
+          className={cn(
+            'space-y-3 sm:space-y-4',
+            isCompact ? 'p-3 sm:p-4' : 'p-4 sm:p-6'
+          )}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1 sm:mb-2">
             <div className="flex items-center gap-1.5">
               <h2
                 className={cn(
-                  'font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent',
-                  isCompact ? 'text-lg' : 'text-xl'
+                  'brand-wordmark tracking-tight text-foreground',
+                  isCompact ? 'text-lg' : 'text-xl sm:text-2xl'
                 )}
               >
                 Swap
@@ -1005,6 +1266,16 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
             </div>
           </div>
 
+          {indexedPairs && indexedPairs.length > 0 && (
+            <SwapPresetTemplates
+              availablePairs={indexedPairs}
+              selectedBase={fromToken}
+              selectedQuote={toToken}
+              onSelect={(base, quote) => setTokenPair(base, quote)}
+              className={cn(isCompact ? 'mb-2' : 'mb-3')}
+            />
+          )}
+
           {/* Pay Section */}
           <div className={cn('space-y-2 group', isCompact && 'space-y-1')}>
             <div
@@ -1020,15 +1291,23 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
                   onChange={setFromAmount}
                   onMax={handleMax}
                   onPresetSelect={handlePresetSelect}
-                  balance={`${fromBalance} ${fromSymbol}`}
+                  balance={
+                    isConnected
+                      ? `${fromBalance} ${fromSymbol}`
+                      : undefined
+                  }
+                  balanceValue={
+                    isConnected && !balanceState.error ? fromBalance : null
+                  }
                   balanceLoading={balanceState.loading}
                   balanceError={!!balanceState.error}
                   showPresets={isConnected}
+                  assetId={fromToken}
                   className="flex-1"
                 />
                 <TokenSelector
                   selectedAsset={fromToken}
-                  onSelect={setFromToken}
+                  onSelect={handleFromTokenSelect}
                   className="mt-6"
                 />
               </div>
@@ -1036,30 +1315,34 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
           </div>
 
           {/* Toggle Button */}
-          <div className="relative h-2 flex items-center justify-center z-10">
+          <div className="relative z-10 flex h-3 items-center justify-center sm:h-2">
             <Button
               variant="outline"
               size="icon"
               onClick={handleSwitchTokens}
-              aria-label="Switch pay and receive tokens"
-              className="absolute h-10 w-10 rounded-xl bg-background border-border/40 shadow-lg hover:shadow-primary/20 hover:border-primary/40 hover:scale-110 active:scale-95 transition-all duration-300 group"
+              aria-label="Swap token direction"
+              className="absolute h-11 w-11 min-h-11 min-w-11 rounded-xl border-border/50 bg-card shadow-md transition-all duration-300 hover:border-primary/50 hover:bg-accent group"
             >
-              <ArrowUpDown className="h-4 w-4 text-primary group-hover:rotate-180 transition-transform duration-500" />
+              <ArrowUpDown className="h-4 w-4 text-primary transition-transform duration-500 group-hover:rotate-180" />
             </Button>
           </div>
 
           {/* Receive Section */}
           <div className={cn('space-y-2', isCompact && 'space-y-1')}>
             <div
+              data-testid="receive-section"
+              aria-live="off"
               className={cn(
-                'bg-muted/30 rounded-2xl border border-border/20',
-                isCompact ? 'p-3 rounded-xl' : 'p-4'
+                'rounded-2xl border border-border/20',
+                isCompact ? 'p-3 rounded-xl' : 'p-4',
+                isReceiveAmountRefreshing ? 'bg-primary/5' : 'bg-muted/30'
               )}
+              style={receiveAmountTransitionStyle}
             >
               <div className="flex justify-between items-start mb-1">
                 <AmountInput
                   label={t('swap.pair.youReceive')}
-                  value={selectedRoute?.expectedAmount ?? displayToAmount}
+                  value={receiveAmount}
                   readOnly
                   placeholder="0.00"
                   className="flex-1"
@@ -1068,11 +1351,17 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
                 <TokenSelector
                   selectedAsset={toToken}
                   onSelect={setToToken}
+                  compatibleWith={fromToken}
                   className="mt-6"
                 />
               </div>
             </div>
           </div>
+
+          <QuoteRefreshLiveRegion
+            politeMessage={quoteRefreshPoliteMessage}
+            assertiveMessage={quoteRefreshAssertiveMessage}
+          />
 
           {/* Info Panels (Conditional) */}
           {(parseFloat(fromAmount) > 0 ||
@@ -1141,6 +1430,17 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               className="text-xs text-amber-500 font-medium"
             >
               {t('swap.card.outdated')}
+            </span>
+          )}
+          {(quote.data?.degraded === true ||
+            (quote.data?.data_freshness != null &&
+              quote.data.data_freshness.fresh_count === 0 &&
+              quote.data.data_freshness.stale_count > 0)) && (
+            <span
+              data-testid="degraded-orderbook-indicator"
+              className="text-xs text-amber-500 font-medium"
+            >
+              {t('swap.card.degradedOrderbook')}
             </span>
           )}
           {quote.isRecovering && (
@@ -1273,6 +1573,7 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               state={displayButtonState}
               onSwap={handleSwap}
               onConnectWallet={() => connect('freighter')} // Connection managed by WalletProvider
+              onRefreshQuote={() => quote.refresh({ force: true })}
               isLoading={displayQuoteLoading}
             />
           </div>
@@ -1306,7 +1607,15 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
           isOpen={displayIsModalOpen}
           status={displayOptimisticStatus}
           txHash={optimistic.txHash}
-          errorMessage={optimistic.errorMessage}
+          error={
+            swapExecutionMode.mode === 'api_prepare_submit'
+              ? (optimistic.error ??
+                (optimistic.errorMessage
+                  ? { message: optimistic.errorMessage }
+                  : undefined))
+              : undefined
+          }
+          errorMessage={swapExecutionErrorMessage ?? optimistic.errorMessage}
           tradeParams={displayTradeParams}
           onConfirm={() => {}}
           onCancel={() => {
@@ -1382,6 +1691,16 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               <kbd className="font-mono">Alt+2</kbd>
             </li>
           </ul>
+          <p className="mt-4 text-sm text-muted-foreground">
+            New here?{" "}
+            <a
+              href="/guide"
+              className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              First live swap guide
+            </a>
+            {" "}(wallet, trustline, slippage).
+          </p>
           <IconographyLegend embedded className="mt-4" />
         </DialogContent>
       </Dialog>

@@ -68,6 +68,10 @@ pub struct EndpointConfig {
     pub pairs: RateLimitConfig,
     pub orderbook: RateLimitConfig,
     pub quote: RateLimitConfig,
+    pub cctp_quote: RateLimitConfig,
+    pub cctp_status: RateLimitConfig,
+    pub cctp_mutate: RateLimitConfig,
+    pub cctp_reattest: RateLimitConfig,
     pub default: RateLimitConfig,
     /// Optional overrides for specific tenant IDs (e.g. from API Keys)
     pub tenant_overrides: HashMap<String, RateLimitConfig>,
@@ -104,6 +108,34 @@ impl Default for EndpointConfig {
                     .unwrap_or(20), // Protected: lowered from 100
                 window,
             },
+            cctp_quote: RateLimitConfig {
+                max_requests: std::env::var("RATE_LIMIT_CCTP_QUOTE")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(15),
+                window,
+            },
+            cctp_status: RateLimitConfig {
+                max_requests: std::env::var("RATE_LIMIT_CCTP_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(60),
+                window,
+            },
+            cctp_mutate: RateLimitConfig {
+                max_requests: std::env::var("RATE_LIMIT_CCTP_MUTATE")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(30),
+                window,
+            },
+            cctp_reattest: RateLimitConfig {
+                max_requests: std::env::var("RATE_LIMIT_CCTP_REATTEST")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(5),
+                window,
+            },
             default: RateLimitConfig {
                 max_requests: 120, // Lowered from 200
                 window,
@@ -128,6 +160,16 @@ impl EndpointConfig {
             &self.orderbook
         } else if path.starts_with("/api/v1/quote") {
             &self.quote
+        } else if path == "/api/v2/bridge/cctp/quote" {
+            &self.cctp_quote
+        } else if path.ends_with("/reattest") && path.contains("/bridge/cctp/") {
+            &self.cctp_reattest
+        } else if path.contains("/bridge/cctp/") && path.starts_with("/api/v2/bridge/cctp/") {
+            if path.matches('/').count() <= 4 {
+                &self.cctp_status
+            } else {
+                &self.cctp_mutate
+            }
         } else {
             &self.default
         }

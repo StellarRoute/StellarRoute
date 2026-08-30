@@ -117,11 +117,15 @@ function AlternativeRouteButton({
       data-testid={`alternative-route-${route.id}`}
       aria-pressed={isSelected}
       data-selected={isSelected ? 'true' : undefined}
-      className={`w-full flex flex-wrap items-center justify-between transition-all duration-150 p-1 -mx-1 rounded hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 gap-1 text-left active:scale-[0.99] ${
+      className={cn(
+        'w-full flex flex-wrap items-center justify-between gap-1 rounded-md border p-1.5 -mx-0.5 text-left',
+        'transition-colors duration-150 outline-none',
+        'hover:bg-muted/60 active:bg-muted/80 active:scale-[0.99]',
+        'focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
         isSelected
-          ? 'opacity-100 ring-2 ring-primary/40 bg-muted/50'
-          : 'opacity-60 hover:opacity-100 focus:opacity-100'
-      }`}
+          ? 'opacity-100 border-primary/50 bg-primary/5'
+          : 'opacity-70 border-transparent hover:opacity-100'
+      )}
       onClick={() => onSelect?.(route)}
     >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -133,7 +137,12 @@ function AlternativeRouteButton({
         <ArrowRight className="h-3 w-3" />
         <span className="font-medium">USDC</span>
       </div>
-      <span className="text-xs font-medium text-muted-foreground">
+      <span
+        className={cn(
+          'text-xs font-medium',
+          isSelected ? 'text-primary' : 'text-muted-foreground'
+        )}
+      >
         {route.expectedAmount}
       </span>
     </button>

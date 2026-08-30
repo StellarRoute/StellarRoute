@@ -40,6 +40,35 @@ impl AuditRedactor {
             redact_selected(selected);
         }
     }
+
+    /// Redact a Stellar account public key to a non-reversible fingerprint.
+    ///
+    /// The raw key is never stored.  The result keeps the first 4 and last 4
+    /// characters for operator correlation, separated by `...`, and appends the
+    /// first 8 hex characters of a SHA-256 hash so that identical accounts still
+    /// group together in queries while remaining computationally infeasible to
+    /// reverse.
+    ///
+    /// Examples:
+    /// - `"GABC...LA5#deadbeef"` (typical Stellar address)
+    /// - `"native"` is returned unchanged (used for issuing account sentinel).
+    /// - Short / malformed inputs are fully replaced with `[REDACTED]`.
+    pub fn redact_account(account: &str) -> String {
+        if account == "native" {
+            return account.to_string();
+        }
+
+        // Stellar public keys are 56 characters.  Be defensive with malformed input.
+        if account.len() < 12 {
+            return REDACTED.to_string();
+        }
+
+        let prefix = &account[..4];
+        let suffix = &account[account.len() - 4..];
+        let hash = sha256_hex_prefix(account, 8);
+
+        format!("{}...{}#{}", prefix, suffix, hash)
+    }
 }
 
 /// Redact the issuer portion of a canonical asset string.
@@ -55,6 +84,24 @@ pub fn redact_canonical_asset(s: &str) -> String {
         [code, _issuer] => format!("{}:{}", code, REDACTED),
         _ => s.to_string(),
     }
+}
+
+/// Redact opaque CCTP attestation or message bytes for structured logs.
+pub fn redact_cctp_secret_bytes(label: &str, bytes: &[u8]) -> String {
+    if bytes.is_empty() {
+        return format!("{}:empty", label);
+    }
+    let prefix = sha256_hex_prefix(&hex::encode(bytes), 8);
+    format!("{}:sha256#{}", label, prefix)
+}
+
+fn sha256_hex_prefix(input: &str, len: usize) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(input.as_bytes());
+    let mut hex = hex::encode(digest);
+    hex.truncate(len);
+    hex
 }
 
 fn redact_inputs(inputs: &AuditInputs) -> AuditInputs {
@@ -123,7 +170,12 @@ mod tests {
         )
     }
 
-    // ── Unit tests ────────────────────────────────────────────────────────────
+    #[test]
+    fn redact_cctp_bytes_never_includes_raw_payload() {
+        let redacted = redact_cctp_secret_bytes("attestation", &[0xde, 0xad, 0xbe, 0xef]);
+        assert!(!redacted.contains("dead"));
+        assert!(redacted.starts_with("attestation:sha256#"));
+    }
 
     #[test]
     fn native_asset_is_unchanged() {
@@ -230,6 +282,45 @@ mod tests {
             "issuer '{}' must not appear in serialized entry",
             ISSUER
         );
+    }
+
+    // ── Account redaction tests ───────────────────────────────────────────────
+
+    const ACCOUNT: &str = "GABCD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+
+    #[test]
+    fn account_native_is_unchanged() {
+        assert_eq!(AuditRedactor::redact_account("native"), "native");
+    }
+
+    #[test]
+    fn short_account_is_fully_redacted() {
+        assert_eq!(AuditRedactor::redact_account("short"), REDACTED);
+    }
+
+    #[test]
+    fn account_is_redacted_to_fingerprint() {
+        let redacted = AuditRedactor::redact_account(ACCOUNT);
+        assert!(
+            !redacted.contains(ACCOUNT),
+            "raw account must not appear in redacted form"
+        );
+        assert!(redacted.starts_with("GABC"), "prefix preserved");
+        // Implementation keeps the last 4 chars before the `#hash` suffix.
+        let fingerprint = redacted.split('#').next().expect("hash separator");
+        assert!(
+            fingerprint.ends_with("FLA5"),
+            "suffix preserved: {redacted}"
+        );
+        assert!(redacted.contains("..."), "middle replaced");
+        assert!(redacted.contains('#'), "hash separator present");
+    }
+
+    #[test]
+    fn account_redaction_is_idempotent() {
+        let first = AuditRedactor::redact_account(ACCOUNT);
+        let second = AuditRedactor::redact_account(ACCOUNT);
+        assert_eq!(first, second);
     }
 
     // ── Property-based tests ──────────────────────────────────────────────────

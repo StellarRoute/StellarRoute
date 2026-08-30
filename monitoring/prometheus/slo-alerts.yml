@@ -13,6 +13,8 @@
 #   - Quote error rate   < 1%
 #   - Route compute P95  < 1s
 #   - Cache hit ratio    > 70%
+#   - Swap prepare success rate > 99%
+#   - Swap submit success rate  > 99%
 
 groups:
   - name: stellarroute_slo_alerts
@@ -238,6 +240,124 @@ groups:
             Indexer sync status for {{ $labels.source }} is critical (value={{ $value }}).
             Data freshness guarantees are compromised.
 
+      # ── Swap Prepare Success Rate SLO (> 99%) ─────────────────────────────
+      - alert: SLOSwapPrepareFailureRateBurnWarning
+        expr: |
+          (
+            (
+              rate(stellarroute_swap_prepare_total{outcome="error"}[1m])
+              /
+              rate(stellarroute_swap_prepare_total[1m])
+            )
+            > 0.01
+          )
+          and
+          (
+            (
+              rate(stellarroute_swap_prepare_total{outcome="error"}[30m])
+              /
+              rate(stellarroute_swap_prepare_total[30m])
+            )
+            > 0.01
+          )
+        for: 1m
+        labels:
+          severity: warning
+          slo: swap_prepare_success_rate
+        annotations:
+          summary: "SLO burn rate warning: Swap prepare failure rate exceeded 1%"
+          description: >
+            Swap prepare failure rate is {{ $value | humanizePercentage }} over the last 30m.
+            This exceeds the 1% SLO target.
+
+      - alert: SLOSwapPrepareFailureRateBurnCritical
+        expr: |
+          (
+            (
+              rate(stellarroute_swap_prepare_total{outcome="error"}[5m])
+              /
+              rate(stellarroute_swap_prepare_total[5m])
+            )
+            > 0.01
+          )
+          and
+          (
+            (
+              rate(stellarroute_swap_prepare_total{outcome="error"}[30m])
+              /
+              rate(stellarroute_swap_prepare_total[30m])
+            )
+            > 0.01
+          )
+        for: 1m
+        labels:
+          severity: critical
+          slo: swap_prepare_success_rate
+        annotations:
+          summary: "SLO burn rate critical: Swap prepare failure rate exceeded 1%"
+          description: >
+            Swap prepare failure rate is {{ $value | humanizePercentage }} over the last 30m.
+            Error budget is being depleted rapidly. Immediate investigation required.
+
+      # ── Swap Submit Success Rate SLO (> 99%) ──────────────────────────────
+      - alert: SLOSwapSubmitFailureRateBurnWarning
+        expr: |
+          (
+            (
+              rate(stellarroute_swap_submit_total{outcome="error"}[1m])
+              /
+              rate(stellarroute_swap_submit_total[1m])
+            )
+            > 0.01
+          )
+          and
+          (
+            (
+              rate(stellarroute_swap_submit_total{outcome="error"}[30m])
+              /
+              rate(stellarroute_swap_submit_total[30m])
+            )
+            > 0.01
+          )
+        for: 1m
+        labels:
+          severity: warning
+          slo: swap_submit_success_rate
+        annotations:
+          summary: "SLO burn rate warning: Swap submit failure rate exceeded 1%"
+          description: >
+            Swap submit failure rate is {{ $value | humanizePercentage }} over the last 30m.
+            This exceeds the 1% SLO target.
+
+      - alert: SLOSwapSubmitFailureRateBurnCritical
+        expr: |
+          (
+            (
+              rate(stellarroute_swap_submit_total{outcome="error"}[5m])
+              /
+              rate(stellarroute_swap_submit_total[5m])
+            )
+            > 0.01
+          )
+          and
+          (
+            (
+              rate(stellarroute_swap_submit_total{outcome="error"}[30m])
+              /
+              rate(stellarroute_swap_submit_total[30m])
+            )
+            > 0.01
+          )
+        for: 1m
+        labels:
+          severity: critical
+          slo: swap_submit_success_rate
+        annotations:
+          summary: "SLO burn rate critical: Swap submit failure rate exceeded 1%"
+          description: >
+            Swap submit failure rate is {{ $value | humanizePercentage }} over the last 30m.
+            Error budget is being depleted rapidly. Immediate investigation required.
+
   # ── Direct threshold alerts (non-SLO) ───────────────────────────────────
   - name: stellarroute_direct_alerts
     interval: 30s
@@ -259,3 +379,21 @@ groups:
         annotations:
           summary: "Cache hit ratio is low"
           description: "Cache hit ratio dropped below 50%"
+
+      - alert: HighSwapPrepareFailureRate
+        expr: rate(stellarroute_swap_prepare_total{outcome="error"}[5m]) / rate(stellarroute_swap_prepare_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Swap prepare failure rate is high"
+          description: "Swap prepare failure rate is {{ $value | humanizePercentage }} over the last 5m"
+
+      - alert: HighSwapSubmitFailureRate
+        expr: rate(stellarroute_swap_submit_total{outcome="error"}[5m]) / rate(stellarroute_swap_submit_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Swap submit failure rate is high"
+          description: "Swap submit failure rate is {{ $value | humanizePercentage }} over the last 5m"

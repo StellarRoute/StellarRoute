@@ -1,3 +1,4 @@
+import { signTransactionWithWallet } from "@/lib/wallet";
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup, within } from '@testing-library/react';
 import { SwapCard } from '@/components/swap/SwapCard';

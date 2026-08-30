@@ -17,6 +17,7 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 1_000_000_000,
             price: 0.10,
             fee_bps: 30,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -26,6 +27,7 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 500_000_000,
             price: 0.92,
             fee_bps: 25,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -35,6 +37,7 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             liquidity: 100_000_000,
             price: 0.092,
             fee_bps: 30,
+            ..Default::default()
         },
     ]
 }
@@ -70,6 +73,7 @@ fn test_strict_policy_excludes_low_liquidity() {
         liquidity: 10_000,
         price: 0.10,
         fee_bps: 30,
+        ..Default::default()
     }];
     let routing_policy = RoutingPolicy::default();
 

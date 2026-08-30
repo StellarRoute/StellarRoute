@@ -283,7 +283,7 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 **Phase 3.7: Audit Preparation**
 - [ ] Complete security self-audit
 - [ ] Document all contract functions
-- [ ] Create audit checklist
+- [x] Create audit checklist (see `audit/internal-security-review.md`)
 - [ ] Prepare for external security audit
 
 #### Deliverables
@@ -571,11 +571,12 @@ This roadmap outlines the complete development journey for StellarRoute, from in
 - [ ] Legal and compliance review (if needed)
 
 *5.6.2: Gradual Rollout*
-- [ ] Deploy to mainnet with limited features
-- [ ] Monitor closely for first 24-48 hours
-- [ ] Gradually enable full functionality
+- [ ] Deploy to mainnet with limited features (pair allowlist — Stage 1)
+- [ ] Monitor closely for first 24-48 hours against documented metric gates
+- [ ] Gradually enable full functionality (Stage 2 expansion → Stage 3 full markets)
 - [ ] Collect user feedback
 - [ ] Iterate based on feedback
+- [x] Document gradual rollout stages, metrics gates, rollback criteria, and status-page comms templates — see [docs/deployment/gradual-rollout-plan.md](docs/deployment/gradual-rollout-plan.md)
 
 #### Deliverables
 - ✅ Completed security audits

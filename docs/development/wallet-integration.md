@@ -4,26 +4,37 @@ This guide explains how StellarRoute's frontend integrates Stellar wallets, incl
 
 ## Supported wallets
 
-StellarRoute currently recognizes two browser wallet extensions:
+StellarRoute currently recognizes four Stellar browser wallets/signers:
 
 - **Freighter**
   - Detected via `@stellar/freighter-api`.
-  - Uses `isAllowed()` to check whether the extension/site access is available.
+  - Uses `isConnected()` to check whether the extension is available (not `isAllowed`).
   - Connects with `requestAccess()`, then reads `getAddress()` and `getNetworkDetails()`.
   - Supports signing via `signTransaction(xdr, { networkPassphrase })`.
 
 - **xBull**
   - Detected by checking `window.xbull` in the browser.
   - Connects via `window.xbull.connect()` and returns `publicKey`.
-  - Current implementation only supports connection. Transaction signing for xBull is not implemented today.
+  - Supports signing via `window.xbull.sign({ xdr, network, publicKey })`.
+
+- **Albedo**
+  - Detected as a browser-hosted intent wallet; uses `window.albedo` if injected and otherwise loads the Albedo intent UMD client on demand.
+  - Connects via the Albedo `public_key` intent and reads `pubkey`/`publicKey`.
+  - Supports signing via the Albedo `tx` intent and reads `signed_envelope_xdr`/`signedXdr`/`xdr`.
+
+- **LOBSTR**
+  - Detected via `@lobstrco/signer-extension-api`.
+  - Connect/sign follow the shared Stellar wallet module path in `frontend/lib/wallet/index.ts`.
 
 ## Detection logic
 
 Wallet availability is managed in `frontend/lib/wallet/index.ts`.
 
 - `getAvailableWallets()` returns an array of supported wallet objects.
-- Freighter is reported installed if `isAllowed()` returns `true`.
+- Freighter is reported installed when `isConnected()` indicates the extension is present.
 - xBull is reported installed when a global `window.xbull` object exists.
+- Albedo is reported available in browser environments because it can open the hosted intent flow without requiring an extension.
+- LOBSTR is reported installed when its extension API is available.
 
 This list powers UI state in `frontend/components/shared/wallet-button.tsx` and the `WalletProvider`.
 
@@ -107,7 +118,8 @@ The default hook behavior uses stubs:
 Real wallet signing is handled by `frontend/lib/wallet/signTransactionWithWallet()`.
 
 - Freighter: supported via `@stellar/freighter-api` and returns a signed XDR.
-- xBull: currently not implemented for signing.
+- xBull: supported through `window.xbull.sign()`.
+- Albedo: supported through the hosted `tx` intent.
 
 A new adapter should implement signing in `signTransactionWithWallet()` and wire it into swap flows.
 
@@ -141,7 +153,7 @@ If these differ, UI components such as network mismatch banners can warn the use
 ### Wallet network handling
 
 - Freighter reports the wallet network via `getNetworkDetails()`.
-- xBull currently returns a hardcoded `testnet` network in this implementation.
+- xBull and Albedo currently use the app network fallback for session state; capability checks only allow Albedo on testnet/public and xBull on testnet.
 
 ### Local development configuration
 
@@ -154,13 +166,14 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 
 The wallet adapter itself does not use this env var, but backend/network alignment is still required for valid swaps.
 
-## Testing locally with Freighter and xBull
+## Testing locally with Freighter, xBull, and Albedo
 
 ### Recommended setup
 
 1. Install the browser extension:
    - Freighter: https://www.freighter.app/
    - xBull: https://wallet.xbull.app/
+   - Albedo: https://albedo.link/
 2. Open the app at `http://localhost:3000`.
 3. Unlock the wallet extension and grant site access.
 4. Connect using the wallet button in the UI.
@@ -170,6 +183,7 @@ The wallet adapter itself does not use this env var, but backend/network alignme
 - If no wallet is detected, the UI shows `No supported wallet found`.
 - Freighter requires site access and may prompt for permission approval.
 - xBull must expose `window.xbull` before it appears as available.
+- Albedo may open a popup/hosted intent window for account selection and signing.
 
 ### Debugging
 
@@ -184,11 +198,34 @@ The repository includes mocks and test helpers for wallet behavior:
 - `frontend/__mocks__/@stellar/freighter-api.ts`
 - wallet provider tests in `frontend/components/providers/__tests__/wallet-sync.test.tsx`
 
+## Multi-chain adapters (EVM / Solana / Bitcoin / TRON)
+
+Non-Stellar browser wallets live under `frontend/lib/wallet/adapters/` and do **not** extend `SupportedWallet`. The shared `ChainWalletAdapter` surface covers:
+
+| Family | Default adapters | Signing surface |
+|--------|------------------|-----------------|
+| EVM | `evm-injected` (`window.ethereum`), `evm-walletconnect` (QR/mobile; needs `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`) | EIP-1193 message / tx / send |
+| Solana | `solana-injected` (Phantom / injected) | message; Transaction objects with `serialize()` only |
+| Bitcoin | `unisat`, `okx-bitcoin` | message / PSBT |
+| TRON | `tronlink` | TronWeb message / tx object |
+| Stellar | thin wrappers (`freighter`, `xbull`, `albedo`, `lobstr`) | XDR via existing module |
+
+Use `hooks/useChainWallet.ts` for multi-chain sessions. Keep Freighter/xBull/Albedo/LOBSTR swap UX on `WalletProvider` / `hooks/useWallet.ts`.
+
+### Execution support and mismatch
+
+- Connect is soft: network mismatch does not fail connect; `networkMismatch` / `getNetwork().matchesExpected` / live `getExecutionSupport` reflect it.
+- `signMessage`, `signTransaction`, and `sendTransaction` are gated on network match.
+- Disconnected adapters report `not_connected`; capability gaps report `wallet_capability_missing`; otherwise non-Stellar routes report `no_backend_route`.
+- Solana does **not** wrap raw bytes in fake Transaction objects — pass a real wallet-compatible handle or expect `unsupported_capability`.
+
+See `frontend/lib/wallet/adapters/INTEGRATION.md` for contracts, registry ids, and security rules. Stellar connect/sign paths in `frontend/lib/wallet/index.ts` remain unchanged.
+
 ## Adding a new wallet adapter
 
-The adapter entrypoint is `frontend/lib/wallet/index.ts`.
+### Stellar (swap UI path)
 
-To add a new wallet:
+The Stellar adapter entrypoint is `frontend/lib/wallet/index.ts`.
 
 1. Update `SupportedWallet` in `frontend/lib/wallet/types.ts`.
 2. Add a label in `WALLET_LABELS`.
@@ -197,7 +234,12 @@ To add a new wallet:
 5. Implement `refreshWalletSession()` to refresh address and network state.
 6. Implement signing in `signTransactionWithWallet()` if the wallet supports transaction signing.
 7. Update persistence and reconnection behavior in `frontend/components/providers/wallet-provider.tsx` if needed.
-8. Add unit tests for connect/disconnect, session refresh, network mismatch, and pending-transaction guards.
+8. Optionally add a thin wrapper in `adapters/stellar/legacy.ts` and register it.
+9. Add unit tests for connect/disconnect, session refresh, network mismatch, and pending-transaction guards.
+
+### Multi-chain (EVM / Solana / Bitcoin / TRON)
+
+Implement `ChainWalletAdapter` under `frontend/lib/wallet/adapters/<family>/`, extend payload unions in `adapters/types.ts` if needed, append registration in `ensureDefaultAdapters()`, and cover detection/connect/sign/mismatch/execution-support in Vitest. Do not extend `SupportedWallet` for non-Stellar wallets.
 
 ### Extension points in code
 
@@ -218,8 +260,8 @@ To add a new wallet:
 
 ## Known limitations and UX expectations
 
-- **xBull signing is not implemented** in the current adapter. xBull can connect, but swap submission may not be functional until signing is wired in.
-- **Freighter is the only wallet with full signing support** today.
+- **xBull and Albedo signing are implemented** in the current adapters; swap submission still depends on the shared Horizon submission path.
+- **Freighter, xBull, and Albedo have signing support** today.
 - **Network mismatch** is detected and surfaced, but the app currently defaults to `testnet`.
 - **Wallet state is stored in localStorage**, so stale sessions can persist across tabs or reloads.
 - **Pending transactions lock wallet switching** to prevent mid-flight state changes.

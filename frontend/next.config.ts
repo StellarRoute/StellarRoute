@@ -1,6 +1,10 @@
 import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import { enforceFrontendProductionEnv } from "./lib/env-guard";
+
+// Fail `next build` early when production/Vercel production env is misconfigured (#1036).
+enforceFrontendProductionEnv(process.env);
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",

@@ -19,14 +19,108 @@ import type {
   RouteResponse,
   SimulateRouteRequest,
   SimulateRouteResponse,
+  PreparedSwapResponse,
+  SwapConfirmResult,
+  SwapPrepareRequest,
+  SwapSubmitRequest,
+  SwapSubmitResponse,
+  ApiV2Info,
+  SupportedCorridor,
+  CctpQuoteRequest,
+  CctpQuoteResponse,
+  CctpCallOptions,
+  CctpTransferStatusResponse,
+  CctpPrepareBurnResponse,
+  CctpSubmitBurnRequest,
+  CctpSubmitBurnResponse,
+  CctpPrepareMintResponse,
+  CctpSubmitMintRequest,
+  CctpSubmitMintResponse,
+  CctpReattestResponse,
 } from './types.js';
-import { DEFAULT_STALENESS_CONFIG, isQuoteStale, isQuoteExpired } from './types.js';
+import {
+  DEFAULT_STALENESS_CONFIG,
+  isQuoteStale,
+  isQuoteExpired,
+  CCTP_TRANSFER_ACCESS_HEADER,
+  CCTP_IDEMPOTENCY_HEADER,
+} from './types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_BASE_URL = 'http://localhost:8080';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRIES = 2;
+/** Default Horizon testnet URL used by {@link StellarRouteClient.confirmSwap}. */
+export const DEFAULT_TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+const CLASSIC_EXECUTION_MODE = 'classic_path_payment';
+
+/**
+ * Unwrap `{ data: T }` API envelopes when present; otherwise return the body as-is.
+ */
+function unwrapApiData<T>(body: unknown): T {
+  if (
+    body !== null &&
+    typeof body === 'object' &&
+    'data' in body &&
+    (body as { data: unknown }).data !== undefined
+  ) {
+    return (body as { data: T }).data;
+  }
+  return body as T;
+}
+
+/**
+ * Parse API error payloads in either flat `{ error, message, details }` form or
+ * the Axum envelope `{ data: { error, message, details } }`.
+ */
+export function parseApiErrorBody(body: unknown): {
+  error?: string;
+  message?: string;
+  details?: unknown;
+} {
+  if (!body || typeof body !== 'object') return {};
+
+  const root = body as {
+    error?: unknown;
+    message?: unknown;
+    details?: unknown;
+    data?: unknown;
+  };
+
+  const nested =
+    root.data && typeof root.data === 'object'
+      ? (root.data as {
+          error?: unknown;
+          message?: unknown;
+          details?: unknown;
+        })
+      : null;
+
+  const source =
+    typeof root.error === 'string'
+      ? root
+      : nested && typeof nested.error === 'string'
+        ? nested
+        : root.error || nested?.error
+          ? nested ?? root
+          : nested ?? root;
+
+  return {
+    error: typeof source.error === 'string' ? source.error : undefined,
+    message: typeof source.message === 'string' ? source.message : undefined,
+    details: source.details,
+  };
+}
+
+function isAmbiguousSubmitError(err: StellarRouteApiError): boolean {
+  return (
+    err.code === 'dependency_unavailable' ||
+    err.code === 'network_error' ||
+    err.status === 503 ||
+    err.status === 0
+  );
+}
 
 // ── Error class ───────────────────────────────────────────────────────────────
 
@@ -405,61 +499,272 @@ export class StellarRouteClient {
   }
 
   /**
-   * Execute a swap via the StellarRoute API.
+   * `POST /api/v1/swap/prepare` — build an unsigned classic PathPaymentStrictSend.
+   */
+  async prepareSwap(
+    params: SwapPrepareRequest,
+    signal?: AbortSignal,
+  ): Promise<PreparedSwapResponse> {
+    const body = await this.request<unknown>(
+      '/api/v1/swap/prepare',
+      signal,
+      this.retries,
+      'POST',
+      params,
+    );
+    const prepared = unwrapApiData<PreparedSwapResponse>(body);
+    if (!prepared?.xdr_envelope || typeof prepared.xdr_envelope !== 'string') {
+      throw new StellarRouteApiError(
+        500,
+        'internal_error',
+        'Prepare response missing xdr_envelope',
+      );
+    }
+    return prepared;
+  }
+
+  /**
+   * `POST /api/v1/swap/submit` — broadcast a wallet-signed envelope.
    *
-   * When the API provides a swap-build endpoint, this method calls it and
-   * returns the Stellar XDR transaction envelope for the caller to sign and
-   * submit. Until that endpoint ships, the method calls `simulateRoute` first
-   * to validate the route, then throws `StellarRouteApiError` with code
-   * `"not_implemented"` so callers can detect the stub and fall back gracefully.
+   * Pass `retries: 0` from {@link executeSwap} and use explicit ambiguous
+   * retries so the same signed body is reused without re-prepare/re-sign.
+   */
+  async submitSwap(
+    params: SwapSubmitRequest,
+    signal?: AbortSignal,
+    retries: number = this.retries,
+  ): Promise<SwapSubmitResponse> {
+    const body = await this.request<unknown>(
+      '/api/v1/swap/submit',
+      signal,
+      retries,
+      'POST',
+      params,
+    );
+    return unwrapApiData<SwapSubmitResponse>(body);
+  }
+
+  /**
+   * Confirm a submitted swap on Horizon (`GET /transactions/{tx_hash}`).
+   */
+  async confirmSwap(
+    txHash: string,
+    options?: {
+      horizonUrl?: string;
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+      signal?: AbortSignal;
+      expectedTxHash?: string;
+    },
+  ): Promise<SwapConfirmResult> {
+    const expected = options?.expectedTxHash ?? txHash;
+    const horizonUrl = (options?.horizonUrl ?? DEFAULT_TESTNET_HORIZON_URL).replace(
+      /\/$/,
+      '',
+    );
+    const timeoutMs = options?.timeoutMs ?? 60_000;
+    const pollIntervalMs = options?.pollIntervalMs ?? 2_000;
+    const url = `${horizonUrl}/transactions/${encodeURIComponent(expected)}`;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() <= deadline) {
+      if (options?.signal?.aborted) {
+        throw new StellarRouteApiError(0, 'network_error', 'confirmSwap aborted');
+      }
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: options?.signal,
+        });
+      } catch (err) {
+        if (Date.now() + pollIntervalMs > deadline) {
+          const message = err instanceof Error ? err.message : 'Network error';
+          throw new StellarRouteApiError(0, 'network_error', message);
+        }
+        await sleep(pollIntervalMs);
+        continue;
+      }
+
+      if (response.status === 404) {
+        if (Date.now() + pollIntervalMs > deadline) break;
+        await sleep(pollIntervalMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new StellarRouteApiError(
+          response.status,
+          'unknown_error',
+          `Horizon confirmation failed with HTTP ${response.status}`,
+        );
+      }
+
+      const body = (await response.json()) as {
+        hash?: string;
+        successful?: boolean;
+        ledger?: number;
+      };
+      const hash = body.hash ?? expected;
+      if (hash !== expected) {
+        throw new StellarRouteApiError(
+          500,
+          'internal_error',
+          `Horizon hash mismatch: expected ${expected}, got ${hash}`,
+        );
+      }
+
+      return {
+        tx_hash: hash,
+        successful: Boolean(body.successful),
+        ledger: body.ledger,
+        horizon_url: url,
+      };
+    }
+
+    throw new StellarRouteApiError(
+      0,
+      'network_error',
+      `Transaction ${expected} not confirmed on Horizon within ${timeoutMs}ms`,
+      { horizon_url: url, status: 'confirm_timeout' },
+    );
+  }
+
+  /**
+   * Execute a classic swap: prepare → network check → sign once → submit
+   * (with ambiguous retry).
    *
-   * **Usage pattern**
-   * ```ts
-   * try {
-   *   const result = await client.executeSwap({
-   *     route: { hops: [...] },
-   *     amount: '100',
-   *     sender: 'G...',
-   *     min_output: '98',
-   *     slippage_bps: 50,
-   *   });
-   *   // sign result.xdr_envelope and submit via Stellar SDK
-   * } catch (err) {
-   *   if (isStellarRouteApiError(err) && err.code === 'not_implemented') {
-   *     // Build and submit transaction via Stellar SDK directly
-   *   }
-   * }
-   * ```
-   *
-   * @param params Swap execution parameters including route, amount, sender, and slippage.
-   *
-   * @throws {@link StellarRouteApiError} with `code === "not_implemented"` until
-   *   the swap-build endpoint is deployed.
-   * @throws {@link StellarRouteApiError} for simulation failures (route not found,
-   *   validation errors, stale data, etc.).
+   * Requires `prepared.execution_mode === 'classic_path_payment'` and a non-empty
+   * server `xdr_envelope`. Compares {@link ExecuteSwapParams.networkPassphrase}
+   * to `prepared.network_passphrase` before signing; mismatch throws
+   * `network_mismatch` without signing or submitting. Ambiguous submit
+   * failures retry the **same** `{ quote_id, signed_xdr }` body without
+   * re-prepare or re-sign.
    */
   async executeSwap(
     params: ExecuteSwapParams,
     signal?: AbortSignal,
   ): Promise<ExecuteSwapResult> {
-    // Validate route is executable via dry-run before attempting swap.
-    await this.simulateRoute(
+    const prepareResponse = await this.prepareSwap(
       {
         route: params.route,
         amount: params.amount,
+        sender: params.sender,
+        min_output: params.min_output,
         slippage_bps: params.slippage_bps,
       },
       signal,
     );
 
-    // Swap-build endpoint not yet deployed. Throw a documented stub error so
-    // callers can detect and fall back to building the transaction themselves.
-    throw new StellarRouteApiError(
-      501,
-      'not_implemented',
-      'executeSwap: on-chain swap-build endpoint not yet available. ' +
-        'Simulate succeeded — build and sign the XDR transaction via the Stellar SDK.',
-    );
+    if (prepareResponse.execution_mode !== CLASSIC_EXECUTION_MODE) {
+      throw new StellarRouteApiError(
+        422,
+        'unsupported_execution_mode',
+        `Unsupported execution_mode '${prepareResponse.execution_mode}'; expected '${CLASSIC_EXECUTION_MODE}'`,
+        { execution_mode: prepareResponse.execution_mode },
+      );
+    }
+
+    if (!prepareResponse.xdr_envelope.trim()) {
+      throw new StellarRouteApiError(
+        500,
+        'internal_error',
+        'Prepare returned an empty xdr_envelope',
+      );
+    }
+
+    const preparedPassphrase = prepareResponse.network_passphrase?.trim() ?? '';
+    if (!preparedPassphrase) {
+      throw new StellarRouteApiError(
+        400,
+        'validation_error',
+        'Prepare returned an empty network_passphrase',
+        { status: 'missing_network_passphrase' },
+      );
+    }
+
+    const integratorRaw =
+      typeof params.networkPassphrase === 'function'
+        ? await params.networkPassphrase()
+        : params.networkPassphrase;
+    const integratorPassphrase =
+      typeof integratorRaw === 'string' ? integratorRaw.trim() : '';
+    if (!integratorPassphrase || integratorPassphrase !== preparedPassphrase) {
+      throw new StellarRouteApiError(
+        400,
+        'network_mismatch',
+        'Wallet/app network passphrase does not match the prepared swap network',
+        {
+          status: 'network_mismatch',
+          prepared_network_passphrase: preparedPassphrase,
+          integrator_network_passphrase: integratorPassphrase || null,
+        },
+      );
+    }
+
+    const signedXdr = await params.signTransaction(prepareResponse.xdr_envelope);
+    if (!signedXdr || typeof signedXdr !== 'string' || !signedXdr.trim()) {
+      throw new StellarRouteApiError(
+        400,
+        'validation_error',
+        'signTransaction returned an empty signed envelope',
+      );
+    }
+
+    const submitBody: SwapSubmitRequest = {
+      quote_id: prepareResponse.quote_id,
+      signed_xdr: signedXdr,
+    };
+
+    const maxAmbiguous = params.ambiguousSubmitRetries ?? 2;
+    let submitResponse: SwapSubmitResponse | undefined;
+    let lastErr: StellarRouteApiError | undefined;
+
+    for (let attempt = 0; attempt <= maxAmbiguous; attempt++) {
+      try {
+        // retries: 0 — ambiguous handling is explicit below with the same body.
+        submitResponse = await this.submitSwap(submitBody, signal, 0);
+        lastErr = undefined;
+        break;
+      } catch (err) {
+        if (!isStellarRouteApiError(err) || !isAmbiguousSubmitError(err)) {
+          throw err;
+        }
+        lastErr = err;
+        if (attempt >= maxAmbiguous) break;
+        await sleep(backoffMs(attempt));
+      }
+    }
+
+    if (!submitResponse) {
+      throw new StellarRouteApiError(
+        lastErr?.status ?? 503,
+        lastErr?.code ?? 'dependency_unavailable',
+        lastErr?.message ??
+          'Submit is still pending; reconcile the bound quote before preparing again',
+        {
+          ...(typeof lastErr?.details === 'object' && lastErr.details
+            ? (lastErr.details as object)
+            : {}),
+          status: 'pending_reconcile',
+          quote_id: prepareResponse.quote_id,
+        },
+      );
+    }
+
+    return {
+      quote_id: prepareResponse.quote_id,
+      xdr_envelope: prepareResponse.xdr_envelope,
+      expected_output: prepareResponse.expected_output,
+      min_output: prepareResponse.min_output,
+      expires_at: prepareResponse.expires_at,
+      execution_mode: prepareResponse.execution_mode,
+      network_passphrase: prepareResponse.network_passphrase,
+      tx_hash: submitResponse.tx_hash,
+      status: submitResponse.status,
+    };
   }
 
   /**
@@ -484,6 +789,146 @@ export class StellarRouteClient {
     return this.request<PriceHistoryResponse>(path, options?.signal);
   }
 
+  /**
+   * `GET /api/v2` — capability descriptor including CCTP corridor metadata.
+   */
+  async getApiV2Info(signal?: AbortSignal): Promise<ApiV2Info> {
+    const body = await this.request<unknown>('/api/v2', signal);
+    return unwrapApiData<ApiV2Info>(body);
+  }
+
+  /**
+   * `POST /api/v2/bridge/cctp/quote` — CCTP fee quote (fail-closed until enabled).
+   */
+  async cctpQuote(
+    request: CctpQuoteRequest,
+    options?: CctpCallOptions,
+  ): Promise<CctpQuoteResponse> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers[CCTP_IDEMPOTENCY_HEADER] = options.idempotencyKey;
+    }
+    const body = await this.request<unknown>(
+      '/api/v2/bridge/cctp/quote',
+      options?.signal,
+      this.retries,
+      'POST',
+      request,
+      headers,
+    );
+    return unwrapApiData<CctpQuoteResponse>(body);
+  }
+
+  /**
+   * `POST /api/v2/bridge/cctp/{transfer_id}/prepare-burn`
+   */
+  async cctpPrepareBurn(
+    transferId: string,
+    options?: CctpCallOptions,
+  ): Promise<CctpPrepareBurnResponse> {
+    const body = await this.request<unknown>(
+      `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/prepare-burn`,
+      options?.signal,
+      this.retries,
+      'POST',
+      {},
+      cctpAccessHeaders(options),
+    );
+    return unwrapApiData<CctpPrepareBurnResponse>(body);
+  }
+
+  /**
+   * `POST /api/v2/bridge/cctp/{transfer_id}/submit-burn` — tx hash acknowledgement only.
+   */
+  async cctpSubmitBurn(
+    transferId: string,
+    request: CctpSubmitBurnRequest,
+    options?: CctpCallOptions,
+  ): Promise<CctpSubmitBurnResponse> {
+    const body = await this.request<unknown>(
+      `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/submit-burn`,
+      options?.signal,
+      this.retries,
+      'POST',
+      request,
+      cctpAccessHeaders(options),
+    );
+    return unwrapApiData<CctpSubmitBurnResponse>(body);
+  }
+
+  /**
+   * `GET /api/v2/bridge/cctp/{transfer_id}` — transfer saga status.
+   */
+  async cctpGetTransfer(
+    transferId: string,
+    options?: CctpCallOptions,
+  ): Promise<CctpTransferStatusResponse> {
+    const body = await this.request<unknown>(
+      `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}`,
+      options?.signal,
+      this.retries,
+      'GET',
+      undefined,
+      cctpAccessHeaders(options),
+    );
+    return unwrapApiData<CctpTransferStatusResponse>(body);
+  }
+
+  /**
+   * `POST /api/v2/bridge/cctp/{transfer_id}/prepare-mint`
+   */
+  async cctpPrepareMint(
+    transferId: string,
+    options?: CctpCallOptions,
+  ): Promise<CctpPrepareMintResponse> {
+    const body = await this.request<unknown>(
+      `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/prepare-mint`,
+      options?.signal,
+      this.retries,
+      'POST',
+      {},
+      cctpAccessHeaders(options),
+    );
+    return unwrapApiData<CctpPrepareMintResponse>(body);
+  }
+
+  /**
+   * `POST /api/v2/bridge/cctp/{transfer_id}/submit-mint` — tx hash acknowledgement only.
+   */
+  async cctpSubmitMint(
+    transferId: string,
+    request: CctpSubmitMintRequest,
+    options?: CctpCallOptions,
+  ): Promise<CctpSubmitMintResponse> {
+    const body = await this.request<unknown>(
+      `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/submit-mint`,
+      options?.signal,
+      this.retries,
+      'POST',
+      request,
+      cctpAccessHeaders(options),
+    );
+    return unwrapApiData<CctpSubmitMintResponse>(body);
+  }
+
+  /**
+   * `POST /api/v2/bridge/cctp/{transfer_id}/reattest`
+   */
+  async cctpReattest(
+    transferId: string,
+    options?: CctpCallOptions,
+  ): Promise<CctpReattestResponse> {
+    const body = await this.request<unknown>(
+      `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/reattest`,
+      options?.signal,
+      this.retries,
+      'POST',
+      {},
+      cctpAccessHeaders(options),
+    );
+    return unwrapApiData<CctpReattestResponse>(body);
+  }
+
   // ── Internal helpers ────────────────────────────────────────────────────────
 
   private async request<T>(
@@ -492,6 +937,7 @@ export class StellarRouteClient {
     attemptsLeft = this.retries,
     method: 'GET' | 'POST' = 'GET',
     body?: unknown,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
@@ -506,6 +952,7 @@ export class StellarRouteClient {
         headers: {
           Accept: 'application/json',
           ...this.extraHeaders,
+          ...extraHeaders,
         },
         signal: controller.signal,
       };
@@ -519,32 +966,33 @@ export class StellarRouteClient {
       const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
-        // Parse the structured error body when available.
+        // Parse flat or envelope-wrapped `{ data: { error, message, details } }`.
         let code: ApiErrorCode = 'unknown_error';
         let message = `HTTP ${response.status}`;
         let details: unknown;
 
         try {
-          const body = (await response.json()) as {
-            error?: string;
-            message?: string;
-            details?: unknown;
-          };
-          if (body.error) code = body.error as ApiErrorCode;
-          if (body.message) message = body.message;
-          details = body.details;
+          const parsed = parseApiErrorBody(await response.json());
+          if (parsed.error) code = parsed.error as ApiErrorCode;
+          if (parsed.message) message = parsed.message;
+          details = parsed.details;
         } catch {
           // Non-JSON body — keep defaults.
         }
 
-        // Retry on 429 and 5xx.
-        if ((response.status === 429 || response.status >= 500) && attemptsLeft > 0) {
+        // Retry on 429 and 5xx (same request body — safe for idempotent submits).
+        // Do not retry 409 conflicts.
+        if (
+          response.status !== 409 &&
+          (response.status === 429 || response.status >= 500) &&
+          attemptsLeft > 0
+        ) {
           const retryAfterSec = Number(response.headers.get('Retry-After') ?? 0);
           const delayMs = retryAfterSec > 0
             ? retryAfterSec * 1_000
             : backoffMs(this.retries - attemptsLeft);
           await sleep(delayMs);
-          return this.request<T>(path, signal, attemptsLeft - 1, method, body);
+          return this.request<T>(path, signal, attemptsLeft - 1, method, body, extraHeaders);
         }
 
         throw new StellarRouteApiError(response.status, code, message, details);
@@ -569,6 +1017,13 @@ export class StellarRouteClient {
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
+
+function cctpAccessHeaders(
+  options?: CctpCallOptions,
+): Record<string, string> | undefined {
+  if (!options?.accessToken) return undefined;
+  return { [CCTP_TRANSFER_ACCESS_HEADER]: options.accessToken };
+}
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

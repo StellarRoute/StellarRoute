@@ -54,7 +54,9 @@ impl PoolAdapterTrait for ConstantProductAdapter {
             panic!("division by zero: empty pool reserves");
         }
 
-        numerator / denominator
+        numerator
+            .checked_div(denominator)
+            .unwrap_or_else(|| panic!("overflow: division"))
     }
 
     fn get_rsrvs(e: Env) -> (i128, i128) {

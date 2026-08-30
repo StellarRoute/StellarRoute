@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useSessionRecovery } from '@/components/providers/session-recovery-provider';
 import { useFormStateRecovery } from '@/hooks/useFormStateRecovery';
-import { WalletSyncBanner } from '@/components/shared';
+import { WalletSyncBanner, NetworkStatusBanner } from '@/components/shared';
 import { DebugOverlay } from '@/components/debug/DebugOverlay';
 import { stellarRouteClient } from '@/lib/api/client';
 
@@ -25,11 +25,9 @@ interface AppShellProps {
  * Features:
  * - Consistent layout structure across all pages
  * - Header and footer on all pages
+ * - Skip link + landmark regions for keyboard a11y
+ * - Persistent network status banner
  * - Responsive content area with appropriate max-width
- * - Centered content for swap-type pages
- * - Full-width content for orderbook/analytics pages
- * - Consistent spacing and padding system
- * - Session recovery banner on wake/refresh
  */
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
@@ -42,9 +40,9 @@ export function AppShell({ children }: AppShellProps) {
   } = useSessionRecovery();
   const { getSavedFormState } = useFormStateRecovery();
 
-  // Determine if page should be full-width (orderbook, analytics) or centered (swap)
   const isFullWidth =
     pathname?.startsWith('/orderbook') || pathname?.startsWith('/analytics');
+  const isLanding = pathname === '/';
 
   const handleRestore = async () => {
     beginRecovery();
@@ -56,7 +54,6 @@ export function AppShell({ children }: AppShellProps) {
         recoveryData.quoteAsset &&
         recoveryData.amount
       ) {
-        // Trigger actual quote refresh with stored pair and amount
         await stellarRouteClient.getQuote(
           recoveryData.baseAsset,
           recoveryData.quoteAsset,
@@ -73,7 +70,12 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+
       <Header />
+      <NetworkStatusBanner />
       <WalletSyncBanner />
 
       {(isStale || isRecovering) && (
@@ -121,11 +123,15 @@ export function AppShell({ children }: AppShellProps) {
       )}
 
       <main
+        id="main-content"
+        tabIndex={-1}
         className={cn(
-          'flex-1',
-          isFullWidth
+          'flex-1 outline-none',
+          isLanding
             ? 'w-full'
-            : 'container mx-auto w-full max-w-7xl px-3 py-8 sm:px-6 lg:px-8'
+            : isFullWidth
+              ? 'w-full'
+              : 'container mx-auto w-full max-w-7xl px-3 py-6 sm:px-6 sm:py-8 lg:px-8'
         )}
       >
         {children}
@@ -133,11 +139,9 @@ export function AppShell({ children }: AppShellProps) {
 
       <Footer />
 
-      {/* Developer debug overlay — hidden in production, toggle with Ctrl/Cmd+Shift+D or ?debug=1 */}
       <Suspense fallback={null}>
         <DebugOverlay />
       </Suspense>
     </div>
   );
 }
-

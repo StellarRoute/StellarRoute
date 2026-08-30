@@ -1,0 +1,381 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "StellarRoute Swap & Indexer Detail",
+  "description": "Detailed swap prepare/submit outcomes by error class, in-flight concurrency, and indexer lag summaries. Complements slo-dashboard.json and indexer-lag-dashboard.json. All metric names are canonical — do not rename.",
+  "tags": ["stellarroute", "swap", "indexer", "production"],
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "title": "Swap Prepare Success / Error Rate",
+      "description": "Rate of swap prepare outcomes. SLO swap_prepare_success_rate: error rate < 1%.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_swap_prepare_total{outcome=\"success\"}[5m])",
+          "legendFormat": "success"
+        },
+        {
+          "expr": "rate(stellarroute_swap_prepare_total{outcome=\"error\"}[5m])",
+          "legendFormat": "error"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2 },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "error" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap Submit Success / Error Rate",
+      "description": "Rate of swap submit outcomes. SLO swap_submit_success_rate: error rate < 1%.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_swap_submit_total{outcome=\"success\"}[5m])",
+          "legendFormat": "success"
+        },
+        {
+          "expr": "rate(stellarroute_swap_submit_total{outcome=\"error\"}[5m])",
+          "legendFormat": "error"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2 },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "error" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap Prepare Errors by Class",
+      "description": "Breakdown of prepare errors by error_class label. Highlights simulation_failed, timeout, and other root causes.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (error_class) (rate(stellarroute_swap_prepare_total{outcome=\"error\"}[5m]))",
+          "legendFormat": "{{error_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2 },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap Submit Errors by Class",
+      "description": "Breakdown of submit errors by error_class label. Highlights bad_signature, slippage_exceeded, and rpc_error.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (error_class) (rate(stellarroute_swap_submit_total{outcome=\"error\"}[5m]))",
+          "legendFormat": "{{error_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2 },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap Prepare Latency P50 / P95",
+      "description": "Prepare phase latency percentiles. Informational — no formal SLO target; P95 < 2 s is expected.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(stellarroute_swap_prepare_duration_seconds_bucket[5m]))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(stellarroute_swap_prepare_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1.0 },
+              { "color": "red", "value": 2.0 }
+            ]
+          },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap Submit Latency P50 / P95",
+      "description": "Submit phase latency percentiles (Horizon round-trip included). Informational — no formal SLO target; P95 < 5 s is expected.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(stellarroute_swap_submit_duration_seconds_bucket[5m]))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(stellarroute_swap_submit_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2.5 },
+              { "color": "red", "value": 5.0 }
+            ]
+          },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap In-Flight Concurrency",
+      "description": "Number of swap requests currently in-flight per phase (prepare / submit). Runaway growth indicates a processing stall.",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "stellarroute_swap_inflight{phase=\"prepare\"}",
+          "legendFormat": "prepare"
+        },
+        {
+          "expr": "stellarroute_swap_inflight{phase=\"submit\"}",
+          "legendFormat": "submit"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 },
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "title": "Swap Prepare Error Rate % (SLO view)",
+      "description": "Swap prepare error rate as a percentage. SLO: < 1%. Complements the counter rate panel above for quick status read.",
+      "type": "stat",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_swap_prepare_total{outcome=\"error\"}[5m]) / rate(stellarroute_swap_prepare_total[5m]) * 100",
+          "legendFormat": "Prepare error %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 1.0 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "colorMode": "background"
+      }
+    },
+    {
+      "title": "Swap Submit Error Rate % (SLO view)",
+      "description": "Swap submit error rate as a percentage. SLO: < 1%.",
+      "type": "stat",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 24 },
+      "targets": [
+        {
+          "expr": "rate(stellarroute_swap_submit_total{outcome=\"error\"}[5m]) / rate(stellarroute_swap_submit_total[5m]) * 100",
+          "legendFormat": "Submit error %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 1.0 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "colorMode": "background"
+      }
+    },
+    {
+      "title": "Indexer Lag Summary",
+      "description": "Current ledger lag per source (sdex / amm). Warning > 10, critical > 60. See indexer-lag-dashboard.json for full detail.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 31 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_lag_ledgers{source=\"sdex\"}",
+          "legendFormat": "SDEX lag (ledgers)"
+        },
+        {
+          "expr": "stellarroute_indexer_lag_ledgers{source=\"amm\"}",
+          "legendFormat": "AMM lag (ledgers)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 60 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value"
+      }
+    },
+    {
+      "title": "Indexer Sync Status",
+      "description": "Per-source sync health: 1=OK, 0=warning, -1=critical, -2=unknown. See indexer-lag-dashboard.json for trend over time.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 31 },
+      "targets": [
+        {
+          "expr": "stellarroute_indexer_sync_status",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "value": "1",  "text": "OK",       "color": "green"  },
+            { "type": "value", "value": "0",  "text": "WARNING",  "color": "yellow" },
+            { "type": "value", "value": "-1", "text": "CRITICAL", "color": "red"    },
+            { "type": "value", "value": "-2", "text": "UNKNOWN",  "color": "gray"   }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "yellow", "value": 0 },
+              { "color": "green",  "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "colorMode": "background"
+      }
+    }
+  ],
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"],
+    "time_options": ["5m", "15m", "1h", "3h", "6h", "12h", "24h", "2d", "7d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "pluginId": "prometheus",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Data Source"
+      }
+    ]
+  }
+}

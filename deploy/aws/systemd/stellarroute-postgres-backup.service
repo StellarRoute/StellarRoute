@@ -1,0 +1,9 @@
+[Unit]
+Description=StellarRoute Postgres backup
+After=docker.service stellarroute-staging.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/stellarroute
+ExecStart=/bin/bash /opt/stellarroute/deploy/aws/scripts/postgres-backup.sh

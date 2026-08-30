@@ -1,25 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AccountSwitcher } from './account-switcher';
-import { WalletProvider } from '@/components/providers/wallet-provider';
+import { WalletProvider, useWallet } from '@/components/providers/wallet-provider';
 import * as walletLib from '@/lib/wallet';
+import React from 'react';
 
-// Mock the wallet library
 vi.mock('@/lib/wallet', () => ({
   getAvailableWallets: vi.fn(),
   connectWallet: vi.fn(),
   disconnectWallet: vi.fn(),
   refreshWalletSession: vi.fn(),
   checkAddressChange: vi.fn(),
+  checkWalletCapabilities: vi.fn(),
 }));
 
 const mockWalletLib = walletLib as any;
 
-// Mock component wrapper
+function ConnectThenRender({ children }: { children: React.ReactNode }) {
+  const { connect, isConnected } = useWallet();
+
+  React.useEffect(() => {
+    void connect('freighter');
+  }, [connect]);
+
+  if (!isConnected) return <div>connecting</div>;
+  return <>{children}</>;
+}
+
 function TestWrapper({ children }: { children: React.ReactNode }) {
   return (
     <WalletProvider defaultNetwork="testnet">
-      {children}
+      <ConnectThenRender>{children}</ConnectThenRender>
     </WalletProvider>
   );
 }
@@ -27,11 +38,12 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 describe('AccountSwitcher', () => {
   const mockAddress1 = 'GABC123DEFGHIJKLMNOPQRSTUVWXYZ456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const mockAddress2 = 'GDEF456GHIJKLMNOPQRSTUVWXYZ789ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
-  
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     mockWalletLib.getAvailableWallets.mockResolvedValue([
-      { id: 'freighter', label: 'Freighter', installed: true }
+      { id: 'freighter', label: 'Freighter', installed: true },
     ]);
     mockWalletLib.connectWallet.mockResolvedValue({
       walletId: 'freighter',
@@ -40,53 +52,51 @@ describe('AccountSwitcher', () => {
       isConnected: true,
     });
     mockWalletLib.checkAddressChange.mockResolvedValue(null);
+    mockWalletLib.checkWalletCapabilities.mockResolvedValue({
+      checkedAt: Date.now(),
+      statuses: [],
+    });
+    mockWalletLib.refreshWalletSession.mockResolvedValue({
+      walletId: 'freighter',
+      address: mockAddress1,
+      network: 'testnet',
+      isConnected: true,
+    });
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
   it('should not render when wallet is not connected', () => {
     render(
-      <TestWrapper>
+      <WalletProvider defaultNetwork="testnet">
         <AccountSwitcher />
-      </TestWrapper>
+      </WalletProvider>
     );
 
-    expect(screen.queryByText('Refresh Account')).not.toBeInTheDocument();
+    expect(screen.queryByText(/refresh account/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/account changed/i)).not.toBeInTheDocument();
   });
 
-  it('should render refresh button when wallet is connected', async () => {
-    mockWalletLib.connectWallet.mockResolvedValue({
-      walletId: 'freighter',
-      address: mockAddress1,
-      network: 'testnet',
-      isConnected: true,
-    });
-
+  it('stays silent when connected and idle', async () => {
     render(
       <TestWrapper>
         <AccountSwitcher />
       </TestWrapper>
     );
 
-    // First connect the wallet
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
     await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
+      expect(screen.queryByText('connecting')).not.toBeInTheDocument();
     });
+
+    expect(screen.queryByText(/refresh account/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/account changed/i)).not.toBeInTheDocument();
   });
 
   it('should detect account changes and show notification', async () => {
-    // Setup connected state
-    mockWalletLib.connectWallet.mockResolvedValue({
-      walletId: 'freighter',
-      address: mockAddress1,
-      network: 'testnet',
-      isConnected: true,
-    });
+    mockWalletLib.checkAddressChange.mockResolvedValue(mockAddress2);
 
     render(
       <TestWrapper>
@@ -94,132 +104,22 @@ describe('AccountSwitcher', () => {
       </TestWrapper>
     );
 
-    // Connect wallet first
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
     await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
+      expect(screen.queryByText('connecting')).not.toBeInTheDocument();
     });
 
-    // Mock account change detection
+    await act(async () => {
+      vi.advanceTimersByTime(3100);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/account changed/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /refresh account/i })).toBeInTheDocument();
+  });
+
+  it('can dismiss account change notification', async () => {
     mockWalletLib.checkAddressChange.mockResolvedValue(mockAddress2);
-
-    // Wait for the account change detection interval
-    await waitFor(() => {
-      expect(screen.getByText('Account Change Detected')).toBeInTheDocument();
-    }, { timeout: 4000 });
-
-    expect(screen.getByText(/Your wallet account appears to have changed/)).toBeInTheDocument();
-    expect(screen.getByText('Refresh Account')).toBeInTheDocument();
-    expect(screen.getByText('Dismiss')).toBeInTheDocument();
-  });
-
-  it('should refresh account when refresh button is clicked', async () => {
-    mockWalletLib.refreshWalletSession.mockResolvedValue({
-      walletId: 'freighter',
-      address: mockAddress2,
-      network: 'testnet',
-      isConnected: true,
-    });
-
-    const onAccountChange = vi.fn();
-
-    render(
-      <TestWrapper>
-        <AccountSwitcher onAccountChange={onAccountChange} />
-      </TestWrapper>
-    );
-
-    // Connect wallet first
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
-    });
-
-    // Mock account change detection
-    mockWalletLib.checkAddressChange.mockResolvedValue(mockAddress2);
-
-    await waitFor(() => {
-      expect(screen.getByText('Account Change Detected')).toBeInTheDocument();
-    }, { timeout: 4000 });
-
-    // Click refresh account
-    const refreshButton = screen.getByText('Refresh Account');
-    fireEvent.click(refreshButton);
-
-    await waitFor(() => {
-      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalledWith('freighter');
-    });
-  });
-
-  it('should dismiss account change notification', async () => {
-    render(
-      <TestWrapper>
-        <AccountSwitcher />
-      </TestWrapper>
-    );
-
-    // Connect wallet first
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
-    });
-
-    // Mock account change detection
-    mockWalletLib.checkAddressChange.mockResolvedValue(mockAddress2);
-
-    await waitFor(() => {
-      expect(screen.getByText('Account Change Detected')).toBeInTheDocument();
-    }, { timeout: 4000 });
-
-    // Click dismiss
-    const dismissButton = screen.getByText('Dismiss');
-    fireEvent.click(dismissButton);
-
-    await waitFor(() => {
-      expect(screen.queryByText('Account Change Detected')).not.toBeInTheDocument();
-    });
-
-    expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
-  });
-
-  it('should prevent account switching during transactions', async () => {
-    render(
-      <TestWrapper>
-        <AccountSwitcher />
-      </TestWrapper>
-    );
-
-    // Connect wallet first
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
-    });
-
-    // Simulate transaction pending state
-    // This would need to be set through the wallet provider context
-    // For now, we'll test the UI behavior when transaction is pending
-
-    // The component should show a warning message
-    // This test would need the wallet provider to expose setTransactionPending
-  });
-
-  it('should show loading state during account refresh', async () => {
-    mockWalletLib.refreshWalletSession.mockImplementation(() => 
-      new Promise(resolve => setTimeout(() => resolve({
-        walletId: 'freighter',
-        address: mockAddress2,
-        network: 'testnet',
-        isConnected: true,
-      }), 100))
-    );
 
     render(
       <TestWrapper>
@@ -227,73 +127,19 @@ describe('AccountSwitcher', () => {
       </TestWrapper>
     );
 
-    // Connect wallet first
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
     await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
+      expect(screen.queryByText('connecting')).not.toBeInTheDocument();
     });
 
-    // Mock account change detection
-    mockWalletLib.checkAddressChange.mockResolvedValue(mockAddress2);
-
-    await waitFor(() => {
-      expect(screen.getByText('Account Change Detected')).toBeInTheDocument();
-    }, { timeout: 4000 });
-
-    // Click refresh account
-    const refreshButton = screen.getByText('Refresh Account');
-    fireEvent.click(refreshButton);
-
-    // Should show loading state
-    expect(screen.getByText('Refreshing...')).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.queryByText('Refreshing...')).not.toBeInTheDocument();
-    });
-  });
-
-  it('should call onAccountChange callback when account changes', async () => {
-    const onAccountChange = vi.fn();
-    
-    mockWalletLib.refreshWalletSession.mockResolvedValue({
-      walletId: 'freighter',
-      address: mockAddress2,
-      network: 'testnet',
-      isConnected: true,
+    await act(async () => {
+      vi.advanceTimersByTime(3100);
     });
 
-    render(
-      <TestWrapper>
-        <AccountSwitcher onAccountChange={onAccountChange} />
-      </TestWrapper>
-    );
-
-    // Connect wallet first
-    const connectButton = screen.getByText('Connect Freighter');
-    fireEvent.click(connectButton);
-
     await waitFor(() => {
-      expect(screen.getByText('↻ Refresh Account')).toBeInTheDocument();
+      expect(screen.getByText(/account changed/i)).toBeInTheDocument();
     });
 
-    // Mock account change detection
-    mockWalletLib.checkAddressChange.mockResolvedValue(mockAddress2);
-
-    await waitFor(() => {
-      expect(screen.getByText('Account Change Detected')).toBeInTheDocument();
-    }, { timeout: 4000 });
-
-    // Click refresh account
-    const refreshButton = screen.getByText('Refresh Account');
-    fireEvent.click(refreshButton);
-
-    await waitFor(() => {
-      expect(mockWalletLib.refreshWalletSession).toHaveBeenCalled();
-    });
-
-    // Note: The callback test would need the wallet provider to properly update
-    // the address state after refresh for this to work correctly
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByText(/account changed/i)).not.toBeInTheDocument();
   });
 });

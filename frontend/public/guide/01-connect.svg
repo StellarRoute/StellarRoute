@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <rect width="640" height="360" rx="12" fill="#1a1a2e" stroke="#4a4a6a" stroke-width="2"/>
+  <rect x="40" y="40" width="560" height="60" rx="8" fill="#16213e"/>
+  <text x="60" y="78" fill="#e0e0e0" font-family="system-ui, sans-serif" font-size="20" font-weight="600">StellarRoute</text>
+  <rect x="40" y="120" width="200" height="180" rx="10" fill="#0f3460" stroke="#e94560" stroke-width="2" stroke-dasharray="8 4"/>
+  <text x="140" y="215" fill="#e94560" font-family="system-ui, sans-serif" font-size="16" font-weight="700" text-anchor="middle">Screenshot</text>
+  <text x="140" y="240" fill="#888" font-family="system-ui, sans-serif" font-size="12" text-anchor="middle">Placeholder</text>
+  <rect x="280" y="120" width="320" height="40" rx="6" fill="#16213e"/>
+  <text x="296" y="146" fill="#e0e0e0" font-family="system-ui, sans-serif" font-size="14">Connect Wallet</text>
+  <rect x="280" y="170" width="320" height="36" rx="6" fill="#533483"/>
+  <text x="296" y="194" fill="#fff" font-family="system-ui, sans-serif" font-size="13">Freighter  xBull</text>
+  <rect x="280" y="220" width="320" height="36" rx="6" fill="#16213e"/>
+  <text x="296" y="244" fill="#e0e0e0" font-family="system-ui, sans-serif" font-size="13">Network: Testnet</text>
+  <rect x="280" y="270" width="320" height="36" rx="6" fill="#0f3460"/>
+  <text x="296" y="294" fill="#4ecca3" font-family="system-ui, sans-serif" font-size="13">Connected</text>
+  <text x="320" y="45" fill="#6a6a8a" font-family="system-ui, sans-serif" font-size="11" text-anchor="middle">STEP 1 — Connect your wallet</text>
+</svg>

@@ -60,11 +60,13 @@ export interface UseQuoteStreamStatusResult {
  */
 export function deriveRawStatus(
   isRecovering: boolean,
-  error: Error | null,
+  _error: Error | null,
   isOnline: boolean
 ): ConnectionStatus {
   if (!isOnline) return "disconnected";
-  if (isRecovering || error !== null) return "reconnecting";
+  // Only transient recovery → "reconnecting". Terminal quote errors (no route,
+  // not found) stay "connected" so the UI does not stick on "Reconnecting".
+  if (isRecovering) return "reconnecting";
   return "connected";
 }
 

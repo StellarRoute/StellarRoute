@@ -1,6 +1,9 @@
 //! API server setup and configuration
 
-use axum::{http::Request, Router};
+use axum::{
+    http::{header, HeaderName, HeaderValue, Request},
+    Router,
+};
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::{
     compression::CompressionLayer,
@@ -70,6 +73,98 @@ impl Default for ServerConfig {
     }
 }
 
+/// Parse `CORS_ALLOWED_ORIGINS` as a CSV allowlist of exact origin values
+/// (e.g. `https://app.example.com,https://staging.example.com`).
+pub fn cors_allowed_origins_from_env() -> Vec<String> {
+    std::env::var("CORS_ALLOWED_ORIGINS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Validate the CORS configuration at startup.
+///
+/// When a strict CORS policy is required (production, or
+/// `REQUIRE_STRICT_CORS=1`), `CORS_ALLOWED_ORIGINS` must resolve to a
+/// non-empty allowlist of valid origin values. Returns `Err` describing the
+/// problem so the caller can refuse to boot.
+pub fn validate_cors_config() -> std::result::Result<(), String> {
+    if !crate::env_profile::require_strict_cors() {
+        return Ok(());
+    }
+
+    let origins = cors_allowed_origins_from_env();
+    if origins.is_empty() {
+        return Err(
+            "CORS_ALLOWED_ORIGINS must be set to a non-empty comma-separated allowlist of \
+             origins when STELLARROUTE_ENV=production (or REQUIRE_STRICT_CORS=1). Wildcard \
+             CORS is not permitted in production."
+                .to_string(),
+        );
+    }
+
+    let invalid: Vec<&String> = origins
+        .iter()
+        .filter(|o| o.parse::<HeaderValue>().is_err())
+        .collect();
+    if !invalid.is_empty() {
+        return Err(format!(
+            "CORS_ALLOWED_ORIGINS contains invalid origin value(s): {:?}",
+            invalid
+        ));
+    }
+
+    Ok(())
+}
+
+fn strict_cors_allowed_headers() -> Vec<HeaderName> {
+    vec![
+        header::CONTENT_TYPE,
+        header::AUTHORIZATION,
+        HeaderName::from_static("x-api-key"),
+        HeaderName::from_static(crate::cctp::access::TRANSFER_ACCESS_HEADER),
+        HeaderName::from_static(crate::cctp::idempotency::IDEMPOTENCY_HEADER),
+        HeaderName::from_static(REQUEST_ID_HEADER),
+    ]
+}
+
+/// Build the CORS layer for the API.
+///
+/// In production (or when `REQUIRE_STRICT_CORS=1`), origins are restricted to
+/// the explicit `CORS_ALLOWED_ORIGINS` allowlist. Outside of production,
+/// CORS remains permissive (`Any`) to preserve local developer experience.
+fn build_cors_layer() -> CorsLayer {
+    if crate::env_profile::require_strict_cors() {
+        let origins: Vec<HeaderValue> = cors_allowed_origins_from_env()
+            .iter()
+            .filter_map(|o| o.parse::<HeaderValue>().ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(strict_cors_allowed_headers())
+    } else {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    }
+}
+
+async fn finalize_app_state(mut state: AppState) -> Arc<AppState> {
+    let pool = state.db.write_pool().clone();
+    let kill = state.kill_switch.clone();
+    if let Some(ctx) = crate::cctp::bootstrap::CctpHttpContext::try_build(pool, kill).await {
+        state.cctp_runtime = ctx.runtime.clone();
+        state.cctp = Some(Arc::new(ctx));
+    } else {
+        state.bootstrap_cctp_runtime().await;
+    }
+    Arc::new(state)
+}
+
 /// API Server
 pub struct Server {
     config: ServerConfig,
@@ -116,7 +211,7 @@ impl Server {
                         state.admin_auth_token = config.admin_auth_token.clone();
                         // Initialize WS subsystem on the AppState so handlers/broadcaster can start
                         state.ws = Some(crate::routes::ws::WsState::from_env());
-                        (Arc::new(state), rate_limit)
+                        (finalize_app_state(state).await, rate_limit)
                     }
                 }
                 Err(e) => {
@@ -126,7 +221,7 @@ impl Server {
                         state.admin_auth_token = config.admin_auth_token.clone();
                         state.ws = Some(crate::routes::ws::WsState::from_env());
                         (
-                            Arc::new(state),
+                            finalize_app_state(state).await,
                             RateLimitLayer::in_memory(EndpointConfig::default()),
                         )
                     }
@@ -139,7 +234,7 @@ impl Server {
                 state.admin_auth_token = config.admin_auth_token.clone();
                 state.ws = Some(crate::routes::ws::WsState::from_env());
                 (
-                    Arc::new(state),
+                    finalize_app_state(state).await,
                     RateLimitLayer::in_memory(EndpointConfig::default()),
                 )
             }
@@ -190,20 +285,14 @@ impl Server {
             info!("✅ Response compression enabled");
         }
 
-        // Add CORS if enabled
-        if config.enable_cors {
-            let cors = CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any);
-            app = app.layer(cors);
-        }
-
-        // Add rate limiting (innermost — runs before CORS/compression in the response path)
+        // Rate limit closest to the router, then auth, then CORS outside auth so
+        // preflight/OPTIONS and auth error responses still get ACAO headers.
+        // (Last `.layer` is outermost: Trace → CORS → Auth → RateLimit → Router.)
         app = app.layer(rate_limit);
-
-        // Add API key authentication
         app = app.layer(AuthLayer::default());
+        if config.enable_cors {
+            app = app.layer(build_cors_layer());
+        }
 
         // Add request logging — each request gets a unique span with method, URI, status, and latency.
         app = app.layer(
@@ -276,8 +365,7 @@ impl Server {
         // that require the client's `SocketAddr` (via `ConnectInfo<SocketAddr>`) work.
         axum::serve(
             listener,
-            self.app
-                .into_make_service_with_connect_info::<SocketAddr>(),
+            self.app.into_make_service_with_connect_info::<SocketAddr>(),
         )
         .with_graceful_shutdown(async move {
             shutdown_clone.wait_for_signal().await;
@@ -303,6 +391,31 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::DatabasePools;
+    use axum::{
+        body::Body,
+        http::{Method, Request as HttpRequest, StatusCode},
+    };
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Mutex;
+    use tower::ServiceExt;
+
+    // CORS behavior is driven by process-global env vars; serialize access
+    // across tests in this module so they don't race each other.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset_cors_env() {
+        std::env::remove_var("STELLARROUTE_ENV");
+        std::env::remove_var("REQUIRE_STRICT_CORS");
+        std::env::remove_var("CORS_ALLOWED_ORIGINS");
+    }
+
+    fn lazy_db_pools() -> DatabasePools {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .expect("failed to create lazy pool");
+        DatabasePools::new(pool, None)
+    }
 
     #[test]
     fn test_server_config_default() {
@@ -310,5 +423,171 @@ mod tests {
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 3000);
         assert!(config.enable_cors);
+    }
+
+    #[test]
+    fn cors_validate_fails_in_production_without_allowlist() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+
+        let result = validate_cors_config();
+
+        reset_cors_env();
+        assert!(
+            result.is_err(),
+            "expected production without an allowlist to fail startup validation"
+        );
+    }
+
+    #[test]
+    fn cors_validate_passes_in_production_with_allowlist() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let result = validate_cors_config();
+
+        reset_cors_env();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn cors_validate_passes_outside_production_without_allowlist() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+
+        let result = validate_cors_config();
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn cors_allows_allowlisted_origin_preflight_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let server = Server::new(ServerConfig::default(), lazy_db_pools()).await;
+        let router = server.router();
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/health")
+                    .header("origin", "https://app.example.com")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        reset_cors_env();
+
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("https://app.example.com"),
+            "allowlisted origin must be echoed back on preflight"
+        );
+    }
+
+    #[tokio::test]
+    async fn cors_denies_disallowed_origin_preflight_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let server = Server::new(ServerConfig::default(), lazy_db_pools()).await;
+        let router = server.router();
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/health")
+                    .header("origin", "https://evil.example.com")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        reset_cors_env();
+
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none(),
+            "disallowed origin must not receive an Access-Control-Allow-Origin header"
+        );
+    }
+
+    #[test]
+    fn strict_cors_allowed_headers_include_cctp_wallet_headers() {
+        let allowed: Vec<String> = strict_cors_allowed_headers()
+            .iter()
+            .map(|h| h.as_str().to_ascii_lowercase())
+            .collect();
+        assert!(allowed.iter().any(|h| h == "idempotency-key"));
+        assert!(allowed.iter().any(|h| h == "x-cctp-transfer-access"));
+        assert!(allowed.iter().any(|h| h == "x-request-id"));
+        assert!(allowed.iter().any(|h| h == "content-type"));
+    }
+
+    #[tokio::test]
+    #[ignore = "full Server bootstrap is slow and env vars race under parallel lib tests; see strict_cors_allowed_headers_include_cctp_wallet_headers"]
+    async fn cors_allows_cctp_headers_on_preflight_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset_cors_env();
+        std::env::set_var("STELLARROUTE_ENV", "production");
+        std::env::set_var("CORS_ALLOWED_ORIGINS", "https://app.example.com");
+
+        let server = Server::new(ServerConfig::default(), lazy_db_pools()).await;
+        let router = server.router();
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/api/v2/bridge/cctp/quote")
+                    .header("origin", "https://app.example.com")
+                    .header("access-control-request-method", "POST")
+                    .header(
+                        "access-control-request-headers",
+                        "content-type,idempotency-key,x-cctp-transfer-access,x-request-id",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let allowed = response
+            .headers()
+            .get("access-control-allow-headers")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        assert!(
+            allowed.contains("idempotency-key"),
+            "access-control-allow-headers missing idempotency-key: {allowed:?}"
+        );
+        assert!(allowed.contains("x-cctp-transfer-access"));
+        assert!(allowed.contains("x-request-id"));
+        assert!(allowed.contains("content-type"));
+
+        reset_cors_env();
     }
 }

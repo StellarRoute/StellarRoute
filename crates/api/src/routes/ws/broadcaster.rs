@@ -331,8 +331,13 @@ async fn find_asset_id(state: &AppState, asset: &AssetPath) -> Result<Uuid, ApiE
     let row = if asset.asset_code == "native" {
         sqlx::query(
             r#"
-            select id from assets
-            where asset_type = $1
+            select a.id
+            from assets a
+            left join sdex_offers o
+              on o.selling_asset_id = a.id or o.buying_asset_id = a.id
+            where a.asset_type = $1
+            group by a.id, a.created_at
+            order by count(o.offer_id) desc, a.created_at asc
             limit 1
             "#,
         )

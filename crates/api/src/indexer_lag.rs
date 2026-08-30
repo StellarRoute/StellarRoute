@@ -335,11 +335,23 @@ impl IndexerLagMonitor {
 
     /// Fetch the most recently indexed SDEX ledger from the local DB.
     ///
-    /// Uses `MAX(last_modified_ledger)` from `sdex_offers` — the same field
-    /// the SDEX indexer writes on every upsert.
+    /// Prefers the SDEX poll heartbeat (`ingestion_state.sdex_last_horizon_ledger`)
+    /// written after each successful orderbook poll. Falls back to
+    /// `MAX(last_modified_ledger)` from `sdex_offers` for streaming / legacy rows
+    /// (offer ledgers can be far behind Horizon even when the book snapshot is fresh).
     async fn fetch_sdex_last_ledger(&self) -> Result<u64, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT COALESCE(MAX(last_modified_ledger), 0)::BIGINT AS seq FROM sdex_offers",
+            r#"
+            SELECT GREATEST(
+                COALESCE(
+                    (SELECT NULLIF(value, '')::BIGINT
+                     FROM ingestion_state
+                     WHERE key = 'sdex_last_horizon_ledger'),
+                    0
+                ),
+                COALESCE((SELECT MAX(last_modified_ledger) FROM sdex_offers), 0)
+            )::BIGINT AS seq
+            "#,
         )
         .fetch_one(&self.db)
         .await?;

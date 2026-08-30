@@ -31,11 +31,27 @@ describe('Footer', () => {
   it('renders all footer links', () => {
     render(<Footer />);
 
+    expect(screen.getByRole('link', { name: /^Swap$/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Cross-chain/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Stellar DEX/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Status/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /GitHub/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Docs/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Stellar\.org/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Community/i })).toBeInTheDocument();
+  });
+
+  it('links SEO landing pages as internal routes', () => {
+    render(<Footer />);
+
+    expect(screen.getByRole('link', { name: /Cross-chain/i })).toHaveAttribute(
+      'href',
+      '/cross-chain-swap',
+    );
+    expect(screen.getByRole('link', { name: /Stellar DEX/i })).toHaveAttribute(
+      'href',
+      '/stellar-dex-aggregator',
+    );
   });
 
   it('renders status link as internal link', () => {

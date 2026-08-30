@@ -1510,59 +1510,8 @@ fn test_governance_action_by_non_signer_post_migration() {
     assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
 }
 
-#[cfg(test)]
-mod property_fuzz_tests {
-    use super::*;
-    use proptest::prelude::*;
-
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(32))]
-
-        #[test]
-        fn validate_route_hop_bounds_are_enforced(hops in 0u32..8u32) {
-            let env = setup_env();
-            let (_, _, client) = deploy_router(&env);
-            let pool = deploy_mock_pool(&env);
-            client.register_pool(&pool);
-
-            let route = make_route(&env, &pool, hops);
-            let result = client.try_validate_route(&route);
-
-            if (1..=4).contains(&hops) {
-                prop_assert!(result.is_ok());
-            } else if hops == 0 {
-                prop_assert_eq!(result, Err(Ok(ContractError::EmptyRoute)));
-            } else {
-                prop_assert_eq!(result, Err(Ok(ContractError::TooManyHops)));
-            }
-        }
-
-        #[test]
-        fn execute_swap_amount_bounds_are_enforced(amount_in in -8i128..=8i128) {
-            let env = setup_env();
-            let (_, _, client) = deploy_router(&env);
-            let pool = deploy_mock_pool(&env);
-            client.register_pool(&pool);
-
-            let route = make_route(&env, &pool, 1);
-            let params = swap_params_for(
-                &env,
-                route,
-                amount_in,
-                0,
-                current_seq(&env) + 100,
-            );
-
-            let result = client.try_execute_swap(&Address::generate(&env), &params);
-
-            if amount_in <= 0 {
-                prop_assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
-            } else {
-                prop_assert!(result.is_ok());
-            }
-        }
-    }
-}
+// Property / fuzz targets for validate_route and execute_swap live in
+// `fuzz_targets.rs` (see `audit/fuzzing.md` for overnight runs).
 
 #[test]
 fn test_multi_user_swaps() {

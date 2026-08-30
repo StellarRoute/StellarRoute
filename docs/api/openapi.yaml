@@ -60,6 +60,8 @@ tags:
     description: Service health and readiness probes
   - name: assets
     description: Asset metadata — decimals, issuer labels, and trustline hints
+  - name: activity
+    description: Indexed on-chain contract swap activity
   - name: trading
     description: Market data — trading pairs, orderbooks, and price quotes
 
@@ -222,6 +224,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/activity/swaps:
+    get:
+      operationId: list_swap_activity
+      summary: Recent indexed contract swaps
+      description: |
+        Returns a paginated list of indexed on-chain swap activity from the
+        `contract_swap_activity` table. Results are ordered by ledger
+        descending (most recent first).
+
+        Use `before_ledger` for cursor-based pagination and `limit` to
+        control page size (default 50, max 100).
+      tags:
+        - activity
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of swaps to return, capped at 100.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: before_ledger
+          in: query
+          description: Return swaps with ledger sequence strictly less than this value.
+          required: false
+          schema:
+            type: integer
+            format: int64
+            example: 500000
+      responses:
+        "200":
+          description: Recent indexed contract swaps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwapActivityResponse"
+              example:
+                swaps:
+                  - event_id: "evt_abc123"
+                    contract_id: "CBKMVLHBS2SNEQIS3EMU3Q4A2OGG5OQ5Z23Q7ITX5DOFGZQD5OZ6PQZ4"
+                    ledger: 499999
+                    ledger_closed_at: "2026-08-20T14:30:00Z"
+                    paging_token: "499999-0"
+                    sender: "GBV4FDE6VRZHQ2YG5NKB7RJE36GDEW3Y3L6YQ4Q5UZ6VJZGJLKZ46AAA"
+                    amount_in: "10.0000000"
+                    amount_out: "1.0500000"
+                    fee_amount: "0.0000100"
+                    route:
+                      from_asset: native
+                      to_asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                      source: sdex
+                    source_asset: native
+                    destination_asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/pairs:
     get:
@@ -1236,6 +1302,78 @@ components:
             parameter: slippage_bps
             min: 0
             max: 10000
+
+    SwapActivityItem:
+      type: object
+      required: [event_id, contract_id, ledger, paging_token, sender, amount_in, amount_out, fee_amount, route]
+      description: A single indexed on-chain swap event
+      properties:
+        event_id:
+          type: string
+          description: Unique event identifier
+          example: "evt_abc123"
+        contract_id:
+          type: string
+          description: Soroban contract address that emitted the event
+          example: "CBKMVLHBS2SNEQIS3EMU3Q4A2OGG5OQ5Z23Q7ITX5DOFGZQD5OZ6PQZ4"
+        ledger:
+          type: integer
+          format: int64
+          description: Stellar ledger sequence when the event was recorded
+          example: 499999
+        ledger_closed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: RFC-3339 timestamp when the ledger closed
+          example: "2026-08-20T14:30:00Z"
+        paging_token:
+          type: string
+          description: Cursor token for pagination
+          example: "499999-0"
+        sender:
+          type: string
+          description: Stellar account that initiated the swap
+          example: "GBV4FDE6VRZHQ2YG5NKB7RJE36GDEW3Y3L6YQ4Q5UZ6VJZGJLKZ46AAA"
+        amount_in:
+          type: string
+          description: Input amount (decimal string)
+          example: "10.0000000"
+        amount_out:
+          type: string
+          description: Output amount (decimal string)
+          example: "1.0500000"
+        fee_amount:
+          type: string
+          description: Fee paid (decimal string)
+          example: "0.0000100"
+        route:
+          type: object
+          description: Execution route summary (JSON object)
+          example:
+            from_asset: native
+            to_asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+            source: sdex
+        source_asset:
+          type: string
+          nullable: true
+          description: Canonical source asset identifier
+          example: native
+        destination_asset:
+          type: string
+          nullable: true
+          description: Canonical destination asset identifier
+          example: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+
+    SwapActivityResponse:
+      type: object
+      required: [swaps]
+      description: Paginated swap activity listing
+      properties:
+        swaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/SwapActivityItem"
 
   # Authentication is planned for a future release.
   # securitySchemes:

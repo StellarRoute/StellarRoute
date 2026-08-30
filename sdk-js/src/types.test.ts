@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { 
-  PriceQuote, 
-  isQuoteStale, 
-  isQuoteExpired, 
+import {
+  PriceQuote,
+  isQuoteStale,
+  isQuoteExpired,
   getTimeUntilExpiry,
   DEFAULT_STALENESS_CONFIG,
-  QuoteStalenessConfig
+  QuoteStalenessConfig,
+  stellarAssetToCanonical,
+  pathStepToSimulationHop,
+  API_ERROR_CODES,
 } from './types.js';
 
 describe('Quote staleness utilities', () => {
@@ -113,5 +116,54 @@ describe('Quote staleness utilities', () => {
       });
       expect(quote.ttl_seconds).toBe(30);
     });
+  });
+});
+
+describe('stellarAssetToCanonical / pathStepToSimulationHop', () => {
+  it('maps native and credit assets', () => {
+    expect(stellarAssetToCanonical({ asset_type: 'native' })).toBe('native');
+    expect(
+      stellarAssetToCanonical({
+        asset_type: 'credit_alphanum4',
+        asset_code: 'USDC',
+        asset_issuer: 'GDUK',
+      }),
+    ).toBe('USDC:GDUK');
+  });
+
+  it('builds simulation hops from PathStep', () => {
+    expect(
+      pathStepToSimulationHop({
+        from_asset: { asset_type: 'native' },
+        to_asset: {
+          asset_type: 'credit_alphanum4',
+          asset_code: 'USDC',
+          asset_issuer: 'GDUK',
+        },
+        price: '0.99',
+        source: 'sdex',
+        fee_bps: 30,
+      }),
+    ).toEqual({
+      from_asset: 'native',
+      to_asset: 'USDC:GDUK',
+      source: 'sdex',
+      fee_bps: 30,
+      price: '0.99',
+    });
+  });
+});
+
+describe('API_ERROR_CODES classic swap codes', () => {
+  it('includes dependency and unsupported classic codes', () => {
+    expect(API_ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'dependency_unavailable',
+        'unsupported_execution_mode',
+        'unsupported_route',
+        'quote_expired',
+        'duplicate_quote',
+      ]),
+    );
   });
 });

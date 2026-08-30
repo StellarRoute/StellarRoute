@@ -11,6 +11,425 @@ export interface Asset {
 }
 
 /**
+ * Chain-scoped asset used by the `/api/v2` seam.
+ * Distinct chains never collide on human symbols like `"USDC"`.
+ *
+ * Wire form is CAIP-inspired. Solana/TRON chain ids use internal network labels
+ * (not genesis-hash CAIP-2). Natives use numeric SLIP-44 (never `slip44:native`).
+ */
+export interface ChainAsset {
+  /** Chain id, e.g. `"stellar:pubnet"`, `"eip155:1"`. */
+  chain_id: string;
+  /** Asset suffix, e.g. `"slip44:148"`, `"erc20:0x…"`. */
+  asset: string;
+  /** Full canonical id (`{chain_id}/{asset}`). */
+  canonical: string;
+  /** Optional human symbol (not unique across chains). */
+  symbol?: string;
+}
+
+/** Supported chain namespaces for the chain-aware foundation. */
+export type ChainNamespace = 'stellar' | 'eip155' | 'solana' | 'bip122' | 'tron';
+
+/**
+ * Bridge / cross-chain venue metadata (abstraction only — no settlement).
+ */
+export interface BridgeVenueMeta {
+  provider: string;
+  source_chain: string;
+  destination_chain: string;
+}
+
+/**
+ * Response from `GET /api/v2` (`data` payload inside the API envelope).
+ *
+ * Seam surface today: info + `POST /api/v2/assets/canonicalize` only.
+ * There is no v2 quote client method — call those HTTP paths directly.
+ */
+export interface ApiV2Info {
+  version: number;
+  chain_aware_assets: boolean;
+  bridge_venues_metadata_only: boolean;
+  /** Always false until settlement exists. */
+  bridge_settlement_executable: boolean;
+  supported_chain_namespaces: ChainNamespace[];
+  /** Advertised CCTP corridors (empty until backend health gates execution). */
+  supported_corridors: SupportedCorridor[];
+}
+
+/** Advertised CCTP corridor capability (metadata; may be non-executable). */
+export interface SupportedCorridor {
+  corridor_id: string;
+  provider: string;
+  direction: CctpDirection;
+  source_chain_id: string;
+  destination_chain_id: string;
+  source_asset: ChainAsset;
+  destination_asset: ChainAsset;
+  executable: boolean;
+}
+
+export type CctpDirection = 'stellar_to_evm' | 'evm_to_stellar';
+export type CctpFinality = 'standard' | 'fast';
+
+export type CctpTransferStatus =
+  | 'created'
+  | 'burn_prepared'
+  | 'burn_submitted'
+  | 'awaiting_attestation'
+  | 'attestation_ready'
+  | 'mint_prepared'
+  | 'mint_submitted'
+  | 'completed'
+  | 'attestation_failed'
+  | 'mint_failed_retryable'
+  | 'cancelled'
+  | 'provider_killed';
+
+export interface CctpFeeQuote {
+  source_fee?: string;
+  destination_fee?: string;
+  bridge_fee?: string;
+  fee_asset?: ChainAsset;
+}
+
+export type PreparedWalletPayload =
+  | {
+      type: 'stellar_xdr';
+      network_passphrase: string;
+      xdr_envelope: string;
+      /** Optional signing account (G) — set for trustline ChangeTrust payloads. */
+      source?: string;
+    }
+  | {
+      type: 'evm_transaction';
+      chain_id: string;
+      to: string;
+      data: string;
+      value: string;
+    };
+
+export interface CctpStatusDetails {
+  code: string;
+  message: string;
+  retryable?: boolean;
+}
+
+export interface CctpQuoteRequest {
+  corridor_id: string;
+  provider: string;
+  direction: CctpDirection;
+  source_chain_id: string;
+  destination_chain_id: string;
+  source_asset: ChainAsset;
+  destination_asset: ChainAsset;
+  /** Decimal string; never a float. */
+  amount: string;
+  /**
+   * Destination recipient. `stellar_to_evm`: EVM `0x` address.
+   * `evm_to_stellar`: Stellar account G-address only (no muxed M or contract C strkeys).
+   */
+  recipient: string;
+  /**
+   * Optional source sender. Stellar burn: G-address only. EVM burn: `0x` address.
+   * Invalid sender returns `validation_error` (HTTP 400).
+   */
+  sender?: string;
+  /** Required for `evm_to_stellar` — Stellar G-address fee-payer for mint preparation. */
+  mint_submitter?: string;
+  finality: CctpFinality;
+}
+
+export interface CctpQuoteResponse {
+  transfer_id: string;
+  corridor_id: string;
+  provider: string;
+  direction: CctpDirection;
+  source_amount: string;
+  destination_amount: string;
+  fee_quote: CctpFeeQuote;
+  expires_at: number;
+  finality: CctpFinality;
+  /** One-time bearer token for transfer mutations/status (store securely). */
+  access_token: string;
+}
+
+/** Optional auth/idempotency headers for CCTP transfer calls. */
+export interface CctpCallOptions {
+  accessToken?: string;
+  idempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
+export const CCTP_TRANSFER_ACCESS_HEADER = 'x-cctp-transfer-access';
+export const CCTP_IDEMPOTENCY_HEADER = 'idempotency-key';
+
+export interface CctpTransferStatusResponse {
+  transfer_id: string;
+  corridor_id: string;
+  provider: string;
+  direction: CctpDirection;
+  status: CctpTransferStatus;
+  source_tx_hash?: string;
+  destination_tx_hash?: string;
+  support_reference_id?: string;
+  retryable: boolean;
+  error?: CctpStatusDetails;
+  /** Unix seconds (UTC) until re-attest may be requested again. */
+  reattest_cooldown_until?: number;
+}
+
+export interface CctpPrepareBurnResponse {
+  transfer_id: string;
+  status: CctpTransferStatus;
+  payload: PreparedWalletPayload;
+  expires_at: number;
+  approval_required?: boolean;
+}
+
+export interface CctpSubmitBurnRequest {
+  tx_hash: string;
+}
+
+export interface CctpSubmitBurnResponse {
+  transfer_id: string;
+  status: CctpTransferStatus;
+  source_tx_hash: string;
+}
+
+export interface CctpPrepareMintResponse {
+  transfer_id: string;
+  status: CctpTransferStatus;
+  payload: PreparedWalletPayload;
+  expires_at: number;
+  /** True when wallet must submit USDC ChangeTrust before mint_and_forward. */
+  trustline_required?: boolean;
+}
+
+export interface CctpSubmitMintRequest {
+  tx_hash: string;
+}
+
+export interface CctpSubmitMintResponse {
+  transfer_id: string;
+  status: CctpTransferStatus;
+  destination_tx_hash: string;
+}
+
+export interface CctpReattestResponse {
+  transfer_id: string;
+  status: CctpTransferStatus;
+  retryable: boolean;
+}
+
+/** Documented testnet corridor id (metadata only). */
+export const CCTP_TESTNET_CORRIDOR_ID =
+  'circle-cctp:usdc:stellar-testnet:ethereum-sepolia';
+
+/** Circle CCTP provider id. */
+export const CCTP_PROVIDER_ID = 'circle-cctp';
+
+/** Response from `POST /api/v2/assets/canonicalize`. */
+export interface CanonicalizeAssetResponse {
+  asset: ChainAsset;
+  input_form: 'legacy_stellar' | 'caip19' | string;
+}
+
+const CAIP_PREFIX = /^(stellar|eip155|solana|bip122|tron):/i;
+const STELLAR_ISSUER_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const BASE58_ALPHABET =
+  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+const SLIP44: Record<string, number> = {
+  stellar: 148,
+  eip155: 60,
+  solana: 501,
+  bip122: 0,
+  tron: 195,
+};
+
+/** Returns true when `input` looks like a chain-scoped identifier. */
+export function looksLikeCaip(input: string): boolean {
+  return CAIP_PREFIX.test(input.trim());
+}
+
+function fail(msg: string): never {
+  throw new Error(msg);
+}
+
+function validateStellarIssuer(issuer: string): string {
+  if (issuer.length !== 56 || !issuer.startsWith('G')) {
+    fail(`invalid stellar issuer (expected G… length 56): ${issuer}`);
+  }
+  for (const c of issuer.slice(1)) {
+    if (!STELLAR_ISSUER_ALPHABET.includes(c)) {
+      fail(`invalid stellar issuer alphabet: ${issuer}`);
+    }
+  }
+  return issuer;
+}
+
+function normalizeStellarCode(code: string): string {
+  if (
+    !code ||
+    code.length > 12 ||
+    ![...code].every((c) => /[A-Za-z0-9]/.test(c))
+  ) {
+    fail(`invalid stellar asset code: ${code}`);
+  }
+  return code.toUpperCase();
+}
+
+function validateErc20(address: string): string {
+  const lower = address.toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(lower)) {
+    fail(`invalid erc20 address (expected 0x + 40 hex): ${address}`);
+  }
+  return lower;
+}
+
+function validateSolana(address: string): string {
+  if (address.length < 32 || address.length > 44) {
+    fail(`invalid solana address length: ${address}`);
+  }
+  for (const c of address) {
+    if (!BASE58_ALPHABET.includes(c)) {
+      fail(`invalid solana address alphabet: ${address}`);
+    }
+  }
+  return address;
+}
+
+function validateTron(address: string): string {
+  if (address.length !== 34 || !address.startsWith('T')) {
+    fail(`invalid tron address (expected T… length 34): ${address}`);
+  }
+  for (const c of address) {
+    if (!BASE58_ALPHABET.includes(c)) {
+      fail(`invalid tron address alphabet: ${address}`);
+    }
+  }
+  return address;
+}
+
+function parseChainId(caip2: string): { ns: string; ref: string; id: string } {
+  const idx = caip2.indexOf(':');
+  if (idx < 0) fail(`invalid chain id: ${caip2}`);
+  const ns = caip2.slice(0, idx).toLowerCase();
+  const ref = caip2.slice(idx + 1);
+  if (ns === 'stellar') {
+    const network = ref.toLowerCase();
+    if (network !== 'pubnet' && network !== 'testnet') {
+      fail(`unsupported stellar network: ${ref}`);
+    }
+    return { ns, ref: network, id: `stellar:${network}` };
+  }
+  if (ns === 'eip155') {
+    if (!/^\d+$/.test(ref)) fail(`invalid eip155 chain id: ${ref}`);
+    return { ns, ref, id: `eip155:${ref}` };
+  }
+  if (ns === 'solana') {
+    const cluster = ref.toLowerCase();
+    if (!['mainnet', 'devnet', 'testnet'].includes(cluster)) {
+      fail(`unsupported solana cluster label: ${ref}`);
+    }
+    return { ns, ref: cluster, id: `solana:${cluster}` };
+  }
+  if (ns === 'bip122') {
+    if (!/^[a-fA-F0-9]{64}$/.test(ref)) {
+      fail(`invalid bip122 genesis hash (expected 64 hex chars): ${ref}`);
+    }
+    const genesis = ref.toLowerCase();
+    return { ns, ref: genesis, id: `bip122:${genesis}` };
+  }
+  if (ns === 'tron') {
+    const network = ref.toLowerCase();
+    if (!['mainnet', 'nile', 'shasta'].includes(network)) {
+      fail(`unsupported tron network label: ${ref}`);
+    }
+    return { ns, ref: network, id: `tron:${network}` };
+  }
+  fail(`unsupported chain namespace: ${ns}`);
+}
+
+/**
+ * Canonicalize a chain-scoped or legacy Stellar asset id.
+ * Matches Rust `canonicalize_asset_id` byte-for-byte for fixture vectors.
+ * Throws on malformed chain-scoped ids (fail closed — never echoes invalid input).
+ *
+ * Prefer `POST /api/v2/assets/canonicalize` for authoritative server parsing.
+ */
+export function canonicalizeAssetId(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) fail('asset identifier is empty');
+
+  if (looksLikeCaip(trimmed)) {
+    const slash = trimmed.indexOf('/');
+    if (slash < 0) fail(`expected chain/asset form, got: ${trimmed}`);
+    const chain = parseChainId(trimmed.slice(0, slash));
+    const assetPart = trimmed.slice(slash + 1);
+    if (
+      assetPart.toLowerCase() === 'native' ||
+      assetPart.toLowerCase() === 'slip44:native'
+    ) {
+      fail(
+        "slip44:native / bare native are not allowed; use slip44:<coin_type>",
+      );
+    }
+    const colon = assetPart.indexOf(':');
+    if (colon < 0) {
+      fail(`expected asset_namespace:reference, got: ${assetPart}`);
+    }
+    const assetNs = assetPart.slice(0, colon);
+    const assetRef = assetPart.slice(colon + 1);
+
+    if (assetNs === 'slip44') {
+      const slip = Number(assetRef);
+      const expected = SLIP44[chain.ns];
+      if (!Number.isInteger(slip) || slip !== expected) {
+        fail(
+          `slip44:${assetRef} is not valid for chain ${chain.id} (expected slip44:${expected})`,
+        );
+      }
+      return `${chain.id}/slip44:${expected}`;
+    }
+    if (assetNs === 'stellar') {
+      if (chain.ns !== 'stellar') {
+        fail('stellar credit assets require a stellar:* chain id');
+      }
+      const split = assetRef.indexOf(':');
+      if (split < 0) fail(`stellar asset requires CODE:ISSUER, got: ${assetRef}`);
+      const code = normalizeStellarCode(assetRef.slice(0, split));
+      const issuer = validateStellarIssuer(assetRef.slice(split + 1));
+      return `${chain.id}/stellar:${code}:${issuer}`;
+    }
+    if (assetNs === 'erc20') {
+      if (chain.ns !== 'eip155') fail('erc20 assets require an eip155:* chain id');
+      return `${chain.id}/erc20:${validateErc20(assetRef)}`;
+    }
+    if (assetNs === 'token') {
+      if (chain.ns !== 'solana') fail('solana token assets require a solana:* chain id');
+      return `${chain.id}/token:${validateSolana(assetRef)}`;
+    }
+    if (assetNs === 'trc20') {
+      if (chain.ns !== 'tron') fail('trc20 assets require a tron:* chain id');
+      return `${chain.id}/trc20:${validateTron(assetRef)}`;
+    }
+    fail(`unsupported asset namespace: ${assetNs}`);
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower === 'xlm' || lower === 'native') {
+    return 'stellar:pubnet/slip44:148';
+  }
+  if (trimmed.includes(':')) {
+    const [code, issuer] = trimmed.split(':');
+    return `stellar:pubnet/stellar:${normalizeStellarCode(code)}:${validateStellarIssuer(issuer)}`;
+  }
+  fail(`unrecognized stellar legacy asset: ${trimmed}`);
+}
+
+/**
  * A single tradeable asset pair with active orderbook depth.
  */
 export interface TradingPair {
@@ -439,11 +858,14 @@ export interface PriceHistoryResponse {
   points: PriceHistoryPoint[];
 }
 
+/** Current prepare execution mode — classic PathPaymentStrictSend only. */
+export type SwapExecutionMode = 'classic_path_payment';
+
 /**
- * Parameters for {@link StellarRouteClient.executeSwap}.
+ * Request body for `POST /api/v1/swap/prepare`.
  */
-export interface ExecuteSwapParams {
-  /** Route to execute (same shape as SimulateRouteRequest.route). */
+export interface SwapPrepareRequest {
+  /** Route to prepare (same hop shape as {@link SimulateRouteRequest.route}). */
   route: SimulateRouteRequest['route'];
   /** Input amount as a decimal string. */
   amount: string;
@@ -456,20 +878,157 @@ export interface ExecuteSwapParams {
 }
 
 /**
- * Result returned by {@link StellarRouteClient.executeSwap} when the
- * swap-build endpoint is available.
+ * Response payload from `POST /api/v1/swap/prepare` (inner `data` field).
+ */
+export interface PreparedSwapResponse {
+  /** Server-issued quote id used for submit idempotency. */
+  quote_id: string;
+  /** Base64-encoded unsigned Stellar XDR transaction envelope. */
+  xdr_envelope: string;
+  /** Authoritative expected output from prepare. */
+  expected_output: string;
+  /** Optional minimum output encoded in the envelope. */
+  min_output?: string;
+  /** Unix timestamp (ms) after which this prepare quote expires. */
+  expires_at: number;
+  /** Always `classic_path_payment` on success. */
+  execution_mode: SwapExecutionMode | string;
+  /** Network passphrase the unsigned envelope was built for (compare before wallet signing). */
+  network_passphrase: string;
+}
+
+/**
+ * Request body for `POST /api/v1/swap/submit`.
+ */
+export interface SwapSubmitRequest {
+  /** Quote id returned by {@link StellarRouteClient.prepareSwap}. */
+  quote_id: string;
+  /** Base64-encoded signed Stellar XDR transaction envelope. */
+  signed_xdr: string;
+}
+
+/**
+ * Response payload from `POST /api/v1/swap/submit` (inner `data` field).
+ */
+export interface SwapSubmitResponse {
+  /** Quote id that was submitted. */
+  quote_id: string;
+  /** Horizon transaction hash. */
+  tx_hash: string;
+  /** Submission status, e.g. `"pending"` or `"success"`. */
+  status: string;
+  /** Optional observed output amount. */
+  output_amount?: string;
+  /** Optional ledger number when known. */
+  ledger?: number;
+}
+
+/**
+ * Horizon confirmation result for a submitted swap transaction.
+ */
+export interface SwapConfirmResult {
+  /** Horizon transaction hash. */
+  tx_hash: string;
+  /** True when Horizon reports `successful: true`. */
+  successful: boolean;
+  /** Ledger the transaction landed in, when present. */
+  ledger?: number;
+  /** Horizon transaction detail URL used for confirmation. */
+  horizon_url: string;
+}
+
+/**
+ * Integrator's current Stellar network passphrase, or a callback that returns it
+ * (e.g. Freighter `getNetworkDetails().networkPassphrase`).
+ */
+export type ExecuteSwapNetworkPassphrase =
+  | string
+  | (() => string | Promise<string>);
+
+/**
+ * Parameters for {@link StellarRouteClient.executeSwap}.
  *
- * The caller is responsible for signing the `xdr_envelope` and submitting it
- * to the Stellar network.
+ * Orchestrates prepare → network check → caller sign → submit.
+ * `signTransaction` and `networkPassphrase` are required.
+ */
+export interface ExecuteSwapParams {
+  /** Route to execute (same shape as SimulateRouteRequest.route). */
+  route: SimulateRouteRequest['route'];
+  /** Input amount as a decimal string. */
+  amount: string;
+  /** Stellar account G-address of the swap sender. */
+  sender: string;
+  /** Minimum acceptable output amount as a decimal string (slippage guard). */
+  min_output?: string;
+  /** Slippage tolerance in basis points (default: 50). */
+  slippage_bps?: number;
+  /**
+   * Current wallet/app network passphrase (or async getter). Compared to
+   * `prepared.network_passphrase` before signing; mismatch returns
+   * `network_mismatch` without signing or submitting.
+   */
+  networkPassphrase: ExecuteSwapNetworkPassphrase;
+  /**
+   * Signs the unsigned XDR from prepare exactly once.
+   * Ambiguous submit retries reuse this same signed envelope.
+   */
+  signTransaction: (xdrEnvelope: string) => Promise<string>;
+  /** Max ambiguous submit retries after the first attempt (default: 2). */
+  ambiguousSubmitRetries?: number;
+}
+
+/**
+ * Aggregated result of {@link StellarRouteClient.executeSwap}.
  */
 export interface ExecuteSwapResult {
-  /** Base64-encoded Stellar XDR transaction envelope ready to sign. */
+  /** Quote id from prepare (needed for audit / retries). */
+  quote_id: string;
+  /** Base64-encoded unsigned Stellar XDR transaction envelope from prepare. */
   xdr_envelope: string;
-  /** Expected output amount from the simulation that was used to build the transaction. */
+  /** Authoritative expected output from prepare. */
   expected_output: string;
-  /** Unix timestamp (ms) after which this XDR envelope should be considered stale. */
+  /** Optional minimum output from prepare. */
+  min_output?: string;
+  /** Unix timestamp (ms) after which the prepare quote expires. */
   expires_at: number;
+  /** Prepare execution mode (`classic_path_payment`). */
+  execution_mode: string;
+  /** Network passphrase the unsigned envelope was built for. */
+  network_passphrase: string;
+  /** Horizon transaction hash from submit. */
+  tx_hash: string;
+  /** Submission status from submit. */
+  status: string;
 }
+
+/**
+ * Convert a PathStep (quote/route response) into a SimulationHop suitable for
+ * prepare/simulate request bodies (legacy Stellar asset strings).
+ */
+export function pathStepToSimulationHop(step: PathStep): SimulationHop {
+  return {
+    from_asset: stellarAssetToCanonical(step.from_asset),
+    to_asset: stellarAssetToCanonical(step.to_asset),
+    source: step.source,
+    fee_bps: step.fee_bps,
+    price: step.price,
+  };
+}
+
+/**
+ * Legacy Stellar asset identifier: `"native"` or `"CODE:ISSUER"`.
+ * Distinct from {@link canonicalizeAssetId} (chain-scoped CAIP form).
+ */
+export function stellarAssetToCanonical(asset: Asset | string): string {
+  if (typeof asset === 'string') return asset;
+  if (asset.asset_type === 'native') return 'native';
+  const code = asset.asset_code ?? '';
+  const issuer = asset.asset_issuer ?? '';
+  return issuer ? `${code}:${issuer}` : code;
+}
+
+/** @deprecated Use {@link stellarAssetToCanonical}. */
+export const assetToCanonical = stellarAssetToCanonical;
 
 /**
  * Error response from the StellarRoute API.
@@ -484,19 +1043,64 @@ export interface ApiError {
 }
 
 /**
- * Machine-readable error codes returned by the StellarRoute API.
+ * Canonical error codes documented for the StellarRoute API backend.
+ *
+ * This array is the single source of truth checked against
+ * `crates/api/src/models/response.rs`'s `ApiErrorCode::ALL` and
+ * `docs/api/error_taxonomy.md`'s error catalog table by
+ * `crates/api/tests/openapi_swap_contract.rs` (issue #1051). Add a new code
+ * to all three places together, or that test fails the build.
+ */
+export const API_ERROR_CODES = [
+  'internal_error',
+  'bad_request',
+  'not_found',
+  'validation_error',
+  'rate_limit_exceeded',
+  'overloaded',
+  'unauthorized',
+  'invalid_asset',
+  'invalid_amount',
+  'invalid_slippage',
+  'invalid_asset_format',
+  'no_route',
+  'not_executable',
+  'stale_market_data',
+  'not_implemented',
+  'quote_not_found',
+  'quote_expired',
+  'duplicate_quote',
+  'dependency_unavailable',
+  'unsupported_execution_mode',
+  'unsupported_route',
+  'cctp_not_enabled',
+  'unsupported_corridor',
+  'invalid_finality',
+  'invalid_recipient',
+  'fee_quote_unavailable',
+  'attestation_pending',
+  'attestation_expired',
+  'mint_retryable',
+  'transfer_not_found',
+  'provider_killed',
+] as const;
+
+/** A documented backend error code (see {@link API_ERROR_CODES}). */
+export type BackendApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+/**
+ * Machine-readable error codes returned by the StellarRoute API, plus two
+ * codes the SDK itself synthesizes for transport-level failures that never
+ * reach the server (`network_error`, `unknown_error`).
+ *
+ * The trailing `(string & Record<never, never>)` branch keeps this type
+ * assignable from arbitrary server strings (forward-compatible with codes
+ * added server-side before the SDK updates) while `API_ERROR_CODES` still
+ * gives autocomplete and a closed list for the drift check above.
  */
 export type ApiErrorCode =
-  | 'internal_error'
-  | 'bad_request'
-  | 'not_found'
-  | 'validation_error'
-  | 'rate_limit_exceeded'
-  | 'overloaded'
-  | 'unauthorized'
-  | 'invalid_asset'
-  | 'no_route'
-  | 'stale_market_data'
+  | BackendApiErrorCode
   | 'network_error' // SDK specific
+  | 'network_mismatch' // SDK specific — prepare vs integrator passphrase
   | 'unknown_error' // SDK specific
   | (string & Record<never, never>);

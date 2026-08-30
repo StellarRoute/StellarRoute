@@ -7,11 +7,28 @@ use axum::{
 use std::sync::Arc;
 use tracing::debug;
 
+use stellarroute_routing::cross_chain::ProviderPolicy;
 use stellarroute_routing::health::filter::GraphFilter;
 use stellarroute_routing::health::policy::ExclusionPolicy;
 use stellarroute_routing::health::scorer::{HealthRecord, ScoredVenue, VenueType};
 use stellarroute_routing::optimizer::HybridOptimizer;
 use stellarroute_routing::policy::RoutingPolicy;
+
+/// Build the routing policy used by `/api/v1/routes` (production + canary).
+///
+/// Bridges stay non-executable; `provider_policy` is preserved (never silently
+/// defaulted away) so kill-switches apply identically on canary evaluation.
+pub(crate) fn routes_routing_policy(
+    max_hops: usize,
+    provider_policy: ProviderPolicy,
+) -> RoutingPolicy {
+    RoutingPolicy {
+        max_hops,
+        allow_bridge_edges: false,
+        provider_policy,
+        ..Default::default()
+    }
+}
 
 use crate::{
     error::{ApiError, Result},
@@ -153,6 +170,11 @@ pub async fn get_routes(
                 overrides,
                 circuit_breaker: Some(state_c.circuit_breaker.clone()),
             };
+            // Provider kill-switches from admin/Redis. Graph ingest currently
+            // supplies no providers; compaction preserves them when set. Filter +
+            // RoutingPolicy wiring stays active so provider-carrying edges cannot
+            // be selected when present.
+            let provider_policy = state_c.kill_switch.get_provider_policy().await;
 
             // Deduplicate venues from all graph edges and assign neutral scores so
             // that only overrides / circuit-breaker logic fires.
@@ -184,8 +206,11 @@ pub async fn get_routes(
             };
 
             let filter = GraphFilter::new(&exclusion_policy);
-            let (filtered_edges, exclusion_diagnostics) =
-                filter.filter_edges(&all_edges, &scored_venues);
+            let (filtered_edges, exclusion_diagnostics) = filter.filter_edges_with_providers(
+                &all_edges,
+                &scored_venues,
+                Some(&provider_policy),
+            );
 
             if !exclusion_diagnostics.excluded_venues.is_empty() {
                 tracing::info!(
@@ -207,16 +232,17 @@ pub async fn get_routes(
             let base_canary = base_c.clone();
             let quote_canary = quote_c.clone();
             let graph_canary = compacted_graph.clone();
+            let provider_policy_for_routing = provider_policy.clone();
+            let provider_policy_for_canary = provider_policy.clone();
 
             // Offload CPU-bound BFS to blocking thread pool to prevent async starvation
             let spawn_result = tokio::task::spawn_blocking(move || {
                 let mut optimizer = HybridOptimizer::default();
                 let _ = optimizer.set_active_policy(&env_c);
 
-                let routing_policy = RoutingPolicy {
-                    max_hops: max_hops_param,
-                    ..Default::default()
-                };
+                let routing_policy =
+                    routes_routing_policy(max_hops_param, provider_policy_for_routing);
+                debug_assert!(!routing_policy.allow_bridge_edges);
 
                 let base_canonical = asset_path_to_info(&base_c).to_canonical();
                 let quote_canonical = asset_path_to_info(&quote_c).to_canonical();
@@ -264,10 +290,8 @@ pub async fn get_routes(
                     return;
                 }
 
-                let rp = RoutingPolicy {
-                    max_hops: max_hops_param,
-                    ..Default::default()
-                };
+                // Preserve provider kill-switches in canary — do not silently default away.
+                let rp = routes_routing_policy(max_hops_param, provider_policy_for_canary);
 
                 let candidate_policy = config.candidate_policy.clone();
                 let base_str = asset_path_to_info(&base_canary).to_canonical();

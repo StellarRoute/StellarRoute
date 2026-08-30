@@ -364,7 +364,9 @@ export function useQuoteStream(
   const [error, setError] = useState<Error | null>(null);
   const debouncedAmount = useDebounced(amount, QUOTE_AMOUNT_DEBOUNCE_MS);
   const apiBaseUrl = useMemo(() => getApiBaseUrl(network), [network]);
-  const wsAvailable = Boolean(apiBaseUrl);
+  // Opt-in: quick tunnels and many staging hosts have no working quote WS.
+  const wsAvailable =
+    process.env.NEXT_PUBLIC_QUOTE_WS === 'true' && Boolean(apiBaseUrl);
 
   useEffect(() => {
     const skip = !wsAvailable || !base || !quote;

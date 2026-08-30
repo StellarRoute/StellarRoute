@@ -20,12 +20,17 @@ pub struct ApiResponse<T> {
 
 impl<T> ApiResponse<T> {
     pub fn new(data: T, request_id: impl Into<String>) -> Self {
+        Self::with_version(1, data, request_id)
+    }
+
+    /// Envelope helper for versioned surfaces (`/api/v2`, …).
+    pub fn with_version(version: u8, data: T, request_id: impl Into<String>) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
         Self {
-            v: 1,
+            v: version,
             timestamp,
             request_id: request_id.into(),
             data,
@@ -258,6 +263,33 @@ pub struct QuoteResponse {
     pub spread_bps: Option<u32>,
 }
 
+/// Response from `POST /api/v1/swap/prepare`.
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct SwapPrepareResponse {
+    pub quote_id: String,
+    pub xdr_envelope: String,
+    pub expected_output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_output: Option<String>,
+    pub expires_at: i64,
+    /// Always `classic_path_payment` on success. Soroban/AMM prepare is unsupported.
+    pub execution_mode: String,
+    /// Network passphrase the unsigned envelope was built for (must match wallet before signing).
+    pub network_passphrase: String,
+}
+
+/// Response from `POST /api/v1/swap/submit`.
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct SwapSubmitResponse {
+    pub quote_id: String,
+    pub tx_hash: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ledger: Option<u64>,
+}
+
 /// Single historical price sample for a trading pair.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PriceHistoryPoint {
@@ -301,6 +333,46 @@ pub struct AssetMetadataResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AssetMetadataBulkResponse {
     pub assets: Vec<AssetMetadataResponse>,
+}
+
+/// Outcome of a single external canary comparison run.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveCompareOutcome {
+    Ok,
+    Diverged,
+    Error,
+}
+
+/// Payload pushed by the external canary script after each comparison run.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct LiveCompareResult {
+    /// Canonical pair string, e.g. "native/USDC:GA5Z..."
+    pub pair: String,
+    /// StellarRoute quote price (decimal string)
+    pub stellarroute_price: String,
+    /// Horizon best-ask price (decimal string; empty string when outcome is "error")
+    pub reference_price: String,
+    /// Absolute divergence in basis points; 0.0 when outcome is "error"
+    pub divergence_bps: f64,
+    /// Machine-readable outcome
+    pub outcome: LiveCompareOutcome,
+    /// ISO 8601 UTC timestamp of when the comparison was performed
+    pub timestamp: String,
+}
+
+/// Response body for POST /api/v1/system/canary/live-compare
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LiveCompareIngestResponse {
+    pub status: String,
+    pub entries: usize,
+}
+
+/// Response body for GET /api/v1/system/canary/live-compare/report
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LiveCompareReportResponse {
+    pub total_entries: usize,
+    pub results: Vec<LiveCompareResult>,
 }
 
 /// Prepared quote payload that can be returned without re-serializing on hot paths.
@@ -638,6 +710,8 @@ pub enum ApiErrorCode {
     RateLimitExceeded,
     /// Server is temporarily overloaded
     Overloaded,
+    /// An upstream dependency's circuit breaker is open
+    DependencyUnavailable,
     /// Request lacks valid credentials
     Unauthorized,
     /// Invalid Stellar asset identifier
@@ -654,9 +728,81 @@ pub enum ApiErrorCode {
     NotExecutable,
     /// Underlying market data is too stale to provide a quote
     StaleMarketData,
+    /// The requested operation is documented but not yet available
+    NotImplemented,
+    /// Referenced prepare quote is unknown or no longer valid
+    QuoteNotFound,
+    /// Referenced prepare quote has expired
+    QuoteExpired,
+    /// Idempotent conflict (e.g. quote already submitted)
+    #[serde(rename = "duplicate_quote")]
+    Conflict,
+    /// Requested venue/execution mode is not supported by this API build
+    UnsupportedExecutionMode,
+    /// Route shape is not supported (e.g. multi-hop classic path)
+    UnsupportedRoute,
+    /// Circle CCTP bridge settlement is not enabled
+    CctpNotEnabled,
+    /// Requested CCTP corridor is unknown or unsupported
+    UnsupportedCorridor,
+    /// CCTP finality mode is invalid for the source chain
+    InvalidFinality,
+    /// Recipient address failed CCTP validation
+    InvalidRecipient,
+    /// Runtime CCTP fee quote is unavailable
+    FeeQuoteUnavailable,
+    /// Attestation is still pending (saga / operation guard)
+    AttestationPending,
+    /// Attestation has expired
+    AttestationExpired,
+    /// Mint failed but may be retried
+    MintRetryable,
+    /// CCTP transfer id is unknown
+    TransferNotFound,
+    /// CCTP provider kill-switch is active
+    ProviderKilled,
 }
 
 impl ApiErrorCode {
+    /// Every documented error code. This is the single source of truth
+    /// consumed by the sdk-js drift test (issue #1051) and
+    /// `docs/api/error_taxonomy.md` — adding a new `ApiErrorCode` variant
+    /// without adding it here, to the taxonomy doc, and to
+    /// `sdk-js/src/types.ts`'s `API_ERROR_CODES` will fail
+    /// `crates/api/tests/openapi_swap_contract.rs`.
+    pub const ALL: &'static [ApiErrorCode] = &[
+        Self::InternalError,
+        Self::BadRequest,
+        Self::NotFound,
+        Self::ValidationError,
+        Self::RateLimitExceeded,
+        Self::Overloaded,
+        Self::Unauthorized,
+        Self::InvalidAsset,
+        Self::InvalidAmount,
+        Self::InvalidSlippage,
+        Self::InvalidAssetFormat,
+        Self::NoRoute,
+        Self::NotExecutable,
+        Self::StaleMarketData,
+        Self::NotImplemented,
+        Self::QuoteNotFound,
+        Self::QuoteExpired,
+        Self::Conflict,
+        Self::UnsupportedExecutionMode,
+        Self::UnsupportedRoute,
+        Self::CctpNotEnabled,
+        Self::UnsupportedCorridor,
+        Self::InvalidFinality,
+        Self::InvalidRecipient,
+        Self::FeeQuoteUnavailable,
+        Self::AttestationPending,
+        Self::AttestationExpired,
+        Self::MintRetryable,
+        Self::TransferNotFound,
+        Self::ProviderKilled,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::InternalError => "internal_error",
@@ -665,6 +811,7 @@ impl ApiErrorCode {
             Self::ValidationError => "validation_error",
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::Overloaded => "overloaded",
+            Self::DependencyUnavailable => "dependency_unavailable",
             Self::Unauthorized => "unauthorized",
             Self::InvalidAsset => "invalid_asset",
             Self::InvalidAmount => "invalid_amount",
@@ -673,6 +820,22 @@ impl ApiErrorCode {
             Self::NoRoute => "no_route",
             Self::NotExecutable => "not_executable",
             Self::StaleMarketData => "stale_market_data",
+            Self::NotImplemented => "not_implemented",
+            Self::QuoteNotFound => "quote_not_found",
+            Self::QuoteExpired => "quote_expired",
+            Self::Conflict => "duplicate_quote",
+            Self::UnsupportedExecutionMode => "unsupported_execution_mode",
+            Self::UnsupportedRoute => "unsupported_route",
+            Self::CctpNotEnabled => "cctp_not_enabled",
+            Self::UnsupportedCorridor => "unsupported_corridor",
+            Self::InvalidFinality => "invalid_finality",
+            Self::InvalidRecipient => "invalid_recipient",
+            Self::FeeQuoteUnavailable => "fee_quote_unavailable",
+            Self::AttestationPending => "attestation_pending",
+            Self::AttestationExpired => "attestation_expired",
+            Self::MintRetryable => "mint_retryable",
+            Self::TransferNotFound => "transfer_not_found",
+            Self::ProviderKilled => "provider_killed",
         }
     }
 }

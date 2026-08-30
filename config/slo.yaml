@@ -99,6 +99,36 @@ slos:
     target_threshold_value: 0       # must be >= 0 (not critical)
     compliance_target: 0.995
 
+  # SLO 7: Swap Prepare Success Rate > 99%
+  - name: swap_prepare_success_rate
+    description: "Swap prepare request success rate stays above 99% over a 5-minute window"
+    metric: stellarroute_swap_prepare_total
+    type: error_rate
+    window: 5m
+    target_threshold_ratio: 0.01
+    compliance_target: 0.999
+    error_label_values: ["error"]   # outcome="error"
+    ok_label_values: ["success"]    # outcome="success"
+    burn_rate:
+      warning: 2.0
+      critical: 4.0
+      window: 30m
+
+  # SLO 8: Swap Submit Success Rate > 99%
+  - name: swap_submit_success_rate
+    description: "Swap submit request success rate stays above 99% over a 5-minute window"
+    metric: stellarroute_swap_submit_total
+    type: error_rate
+    window: 5m
+    target_threshold_ratio: 0.01
+    compliance_target: 0.999
+    error_label_values: ["error"]   # outcome="error"
+    ok_label_values: ["success"]    # outcome="success"
+    burn_rate:
+      warning: 2.0
+      critical: 4.0
+      window: 30m
+
 # ── Synthetic probe definitions ──────────────────────────────────────────────
 # Probes that can be run from CI or synthetic monitoring systems.
 # The slo-probe binary reads these definitions to execute health checks.

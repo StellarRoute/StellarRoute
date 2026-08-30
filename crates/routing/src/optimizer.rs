@@ -315,7 +315,8 @@ impl HybridOptimizer {
                 continue;
             }
 
-            // Risk validation logic remains same, but needs to lookup liquidity from compacted graph
+            // Risk validation (incl. provider kill-switches when hop carries provider metadata).
+            // Provider-less Stellar hops are unchanged.
             if let Some(ref validator) = self.risk_validator {
                 let mut path_valid = true;
                 for hop in &path.hops {
@@ -330,32 +331,52 @@ impl HybridOptimizer {
                         }
                     }
 
-                    if let Err(exclusion) =
-                        validator.validate_impact(&hop.destination_asset, metrics.impact_bps)
-                    {
-                        excluded_routes.push(exclusion);
+                    let provider = hop
+                        .provider
+                        .as_deref()
+                        .or_else(|| hop.bridge.as_ref().and_then(|b| b.provider.as_deref()));
+
+                    // Dual enforcement: routing policy (pathfinder) + risk kill-switches.
+                    if !routing_policy.is_provider_allowed(provider) {
+                        if let Some(provider) = provider {
+                            excluded_routes.push(RouteExclusion {
+                                asset: provider.to_string(),
+                                reason: crate::risk::ExclusionReason::ProviderKillSwitch,
+                                limit_value: 0,
+                                actual_value: 1,
+                            });
+                        }
                         path_valid = false;
                         break;
                     }
 
-                    if let Err(exclusion) =
-                        validator.validate_liquidity(&hop.destination_asset, edge_liquidity)
-                    {
-                        excluded_routes.push(exclusion);
-                        path_valid = false;
-                        break;
-                    }
-
-                    if let Err(exclusion) =
-                        validator.validate_exposure(&hop.destination_asset, amount_in)
-                    {
-                        excluded_routes.push(exclusion);
+                    if let Err(exclusions) = validator.validate_route_hop(
+                        &hop.destination_asset,
+                        amount_in,
+                        metrics.impact_bps,
+                        edge_liquidity,
+                        provider,
+                    ) {
+                        excluded_routes.extend(exclusions);
                         path_valid = false;
                         break;
                     }
                 }
 
                 if !path_valid {
+                    continue;
+                }
+            } else {
+                // Even without a RiskValidator, refuse provider-denied hops if policy says so.
+                // (Pathfinder already filters; this is defense-in-depth for compacted re-entry.)
+                let denied = path.hops.iter().any(|hop| {
+                    let provider = hop
+                        .provider
+                        .as_deref()
+                        .or_else(|| hop.bridge.as_ref().and_then(|b| b.provider.as_deref()));
+                    !routing_policy.is_provider_allowed(provider)
+                });
+                if denied {
                     continue;
                 }
             }
@@ -424,13 +445,13 @@ impl HybridOptimizer {
                     RoutingError::NoRoute(hop.source_asset.clone(), hop.destination_asset.clone())
                 })?;
 
-            // Calculate impact based on venue type index
-            let (output, impact_bps) = if edge.venue_type_idx == 1 {
+            // Calculate impact based on resolved venue type (never launder bridge→sdex).
+            let (output, impact_bps) = if edge.is_amm() {
                 // Simulate AMM calculation (simplified)
                 let estimated_output = (total_output * 9970) / 10000; // 0.3% fee
                 (estimated_output, 30) // Simplified impact
             } else {
-                // Simulate orderbook calculation
+                // Simulate orderbook / other venue calculation
                 let estimated_output = (total_output * 9980) / 10000; // 0.2% fee
                 (estimated_output, 20) // Simplified impact
             };
@@ -613,6 +634,7 @@ mod tests {
             liquidity: 10_000_000,
             price: 0.1,
             fee_bps: 30,
+            ..Default::default()
         }];
         let policy = RoutingPolicy::default();
         let result = optimizer.find_optimal_routes("XLM", "USDC", &edges, 1_000_000, &policy);
@@ -634,6 +656,7 @@ mod tests {
                 venue_ref: "pool1".to_string(),
                 price: 0.1,
                 fee_bps: 30,
+                ..Default::default()
             }],
             estimated_output: 900_000,
         }];
@@ -641,5 +664,111 @@ mod tests {
         let report = optimizer.benchmark_scorers(&paths, &edges, 1_000_000);
         // Should have 3 built-in scorers
         assert_eq!(report.scorer_results.len(), 3);
+    }
+
+    fn provider_edges() -> Vec<LiquidityEdge> {
+        use crate::pathfinder::LiquidityEdge;
+        vec![
+            LiquidityEdge {
+                from: "XLM".into(),
+                to: "USDC".into(),
+                venue_type: "amm".into(),
+                venue_ref: "pool-bad".into(),
+                liquidity: 100_000_000_000,
+                price: 1.0,
+                fee_bps: 30,
+                provider: Some("bad-dex".into()),
+                bridge: None,
+            },
+            LiquidityEdge {
+                from: "XLM".into(),
+                to: "USDC".into(),
+                venue_type: "amm".into(),
+                venue_ref: "pool-good".into(),
+                liquidity: 100_000_000_000,
+                price: 1.0,
+                fee_bps: 30,
+                provider: Some("good-dex".into()),
+                bridge: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn optimizer_denies_killed_provider_via_risk_validator() {
+        use crate::compaction::CompactedGraph;
+        use crate::cross_chain::ProviderPolicy;
+        use crate::policy::RoutingPolicy;
+
+        let edges = CompactedGraph::from_edges(provider_edges()).to_edges();
+        let mut optimizer = HybridOptimizer::default();
+        optimizer.set_risk_limits(
+            RiskLimitConfig::permissive_policy().with_provider_kill_switch("bad-dex", true),
+        );
+
+        // Pathfinder would still allow bad-dex without policy kill; risk must deny it.
+        let policy = RoutingPolicy::default();
+        let diag = optimizer
+            .find_optimal_routes("XLM", "USDC", &edges, 1_000_000, &policy)
+            .expect("good-dex route");
+        for hop in &diag.selected_path.hops {
+            assert_ne!(hop.provider.as_deref(), Some("bad-dex"));
+        }
+        assert!(diag
+            .excluded_routes
+            .iter()
+            .any(|e| { e.reason == crate::risk::ExclusionReason::ProviderKillSwitch }));
+
+        // Provider-less hops remain selectable under the same risk config.
+        let bare = vec![LiquidityEdge {
+            from: "XLM".into(),
+            to: "USDC".into(),
+            venue_type: "sdex".into(),
+            venue_ref: "offer-1".into(),
+            liquidity: 100_000_000_000,
+            price: 1.0,
+            fee_bps: 20,
+            ..Default::default()
+        }];
+        assert!(optimizer
+            .find_optimal_routes("XLM", "USDC", &bare, 1_000_000, &policy)
+            .is_ok());
+
+        // Allow path: no kill switch → either provider may be selected.
+        let mut open = HybridOptimizer::default();
+        open.set_risk_limits(RiskLimitConfig::permissive_policy());
+        let open_diag = open
+            .find_optimal_routes(
+                "XLM",
+                "USDC",
+                &edges,
+                1_000_000,
+                &RoutingPolicy::default().with_provider_policy(
+                    ProviderPolicy::default().with_allowlist(vec!["good-dex".into()]),
+                ),
+            )
+            .expect("allowlisted good-dex");
+        for hop in &open_diag.selected_path.hops {
+            assert_eq!(hop.provider.as_deref(), Some("good-dex"));
+        }
+    }
+
+    #[test]
+    fn optimizer_denies_provider_via_routing_policy_after_compaction() {
+        use crate::compaction::CompactedGraph;
+        use crate::cross_chain::ProviderPolicy;
+        use crate::policy::RoutingPolicy;
+
+        let graph = CompactedGraph::from_edges(provider_edges());
+        let optimizer = HybridOptimizer::default();
+        let policy = RoutingPolicy::default()
+            .with_provider_policy(ProviderPolicy::default().with_denylist(vec!["bad-dex".into()]));
+        let diag = optimizer
+            .find_optimal_routes_compacted("XLM", "USDC", &graph, 1_000_000, &policy)
+            .expect("good-dex after compaction");
+        for hop in &diag.selected_path.hops {
+            assert_ne!(hop.provider.as_deref(), Some("bad-dex"));
+            assert_eq!(hop.provider.as_deref(), Some("good-dex"));
+        }
     }
 }

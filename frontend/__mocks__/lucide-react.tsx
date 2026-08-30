@@ -23,6 +23,7 @@ export const Info = Icon;
 export const Loader2 = Icon;
 export const Menu = Icon;
 export const Moon = Icon;
+export const Radio = Icon;
 export const RefreshCw = Icon;
 export const RefreshCcw = Icon;
 export const RotateCcw = Icon;

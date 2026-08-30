@@ -1,0 +1,8 @@
+{
+  "network": "testnet",
+  "router_contract_id": "CCOKRYC5ROFYFYDATV2Y3A2DRAGY2LJV7D6B327YFIQS2Y2EWII7TVHS",
+  "constant_product_adapter_contract_id": "CACDTK2HQ2WISM6BRFLRL7DDKLPZ2R5SALZWYHPGL6RY3PNGAYIJWDZB",
+  "deployed_at": "2026-07-28T12:11:31Z",
+  "git_sha": "e34ee78324d41bcfcb6cf24d670628f728cafdbd",
+  "rpc_url": "https://soroban-testnet.stellar.org:443"
+}

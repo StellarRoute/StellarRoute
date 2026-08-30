@@ -90,7 +90,31 @@ impl AmmAggregator {
 
         let current_ledger = self.soroban.get_latest_ledger().await?;
         let cursor_str = self.load_discovery_cursor().await?;
-        let start_ledger: u64 = cursor_str.parse().unwrap_or(0);
+        let mut start_ledger: u64 = cursor_str.parse().unwrap_or(0);
+
+        // Public Soroban RPC only retains a limited ledger window. A fresh cursor
+        // (0) or a cursor older than retention causes getEvents to fail with
+        // -32602 invalid parameters — which previously aborted the whole cycle
+        // before registry pools were processed or the cursor advanced.
+        const MAX_EVENT_LOOKBACK: u64 = 10_000;
+        if start_ledger == 0 {
+            info!(
+                current_ledger,
+                "Fresh AMM discovery cursor; bootstrapping from registry (skip historical getEvents)"
+            );
+            start_ledger = current_ledger;
+        } else {
+            let min_start = current_ledger.saturating_sub(MAX_EVENT_LOOKBACK);
+            if start_ledger < min_start {
+                warn!(
+                    start_ledger,
+                    min_start,
+                    current_ledger,
+                    "AMM discovery cursor older than RPC retention lookback; clamping"
+                );
+                start_ledger = min_start;
+            }
+        }
 
         if start_ledger >= current_ledger {
             debug!(
@@ -100,9 +124,18 @@ impl AmmAggregator {
         } else {
             // Discover new pools since last check via contract events. If none are
             // discovered, fall back to the operator-managed registry or env var list.
-            let mut new_pools = self
-                .discover_new_pools(start_ledger, current_ledger)
-                .await?;
+            let mut new_pools = match self.discover_new_pools(start_ledger, current_ledger).await {
+                Ok(pools) => pools,
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        start_ledger,
+                        current_ledger,
+                        "AMM pool discovery getEvents failed; continuing with registry fallback"
+                    );
+                    Vec::new()
+                }
+            };
 
             if new_pools.is_empty() {
                 let registry = self.get_registry_pools().await?;
@@ -120,11 +153,14 @@ impl AmmAggregator {
                 self.process_pool_batch(&new_pools).await?;
             }
 
-            let indexed_swaps = self
-                .index_swap_activity(start_ledger, current_ledger)
-                .await?;
-            if indexed_swaps > 0 {
-                info!("Indexed {} contract swap activity events", indexed_swaps);
+            match self.index_swap_activity(start_ledger, current_ledger).await {
+                Ok(indexed_swaps) if indexed_swaps > 0 => {
+                    info!("Indexed {} contract swap activity events", indexed_swaps);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    warn!(error = %e, "AMM swap activity getEvents failed; continuing");
+                }
             }
         }
 
@@ -684,5 +720,70 @@ mod tests {
         assert!(res.is_err());
         let err_str = format!("{}", res.unwrap_err());
         assert!(err_str.contains("failed to parse XDR"));
+    }
+
+    fn mock_pool_state() -> PoolState {
+        PoolState {
+            address: "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001".to_string(),
+            token_a: "CDUMMYTOKENA".to_string(),
+            token_b: "CDUMMYTOKENB".to_string(),
+            reserve_a: 1_000_000_000,
+            reserve_b: 2_000_000_000,
+            fee_bps: 30,
+            ledger_sequence: 12345,
+        }
+    }
+
+    fn mock_pool_reserve() -> PoolReserve {
+        PoolReserve {
+            pool_address: "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001"
+                .to_string(),
+            selling_asset_id: uuid::Uuid::new_v4(),
+            buying_asset_id: uuid::Uuid::new_v4(),
+            reserve_selling: rust_decimal::Decimal::new(1_000_000_000, 7),
+            reserve_buying: rust_decimal::Decimal::new(2_000_000_000, 7),
+            fee_bps: 30,
+            last_updated_ledger: 12345,
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_pool_state_creation() {
+        let state = mock_pool_state();
+        assert_eq!(state.reserve_a, 1_000_000_000);
+        assert_eq!(state.reserve_b, 2_000_000_000);
+        assert_eq!(state.fee_bps, 30);
+        assert_eq!(state.ledger_sequence, 12345);
+    }
+
+    #[test]
+    fn test_pool_reserve_creation_and_upsert_shape() {
+        let reserve = mock_pool_reserve();
+        assert_eq!(reserve.fee_bps, 30);
+        assert_eq!(reserve.last_updated_ledger, 12345);
+        assert!(!reserve.pool_address.is_empty());
+        assert!(!reserve.selling_asset_id.is_nil());
+        assert!(!reserve.buying_asset_id.is_nil());
+        assert!(reserve.reserve_selling > rust_decimal::Decimal::ZERO);
+        assert!(reserve.reserve_buying > rust_decimal::Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_malformed_and_empty_event_handling() {
+        let malformed_json = r#"{"invalid": "structure"}"#;
+        let parsed: serde_json::Value = serde_json::from_str(malformed_json).unwrap();
+        assert!(parsed.get("pool_address").is_none());
+        assert!(parse_soroban_pool_state(&parsed, "CPOOLADDR").is_err());
+
+        let empty: serde_json::Value = serde_json::from_str("{}").unwrap();
+        assert!(parse_soroban_pool_state(&empty, "CPOOLADDR").is_err());
+    }
+
+    #[test]
+    fn test_pool_state_fee_bps_bounds() {
+        let state = mock_pool_state();
+        assert!(state.fee_bps >= 0);
+        assert!(state.fee_bps <= 10_000);
     }
 }

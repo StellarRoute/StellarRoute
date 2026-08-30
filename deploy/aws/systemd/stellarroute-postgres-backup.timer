@@ -1,0 +1,10 @@
+[Unit]
+Description=Run StellarRoute Postgres backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=stellarroute-postgres-backup.service
+
+[Install]
+WantedBy=timers.target

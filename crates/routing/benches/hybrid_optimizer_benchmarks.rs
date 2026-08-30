@@ -16,7 +16,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             venue_ref: "pool1".to_string(),
             liquidity: 1_000_000_000,
             price: 1.0,
-            fee_bps: 30, // 100 XLM
+            fee_bps: 30, // 100 XLM,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -25,7 +26,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             venue_ref: "book1".to_string(),
             liquidity: 500_000_000,
             price: 1.0,
-            fee_bps: 30, // 50 USDC
+            fee_bps: 30, // 50 USDC,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "XLM".to_string(),
@@ -34,7 +36,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             venue_ref: "pool2".to_string(),
             liquidity: 200_000_000,
             price: 1.0,
-            fee_bps: 30, // 20 XLM
+            fee_bps: 30, // 20 XLM,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "EURT".to_string(),
@@ -43,7 +46,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             venue_ref: "book2".to_string(),
             liquidity: 100_000_000,
             price: 1.0,
-            fee_bps: 30, // 10 EURT
+            fee_bps: 30, // 10 EURT,
+            ..Default::default()
         },
         LiquidityEdge {
             from: "USDC".to_string(),
@@ -52,7 +56,8 @@ fn create_test_edges() -> Vec<LiquidityEdge> {
             venue_ref: "pool3".to_string(),
             liquidity: 300_000_000,
             price: 1.0,
-            fee_bps: 30, // 30 USDC
+            fee_bps: 30, // 30 USDC,
+            ..Default::default()
         },
     ]
 }
@@ -149,6 +154,7 @@ fn bench_scalability(c: &mut Criterion) {
                 liquidity: 100_000_000 * (i + 1) as i128,
                 price: 1.0,
                 fee_bps: 30,
+                ..Default::default()
             });
         }
 

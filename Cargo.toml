@@ -83,3 +83,8 @@ too_many_arguments = "allow"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# ed25519-dalek 3.x breaks soroban-env-host 21.x CryptoRng (ChaCha20Rng).
+# Keep the 2.x line until Soroban SDK catches up.
+[patch.crates-io]
+ed25519-dalek = { git = "https://github.com/dalek-cryptography/curve25519-dalek", tag = "ed25519-2.1.1" }

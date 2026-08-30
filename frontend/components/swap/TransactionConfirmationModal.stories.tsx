@@ -86,7 +86,7 @@ Default.storyName = 'Default — Review';
 /** Pending state — waiting for wallet signature */
 export const Pending: Story = () => (
   <TransactionConfirmationModal
-    {...baseProps({ status: 'pending', tradeParams: undefined })}
+    {...baseProps({ status: 'pending', tradeParams: baseTradeParams })}
   />
 );
 Pending.storyName = 'Pending — Wallet Signature';
@@ -94,7 +94,7 @@ Pending.storyName = 'Pending — Wallet Signature';
 /** Submitted state — awaiting network confirmation */
 export const Submitted: Story = () => (
   <TransactionConfirmationModal
-    {...baseProps({ status: 'submitted', tradeParams: undefined })}
+    {...baseProps({ status: 'submitted', tradeParams: baseTradeParams })}
   />
 );
 Submitted.storyName = 'Submitted — Awaiting Network';

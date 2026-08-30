@@ -12,4 +12,9 @@ describe("getNavItems", () => {
     const items = getNavItems({ analyticsEnabled: false });
     expect(items.some((item) => item.href === "/analytics")).toBe(false);
   });
+
+  it("always includes offramp", () => {
+    const items = getNavItems({ analyticsEnabled: false });
+    expect(items.some((item) => item.href === "/offramp")).toBe(true);
+  });
 });

@@ -59,6 +59,7 @@ export function useSwapState() {
     setFromToken,
     toToken,
     setToToken,
+    setTokenPair,
     fromAmount,
     setFromAmount,
     toAmount: quote.outputAmount > 0 ? quote.outputAmount.toString() : '',

@@ -33,20 +33,29 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: DEFAULT_LOCALE,
   slippageProfiles: PRESET_SLIPPAGE_PROFILES,
   activeProfileId: 'balanced',
-  accentColor: 'indigo',
+  accentColor: 'teal',
   fontScale: 1,
   highContrast: false,
 };
 
-export type AccentColor = 'indigo' | 'zinc' | 'rose' | 'amber' | 'emerald' | 'cyan' | 'violet';
+export type AccentColor =
+  | 'teal'
+  | 'indigo'
+  | 'zinc'
+  | 'rose'
+  | 'amber'
+  | 'emerald'
+  | 'cyan'
+  | 'violet';
 
 export const ACCENT_COLORS: Record<AccentColor, string> = {
+  teal: '#1ec9b0',
   indigo: '#6366f1',
   zinc: '#71717a',
   rose: '#f43f5e',
-  amber: '#f59e0b',
-  emerald: '#10b981',
-  cyan: '#06b6d4',
+  amber: '#e0a83a',
+  emerald: '#2ecf9a',
+  cyan: '#5ba3c9',
   violet: '#8b5cf6',
 };
 

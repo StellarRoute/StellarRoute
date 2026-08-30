@@ -21,6 +21,7 @@ import {
   type QuoteRetryRequestContext,
   type QuoteRetryTelemetryEvent,
 } from '@/lib/quote-retry';
+import { emitSwapFunnelEvent } from '@/lib/telemetry';
 import {
   isQuoteStale,
   QUOTE_AMOUNT_DEBOUNCE_MS,
@@ -133,7 +134,8 @@ export function useQuoteRefresh(
 
   const debouncedAmount = useDebounced(amount, debounceMs);
   const [tick, setTick] = useState(0);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  // Default on so quotes stay fresh; otherwise the stale banner sticks after ~5s.
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [state, setState] = useState<UseApiState<PriceQuote>>({
     data: undefined,
     loading: false,
@@ -233,6 +235,11 @@ export function useQuoteRefresh(
     // Same pattern as `useFetch` in useApi.ts: set loading before starting the request.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional loading transition before async getQuote
     setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    emitSwapFunnelEvent('quote_requested', {
+      fromAssetCode: base,
+      toAssetCode: quoteAsset,
+    });
 
     client
       .getQuote(base, quoteAsset, debouncedAmount, type, {
@@ -395,6 +402,30 @@ export function useQuoteRefresh(
 
     return () => clearInterval(id);
   }, [autoRefreshEnabled, autoRefreshIntervalMs, canRequest]);
+
+  // Refresh shortly before the client stale floor so a short API cache TTL
+  // cannot leave the CTA on "outdated" until the next 15–20s interval tick.
+  useEffect(() => {
+    if (!autoRefreshEnabled || !canRequest || lastQuotedAtMs == null) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
+
+    const refreshLeadMs = 750;
+    const dueAtMs = lastQuotedAtMs + Math.max(0, staleAfterMs - refreshLeadMs);
+    const delayMs = dueAtMs - Date.now();
+    // Already past the lead window — leave refresh to the interval / manual CTA.
+    if (delayMs <= 0) return;
+
+    const id = setTimeout(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      setTick((n) => n + 1);
+    }, delayMs);
+
+    return () => clearTimeout(id);
+  }, [autoRefreshEnabled, canRequest, lastQuotedAtMs, staleAfterMs]);
 
   const manualRefreshCoolingDown =
     manualCooldownUntil > 0 && nowMs < manualCooldownUntil;

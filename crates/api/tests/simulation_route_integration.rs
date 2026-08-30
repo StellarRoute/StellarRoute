@@ -283,7 +283,9 @@ async fn two_hop_happy_path_returns_200_with_quote_diagnostics() {
     );
 
     // path must contain both hops
-    let path = quote["path"].as_array().expect("quote.path must be an array");
+    let path = quote["path"]
+        .as_array()
+        .expect("quote.path must be an array");
     assert_eq!(
         path.len(),
         2,
@@ -316,10 +318,7 @@ async fn two_hop_happy_path_returns_200_with_quote_diagnostics() {
             step.get("price").is_some(),
             "path[{i}] must have price (diagnostic parity with quote pipeline)"
         );
-        assert!(
-            step.get("source").is_some(),
-            "path[{i}] must have source"
-        );
+        assert!(step.get("source").is_some(), "path[{i}] must have source");
     }
 }
 
@@ -510,5 +509,127 @@ async fn non_numeric_amount_returns_400_validation_error() {
     assert_eq!(
         json["data"]["error"], "validation_error",
         "error code must be validation_error"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Excluded-venue diagnostic fixture (no DB required) — issue #1281
+// ---------------------------------------------------------------------------
+//
+// A dedicated fixture that *locks* the exclusion diagnostic contract exposed
+// by `POST /api/v1/simulate/route` without touching `/api/v1/quote` ranking or
+// the handler's runtime behaviour.
+//
+// The live quote pipeline is the runtime source of `exclusion_diagnostics`
+// (populating it requires a database), so — mirroring the existing
+// serialization locks in `quote_integration.rs` and `freshness_guardrails.rs`
+// — this fixture builds the exact `RouteDryRunResponse` the handler assembles
+// when a venue is excluded and pins its serialized shape. It is fully
+// deterministic and runs in lean CI (no `#[ignore]`, no DB).
+
+use stellarroute_api::{
+    models::{
+        ApiResponse, AssetInfo, ExcludedVenueInfo, ExclusionDiagnostics, ExclusionReason,
+        QuoteResponse,
+    },
+    routes::simulation_route::{RouteDryRunResponse, SwapHopDto, SwapPathDto},
+};
+
+/// Build the `RouteDryRunResponse` produced by `simulate_route_dry_run` when
+/// the quote pipeline reports a venue excluded from routing.
+///
+/// This mirrors the handler's assembly step exactly: `exclusion_diagnostics`
+/// is stamped both at the top level of the dry-run response **and** inside the
+/// embedded `quote` (see `simulation_route.rs` steps 4–5), so a client sees the
+/// same diagnostic in both places.
+fn excluded_venue_dry_run_response() -> RouteDryRunResponse {
+    // A single AMM venue excluded because its circuit breaker is open — a
+    // representative venue-level exclusion the routing engine surfaces.
+    let diagnostics = ExclusionDiagnostics {
+        excluded_venues: vec![ExcludedVenueInfo {
+            venue_ref: "amm:pool-frozen-usdc-btc".to_string(),
+            reason: ExclusionReason::CircuitBreakerOpen,
+        }],
+    };
+
+    // A self-consistent sell quote: 100 XLM → 0.001 BTC (aggregate price 1e-5).
+    let quote = QuoteResponse {
+        base_asset: AssetInfo::native(),
+        quote_asset: AssetInfo::credit("BTC".to_string(), None),
+        amount: "100.0000000".to_string(),
+        price: "0.0000100".to_string(),
+        total: "0.0010000".to_string(),
+        quote_type: "sell".to_string(),
+        degraded: false,
+        path: vec![],
+        timestamp: 1_700_000_000_000,
+        expires_at: None,
+        source_timestamp: Some(1_700_000_000_000),
+        ttl_seconds: None,
+        rationale: None,
+        price_impact: None,
+        // Diagnostic parity: the embedded quote carries the same exclusion info.
+        exclusion_diagnostics: Some(diagnostics.clone()),
+        data_freshness: None,
+        midpoint: None,
+        spread_bps: None,
+    };
+
+    RouteDryRunResponse {
+        quote,
+        exclusion_diagnostics: Some(diagnostics),
+        swap_path: SwapPathDto {
+            hops: vec![SwapHopDto {
+                source_asset: "native".to_string(),
+                destination_asset: "BTC".to_string(),
+                venue_type: "amm".to_string(),
+                venue_ref: "amm:pool-frozen-usdc-btc".to_string(),
+                price: 0.000_01,
+                fee_bps: 30,
+            }],
+            estimated_output: 1_000,
+        },
+    }
+}
+
+/// The dry-run response must expose the existing exclusion diagnostic field
+/// shape — `data.exclusion_diagnostics.excluded_venues[].{venue_ref,
+/// reason.type}` — and mirror it inside `data.quote.exclusion_diagnostics`.
+///
+/// This is purely additive: it reads the frozen response contract and asserts
+/// on it. It changes no handler, no ranking, and no OpenAPI field.
+#[test]
+fn excluded_venue_dry_run_locks_exclusion_diagnostic_field() {
+    // Wrap in the standard envelope exactly as the handler does:
+    // `ApiResponse::new(RouteDryRunResponse { .. }, request_id)`.
+    let envelope = ApiResponse::new(
+        excluded_venue_dry_run_response(),
+        "req-excluded-venue-fixture".to_string(),
+    );
+    let json = serde_json::to_value(&envelope).expect("serialize dry-run envelope");
+
+    // Envelope contract is unchanged (version marker still v=1).
+    assert_eq!(json["v"], 1, "response must carry version field v=1");
+
+    let data = &json["data"];
+
+    // ── Top-level exclusion diagnostic field ─────────────────────────────
+    let excluded = data["exclusion_diagnostics"]["excluded_venues"]
+        .as_array()
+        .expect("exclusion_diagnostics.excluded_venues must be an array");
+    assert_eq!(excluded.len(), 1, "fixture excludes exactly one venue");
+    assert_eq!(
+        excluded[0]["venue_ref"], "amm:pool-frozen-usdc-btc",
+        "excluded venue_ref must round-trip unchanged"
+    );
+    assert_eq!(
+        excluded[0]["reason"]["type"], "circuit_breaker_open",
+        "exclusion reason must serialize with its snake_case `type` tag"
+    );
+
+    // ── Diagnostic parity: embedded quote mirrors the same field verbatim ─
+    assert_eq!(
+        data["quote"]["exclusion_diagnostics"], data["exclusion_diagnostics"],
+        "dry-run must mirror the quote pipeline's exclusion diagnostics"
     );
 }

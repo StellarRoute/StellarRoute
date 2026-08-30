@@ -1,0 +1,9 @@
+[Unit]
+Description=StellarRoute EC2 health check
+After=docker.service caddy.service stellarroute-staging.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/stellarroute
+ExecStart=/bin/bash /opt/stellarroute/deploy/aws/scripts/ec2-health-check.sh

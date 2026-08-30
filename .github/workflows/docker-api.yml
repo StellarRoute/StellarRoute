@@ -1,0 +1,43 @@
+name: Docker API Image
+
+# Build-only check for PRs that touch the API image or its crate graph.
+# Publishing to GHCR is handled by the docker-images workflow (#1033).
+
+on:
+  pull_request:
+    paths:
+      - "Dockerfile.api"
+      - ".dockerignore"
+      - "crates/api/**"
+      - "crates/indexer/**"
+      - "crates/routing/**"
+      - "Cargo.toml"
+      - ".github/workflows/docker-api.yml"
+
+jobs:
+  build-api-image:
+    name: Build stellarroute-api image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Dockerfile.api (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: false
+          load: true
+          tags: stellarroute-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify non-root user in image
+        run: |
+          uid="$(docker run --rm --entrypoint id stellarroute-api:ci -u)"
+          echo "Container UID=${uid}"
+          test "${uid}" != "0"

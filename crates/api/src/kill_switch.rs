@@ -12,6 +12,10 @@ const REDIS_KILL_SWITCH_KEY: &str = "stellarroute:kill_switches";
 pub struct KillSwitchState {
     pub sources: HashMap<VenueType, OverrideDirective>,
     pub venues: HashMap<String, OverrideDirective>,
+    /// Provider-level kill switches (bridge adapters / venue operators).
+    /// Additive and backward-compatible with existing Redis payloads.
+    #[serde(default)]
+    pub providers: HashMap<String, OverrideDirective>,
 }
 
 pub struct KillSwitchManager {
@@ -124,6 +128,18 @@ impl KillSwitchManager {
             source_entries: state.sources.clone(),
         }
     }
+
+    /// Map provider kill-switch directives into a routing [`ProviderPolicy`].
+    pub async fn get_provider_policy(&self) -> stellarroute_routing::ProviderPolicy {
+        let state = self.state.lock().await;
+        let mut policy = stellarroute_routing::ProviderPolicy::default();
+        for (provider, directive) in &state.providers {
+            if matches!(directive, OverrideDirective::ForceExclude) {
+                policy.kill_switches.insert(provider.clone(), true);
+            }
+        }
+        policy
+    }
 }
 
 #[cfg(test)]
@@ -141,7 +157,11 @@ mod tests {
         let mut venues = HashMap::new();
         venues.insert("sdex:123".to_string(), OverrideDirective::ForceExclude);
 
-        let state = KillSwitchState { sources, venues };
+        let state = KillSwitchState {
+            sources,
+            venues,
+            providers: HashMap::new(),
+        };
         manager.update_state(state).await.unwrap();
 
         let registry = manager.get_override_registry().await;
@@ -154,5 +174,23 @@ mod tests {
             Some(&OverrideDirective::ForceExclude)
         );
         assert_eq!(registry.source_entries.get(&VenueType::Sdex), None);
+    }
+
+    #[tokio::test]
+    async fn provider_kill_switch_maps_to_provider_policy() {
+        let manager = KillSwitchManager::new(None);
+        let mut providers = HashMap::new();
+        providers.insert("example-bridge".into(), OverrideDirective::ForceExclude);
+        manager
+            .update_state(KillSwitchState {
+                providers,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let policy = manager.get_provider_policy().await;
+        assert!(!policy.is_provider_allowed(Some("example-bridge")));
+        assert!(policy.is_provider_allowed(Some("other")));
     }
 }

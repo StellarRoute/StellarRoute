@@ -1,0 +1,60 @@
+{
+  "canonical_round_trips": [
+    {
+      "input": "stellar:pubnet/slip44:148",
+      "canonical": "stellar:pubnet/slip44:148"
+    },
+    {
+      "input": "eip155:1/slip44:60",
+      "canonical": "eip155:1/slip44:60"
+    },
+    {
+      "input": "solana:mainnet/slip44:501",
+      "canonical": "solana:mainnet/slip44:501"
+    },
+    {
+      "input": "bip122:000000000019d6689c085ae165831e9345904ddf3418b7bb805d31aeb52cafd2/slip44:0",
+      "canonical": "bip122:000000000019d6689c085ae165831e9345904ddf3418b7bb805d31aeb52cafd2/slip44:0"
+    },
+    {
+      "input": "tron:mainnet/slip44:195",
+      "canonical": "tron:mainnet/slip44:195"
+    },
+    {
+      "input": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "canonical": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    },
+    {
+      "input": "XLM",
+      "canonical": "stellar:pubnet/slip44:148"
+    },
+    {
+      "input": "native",
+      "canonical": "stellar:pubnet/slip44:148"
+    },
+    {
+      "input": "usdc:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "canonical": "stellar:pubnet/stellar:USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+    }
+  ],
+  "must_reject": [
+    "stellar:pubnet/slip44:native",
+    "stellar:pubnet/native",
+    "eip155:1/slip44:native",
+    "eip155:1/slip44:148",
+    "stellar:pubnet/slip44:60",
+    "eip155:1/erc20:0xabc",
+    "eip155:1/erc20:not-hex",
+    "bip122:deadbeef/slip44:0",
+    "bip122:000000000019d6689c085ae165831e93/slip44:0",
+    "stellar:pubnet/stellar:USDC:short",
+    "totally-bogus"
+  ],
+  "v1_cache_legacy": [
+    { "input": "XLM", "canonical": "native" },
+    { "input": "xlm", "canonical": "native" },
+    { "input": "native", "canonical": "native" },
+    { "input": "usdc:ga", "canonical": "USDC:GA" },
+    { "input": "USDC:GAISSUER", "canonical": "USDC:GAISSUER" }
+  ]
+}

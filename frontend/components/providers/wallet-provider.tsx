@@ -180,8 +180,9 @@ export function WalletProvider({
   const connect = React.useCallback(async (selectedWalletId: SupportedWallet) => {
     // Prevent account switching during transactions
     if (isTransactionPending) {
-      setError({ message: 'Cannot switch accounts during a pending transaction' });
-      return;
+      const message = 'Cannot switch accounts during a pending transaction';
+      setError({ message });
+      throw new Error(message);
     }
 
     setIsLoading(true);
@@ -203,6 +204,7 @@ export function WalletProvider({
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Unknown error');
       setError({ message: e.message });
+      throw e;
     } finally {
       setIsLoading(false);
     }
@@ -213,7 +215,12 @@ export function WalletProvider({
       return;
     }
     const savedWalletId = window.localStorage.getItem(LAST_WALLET_ID_KEY);
-    if (savedWalletId !== 'freighter' && savedWalletId !== 'xbull') {
+    if (
+      savedWalletId !== 'freighter' &&
+      savedWalletId !== 'xbull' &&
+      savedWalletId !== 'albedo' &&
+      savedWalletId !== 'lobstr'
+    ) {
       return;
     }
 

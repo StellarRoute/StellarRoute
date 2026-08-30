@@ -50,7 +50,11 @@ pub fn set_initial_version(e: &Env, wasm_hash: BytesN<32>) {
         minor: 0,
         patch: 0,
         wasm_hash,
-        upgraded_at: e.ledger().sequence() as u64,
+        // Use a stable key for the genesis snapshot. Keying VersionHistory on
+        // `e.ledger().sequence()` makes simulation/submit footprints diverge
+        // (sim ledger ≠ inclusion ledger) and traps with
+        // "contract data key outside of the footprint".
+        upgraded_at: 0,
     };
     storage::set_contract_version(e, &v);
 }

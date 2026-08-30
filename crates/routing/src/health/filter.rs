@@ -17,10 +17,38 @@ impl<'a> GraphFilter<'a> {
         edges: &[LiquidityEdge],
         scored: &[ScoredVenue],
     ) -> (Vec<LiquidityEdge>, ExclusionDiagnostics) {
+        self.filter_edges_with_providers(edges, scored, None)
+    }
+
+    /// Like [`Self::filter_edges`], also dropping edges whose provider is kill-switched.
+    pub fn filter_edges_with_providers(
+        &self,
+        edges: &[LiquidityEdge],
+        scored: &[ScoredVenue],
+        provider_policy: Option<&crate::cross_chain::ProviderPolicy>,
+    ) -> (Vec<LiquidityEdge>, ExclusionDiagnostics) {
         let (excluded, diagnostics) = self.policy.apply(scored);
         let filtered = edges
             .iter()
-            .filter(|e| !excluded.contains(&e.venue_ref))
+            .filter(|e| {
+                if excluded.contains(&e.venue_ref) {
+                    return false;
+                }
+                // Bridges are never executable via the health graph filter.
+                if crate::cross_chain::is_bridge_edge(&e.venue_type, e.bridge.as_ref()) {
+                    return false;
+                }
+                if let Some(policy) = provider_policy {
+                    let provider = e
+                        .provider
+                        .as_deref()
+                        .or_else(|| e.bridge.as_ref().and_then(|b| b.provider.as_deref()));
+                    if !policy.is_provider_allowed(provider) {
+                        return false;
+                    }
+                }
+                true
+            })
             .cloned()
             .collect();
         (filtered, diagnostics)
@@ -58,6 +86,7 @@ mod tests {
             liquidity: 1_000_000_000,
             price: 1.0,
             fee_bps: 30,
+            ..Default::default()
         }
     }
 

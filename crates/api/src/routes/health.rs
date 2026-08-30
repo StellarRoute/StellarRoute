@@ -140,10 +140,20 @@ pub async fn dependency_health(
     let mut all_ok = true;
 
     // --- PostgreSQL ---
+    // Feeds the database circuit breaker so the live path can fail fast rather
+    // than queue behind an unreachable Postgres.
     let db_status = match sqlx::query("SELECT 1").execute(state.db.read_pool()).await {
-        Ok(_) => "healthy".to_string(),
+        Ok(_) => {
+            state
+                .external_dependency_health
+                .record_database_result(true);
+            "healthy".to_string()
+        }
         Err(e) => {
             warn!("Dependency DB health check failed: {}", e);
+            state
+                .external_dependency_health
+                .record_database_result(false);
             all_ok = false;
             "degraded".to_string()
         }

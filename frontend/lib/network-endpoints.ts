@@ -42,8 +42,27 @@ export function normalizeApiOrigin(url: string): string {
   return stripTrailingSlash(url).replace(/\/api\/v1$/i, '');
 }
 
-function resolveEnvApiUrl(envKey: string): string | undefined {
-  const value = process.env[envKey]?.trim();
+type PublicApiEnvKey =
+  | 'NEXT_PUBLIC_API_URL'
+  | 'NEXT_PUBLIC_API_URL_TESTNET'
+  | 'NEXT_PUBLIC_API_URL_MAINNET';
+
+/**
+ * Resolve a NEXT_PUBLIC API URL from env.
+ *
+ * Next.js only inlines `NEXT_PUBLIC_*` values when they are accessed via a
+ * static property path (`process.env.NEXT_PUBLIC_FOO`). Dynamic lookups like
+ * `process.env[key]` stay undefined in the browser bundle, which previously
+ * made production fall back to `http://localhost:8080` for health/quotes.
+ */
+function resolveEnvApiUrl(envKey: PublicApiEnvKey): string | undefined {
+  const raw =
+    envKey === 'NEXT_PUBLIC_API_URL_MAINNET'
+      ? process.env.NEXT_PUBLIC_API_URL_MAINNET
+      : envKey === 'NEXT_PUBLIC_API_URL_TESTNET'
+        ? process.env.NEXT_PUBLIC_API_URL_TESTNET
+        : process.env.NEXT_PUBLIC_API_URL;
+  const value = raw?.trim();
   return value ? normalizeApiOrigin(value) : undefined;
 }
 

@@ -33,6 +33,9 @@ The `IndexerLagMonitor` runs as a background task in the API process.  Every
 
 All metrics are exposed at `GET /metrics` in Prometheus text format.
 
+For a ready-to-import Grafana dashboard covering the lag and sync gauges, see
+[`monitoring/grafana/indexer-lag-dashboard.json`](../monitoring/grafana/indexer-lag-dashboard.json).
+
 ---
 
 ## Threshold-Based Warning Levels
@@ -289,3 +292,12 @@ indexer_lag.clone().start_polling(Duration::from_secs(30)); // default: 30s
 
 Each measurement cycle writes 5 Prometheus gauge values × 2 sources = 10 time-series
 data points.  At 30-second intervals this is negligible (< 1 KB/day in TSDB).
+
+---
+
+## Related Runbooks
+
+- **AMM Pool Refresh Failures**: [`docs/runbooks/amm-refresh-failures.md`](runbooks/amm-refresh-failures.md) —
+  step-by-step triage and remediation for repeated Soroban AMM pool refresh errors.
+  Covers metrics to watch, log signatures, paging tiers, and recovery verification.
+  Key reminder: stale AMM data must **never** hard-block SDEX swaps.

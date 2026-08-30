@@ -34,7 +34,9 @@ for CONTRACT_NAME in "router" "constant_product_adapter"; do
     CONTRACT_ID="$(soroban_cmd contract deploy \
         --wasm "${CONTRACT_WASM[${CONTRACT_NAME}]}" \
         --source "${IDENTITY}" \
-        --network "${NETWORK}")"
+        --network "${NETWORK}" \
+        --network-passphrase "$(get_network_passphrase)" \
+        --rpc-url "$(get_rpc_url)")"
     DEPLOYED_IDS["${CONTRACT_NAME}"]="${CONTRACT_ID}"
     log_ok "Contract deployed (${CONTRACT_NAME}): ${CONTRACT_ID}"
     log_tx "${CONTRACT_ID}" "deploy_${CONTRACT_NAME}"
@@ -44,17 +46,33 @@ done
 
 if [[ "${DRY_RUN}" == "true" ]]; then
     ADMIN_ADDRESS="dry-run-admin"
+    FEE_TO="dry-run-fee-to"
 else
     ADMIN_ADDRESS=$(soroban_cmd keys address "${IDENTITY}")
+    # Contract rejects admin == fee_to (InvalidAmount). Prefer a dedicated fee identity.
+    if soroban_cmd keys address fee_to >/dev/null 2>&1; then
+        FEE_TO=$(soroban_cmd keys address fee_to)
+    else
+        log_info "Generating distinct fee_to identity (admin and fee_to must differ)..."
+        soroban_cmd keys generate fee_to --network "${NETWORK}" >/dev/null
+        FEE_TO=$(soroban_cmd keys address fee_to)
+        # Fund fee_to on testnet so it can hold XLM if needed later (not required for init).
+        if [[ "${NETWORK}" == "testnet" ]]; then
+            curl -fsS "https://friendbot.stellar.org/?addr=${FEE_TO}" >/dev/null || true
+        fi
+    fi
+    if [[ "${ADMIN_ADDRESS}" == "${FEE_TO}" ]]; then
+        log_error "admin and fee_to must be distinct Stellar addresses"
+        exit 1
+    fi
 fi
 FEE_RATE=30
-FEE_TO="${ADMIN_ADDRESS}"
 ROUTER_ID="${DEPLOYED_IDS[router]}"
 
 if [[ "${DRY_RUN}" == "true" ]]; then
     log_info "[DRY-RUN] skipped initialize for router ${ROUTER_ID}"
 else
-    log_info "Initializing router (admin=${ADMIN_ADDRESS}, fee_rate=${FEE_RATE})..."
+    log_info "Initializing router (admin=${ADMIN_ADDRESS}, fee_rate=${FEE_RATE}, fee_to=${FEE_TO})..."
     invoke_contract "${ROUTER_ID}" "initialize" \
         --admin "${ADMIN_ADDRESS}" \
         --fee_rate "${FEE_RATE}" \
@@ -79,6 +97,7 @@ DEPLOYMENT_CONTRACTS_JSON=$(cat <<JSON
 JSON
 )
 save_deployment "${DEPLOYMENT_CONTRACTS_JSON}"
+save_public_deployment "${DEPLOYED_IDS[router]}" "${DEPLOYED_IDS[constant_product_adapter]}"
 
 # ── Step 5: Verify Deployment ─────────────────────────────────────────
 
@@ -105,3 +124,7 @@ log_ok "Admin:       ${ADMIN_ADDRESS}"
 log_ok "Fee Rate:    ${FEE_RATE} bps"
 log_ok "Dry Run:     ${DRY_RUN}"
 log_ok "Artifact:    $(deployment_file)"
+log_ok "Public:      $(public_deployment_file)"
+echo ""
+log_info "Set ROUTER_CONTRACT_ADDRESS from the committed artifact:"
+log_info "  export ROUTER_CONTRACT_ADDRESS=\"\$(jq -r .router_contract_id $(public_deployment_file))\""

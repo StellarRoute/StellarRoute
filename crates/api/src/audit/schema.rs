@@ -56,6 +56,41 @@ impl std::fmt::Display for AuditOutcome {
     }
 }
 
+// ─── Swap submit outcome ─────────────────────────────────────────────────────
+
+/// High-level outcome of a swap prepare/submit attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SwapSubmitOutcome {
+    /// The prepare step produced an unsigned transaction payload.
+    Prepared,
+    /// The signed transaction was submitted to the network successfully.
+    Submitted,
+    /// The prepare or submit step failed.
+    ///
+    /// Specific classes (prepare rejection, auth failure, permanent broadcast
+    /// failure, pending reconciliation) are carried in `error_class` / metadata
+    /// so the DB CHECK (`prepared|submitted|failed`) stays stable.
+    Failed,
+}
+
+impl SwapSubmitOutcome {
+    /// Database-safe string representation (matches the CHECK constraint).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Prepared => "prepared",
+            Self::Submitted => "submitted",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+impl std::fmt::Display for SwapSubmitOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 // ─── Sub-structures ───────────────────────────────────────────────────────────
 
 /// Redacted request inputs captured at the start of the pipeline.
@@ -179,6 +214,80 @@ impl RouteAuditEntry {
     }
 }
 
+// ─── Swap submit audit entry ─────────────────────────────────────────────────
+
+/// A single structured audit log entry for a swap prepare/submit attempt.
+///
+/// Built by [`crate::audit::writer::AuditWriter`] and persisted via
+/// [`crate::audit::store::AuditStore`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapSubmitAuditEntry {
+    /// Schema version for forward-compatibility.
+    pub schema_version: u32,
+
+    // ── Business correlation ─────────────────────────────────────────────────
+    /// Client-provided quote identifier.
+    pub quote_id: String,
+    /// On-chain transaction hash (None until a successful submit).
+    pub tx_hash: Option<String>,
+    /// Redacted account fingerprint; the raw public key is never stored.
+    pub account: String,
+
+    // ── Correlation ──────────────────────────────────────────────────────────
+    /// HTTP `x-request-id` header value (or a generated UUID).
+    pub request_id: String,
+    /// W3C traceparent trace ID (32-char hex).  Empty string when no trace is
+    /// active.
+    pub trace_id: String,
+
+    // ── Timing ───────────────────────────────────────────────────────────────
+    /// Wall-clock time when the entry was created.
+    pub logged_at: DateTime<Utc>,
+    /// End-to-end prepare/submit latency in milliseconds.
+    pub latency_ms: u64,
+
+    // ── Outcome ──────────────────────────────────────────────────────────────
+    /// High-level result of the prepare/submit step.
+    pub outcome: SwapSubmitOutcome,
+    /// Machine-readable failure class when `outcome == Failed`; empty otherwise.
+    pub error_class: String,
+
+    // ── Extensibility ────────────────────────────────────────────────────────
+    /// JSONB payload for route, amount, fee estimate, etc.
+    pub metadata: serde_json::Value,
+}
+
+impl SwapSubmitAuditEntry {
+    /// Create a new swap submit audit entry with the current timestamp and
+    /// schema version.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        quote_id: impl Into<String>,
+        tx_hash: Option<impl Into<String>>,
+        account: impl Into<String>,
+        request_id: impl Into<String>,
+        trace_id: impl Into<String>,
+        latency_ms: u64,
+        outcome: SwapSubmitOutcome,
+        error_class: impl Into<String>,
+        metadata: serde_json::Value,
+    ) -> Self {
+        Self {
+            schema_version: AUDIT_SCHEMA_VERSION,
+            quote_id: quote_id.into(),
+            tx_hash: tx_hash.map(Into::into),
+            account: account.into(),
+            request_id: request_id.into(),
+            trace_id: trace_id.into(),
+            logged_at: Utc::now(),
+            latency_ms,
+            outcome,
+            error_class: error_class.into(),
+            metadata,
+        }
+    }
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -292,5 +401,53 @@ mod tests {
         let entry = make_entry(AuditOutcome::Success);
         assert_eq!(entry.request_id, "req-001");
         assert_eq!(entry.trace_id, "0af7651916cd43dd8448eb211c80319c");
+    }
+
+    // ── Swap submit audit tests ───────────────────────────────────────────────
+
+    #[test]
+    fn swap_submit_outcome_as_str_matches_db_constraint() {
+        assert_eq!(SwapSubmitOutcome::Prepared.as_str(), "prepared");
+        assert_eq!(SwapSubmitOutcome::Submitted.as_str(), "submitted");
+        assert_eq!(SwapSubmitOutcome::Failed.as_str(), "failed");
+    }
+
+    #[test]
+    fn swap_submit_entry_serde_round_trip() {
+        let entry = SwapSubmitAuditEntry::new(
+            "quote-42",
+            Some::<String>("txhash123".into()),
+            "GABCD...#abcd",
+            "req-swap-1",
+            "trace-swap-1",
+            123,
+            SwapSubmitOutcome::Submitted,
+            "",
+            serde_json::json!({"route_id": "r1"}),
+        );
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let back: SwapSubmitAuditEntry = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(entry.quote_id, back.quote_id);
+        assert_eq!(entry.tx_hash, back.tx_hash);
+        assert_eq!(entry.account, back.account);
+        assert_eq!(entry.outcome.as_str(), back.outcome.as_str());
+        assert_eq!(entry.error_class, back.error_class);
+    }
+
+    #[test]
+    fn swap_submit_failed_entry_has_no_tx_hash() {
+        let entry = SwapSubmitAuditEntry::new(
+            "quote-43",
+            None::<String>,
+            "GABCD...#abcd",
+            "req-swap-2",
+            "",
+            45,
+            SwapSubmitOutcome::Failed,
+            "validation",
+            serde_json::json!({}),
+        );
+        assert!(entry.tx_hash.is_none());
+        assert_eq!(entry.error_class, "validation");
     }
 }

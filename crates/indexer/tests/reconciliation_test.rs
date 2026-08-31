@@ -273,4 +273,54 @@ mod unit_tests {
         assert_eq!(DriftSeverity::Warning.to_string(), "warning");
         assert_eq!(DriftSeverity::Critical.to_string(), "critical");
     }
+
+    #[test]
+    fn test_reconciliation_run_dry_run_flag() {
+        use stellarroute_indexer::reconciliation::ReconciliationRun;
+        use uuid::Uuid;
+        use chrono::Utc;
+
+        let run = ReconciliationRun {
+            id: Uuid::new_v4(),
+            started_at: Utc::now(),
+            completed_at: Utc::now(),
+            checks_executed: 5,
+            checks_passed: 3,
+            checks_failed: 2,
+            total_drift_events: 2,
+            critical_drift_events: 0,
+            total_repairs_attempted: 0,
+            successful_repairs: 0,
+            failed_repairs: 0,
+            duration_ms: 100,
+            dry_run: true,
+        };
+
+        assert!(run.dry_run, "dry_run flag should be set");
+    }
+
+    #[test]
+    fn test_reconciliation_run_live_mode_flag() {
+        use stellarroute_indexer::reconciliation::ReconciliationRun;
+        use uuid::Uuid;
+        use chrono::Utc;
+
+        let run = ReconciliationRun {
+            id: Uuid::new_v4(),
+            started_at: Utc::now(),
+            completed_at: Utc::now(),
+            checks_executed: 5,
+            checks_passed: 5,
+            checks_failed: 0,
+            total_drift_events: 0,
+            critical_drift_events: 0,
+            total_repairs_attempted: 0,
+            successful_repairs: 0,
+            failed_repairs: 0,
+            duration_ms: 100,
+            dry_run: false,
+        };
+
+        assert!(!run.dry_run, "live mode should have dry_run=false");
+    }
 }

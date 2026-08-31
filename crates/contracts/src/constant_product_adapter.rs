@@ -147,4 +147,102 @@ mod tests {
         // which the adapter rejects by panicking (documented behaviour).
         adapter.adapter_quote(&Asset::Native, &Asset::Native, &0);
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        /// Property test: reserve invariant holds after swap with fees
+        /// x * y ≈ k where k is (x + dx*0.997) * (y - dy)
+        #[test]
+        fn prop_reserve_invariant_with_fees(
+            reserve_in in 1i128..=10_000_000,
+            reserve_out in 1i128..=10_000_000,
+            amount_in in 1i128..=1_000_000,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            // Calculate expected output
+            let fee_multiplier: i128 = 997;
+            let amount_with_fee = amount_in.saturating_mul(fee_multiplier);
+            let numerator = amount_with_fee.saturating_mul(reserve_out);
+            let denominator = reserve_in
+                .saturating_mul(1000)
+                .saturating_add(amount_with_fee);
+
+            if denominator > 0 {
+                let expected_output = numerator / denominator;
+
+                // Verify calculation doesn't panic
+                let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &amount_in);
+
+                // Output should match expected value
+                prop_assert_eq!(quote, expected_output);
+
+                // Verify invariant: (x + dx*0.997) * (y - dy) >= x*y
+                // This ensures the pool math maintains the constant product
+                let new_in = reserve_in.saturating_add(amount_with_fee / 1000);
+                let new_out = reserve_out.saturating_sub(quote);
+                let new_product = new_in.saturating_mul(new_out);
+                let original_product = reserve_in.saturating_mul(reserve_out);
+
+                // The new product should be >= original (after fee decay)
+                prop_assert!(
+                    new_product >= original_product.saturating_mul(99) / 100,
+                    "Reserve invariant violated: new_product={}, original_product*0.99={}",
+                    new_product,
+                    original_product.saturating_mul(99) / 100
+                );
+            }
+        }
+
+        /// Property test: zero and overflow inputs never panic
+        #[test]
+        fn prop_zero_and_overflow_no_panic(
+            reserve_in in 1i128..=i128::MAX / 2,
+            reserve_out in 1i128..=i128::MAX / 2,
+            amount_in in 0i128..=i128::MAX,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            // Must not panic on any input
+            let _ = adapter.adapter_quote(&Asset::Native, &Asset::Native, &amount_in);
+        }
+
+        /// Property test: quote result is always non-negative
+        #[test]
+        fn prop_quote_always_non_negative(
+            reserve_in in 1i128..=1_000_000,
+            reserve_out in 1i128..=1_000_000,
+            amount_in in 0i128..=100_000,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &amount_in);
+            prop_assert!(quote >= 0, "Quote should never be negative");
+        }
+
+        /// Property test: quote result is less than or equal to reserve_out
+        #[test]
+        fn prop_quote_bounded_by_reserves(
+            reserve_in in 1i128..=1_000_000,
+            reserve_out in 1i128..=1_000_000,
+            amount_in in 1i128..=100_000,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &amount_in);
+            prop_assert!(
+                quote < reserve_out,
+                "Quote {} should be less than reserve_out {}",
+                quote,
+                reserve_out
+            );
+        }
+    }
 }

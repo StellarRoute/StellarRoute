@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ViewState } from '@/components/shared/ViewState';
+import { OrderbookShortcutHelp } from '@/components/orderbook/OrderbookShortcutHelp';
 import { useOrderbook, usePairs } from '@/hooks/useApi';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useVirtualWindow } from '@/hooks/useVirtualWindow';
@@ -178,6 +179,32 @@ export function OrderbookPageClient() {
     10_000
   );
 
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeydown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditable = target
+        ? target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable
+        : false;
+
+      if (event.key === '?' && !isEditable) {
+        event.preventDefault();
+        setShortcutHelpOpen(true);
+      }
+
+      if (event.key.toLowerCase() === 'r' && event.altKey) {
+        event.preventDefault();
+        refresh();
+      }
+    };
+
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  }, [refresh]);
+
   const { t } = useSwapI18n();
 
   return (
@@ -306,6 +333,11 @@ export function OrderbookPageClient() {
           )}
         </>
       )}
+
+      <OrderbookShortcutHelp
+        open={shortcutHelpOpen}
+        onOpenChange={setShortcutHelpOpen}
+      />
     </div>
   );
 }

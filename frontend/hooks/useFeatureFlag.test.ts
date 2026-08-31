@@ -7,6 +7,7 @@ import {
   useFeatureFlag,
   useFeatureFlags,
 } from "./useFeatureFlag";
+import type { FlagName } from "./useFeatureFlag";
 
 function mockFetch(flags: Record<string, boolean>) {
   global.fetch = vi.fn().mockResolvedValue({
@@ -183,5 +184,55 @@ describe("useFeatureFlags (batch)", () => {
 
     await waitFor(() => expect(result.current.routes_beta).toBe(true));
     expect(result.current.swap_ui_v2).toBe(false);
+  });
+});
+
+describe("ordinary feature flag defaults", () => {
+  const ALL_FLAGS: FlagName[] = [
+    "routes_beta",
+    "batch_swaps",
+    "swap_ui_v2",
+    "transaction_history",
+    "advanced_slippage",
+    "real_xdr",
+    "analytics",
+  ];
+
+  const EXPECTED_DEFAULTS: Record<FlagName, boolean> = {
+    routes_beta: false,
+    batch_swaps: false,
+    swap_ui_v2: true,
+    transaction_history: false,
+    advanced_slippage: false,
+    real_xdr: true,
+    analytics: false,
+  };
+
+  beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_FLAG_BATCH_SWAPS;
+    delete process.env.NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY;
+    delete process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
+    delete process.env.NEXT_PUBLIC_FEATURE_ANALYTICS;
+    delete (window as { __STELLAR_ROUTE_FLAGS__?: unknown })
+      .__STELLAR_ROUTE_FLAGS__;
+  });
+
+  it.each(ALL_FLAGS)("resolves %s to its documented default", (flag) => {
+    expect(resolveFlag(flag)).toBe(EXPECTED_DEFAULTS[flag]);
+  });
+
+  it("keeps every ordinary flag except swap_ui_v2 off by default", () => {
+    const on = ALL_FLAGS.filter(
+      (flag) => flag !== "real_xdr" && resolveFlag(flag) === true,
+    );
+    expect(on).toEqual(["swap_ui_v2"]);
+  });
+
+  it("keeps real_xdr pinned on even when remote JSON disables it", async () => {
+    mockFetch({ real_xdr: false });
+    process.env.NEXT_PUBLIC_FLAGS_URL = "https://flags.example/flags.json";
+
+    const { result } = renderHook(() => useFeatureFlag("real_xdr"));
+    await waitFor(() => expect(result.current.enabled).toBe(true));
   });
 });

@@ -157,6 +157,101 @@ mod tests {
         assert!(jitter.jitter_fraction <= 1.0);
     }
 
+    // ── Clamp + default-fraction guards (issue #1301) ────────────────────
+
+    /// A zero base TTL must not survive as a zero TTL: the floor takes over.
+    /// A TTL of 0 would expire every entry immediately and stampede Redis.
+    #[test]
+    fn test_zero_base_ttl_clamps_to_min() {
+        let jitter = JitteredTtl::default();
+        assert_eq!(jitter.apply(Duration::ZERO), jitter.min_ttl);
+    }
+
+    /// Same guard one step up: a base below the floor is raised to the floor.
+    #[test]
+    fn test_base_below_min_clamps_to_min() {
+        let jitter = JitteredTtl::default();
+        let ttl = jitter.apply(Duration::from_millis(10));
+        assert_eq!(ttl, jitter.min_ttl);
+    }
+
+    /// The ceiling is enforced too, so a stray large base cannot pin an entry
+    /// in cache for longer than `max_ttl`.
+    #[test]
+    fn test_base_above_max_clamps_to_max() {
+        let jitter = JitteredTtl::default();
+        let ttl = jitter.apply(Duration::from_secs(600));
+        assert_eq!(ttl, jitter.max_ttl);
+    }
+
+    /// Even at the widest allowed jitter and the smallest possible floor, the
+    /// result is never zero — this is the regression the floor exists for.
+    #[test]
+    fn test_never_returns_zero_ttl_at_max_jitter() {
+        let jitter = JitteredTtl {
+            jitter_fraction: 1.0,
+            min_ttl: Duration::from_millis(1),
+            max_ttl: Duration::from_secs(3600),
+        };
+        let base = Duration::from_millis(20);
+        for _ in 0..1000 {
+            let ttl = jitter.apply(base);
+            assert!(!ttl.is_zero(), "TTL must never be zero, got {:?}", ttl);
+        }
+    }
+
+    /// `apply_secs` floors at 1 second even when the clamped duration rounds
+    /// down to zero whole seconds.
+    #[test]
+    fn test_apply_secs_never_zero_for_zero_base() {
+        let jitter = JitteredTtl::default();
+        assert!(jitter.apply_secs(Duration::ZERO) >= 1);
+    }
+
+    /// A negative fraction is clamped to 0.0 rather than shrinking the TTL.
+    #[test]
+    fn test_negative_jitter_fraction_clamped_to_zero() {
+        let jitter = JitteredTtl::with_fraction(-0.5);
+        assert_eq!(jitter.jitter_fraction, 0.0);
+        let base = Duration::from_secs(5);
+        assert_eq!(jitter.apply(base), base);
+    }
+
+    /// Pin the production defaults. Changing these changes cache behaviour for
+    /// live users, so it should be a deliberate edit that updates this test.
+    #[test]
+    fn test_default_config_is_15_percent_with_200ms_floor() {
+        let jitter = JitteredTtl::default();
+        assert_eq!(jitter.jitter_fraction, 0.15);
+        assert_eq!(jitter.min_ttl, Duration::from_millis(200));
+        assert_eq!(jitter.max_ttl, Duration::from_secs(300));
+    }
+
+    /// `with_fraction` overrides the fraction but keeps the default clamps.
+    #[test]
+    fn test_with_fraction_keeps_default_clamps() {
+        let jitter = JitteredTtl::with_fraction(0.5);
+        let default = JitteredTtl::default();
+        assert_eq!(jitter.min_ttl, default.min_ttl);
+        assert_eq!(jitter.max_ttl, default.max_ttl);
+    }
+
+    /// With the default ±15 % window, a 10 s base stays inside
+    /// [9.25 s, 10.75 s] — half the 15 % range either side.
+    #[test]
+    fn test_default_jitter_stays_within_15_percent_window() {
+        let jitter = JitteredTtl::default();
+        let base = Duration::from_secs(10);
+        let lower = Duration::from_millis(9_250);
+        let upper = Duration::from_millis(10_750);
+
+        for _ in 0..1000 {
+            let ttl = jitter.apply(base);
+            assert!(ttl >= lower, "TTL {:?} below -7.5 % bound {:?}", ttl, lower);
+            assert!(ttl <= upper, "TTL {:?} above +7.5 % bound {:?}", ttl, upper);
+        }
+    }
+
     /// Verify that jitter reduces the probability of synchronized expiry.
     ///
     /// We simulate 1000 cache entries all set with the same base TTL and

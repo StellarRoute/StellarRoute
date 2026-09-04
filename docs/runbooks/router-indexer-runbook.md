@@ -66,6 +66,42 @@ LIMIT 10;
 ```
 *Expected: The unified view should now contain AMM-based liquidity derived from the router.*
 
+## AMM Refresh Failure Metrics
+
+The AMM aggregation loop tolerates individual failed cycles: it logs the error
+and waits for the next tick. That is correct for transient Soroban RPC blips,
+but it means a permanently broken refresh looks identical to a healthy one from
+the outside. These two metrics make the difference visible.
+
+| Metric | Type | Labels | Meaning |
+|--------|------|--------|---------|
+| `stellarroute_indexer_amm_consecutive_refresh_failures` | Gauge | `source` (`amm`) | Failed cycles back-to-back right now. Resets to `0` on the next success. |
+| `stellarroute_indexer_amm_refresh_failure_streaks_total` | Counter | `source` (`amm`) | Incremented on every failed cycle once the consecutive count reaches **3**. Never resets. |
+
+The threshold is `AMM_REFRESH_FAILURE_STREAK_THRESHOLD` in
+[`crates/indexer/src/metrics.rs`](../../crates/indexer/src/metrics.rs). Cycles 1
+and 2 of a streak move the gauge only; the counter starts at cycle 3, so a
+single failed poll never fires an alert.
+
+Both are observability-only. They do not change the poll interval, do not abort
+the process, and do not affect the SDEX ingest path or the quote API.
+
+**Is the AMM loop stuck?**
+
+```promql
+# Currently failing, and for how many cycles
+stellarroute_indexer_amm_consecutive_refresh_failures{source="amm"}
+
+# Sustained breakage in the last 15 minutes — suggested alert condition
+increase(stellarroute_indexer_amm_refresh_failure_streaks_total{source="amm"}[15m]) > 0
+```
+
+A non-zero gauge that keeps climbing while
+`stellarroute_indexer_lag_ledgers{source="amm"}` also grows means pool reserves
+are going stale. Check the indexer logs for `AMM aggregation cycle failed`, then
+work through the verification steps above. Recovery is logged as
+`AMM aggregation cycle recovered` and drops the gauge back to `0`.
+
 ## Rollback Procedures
 
 If the deployment or indexing fails, follow these steps to roll back:
@@ -97,6 +133,7 @@ Before signing off on the deployment, complete this peer-review checklist:
 - [ ] Contract verification (`verify.sh`) passes locally.
 - [ ] `register-pools.sh` correctly processed all pools defined in the testnet config.
 - [ ] Indexer starts up cleanly with no recurring AMM aggregator error logs.
+- [ ] `stellarroute_indexer_amm_consecutive_refresh_failures{source="amm"}` reads `0` after the first successful cycle.
 - [ ] SQL verification confirms that `amm_pool_reserves` is populated.
 - [ ] SQL verification confirms that `normalized_liquidity` reflects the new AMM quotes.
 - [ ] No testnet workflows were unexpectedly broken by the deployment.

@@ -2,6 +2,7 @@ import type { Story } from "@ladle/react";
 import { useEffect, useState } from "react";
 
 import { OrderbookDepthPanel } from "./OrderbookDepthPanel";
+import { installOrderbookFetchMock } from "./orderbookStoryFetch";
 import type { Asset, Orderbook, OrderbookEntry } from "@/types";
 
 const meta = { title: "Swap/OrderbookDepthPanel" };
@@ -56,37 +57,10 @@ const DEEP_BOOK = book(
 );
 
 /**
- * Stub `GET /api/v1/orderbook/{base}/{quote}` so each story renders a fixed
- * book. Everything else falls through to the real `fetch`.
- */
-function mockOrderbook(response: Orderbook | { status: number }) {
-  const originalFetch = globalThis.fetch;
-
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!String(input).includes("/api/v1/orderbook/")) {
-      return originalFetch(input, init);
-    }
-    if ("status" in response) {
-      return new Response(
-        JSON.stringify({ error: "upstream_error", message: "Horizon unavailable" }),
-        { status: response.status, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }) as typeof fetch;
-
-  return () => {
-    globalThis.fetch = originalFetch;
-  };
-}
-
-/**
  * Installs the stub during render — the panel's own fetch effect runs before
  * the harness's effects, so an effect-time install would be too late — and
- * restores the original `fetch` on unmount.
+ * restores the original `fetch` on unmount. The helper is stack-safe under
+ * StrictMode double-invoking the `useState` initializer.
  */
 function StoryHarness({
   response,
@@ -95,7 +69,7 @@ function StoryHarness({
   response: Orderbook | { status: number };
   maxRows?: number;
 }) {
-  const [restore] = useState(() => mockOrderbook(response));
+  const [restore] = useState(() => installOrderbookFetchMock(response));
   useEffect(() => restore, [restore]);
 
   return (

@@ -236,10 +236,11 @@ mod tests {
         assert_eq!(jitter.max_ttl, default.max_ttl);
     }
 
-    /// With the default ±15 % window, a 10 s base stays inside
-    /// [9.25 s, 10.75 s] — half the 15 % range either side.
+    /// Default `jitter_fraction` 0.15 is a 15 % *total* window: offset is
+    /// `uniform(-0.5, 0.5) * base * fraction`, so a 10 s base stays inside
+    /// [9.25 s, 10.75 s] (±7.5 %).
     #[test]
-    fn test_default_jitter_stays_within_15_percent_window() {
+    fn test_default_jitter_stays_within_7_5_percent_deviation() {
         let jitter = JitteredTtl::default();
         let base = Duration::from_secs(10);
         let lower = Duration::from_millis(9_250);

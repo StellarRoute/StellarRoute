@@ -176,7 +176,13 @@ async fn default_provider_policy_allows_sdex() {
     let paths = Pathfinder::new(PathfinderConfig {
         min_liquidity_threshold: 1,
     })
-    .find_paths(&xlm, &usdc, &[sdex_edge(&xlm, &usdc, "sdex:1", "sdex")], 1_000_000, &policy)
+    .find_paths(
+        &xlm,
+        &usdc,
+        &[sdex_edge(&xlm, &usdc, "sdex:1", "sdex")],
+        1_000_000,
+        &policy,
+    )
     .expect("default policy must not block SDEX");
 
     assert!(

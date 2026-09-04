@@ -503,8 +503,7 @@ async fn submit_submitting_past_timebounds_absent_horizon_marks_failed() {
     // Close the Stellar timebounds window while Horizon still has no tx.
     store.set_timebounds_max_for_tests("q-tb", Some(Utc::now().timestamp() - 10));
 
-    let broadcaster2 =
-        Arc::new(MockTransactionBroadcaster::succeed("").with_lookup(None));
+    let broadcaster2 = Arc::new(MockTransactionBroadcaster::succeed("").with_lookup(None));
     let router2 = make_submit_router(store.clone(), broadcaster2.clone()).await;
     let (status2, json2) = post_submit(
         &router2,

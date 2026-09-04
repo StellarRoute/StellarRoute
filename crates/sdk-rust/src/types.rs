@@ -482,6 +482,34 @@ impl SwapSubmitResponse {
     }
 }
 
+// ── Price History ─────────────────────────────────────────────────────────────
+
+/// A single historical price sample returned by the price-history endpoint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceHistoryPoint {
+    /// Unix timestamp in milliseconds for the aggregated price bucket.
+    pub timestamp: i64,
+    /// Average mid-market price for the bucket, encoded as a decimal string.
+    pub price: String,
+}
+
+/// Response from `GET /api/v1/price-history/{base}/{quote}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceHistoryResponse {
+    /// Base asset descriptor.
+    pub base_asset: AssetInfo,
+    /// Quote asset descriptor.
+    pub quote_asset: AssetInfo,
+    /// Time window covered by the series, e.g. `"24h"`.
+    pub window: String,
+    /// Data source description returned by the API.
+    pub source: String,
+    /// Unix timestamp in milliseconds when the response was generated.
+    pub generated_at: i64,
+    /// Ordered list of price samples, ascending by timestamp.
+    pub points: Vec<PriceHistoryPoint>,
+}
+
 // ── Internal error response ───────────────────────────────────────────────────
 
 /// Wire format of the API error body — used internally by the client.
@@ -491,4 +519,193 @@ pub(crate) struct ErrorResponse {
     pub message: String,
     #[allow(dead_code)]
     pub details: Option<serde_json::Value>,
+}
+
+// ── Simulate Route ────────────────────────────────────────────────────────────
+
+/// A single hop in the pre-selected route supplied to `simulate_route`.
+///
+/// Maps to `RouteDryRunHop` in the API's `POST /api/v1/simulate/route` handler.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DryRunHop {
+    /// Canonical source asset identifier (`"native"` or `"CODE:ISSUER"`).
+    pub from_asset: String,
+    /// Canonical destination asset identifier.
+    pub to_asset: String,
+    /// Venue identifier — e.g. `"sdex"` or `"amm:<pool_address>"`.
+    pub source: String,
+    /// Fee in basis points for this hop.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_bps: Option<u32>,
+    /// Optional hop price used for dry-run diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price: Option<String>,
+    /// Optional venue reference for per-hop slippage overrides.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub venue_ref: Option<String>,
+}
+
+/// Per-venue slippage bound for `simulate_route`.
+///
+/// When supplied in `SimulateRouteRequest::slippage_bps_overrides`, the given
+/// `slippage_bps` applies to the hop whose venue matches `venue_ref` instead
+/// of the global `slippage_bps`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SlippageOverride {
+    /// The `venue_ref` to which this override applies.
+    pub venue_ref: String,
+    /// Slippage tolerance in basis points for this venue.
+    pub slippage_bps: u32,
+}
+
+// Wire-shape wrappers — private, used only by SimulateRouteRequest::serialize.
+#[derive(Serialize)]
+struct RouteWrapper<'a> {
+    hops: &'a Vec<DryRunHop>,
+}
+
+#[derive(Serialize)]
+struct SimulateRouteRequestWire<'a> {
+    route: RouteWrapper<'a>,
+    amount: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slippage_bps: Option<u32>,
+    slippage_bps_overrides: &'a Vec<SlippageOverride>,
+}
+
+/// Request for `POST /api/v1/simulate/route`.
+///
+/// Serializes to the API wire shape:
+/// ```json
+/// {
+///   "route": { "hops": [...] },
+///   "amount": "100.0",
+///   "slippage_bps": 50,
+///   "slippage_bps_overrides": []
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimulateRouteRequest {
+    /// Ordered list of hops forming the pre-selected route.
+    pub hops: Vec<DryRunHop>,
+    /// Input amount as a decimal string.
+    pub amount: String,
+    /// Global slippage tolerance in basis points. Defaults to 50 on the server when `None`.
+    pub slippage_bps: Option<u32>,
+    /// Per-venue slippage overrides. Defaults to an empty list when absent.
+    pub slippage_bps_overrides: Vec<SlippageOverride>,
+}
+
+impl Serialize for SimulateRouteRequest {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        SimulateRouteRequestWire {
+            route: RouteWrapper { hops: &self.hops },
+            amount: &self.amount,
+            slippage_bps: self.slippage_bps,
+            slippage_bps_overrides: &self.slippage_bps_overrides,
+        }
+        .serialize(serializer)
+    }
+}
+
+/// A single hop returned by the routing engine in `SimulateRouteResponse::swap_path`.
+///
+/// Maps to `SwapHopDto` in the API.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SwapHopDto {
+    /// Canonical source asset identifier.
+    pub source_asset: String,
+    /// Canonical destination asset identifier.
+    pub destination_asset: String,
+    /// Venue type: `"sdex"` or `"amm"`.
+    pub venue_type: String,
+    /// Venue reference string.
+    pub venue_ref: String,
+    /// Exchange rate at this hop.
+    pub price: f64,
+    /// Fee in basis points at this hop.
+    pub fee_bps: u32,
+}
+
+/// The routing-engine swap path returned in `SimulateRouteResponse`.
+///
+/// Maps to `SwapPathDto` in the API.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SwapPathDto {
+    /// Ordered list of hops in the routing-engine path.
+    pub hops: Vec<SwapHopDto>,
+    /// Estimated output amount from the routing engine.
+    pub estimated_output: i64,
+}
+
+/// The quote embedded inside `SimulateRouteResponse`.
+///
+/// This is a distinct type from `QuoteResponse` to avoid changing the existing
+/// type's fields. It mirrors the full API `QuoteResponse` wire shape, using
+/// `serde_json::Value` for complex optional sub-types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SimulateQuoteResult {
+    pub base_asset: AssetInfo,
+    pub quote_asset: AssetInfo,
+    /// Input amount that was quoted.
+    pub amount: String,
+    /// Effective price (quote asset per base asset unit).
+    pub price: String,
+    /// Total output amount (`amount × price`).
+    pub total: String,
+    /// Direction of the quote, e.g. `"sell"`.
+    pub quote_type: String,
+    /// Whether the quote uses degraded (stale) market data.
+    #[serde(default)]
+    pub degraded: bool,
+    /// Ordered list of hops in the optimal execution path.
+    pub path: Vec<PathStep>,
+    /// Unix timestamp (ms) when the quote was generated.
+    pub timestamp: i64,
+    /// Unix timestamp (ms) when this quote expires.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    /// Unix timestamp (ms) of the underlying data source.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_timestamp: Option<i64>,
+    /// Time-to-live in seconds for client-side staleness detection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl_seconds: Option<u32>,
+    /// Rationale for quote venue selection (opaque JSON blob).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<serde_json::Value>,
+    /// Venues excluded from routing (opaque JSON blob).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclusion_diagnostics: Option<serde_json::Value>,
+    /// Data freshness metadata (opaque JSON blob).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_freshness: Option<serde_json::Value>,
+    /// Market midpoint price.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midpoint: Option<String>,
+    /// Market spread in basis points.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spread_bps: Option<u32>,
+    /// Estimated price impact percentage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_impact: Option<String>,
+}
+
+/// Response from `POST /api/v1/simulate/route`.
+///
+/// This is the `data` field extracted from the `ApiResponse<RouteDryRunResponse>`
+/// envelope — the envelope metadata (`v`, `timestamp`, `request_id`) is discarded
+/// by the SDK client before returning to the caller.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SimulateRouteResponse {
+    /// Full quote computed by the simulation pipeline.
+    pub quote: SimulateQuoteResult,
+    /// Venues excluded from the simulation, if any (opaque JSON blob).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclusion_diagnostics: Option<serde_json::Value>,
+    /// The routing-engine swap path constructed for this dry-run.
+    pub swap_path: SwapPathDto,
 }

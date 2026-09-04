@@ -506,10 +506,7 @@ mod tests {
             &Method::POST,
             "/api/v1/swap/prepare"
         ));
-        assert!(is_classic_swap_exempt(
-            &Method::POST,
-            "/api/v1/swap/submit"
-        ));
+        assert!(is_classic_swap_exempt(&Method::POST, "/api/v1/swap/submit"));
         assert!(!is_classic_swap_exempt(
             &Method::GET,
             "/api/v1/swap/prepare"

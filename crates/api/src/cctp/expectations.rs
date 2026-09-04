@@ -175,7 +175,9 @@ fn amount_cctp_subunits(transfer: &CctpTransfer) -> Result<u128, ExpectationErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cctp::config::{CctpConfig, STELLAR_CCTP_FORWARDER, STELLAR_TOKEN_MESSENGER, STELLAR_USDC_CONTRACT};
+    use crate::cctp::config::{
+        CctpConfig, STELLAR_CCTP_FORWARDER, STELLAR_TOKEN_MESSENGER, STELLAR_USDC_CONTRACT,
+    };
     use crate::cctp::store::CctpTransfer;
     use crate::models::v2_cctp::{CctpDirection, CctpFinality, CctpTransferStatus};
     use chrono::{Duration, Utc};

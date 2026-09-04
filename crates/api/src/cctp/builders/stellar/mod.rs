@@ -528,11 +528,8 @@ impl StellarCctpMintBuilder for ProductionStellarCctpBuilder {
                 self.base_fee,
                 default_change_trust_timeout_secs(),
             )?;
-            let payload = Self::stellar_payload(
-                xdr.clone(),
-                &passphrase,
-                Some(trustline_account.clone()),
-            );
+            let payload =
+                Self::stellar_payload(xdr.clone(), &passphrase, Some(trustline_account.clone()));
             let payload_hash = {
                 use sha2::{Digest, Sha256};
                 let json = serde_json::to_string(&payload).unwrap_or_default();

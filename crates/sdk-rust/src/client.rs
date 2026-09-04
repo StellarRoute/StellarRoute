@@ -27,10 +27,22 @@ use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
         BatchQuoteRequest, BatchQuoteResponse, ErrorResponse, HealthResponse, OrderbookResponse,
-        PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest, RoutesResponse,
-        SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse,
+        PairsResponse, PriceHistoryResponse, QuoteRequest, QuoteResponse, RoutesRequest,
+        RoutesResponse, SimulateRouteRequest, SimulateRouteResponse, SwapPrepareRequest,
+        SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse,
     },
 };
+
+// ── API response envelope ─────────────────────────────────────────────────────
+
+/// Private deserializer for the `{ v, timestamp, request_id, data }` envelope
+/// returned by endpoints that wrap their response (e.g. `POST /api/v1/simulate/route`).
+///
+/// Only `data` is extracted; the envelope metadata is discarded.
+#[derive(serde::Deserialize)]
+struct ApiEnvelope<T> {
+    pub data: T,
+}
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
@@ -173,6 +185,16 @@ impl StellarRouteClient {
     /// has no active offers.
     pub async fn orderbook(&self, base: &str, quote: &str) -> Result<OrderbookResponse> {
         self.get(&format!("api/v1/orderbook/{base}/{quote}")).await
+    }
+
+    /// `GET /api/v1/price-history/{base}/{quote}` — fetch 24-hour hourly price series.
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] for HTTP 400,
+    /// [`ApiErrorCode::NoRoute`] for HTTP 404 (pair not found or no data), and
+    /// [`SdkError::RateLimited`] after exhausted retries on HTTP 429.
+    pub async fn price_history(&self, base: &str, quote: &str) -> Result<PriceHistoryResponse> {
+        self.get(&format!("api/v1/price-history/{base}/{quote}"))
+            .await
     }
 
     /// `GET /api/v1/quote/{base}/{quote}` — get best price quote.
@@ -326,6 +348,58 @@ impl StellarRouteClient {
         let url = self.url("api/v1/swap/submit")?;
         self.execute_with_retry(|| self.http.post(url.clone()).json(&request))
             .await
+    }
+
+    /// `POST /api/v1/simulate/route` — dry-run a pre-selected multi-hop route.
+    ///
+    /// Performs a side-effect-free simulation of the supplied route, returning
+    /// a full quote with diagnostics and a swap-path breakdown.  No wallet
+    /// signing or on-chain execution occurs.
+    ///
+    /// The server response is wrapped in an `ApiResponse` envelope
+    /// (`{ v, timestamp, request_id, data }`); the SDK unwraps the envelope
+    /// and returns only the `data` field as [`SimulateRouteResponse`].
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] on HTTP
+    /// 400, and [`ApiErrorCode::NoRoute`] on HTTP 404.  Retry-and-backoff
+    /// behaviour on 429 and 5xx matches all other SDK methods.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stellarroute_sdk::{Client, DryRunHop, SimulateRouteRequest};
+    ///
+    /// # async fn example() -> stellarroute_sdk::Result<()> {
+    /// let client = Client::new("https://api.stellarroute.io")?;
+    ///
+    /// let response = client.simulate_route(SimulateRouteRequest {
+    ///     hops: vec![DryRunHop {
+    ///         from_asset: "native".into(),
+    ///         to_asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".into(),
+    ///         source: "sdex".into(),
+    ///         fee_bps: Some(30),
+    ///         price: Some("0.12".into()),
+    ///         venue_ref: Some("sdex".into()),
+    ///     }],
+    ///     amount: "100.0".into(),
+    ///     slippage_bps: Some(50),
+    ///     slippage_bps_overrides: vec![],
+    /// }).await?;
+    ///
+    /// println!("simulated price: {}", response.quote.price);
+    /// println!("estimated output: {}", response.swap_path.estimated_output);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn simulate_route(
+        &self,
+        request: SimulateRouteRequest,
+    ) -> Result<SimulateRouteResponse> {
+        let url = self.url("api/v1/simulate/route")?;
+        let envelope: ApiEnvelope<SimulateRouteResponse> = self
+            .execute_with_retry(|| self.http.post(url.clone()).json(&request))
+            .await?;
+        Ok(envelope.data)
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

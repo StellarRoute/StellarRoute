@@ -46,7 +46,7 @@ describe('OfframpQuoteSummary', () => {
   it('displays the bridge path label for bridge mode', () => {
     const bridgeQuote = { ...NGN_QUOTE_FIXTURE, mode: 'bridge' as const };
     render(<OfframpQuoteSummary quote={bridgeQuote} />);
-    expect(screen.getByText(/Bridge\s+offramp/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bridge\s*→\s*offramp/i)).toBeInTheDocument();
   });
 
   it('does not make any Paycrest network calls', () => {

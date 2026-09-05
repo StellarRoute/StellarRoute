@@ -17,6 +17,7 @@ pub mod price_history;
 pub mod prometheus;
 pub mod quote;
 pub mod replay;
+pub mod route_graph_version;
 pub mod routes_endpoint;
 pub mod simulation_route;
 pub mod swap;
@@ -186,6 +187,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(v2_cctp::cctp_reattest),
         )
         // API v1 routes
+        .route(
+            "/api/v1/route-graph/version",
+            get(route_graph_version::get_route_graph_version),
+        )
         .route("/api/v1/assets", get(assets::list_assets_metadata))
         .route("/api/v1/assets/:code", get(assets::get_asset_metadata))
         .route("/api/v1/activity/swaps", get(activity::list_swap_activity))

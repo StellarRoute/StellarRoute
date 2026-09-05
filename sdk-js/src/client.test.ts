@@ -7,6 +7,7 @@ import {
 } from './client.js';
 import type {
   BatchOrderbookResponse,
+  BatchQuoteResponse,
   HealthStatus,
   Orderbook,
   PairsResponse,
@@ -60,6 +61,11 @@ const sampleQuote: PriceQuote = {
   quote_type: 'sell',
   path: [{ from_asset: NATIVE, to_asset: USDC, price: '0.99', source: 'sdex' }],
   timestamp: 1_717_171_717,
+};
+
+const sampleBatchQuote: BatchQuoteResponse = {
+  quotes: [sampleQuote, sampleQuote],
+  total: 2,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -107,7 +107,11 @@ impl CardStore for InMemoryCardStore {
     }
 
     fn authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord> {
-        self.inner.lock().authorizations.get(authorization_id).cloned()
+        self.inner
+            .lock()
+            .authorizations
+            .get(authorization_id)
+            .cloned()
     }
 
     fn held_stroops(&self, authorization_id: &str) -> i64 {

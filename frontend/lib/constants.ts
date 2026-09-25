@@ -49,6 +49,7 @@ export const ROUTES = {
   HOME: '/',
   SWAP: '/swap',
   OFFRAMP: '/offramp',
+  CARD: '/card',
   GUIDE: '/guide',
   DOCS: '/docs',
   STATUS: '/status',

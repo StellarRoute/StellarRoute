@@ -13,6 +13,17 @@ describe("getNavItems", () => {
     expect(items.some((item) => item.href === "/analytics")).toBe(false);
   });
 
+  it("includes card when the feature flag is enabled", () => {
+    const items = getNavItems({ analyticsEnabled: false, cardEnabled: true });
+    expect(items.some((item) => item.href === "/card")).toBe(true);
+    expect(items.find((item) => item.href === "/card")?.label).toBe("Card");
+  });
+
+  it("omits card when the feature flag is disabled", () => {
+    const items = getNavItems({ analyticsEnabled: false, cardEnabled: false });
+    expect(items.some((item) => item.href === "/card")).toBe(false);
+  });
+
   it("always includes offramp", () => {
     const items = getNavItems({ analyticsEnabled: false });
     expect(items.some((item) => item.href === "/offramp")).toBe(true);

@@ -460,7 +460,7 @@ export class StellarRouteClient {
       signal,
       this.retries,
       'POST',
-      requests,
+      { quotes: requests },
     );
   }
 

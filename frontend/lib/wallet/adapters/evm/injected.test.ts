@@ -199,7 +199,7 @@ describe('injected EVM adapter', () => {
     expect(
       adapter.getExecutionSupport({
         sourceChain: 'evm',
-        destinationChain: 'stellar',
+        destinationChain: 'solana',
       }).code
     ).toBe('no_backend_route');
   });

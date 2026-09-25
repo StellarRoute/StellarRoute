@@ -7,15 +7,27 @@
 
 #[cfg(test)]
 mod tests {
+    fn read_file(relative_path: &str) -> String {
+        if let Ok(content) = std::fs::read_to_string(relative_path) {
+            return content;
+        }
+        let manifest_relative = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative_path);
+        std::fs::read_to_string(&manifest_relative).unwrap_or_else(|_| {
+            panic!(
+                "could not read {relative_path} directly or at {:?}",
+                manifest_relative
+            )
+        })
+    }
+
     fn runbook() -> String {
-        // Path relative to workspace root; tests run with cwd = workspace root.
-        std::fs::read_to_string("docs/runbooks/quote-inspector.md")
-            .expect("docs/runbooks/quote-inspector.md not found — was it created?")
+        read_file("docs/runbooks/quote-inspector.md")
     }
 
     fn openapi_yaml() -> String {
-        std::fs::read_to_string("docs/api/openapi.yaml")
-            .expect("docs/api/openapi.yaml not found")
+        read_file("docs/api/openapi.yaml")
     }
 
     // Feature: quote-inspector-operator-guide, Property 1: all documented QuoteResponse field names exist in the schema

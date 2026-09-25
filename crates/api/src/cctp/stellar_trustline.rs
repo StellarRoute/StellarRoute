@@ -26,14 +26,12 @@ pub const CHANGE_TRUST_MAX_LIMIT: i64 = i64::MAX;
 /// Underlying G-account that must hold the USDC trustline (demux M→G).
 pub fn recipient_trustline_account(recipient: &str) -> Result<String, BuilderError> {
     match parse_recipient_strkey(recipient) {
-        Ok(StellarRecipientKey::Account(bytes)) => Ok(format!(
-            "{}",
-            stellar_strkey::ed25519::PublicKey(bytes)
-        )),
-        Ok(StellarRecipientKey::Muxed { ed25519, .. }) => Ok(format!(
-            "{}",
-            stellar_strkey::ed25519::PublicKey(ed25519)
-        )),
+        Ok(StellarRecipientKey::Account(bytes)) => {
+            Ok(format!("{}", stellar_strkey::ed25519::PublicKey(bytes)))
+        }
+        Ok(StellarRecipientKey::Muxed { ed25519, .. }) => {
+            Ok(format!("{}", stellar_strkey::ed25519::PublicKey(ed25519)))
+        }
         Ok(StellarRecipientKey::Contract(_)) => Err(BuilderError::Validation(
             "contract recipient not allowed for corridor".into(),
         )),
@@ -148,12 +146,10 @@ fn muxed_account(account: &str) -> Result<MuxedAccount, BuilderError> {
     Ok(MuxedAccount::Ed25519(Uint256(decode_ed25519(account)?)))
 }
 
-fn account_id(
-    account: &str,
-) -> Result<stellar_xdr::curr::AccountId, BuilderError> {
-    Ok(stellar_xdr::curr::AccountId(PublicKey::PublicKeyTypeEd25519(
-        Uint256(decode_ed25519(account)?),
-    )))
+fn account_id(account: &str) -> Result<stellar_xdr::curr::AccountId, BuilderError> {
+    Ok(stellar_xdr::curr::AccountId(
+        PublicKey::PublicKeyTypeEd25519(Uint256(decode_ed25519(account)?)),
+    ))
 }
 
 fn usdc_change_trust_asset() -> Result<ChangeTrustAsset, BuilderError> {
@@ -280,9 +276,7 @@ mod tests {
         assert_eq!(recipient_trustline_account(&m).unwrap(), g);
 
         assert!(matches!(
-            recipient_trustline_account(
-                "CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ"
-            ),
+            recipient_trustline_account("CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ"),
             Err(BuilderError::Validation(_))
         ));
     }

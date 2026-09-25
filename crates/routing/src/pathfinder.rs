@@ -308,31 +308,27 @@ mod tests {
     }
 
     fn thin_book_edges() -> Vec<LiquidityEdge> {
-        vec![
-            LiquidityEdge {
-                from: "native".to_string(),
-                to: "USDC:issuer".to_string(),
-                venue_type: "sdex".to_string(),
-                venue_ref: "sdex:1001".to_string(),
-                liquidity: 100, // Very thin liquidity
-                price: 0.1,
-                fee_bps: 0,
-            },
-        ]
+        vec![LiquidityEdge {
+            from: "native".to_string(),
+            to: "USDC:issuer".to_string(),
+            venue_type: "sdex".to_string(),
+            venue_ref: "sdex:1001".to_string(),
+            liquidity: 100, // Very thin liquidity
+            price: 0.1,
+            fee_bps: 0,
+        }]
     }
 
     fn normal_edges() -> Vec<LiquidityEdge> {
-        vec![
-            LiquidityEdge {
-                from: "native".to_string(),
-                to: "USDC:issuer".to_string(),
-                venue_type: "sdex".to_string(),
-                venue_ref: "sdex:1001".to_string(),
-                liquidity: 10_000_000,
-                price: 0.1,
-                fee_bps: 0,
-            },
-        ]
+        vec![LiquidityEdge {
+            from: "native".to_string(),
+            to: "USDC:issuer".to_string(),
+            venue_type: "sdex".to_string(),
+            venue_ref: "sdex:1001".to_string(),
+            liquidity: 10_000_000,
+            price: 0.1,
+            fee_bps: 0,
+        }]
     }
 
     #[test]
@@ -340,7 +336,7 @@ mod tests {
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
         let policy = test_policy();
         let edges = thin_book_edges();
-        
+
         // Should not panic even with thin liquidity
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 1_000_000, &policy);
         assert!(result.is_ok());
@@ -354,7 +350,7 @@ mod tests {
         let pathfinder = Pathfinder::new(config);
         let policy = test_policy();
         let edges = thin_book_edges();
-        
+
         // Thin liquidity edge should be filtered out
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 1_000_000, &policy);
         assert!(result.is_err());
@@ -365,7 +361,7 @@ mod tests {
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
         let policy = test_policy();
         let edges = normal_edges();
-        
+
         // Should not panic with very large amounts
         let oversized = i128::MAX / 2;
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, oversized, &policy);
@@ -376,9 +372,9 @@ mod tests {
     fn test_oversized_amount_respects_max_hops() {
         let mut policy = test_policy();
         policy.max_hops = 1;
-        
+
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
-        
+
         // Multi-hop edges
         let edges = vec![
             LiquidityEdge {
@@ -400,7 +396,7 @@ mod tests {
                 fee_bps: 0,
             },
         ];
-        
+
         // Should not find 2-hop path when max_hops=1
         let result = pathfinder.find_paths("A", "C", &edges, 1_000_000, &policy);
         assert!(result.is_err());
@@ -411,7 +407,7 @@ mod tests {
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
         let policy = test_policy();
         let edges: Vec<LiquidityEdge> = vec![];
-        
+
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 1_000_000, &policy);
         assert!(result.is_err());
     }
@@ -421,7 +417,7 @@ mod tests {
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
         let policy = test_policy();
         let edges = normal_edges();
-        
+
         let result = pathfinder.find_paths("native", "native", &edges, 1_000_000, &policy);
         assert!(result.is_err());
     }
@@ -431,7 +427,7 @@ mod tests {
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
         let policy = test_policy();
         let edges = normal_edges();
-        
+
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, 0, &policy);
         assert!(result.is_err());
     }
@@ -441,7 +437,7 @@ mod tests {
         let pathfinder = Pathfinder::new(PathfinderConfig::default());
         let policy = test_policy();
         let edges = normal_edges();
-        
+
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, -1_000_000, &policy);
         assert!(result.is_err());
     }

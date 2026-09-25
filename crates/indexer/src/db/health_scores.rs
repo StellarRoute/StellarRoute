@@ -26,9 +26,8 @@ impl HealthScoreWriter {
 
     /// Insert a health score record.
     ///
-    /// DB errors are logged at `warn` level and swallowed — they must never
-    /// propagate to the routing path.
-    pub async fn write(&self, record: &HealthScoreRecord) -> Result<(), ()> {
+    /// DB errors are logged at `warn` level and returned as `IndexerError::DatabaseQuery`.
+    pub async fn write(&self, record: &HealthScoreRecord) -> Result<(), crate::error::IndexerError> {
         let result = sqlx::query(
             r#"
             insert into venue_health_scores (venue_ref, venue_type, score, signals, computed_at)
@@ -49,6 +48,7 @@ impl HealthScoreWriter {
                 error = %e,
                 "Failed to persist health score; continuing without error"
             );
+            return Err(e.into());
         }
 
         Ok(())

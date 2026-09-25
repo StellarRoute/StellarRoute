@@ -631,8 +631,16 @@ fn format_routes(response: &RoutesResponse, output: OutputFormat) -> Result<Stri
             let mut lines = vec![
                 format!(
                     "pair: {} / {}",
-                    if base_name.is_empty() { "(base)" } else { &base_name },
-                    if quote_name.is_empty() { "(quote)" } else { &quote_name }
+                    if base_name.is_empty() {
+                        "(base)"
+                    } else {
+                        &base_name
+                    },
+                    if quote_name.is_empty() {
+                        "(quote)"
+                    } else {
+                        &quote_name
+                    }
                 ),
                 format!("amount: {}", response.amount),
                 format!("routes: {}", response.routes.len()),
@@ -744,7 +752,15 @@ fn format_routes(response: &RoutesResponse, output: OutputFormat) -> Result<Stri
                         "route #{} hops\n{}",
                         idx + 1,
                         format_table(
-                            &["hop", "from", "to", "price", "source", "fee_bps", "amount_out"],
+                            &[
+                                "hop",
+                                "from",
+                                "to",
+                                "price",
+                                "source",
+                                "fee_bps",
+                                "amount_out"
+                            ],
                             hop_rows
                         )
                     ));
@@ -867,7 +883,9 @@ fn parse_asset(value: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stellarroute_sdk::{ApiErrorCode, AssetInfo, PathStep, TradingPair};
+    use stellarroute_sdk::{
+        ApiErrorCode, AssetInfo, PathStep, PriceHistoryPoint, PriceHistoryResponse, TradingPair,
+    };
 
     #[test]
     fn clap_help_is_well_formed() {
@@ -1101,9 +1119,15 @@ step | from   | to   | price     | source
 
     #[test]
     fn rejects_non_integer_route_amount() {
-        let error =
-            Cli::try_parse_from(["stellarroute", "routes", "native", "USDC", "--amount", "1.5"])
-                .expect_err("decimal amount should fail");
+        let error = Cli::try_parse_from([
+            "stellarroute",
+            "routes",
+            "native",
+            "USDC",
+            "--amount",
+            "1.5",
+        ])
+        .expect_err("decimal amount should fail");
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
 
@@ -1127,8 +1151,7 @@ step | from   | to   | price     | source
     #[test]
     fn snapshot_routes_output_table() {
         let rendered = normalize_for_snapshot(
-            &format_routes(&sample_routes_response(), OutputFormat::Table)
-                .expect("should format"),
+            &format_routes(&sample_routes_response(), OutputFormat::Table).expect("should format"),
         );
         insta::assert_snapshot!(rendered, @r###"
         amount: 10000000
@@ -1299,5 +1322,166 @@ step | from   | to   | price     | source
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn sample_price_history_response() -> PriceHistoryResponse {
+        PriceHistoryResponse {
+            base_asset: AssetInfo {
+                asset_type: "native".to_string(),
+                asset_code: None,
+                asset_issuer: None,
+            },
+            quote_asset: AssetInfo {
+                asset_type: "credit_alphanum4".to_string(),
+                asset_code: Some("USDC".to_string()),
+                asset_issuer: Some(
+                    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+                ),
+            },
+            window: "24h".to_string(),
+            source: "orderbook_snapshots".to_string(),
+            generated_at: 1_742_908_800_000,
+            points: vec![
+                PriceHistoryPoint {
+                    timestamp: 1_742_822_400_000,
+                    price: "0.1040000".to_string(),
+                },
+                PriceHistoryPoint {
+                    timestamp: 1_742_826_000_000,
+                    price: "0.1050000".to_string(),
+                },
+                PriceHistoryPoint {
+                    timestamp: 1_742_829_600_000,
+                    price: "0.1060000".to_string(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn snapshot_price_history_human() {
+        let rendered = format_price_history(&sample_price_history_response(), OutputFormat::Human)
+            .expect("formatting should succeed");
+        // Verify key structural elements rather than exact snapshot to avoid whitespace brittleness.
+        assert!(rendered.starts_with("pair: native / USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN\nwindow: 24h\nsource: orderbook_snapshots\n"));
+        assert!(rendered.contains("1742822400000  0.1040000"));
+        assert!(rendered.contains("1742826000000  0.1050000"));
+        assert!(rendered.contains("1742829600000  0.1060000"));
+    }
+
+    #[test]
+    fn snapshot_price_history_table() {
+        let rendered = format_price_history(&sample_price_history_response(), OutputFormat::Table)
+            .expect("formatting should succeed");
+        assert!(rendered.contains(
+            "pair: native / USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        ));
+        assert!(rendered.contains("window: 24h"));
+        assert!(rendered.contains("timestamp"));
+        assert!(rendered.contains("price"));
+        assert!(rendered.contains("1742822400000"));
+        assert!(rendered.contains("0.1040000"));
+        assert!(rendered.contains("1742826000000"));
+        assert!(rendered.contains("1742829600000"));
+    }
+
+    #[test]
+    fn snapshot_price_history_json() {
+        let rendered = format_price_history(&sample_price_history_response(), OutputFormat::Json)
+            .expect("formatting should succeed");
+        // Verify JSON structure and field names.
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("output should be valid JSON");
+        assert!(parsed["base_asset"].is_object());
+        assert!(parsed["quote_asset"].is_object());
+        assert_eq!(parsed["window"], "24h");
+        assert_eq!(parsed["source"], "orderbook_snapshots");
+        assert_eq!(parsed["generated_at"], 1_742_908_800_000_i64);
+        assert!(parsed["points"].is_array());
+        assert_eq!(parsed["points"].as_array().unwrap().len(), 3);
+        assert_eq!(parsed["points"][0]["price"], "0.1040000");
+        assert_eq!(parsed["points"][0]["timestamp"], 1_742_822_400_000_i64);
+    }
+
+    #[test]
+    fn price_history_human_empty_points() {
+        let mut response = sample_price_history_response();
+        response.points = vec![];
+        let rendered = format_price_history(&response, OutputFormat::Human)
+            .expect("formatting should succeed");
+        assert!(
+            rendered.contains("no data"),
+            "expected 'no data' in: {rendered}"
+        );
+        assert!(
+            rendered.contains("pair:"),
+            "expected 'pair:' in: {rendered}"
+        );
+        assert!(
+            rendered.contains("window:"),
+            "expected 'window:' in: {rendered}"
+        );
+    }
+
+    #[test]
+    fn price_history_table_empty_points() {
+        let mut response = sample_price_history_response();
+        response.points = vec![];
+        let rendered = format_price_history(&response, OutputFormat::Table)
+            .expect("formatting should succeed");
+        assert!(
+            rendered.contains("pair:"),
+            "expected 'pair:' in: {rendered}"
+        );
+        assert!(
+            rendered.contains("window:"),
+            "expected 'window:' in: {rendered}"
+        );
+        assert!(
+            rendered.contains("timestamp"),
+            "expected header 'timestamp' in: {rendered}"
+        );
+        // No data rows — just header + separator
+        let lines: Vec<&str> = rendered.lines().collect();
+        let data_lines: Vec<&&str> = lines
+            .iter()
+            .filter(|l| {
+                !l.is_empty()
+                    && !l.contains("pair:")
+                    && !l.contains("window:")
+                    && !l.contains("timestamp")
+                    && !l
+                        .chars()
+                        .all(|c| c == '-' || c == '+' || c == ' ' || c == '|')
+            })
+            .collect();
+        assert!(
+            data_lines.is_empty(),
+            "expected no data rows, got: {data_lines:?}"
+        );
+    }
+
+    #[test]
+    fn price_history_rejects_invalid_asset() {
+        let error = Cli::try_parse_from([
+            "stellarroute",
+            "price-history",
+            "bad:too:many:parts",
+            "USDC",
+        ])
+        .expect_err("asset should fail");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    #[test]
+    fn price_history_listed_in_help() {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        cmd.write_long_help(&mut buf).unwrap();
+        let help_text = String::from_utf8(buf).unwrap();
+        assert!(
+            help_text.contains("price-history"),
+            "expected 'price-history' in help output"
+        );
     }
 }

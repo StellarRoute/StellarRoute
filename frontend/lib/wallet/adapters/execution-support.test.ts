@@ -62,12 +62,12 @@ describe('execution support', () => {
 
   it('reports no backend route for non-stellar pairs even when signing is available', () => {
     expect(hasBackendRoute('stellar', 'evm')).toBe(true);
-    expect(hasBackendRoute('evm', 'stellar')).toBe(false);
+    expect(hasBackendRoute('evm', 'stellar')).toBe(true);
     expect(hasBackendRoute('bitcoin', 'stellar')).toBe(false);
     expect(hasBackendRoute('tron', 'bitcoin')).toBe(false);
     expect(hasBackendRoute('solana', 'solana')).toBe(false);
 
-    for (const family of ['evm', 'solana', 'bitcoin', 'tron'] as const) {
+    for (const family of ['solana', 'bitcoin', 'tron'] as const) {
       const support = resolveExecutionSupport(
         family,
         { sourceChain: family, destinationChain: 'stellar' },
@@ -78,6 +78,16 @@ describe('execution support', () => {
         code: 'no_backend_route',
       });
     }
+
+    const evmSupport = resolveExecutionSupport(
+      'evm',
+      { sourceChain: 'evm', destinationChain: 'stellar' },
+      { connected: true, networkMatch: true, canSign: true }
+    );
+    expect(evmSupport).toMatchObject({
+      kind: 'signing_only',
+      code: 'chain_signing_available',
+    });
 
     // Same-chain non-Stellar still has no backend swap route.
     const tronSame = resolveExecutionSupport(

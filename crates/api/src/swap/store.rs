@@ -79,7 +79,9 @@ pub enum ClaimSubmitOutcome {
     /// Another request already moved the quote to `submitting` (or a retry
     /// raced claim). Carry the bound quote so the caller can reconcile.
     InProgress(Box<PreparedSwapQuote>),
-    AlreadySubmitted { tx_hash: String },
+    AlreadySubmitted {
+        tx_hash: String,
+    },
     PermanentlyFailed,
 }
 

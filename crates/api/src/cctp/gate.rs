@@ -399,9 +399,9 @@ fn map_builder_error(err: BuilderError) -> ApiError {
         BuilderError::QuoteExpired => ApiError::QuoteExpired {
             quote_id: "cctp-transfer".into(),
         },
-        BuilderError::FeeExpired => ApiError::FeeQuoteUnavailable(
-            "CCTP fee quote has expired; request a new quote".into(),
-        ),
+        BuilderError::FeeExpired => {
+            ApiError::FeeQuoteUnavailable("CCTP fee quote has expired; request a new quote".into())
+        }
         BuilderError::Validation(msg) => {
             if msg.contains("sender required") {
                 ApiError::Validation(
@@ -427,9 +427,9 @@ fn map_builder_error(err: BuilderError) -> ApiError {
         BuilderError::AccountLookup(msg) => ApiError::DependencyUnavailable(format!(
             "Stellar account lookup failed while preparing the burn: {msg}"
         )),
-        BuilderError::Encoding(msg) => ApiError::Validation(format!(
-            "Could not encode CCTP source transaction: {msg}"
-        )),
+        BuilderError::Encoding(msg) => {
+            ApiError::Validation(format!("Could not encode CCTP source transaction: {msg}"))
+        }
     }
 }
 
@@ -921,10 +921,7 @@ mod tests {
 
     #[test]
     fn verifier_tx_not_found_is_retryable_dependency() {
-        let err = map_service_error(
-            CctpServiceError::Verifier(VerifierError::TxNotFound),
-            None,
-        );
+        let err = map_service_error(CctpServiceError::Verifier(VerifierError::TxNotFound), None);
         match err {
             ApiError::DependencyUnavailable(msg) => {
                 assert!(msg.contains("not yet available"));

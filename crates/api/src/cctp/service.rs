@@ -247,8 +247,7 @@ impl CctpService {
         let Some(payload) = active.prepared_payload else {
             return Ok(None);
         };
-        let bundle =
-            deserialize_mint_bundle(&payload).map_err(Self::map_payload_cache_error)?;
+        let bundle = deserialize_mint_bundle(&payload).map_err(Self::map_payload_cache_error)?;
         // Never return a cached trustline step — re-probe Horizon each prepare.
         if bundle.trustline_required
             || bundle.step == crate::cctp::builders::MintPrepareStep::Trustline
@@ -774,18 +773,16 @@ impl CctpService {
             )));
         }
 
-        let raw = decode_hex_message(&iris_msg.message_hex).map_err(|e| {
-            CctpServiceError::InvalidMessage(format!("message hex: {e}"))
-        })?;
+        let raw = decode_hex_message(&iris_msg.message_hex)
+            .map_err(|e| CctpServiceError::InvalidMessage(format!("message hex: {e}")))?;
         if check_byte_len("raw_message", &raw, MAX_RAW_MESSAGE_BYTES).is_err() {
             return Err(CctpServiceError::InvalidMessage(
                 "raw message exceeds bound".into(),
             ));
         }
 
-        let attestation = decode_hex_message(attestation_hex).map_err(|e| {
-            CctpServiceError::InvalidMessage(format!("attestation hex: {e}"))
-        })?;
+        let attestation = decode_hex_message(attestation_hex)
+            .map_err(|e| CctpServiceError::InvalidMessage(format!("attestation hex: {e}")))?;
         if check_byte_len("attestation", &attestation, MAX_ATTESTATION_BYTES).is_err() {
             return Err(CctpServiceError::InvalidMessage(
                 "attestation exceeds bound".into(),
@@ -953,12 +950,18 @@ impl CctpService {
                 if !self.runtime.stellar_approval_verifier.is_ready() {
                     return Err(CctpServiceError::VerifiersNotReady);
                 }
-                let cctp_amount = stellar_outbound_cctp_amount_strict(&transfer.amount)
-                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
+                let cctp_amount =
+                    stellar_outbound_cctp_amount_strict(&transfer.amount).map_err(|_| {
+                        CctpServiceError::Verifier(VerifierError::Failed("amount".into()))
+                    })?;
                 let required_i128: i128 = cctp_subunits_to_stellar_subunits(cctp_amount)
-                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?
+                    .map_err(|_| {
+                        CctpServiceError::Verifier(VerifierError::Failed("amount".into()))
+                    })?
                     .try_into()
-                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
+                    .map_err(|_| {
+                        CctpServiceError::Verifier(VerifierError::Failed("amount".into()))
+                    })?;
                 self.runtime
                     .stellar_approval_verifier
                     .verify_approval(&transfer, tx_hash, required_i128)
@@ -969,8 +972,10 @@ impl CctpService {
                 if !self.runtime.evm_approval_verifier.is_ready() {
                     return Err(CctpServiceError::VerifiersNotReady);
                 }
-                let required_subunits = decimal_to_cctp_subunits(&transfer.amount)
-                    .map_err(|_| CctpServiceError::Verifier(VerifierError::Failed("amount".into())))?;
+                let required_subunits =
+                    decimal_to_cctp_subunits(&transfer.amount).map_err(|_| {
+                        CctpServiceError::Verifier(VerifierError::Failed("amount".into()))
+                    })?;
                 self.runtime
                     .evm_approval_verifier
                     .verify_approval(&transfer, tx_hash, required_subunits)

@@ -736,8 +736,7 @@ mod tests {
 
     fn mock_pool_reserve() -> PoolReserve {
         PoolReserve {
-            pool_address: "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001"
-                .to_string(),
+            pool_address: "CAMMPOOL1XLMUSDC000000000000000000000000000000000000000001".to_string(),
             selling_asset_id: uuid::Uuid::new_v4(),
             buying_asset_id: uuid::Uuid::new_v4(),
             reserve_selling: rust_decimal::Decimal::new(1_000_000_000, 7),

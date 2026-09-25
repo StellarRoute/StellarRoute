@@ -145,9 +145,18 @@ mod tests {
         };
 
         // 50% of 500 = 250
-        assert!(policy.should_accept(250, 0).is_err(), "should reject at 50% threshold");
-        assert!(policy.should_accept(249, 0).is_ok(), "should accept below 50% threshold");
-        assert!(policy.should_accept(500, 0).is_err(), "should reject at full capacity");
+        assert!(
+            policy.should_accept(250, 0).is_err(),
+            "should reject at 50% threshold"
+        );
+        assert!(
+            policy.should_accept(249, 0).is_ok(),
+            "should accept below 50% threshold"
+        );
+        assert!(
+            policy.should_accept(500, 0).is_err(),
+            "should reject at full capacity"
+        );
     }
 
     #[test]

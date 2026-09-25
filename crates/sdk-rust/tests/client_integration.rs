@@ -9,7 +9,8 @@
 
 use std::time::Duration;
 use stellarroute_sdk::{
-    ApiErrorCode, ClientBuilder, QuoteRequest, QuoteType, RoutesRequest, SdkError,
+    ApiErrorCode, ClientBuilder, DryRunHop, QuoteRequest, QuoteType, RoutesRequest, SdkError,
+    SimulateRouteRequest,
 };
 use wiremock::{
     matchers::{method, path, query_param},
@@ -756,14 +757,18 @@ async fn pairs_empty_response_deserializes() {
 #[tokio::test]
 async fn pairs_large_page_deserializes() {
     let server = mock_server().await;
-    let pairs: Vec<serde_json::Value> = (0..100).map(|i| serde_json::json!({
-        "base": "XLM",
-        "counter": format!("TOKEN{}", i),
-        "base_asset": "native",
-        "counter_asset": format!("TOKEN{}:GABCD", i),
-        "offer_count": i + 1,
-        "last_updated": "2026-03-25T11:59:00Z"
-    })).collect();
+    let pairs: Vec<serde_json::Value> = (0..100)
+        .map(|i| {
+            serde_json::json!({
+                "base": "XLM",
+                "counter": format!("TOKEN{}", i),
+                "base_asset": "native",
+                "counter_asset": format!("TOKEN{}:GABCD", i),
+                "offer_count": i + 1,
+                "last_updated": "2026-03-25T11:59:00Z"
+            })
+        })
+        .collect();
 
     Mock::given(method("GET"))
         .and(path("/api/v1/pairs"))
@@ -883,11 +888,17 @@ async fn orderbook_alphanum12_asset_deserializes() {
         .mount(&server)
         .await;
 
-    let resp = client(&server).orderbook("native", "CUSTOMASSET").await.unwrap();
+    let resp = client(&server)
+        .orderbook("native", "CUSTOMASSET")
+        .await
+        .unwrap();
     assert!(resp.base_asset.is_native());
     assert!(!resp.quote_asset.is_native());
     assert_eq!(resp.quote_asset.asset_code, Some("CUSTOMASSET".to_string()));
-    assert_eq!(resp.quote_asset.asset_issuer, Some("GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".to_string()));
+    assert_eq!(
+        resp.quote_asset.asset_issuer,
+        Some("GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".to_string())
+    );
 }
 
 // ── Orderbook: validation error ──────────────────────────────────────────────────
@@ -1013,4 +1024,428 @@ async fn orderbook_overloaded_maps_to_typed_error() {
         }
         other => panic!("expected Api/Overloaded, got {other:?}"),
     }
+}
+
+// ── Price History ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn price_history_returns_typed_response() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/price-history/native/USDC"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+            "quote_asset": {
+                "asset_type": "credit_alphanum4",
+                "asset_code": "USDC",
+                "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+            },
+            "window": "24h",
+            "source": "orderbook_snapshots",
+            "generated_at": 1742908800000_i64,
+            "points": [
+                { "timestamp": 1742822400000_i64, "price": "0.1040000" },
+                { "timestamp": 1742826000000_i64, "price": "0.1050000" },
+                { "timestamp": 1742829600000_i64, "price": "0.1060000" }
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server)
+        .price_history("native", "USDC")
+        .await
+        .unwrap();
+    assert!(resp.base_asset.is_native());
+    assert_eq!(resp.points.len(), 3);
+    assert_eq!(resp.points[0].price, "0.1040000");
+    assert_eq!(resp.window, "24h");
+}
+
+#[tokio::test]
+async fn price_history_400_maps_to_validation_error() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/price-history/native/USDC"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "validation_error",
+            "message": "Invalid asset identifier"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .price_history("native", "USDC")
+        .await
+        .unwrap_err();
+    assert!(err.is_validation_error());
+    assert_eq!(err.status_code(), Some(400));
+    match err {
+        SdkError::Api { code, status, .. } => {
+            assert_eq!(code, ApiErrorCode::ValidationError);
+            assert_eq!(status, 400);
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn price_history_404_maps_to_no_route_error() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/price-history/native/GHOST"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "no_route",
+            "message": "No price history found for this pair"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .price_history("native", "GHOST")
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        SdkError::Api {
+            code: ApiErrorCode::NoRoute,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn price_history_429_exhausted_maps_to_rate_limited() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/price-history/native/USDC"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "1")
+                .set_body_json(serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests"
+                })),
+        )
+        .mount(&server)
+        .await;
+
+    let err = client_with_retries(&server, 1)
+        .price_history("native", "USDC")
+        .await
+        .unwrap_err();
+    assert!(err.is_rate_limited());
+    assert_eq!(err.status_code(), Some(429));
+}
+
+#[tokio::test]
+async fn price_history_empty_points_deserializes() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/price-history/native/USDC"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+            "quote_asset": {
+                "asset_type": "credit_alphanum4",
+                "asset_code": "USDC",
+                "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+            },
+            "window": "24h",
+            "source": "orderbook_snapshots",
+            "generated_at": 1742908800000_i64,
+            "points": []
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server)
+        .price_history("native", "USDC")
+        .await
+        .unwrap();
+    assert!(resp.points.is_empty());
+    assert_eq!(resp.window, "24h");
+}
+
+#[tokio::test]
+#[ignore = "requires live StellarRoute API"]
+async fn price_history_live_smoke() {
+    let client = stellarroute_sdk::StellarRouteClient::new(
+        &std::env::var("STELLARROUTE_API_URL")
+            .expect("STELLARROUTE_API_URL must be set to run live tests"),
+    )
+    .expect("client construction should not fail with a valid URL");
+
+    let resp = client
+        .price_history("native", "USDC")
+        .await
+        .expect("price_history should succeed against live API");
+
+    assert_eq!(resp.window, "24h");
+    assert!(!resp.source.is_empty());
+}
+
+// ── Simulate Route ────────────────────────────────────────────────────────────
+
+/// Build a minimal valid `SimulateRouteRequest` for use in tests.
+fn sample_simulate_request() -> SimulateRouteRequest {
+    SimulateRouteRequest {
+        hops: vec![DryRunHop {
+            from_asset: "native".to_string(),
+            to_asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+            source: "sdex".to_string(),
+            fee_bps: Some(30),
+            price: Some("0.1050000".to_string()),
+            venue_ref: Some("sdex".to_string()),
+        }],
+        amount: "100.0".to_string(),
+        slippage_bps: Some(50),
+        slippage_bps_overrides: vec![],
+    }
+}
+
+/// Build a valid `ApiResponse<RouteDryRunResponse>` JSON body for mock responses.
+fn simulate_route_200_body() -> serde_json::Value {
+    serde_json::json!({
+        "v": 1,
+        "timestamp": 1742908800000_i64,
+        "request_id": "test-req-123",
+        "data": {
+            "quote": {
+                "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+                "quote_asset": {
+                    "asset_type": "credit_alphanum4",
+                    "asset_code": "USDC",
+                    "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                },
+                "amount": "100.0000000",
+                "price": "0.1050000",
+                "total": "10.5000000",
+                "quote_type": "sell",
+                "degraded": false,
+                "path": [
+                    {
+                        "from_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+                        "to_asset": {
+                            "asset_type": "credit_alphanum4",
+                            "asset_code": "USDC",
+                            "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                        },
+                        "price": "0.1050000",
+                        "source": "sdex"
+                    }
+                ],
+                "timestamp": 1742908800000_i64
+            },
+            "exclusion_diagnostics": null,
+            "swap_path": {
+                "hops": [
+                    {
+                        "source_asset": "native",
+                        "destination_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                        "venue_type": "sdex",
+                        "venue_ref": "sdex",
+                        "price": 0.1050000_f64,
+                        "fee_bps": 30
+                    }
+                ],
+                "estimated_output": 987600_i64
+            }
+        }
+    })
+}
+
+#[tokio::test]
+async fn simulate_route_happy_path() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(simulate_route_200_body()))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.quote.price, "0.1050000");
+    assert_eq!(resp.quote.total, "10.5000000");
+    assert_eq!(resp.swap_path.hops.len(), 1);
+    assert_eq!(resp.swap_path.estimated_output, 987600);
+    assert_eq!(resp.swap_path.hops[0].venue_type, "sdex");
+    assert!(resp.exclusion_diagnostics.is_none());
+}
+
+#[tokio::test]
+async fn simulate_route_uses_post_method_and_correct_path() {
+    let server = mock_server().await;
+    // The mock requires POST to exactly /api/v1/simulate/route — any other method
+    // or path will result in a 404 from wiremock, causing the assertion to fail.
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(simulate_route_200_body()))
+        .mount(&server)
+        .await;
+
+    // If the SDK uses GET or a different path this will unwrap_err instead.
+    client(&server)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn simulate_route_sends_user_agent_header() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .and(wiremock::matchers::header_regex(
+            "user-agent",
+            r"^stellarroute-sdk-rust/",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(simulate_route_200_body()))
+        .mount(&server)
+        .await;
+
+    client(&server)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn simulate_route_400_maps_to_validation_error() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "validation_error",
+            "message": "route.hops must contain at least one hop"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap_err();
+
+    assert!(err.is_validation_error());
+    assert_eq!(err.status_code(), Some(400));
+    match err {
+        SdkError::Api { code, status, .. } => {
+            assert_eq!(code, ApiErrorCode::ValidationError);
+            assert_eq!(status, 400);
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn simulate_route_404_no_route_maps_to_no_route_error() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "no_route",
+            "message": "No route found for the given hop chain"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        err,
+        SdkError::Api {
+            code: ApiErrorCode::NoRoute,
+            ..
+        }
+    ));
+    assert_eq!(err.status_code(), Some(404));
+}
+
+#[tokio::test]
+async fn simulate_route_500_retries_then_succeeds() {
+    let server = mock_server().await;
+
+    // First call: 500
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": "internal_error",
+            "message": "Transient server error"
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    // Second call: success
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(simulate_route_200_body()))
+        .mount(&server)
+        .await;
+
+    let resp = client_with_retries(&server, 1)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.quote.price, "0.1050000");
+}
+
+#[tokio::test]
+async fn simulate_route_optional_fields_absent() {
+    let server = mock_server().await;
+    // Response with no optional fields on the quote and no exclusion_diagnostics.
+    Mock::given(method("POST"))
+        .and(path("/api/v1/simulate/route"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "v": 1,
+            "timestamp": 1742908800000_i64,
+            "request_id": "test-req-456",
+            "data": {
+                "quote": {
+                    "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+                    "quote_asset": {
+                        "asset_type": "credit_alphanum4",
+                        "asset_code": "USDC",
+                        "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                    },
+                    "amount": "100.0000000",
+                    "price": "0.1050000",
+                    "total": "10.5000000",
+                    "quote_type": "sell",
+                    "path": [],
+                    "timestamp": 1742908800000_i64
+                },
+                "swap_path": {
+                    "hops": [],
+                    "estimated_output": 0_i64
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server)
+        .simulate_route(sample_simulate_request())
+        .await
+        .unwrap();
+
+    assert!(resp.exclusion_diagnostics.is_none());
+    assert!(resp.quote.expires_at.is_none());
+    assert!(resp.quote.source_timestamp.is_none());
+    assert!(resp.quote.ttl_seconds.is_none());
+    assert!(resp.quote.rationale.is_none());
+    assert!(resp.quote.exclusion_diagnostics.is_none());
+    assert!(resp.quote.data_freshness.is_none());
+    assert!(resp.quote.midpoint.is_none());
+    assert!(resp.quote.spread_bps.is_none());
+    assert!(resp.quote.price_impact.is_none());
+    assert!(!resp.quote.degraded);
 }

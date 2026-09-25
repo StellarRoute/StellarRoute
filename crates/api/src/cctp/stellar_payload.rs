@@ -126,6 +126,9 @@ mod tests {
         let h_prep = payload_hash_from_envelope_xdr(prepared, &cfg).unwrap();
         let h_signed = payload_hash_from_envelope_xdr(signed, &cfg).unwrap();
         assert_eq!(h_prep, expected);
-        assert_eq!(h_signed, expected, "signed Freighter mint must match prepare hash");
+        assert_eq!(
+            h_signed, expected,
+            "signed Freighter mint must match prepare hash"
+        );
     }
 }

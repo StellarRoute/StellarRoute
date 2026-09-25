@@ -13,8 +13,7 @@ mod tests {
     fn read(path: &str) -> String {
         // Paths are relative to the workspace root; Cargo sets the working
         // directory to the workspace root when running tests.
-        std::fs::read_to_string(path)
-            .unwrap_or_else(|_| panic!("could not read {path}"))
+        std::fs::read_to_string(path).unwrap_or_else(|_| panic!("could not read {path}"))
     }
 
     // Feature: contract-e2e-harness-guide, Property 1: run command presence
@@ -87,7 +86,9 @@ mod tests {
             "docs/contracts/testing-guide.md must mention MAX_HOPS"
         );
         assert!(
-            guide.contains("MAX_HOPS = 4") || guide.contains("MAX_HOPS` (4)") || guide.contains("MAX_HOPS=4"),
+            guide.contains("MAX_HOPS = 4")
+                || guide.contains("MAX_HOPS` (4)")
+                || guide.contains("MAX_HOPS=4"),
             "docs/contracts/testing-guide.md must document MAX_HOPS as 4"
         );
         assert!(

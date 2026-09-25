@@ -615,12 +615,24 @@ mod tests {
         let store = InMemoryCctpPrepareLockStore::default();
         let source = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
         let tid = Uuid::new_v4();
-        let r1 = reservation(source, tid, CctpPrepareKind::Burn, "hash-a", Some("payload-a"));
+        let r1 = reservation(
+            source,
+            tid,
+            CctpPrepareKind::Burn,
+            "hash-a",
+            Some("payload-a"),
+        );
         assert!(matches!(
             store.try_acquire(&r1).await.unwrap(),
             PrepareAcquireResult::Acquired
         ));
-        let r2 = reservation(source, tid, CctpPrepareKind::Burn, "hash-b", Some("payload-b"));
+        let r2 = reservation(
+            source,
+            tid,
+            CctpPrepareKind::Burn,
+            "hash-b",
+            Some("payload-b"),
+        );
         assert!(matches!(
             store.try_acquire(&r2).await.unwrap(),
             PrepareAcquireResult::Acquired

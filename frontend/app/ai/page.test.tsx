@@ -1,8 +1,15 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { useRouter } from 'next/navigation';
 import AiPage from './page';
 import { AGENT_TELEMETRY_EVENT, type AgentTelemetryPayload } from './telemetry';
+
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(),
+  useSearchParams: vi.fn(),
+  usePathname: vi.fn(),
+}));
 
 describe('AiPage (#1455, #1456)', () => {
   beforeEach(() => {
@@ -151,6 +158,102 @@ describe('AiPage (#1455, #1456)', () => {
       });
     } finally {
       window.removeEventListener(AGENT_TELEMETRY_EVENT, listener);
+    }
+  });
+
+  it('confirming a convert intent navigates to /swap with from, to, amount query params', async () => {
+    process.env.NEXT_PUBLIC_AI_AGENT = 'true';
+    const push = vi.fn();
+    vi.mocked(useRouter).mockReturnValue({ push } as ReturnType<typeof useRouter>);
+
+    try {
+      render(<AiPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('agent-chat-input')).toBeInTheDocument();
+      });
+
+      const input = screen.getByTestId('agent-chat-input');
+      const submit = screen.getByTestId('agent-chat-submit');
+
+      fireEvent.change(input, { target: { value: 'swap 10 XLM to USDC' } });
+      fireEvent.click(submit);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      });
+
+      const confirmBtn = screen.getByTestId('confirm-btn');
+      fireEvent.click(confirmBtn);
+
+      expect(push).toHaveBeenCalledWith('/swap?from=XLM&to=USDC&amount=10');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('confirming a non-convert intent does not navigate to /swap', async () => {
+    process.env.NEXT_PUBLIC_AI_AGENT = 'true';
+    const push = vi.fn();
+    vi.mocked(useRouter).mockReturnValue({ push } as ReturnType<typeof useRouter>);
+
+    try {
+      render(<AiPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('agent-chat-input')).toBeInTheDocument();
+      });
+
+      const input = screen.getByTestId('agent-chat-input');
+      const submit = screen.getByTestId('agent-chat-submit');
+
+      fireEvent.change(input, { target: { value: 'send 5 USDC to GABC123' } });
+      fireEvent.click(submit);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      });
+
+      const confirmBtn = screen.getByTestId('confirm-btn');
+      fireEvent.click(confirmBtn);
+
+      expect(push).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('confirming a convert intent without amount does not navigate', async () => {
+    process.env.NEXT_PUBLIC_AI_AGENT = 'true';
+    const push = vi.fn();
+    vi.mocked(useRouter).mockReturnValue({ push } as ReturnType<typeof useRouter>);
+
+    try {
+      render(<AiPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('agent-chat-input')).toBeInTheDocument();
+      });
+
+      const input = screen.getByTestId('agent-chat-input');
+      const submit = screen.getByTestId('agent-chat-submit');
+
+      fireEvent.change(input, { target: { value: 'convert' } });
+      fireEvent.click(submit);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      });
+
+      const confirmBtn = screen.getByTestId('confirm-btn');
+      fireEvent.click(confirmBtn);
+
+      expect(push).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
     }
   });
 });

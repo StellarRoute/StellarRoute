@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { IntentPreviewCard, type ParsedAgentIntent } from './IntentPreviewCard';
@@ -121,6 +122,7 @@ export function parsePromptToIntent(text: string): ParsedAgentIntent | null {
 }
 
 export function AgentChat() {
+  const router = useRouter();
   const [input, setInput] = React.useState('');
   const [activeIntent, setActiveIntent] = React.useState<ParsedAgentIntent | null>(null);
   const [validationError, setValidationError] = React.useState<string | null>(null);
@@ -158,6 +160,19 @@ export function AgentChat() {
     setValidationError(null);
   };
 
+  const handleConfirm = React.useCallback(
+    (intent: ParsedAgentIntent) => {
+      if (intent.kind === 'convert' && intent.amount && intent.fromAsset && intent.toAsset) {
+        const params = new URLSearchParams();
+        params.set('from', intent.fromAsset);
+        params.set('to', intent.toAsset);
+        params.set('amount', intent.amount);
+        router.push(`/swap?${params.toString()}`);
+      }
+    },
+    [router]
+  );
+
   return (
     <div className="space-y-6" data-testid="agent-chat-container">
       {validationError && (
@@ -172,6 +187,7 @@ export function AgentChat() {
       {activeIntent && (
         <IntentPreviewCard
           intent={activeIntent}
+          onConfirm={handleConfirm}
           onCancel={handleCancel}
         />
       )}

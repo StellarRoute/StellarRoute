@@ -1152,3 +1152,55 @@ export interface CardAuthorizationsResponse {
   authorizations: CardAuthorization[];
   total: number;
 }
+
+// ── Agent program preview (AI-35, additive) ────────────────────────────────────
+// Flag-gated behind AI_AGENT_ENABLED on the backend (404 when disabled).
+// New routes return 404 when AI_AGENT_ENABLED is unset or false.
+
+/** Agent health (`GET /api/v1/agent/health`). */
+export interface AgentHealth {
+  /** Whether the agent feature is enabled on this deployment. */
+  enabled: boolean;
+}
+
+/** A single tool in the agent catalog. */
+export interface AgentToolInfo {
+  /** Tool name (e.g. "get_quote", "execute_swap"). */
+  name: string;
+  /** Human-readable description of what the tool does. */
+  description: string;
+}
+
+/** Response from `GET /api/v1/agent/catalog`. */
+export interface AgentCatalogResponse {
+  /** Available agent tool descriptors. */
+  tools: AgentToolInfo[];
+}
+
+/** Request body for `POST /api/v1/agent/intents/validate`. */
+export interface ValidateAgentIntentRequest {
+  /** Intent type (send, swap, bridge, etc.). */
+  type: string;
+  /** Amount as a decimal string. */
+  amount: string;
+  /** Asset code or identifier. */
+  asset: string;
+  /** Optional recipient address. */
+  recipient?: string;
+  /** Optional destination chain/asset. */
+  destination?: string;
+  /** Optional source chain/asset. */
+  source?: string;
+  /** Optional currency (for fiat intents). */
+  currency?: string;
+  /** Optional recurrence (e.g. "daily", "weekly"). */
+  recurrence?: string;
+}
+
+/** Response from `POST /api/v1/agent/intents/validate`. */
+export interface ValidateAgentIntentResponse {
+  /** Normalized amount string. */
+  amount: string;
+  /** Intent type. */
+  type: string;
+}

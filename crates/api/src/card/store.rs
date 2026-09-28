@@ -18,7 +18,8 @@ pub enum AuthorizationState {
     Refunded,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+// `rate` is an `f64`, so this record cannot be `Eq` (only `PartialEq`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AuthorizationRecord {
     pub authorization_id: String,
     pub state: AuthorizationState,
@@ -68,15 +69,7 @@ pub trait CardStore: Send + Sync {
         tx_hash: &str,
         amount_stroops: i64,
     ) -> Result<AuthorizationRecord, StoreError> {
-        self.approve_and_hold_with_fx(
-            authorization_id,
-            tx_hash,
-            amount_stroops,
-            0,
-            "",
-            0.0,
-            0,
-        )
+        self.approve_and_hold_with_fx(authorization_id, tx_hash, amount_stroops, 0, "", 0.0, 0)
     }
 
     fn approve_and_hold_with_fx(
@@ -90,11 +83,19 @@ pub trait CardStore: Send + Sync {
         rate_locked_at: i64,
     ) -> Result<AuthorizationRecord, StoreError>;
     /// Capture a cleared amount from the current hold.
-    fn capture_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError>;
+    fn capture_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError>;
     /// Release an existing hold while keeping the authorization record intact.
     fn reverse_hold(&self, authorization_id: &str) -> Result<AuthorizationRecord, StoreError>;
     /// Refund already captured funds back to available balance up to the captured amount.
-    fn refund_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError>;
+    fn refund_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError>;
     fn list_authorizations(&self) -> Vec<AuthorizationRecord>;
     fn authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord>;
     /// Current held amount in stroops for an authorization (0 if none).
@@ -164,7 +165,11 @@ impl CardStore for InMemoryCardStore {
         Ok(record)
     }
 
-    fn capture_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError> {
+    fn capture_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError> {
         let mut inner = self.inner.lock();
         let mut record = inner
             .authorizations
@@ -172,7 +177,11 @@ impl CardStore for InMemoryCardStore {
             .cloned()
             .ok_or(StoreError::AuthorizationNotFound)?;
 
-        let current_held = inner.holds.get(authorization_id).copied().unwrap_or(record.amount_stroops);
+        let current_held = inner
+            .holds
+            .get(authorization_id)
+            .copied()
+            .unwrap_or(record.amount_stroops);
         if current_held < amount_stroops {
             return Err(StoreError::AmountExceedsAvailable);
         }
@@ -182,7 +191,9 @@ impl CardStore for InMemoryCardStore {
         record.spent_stroops = new_spent;
         record.state = AuthorizationState::Captured;
         inner.holds.insert(authorization_id.to_string(), new_held);
-        inner.authorizations.insert(authorization_id.to_string(), record.clone());
+        inner
+            .authorizations
+            .insert(authorization_id.to_string(), record.clone());
         Ok(record)
     }
 
@@ -194,7 +205,11 @@ impl CardStore for InMemoryCardStore {
             .cloned()
             .ok_or(StoreError::AuthorizationNotFound)?;
 
-        let held = inner.holds.get(authorization_id).copied().unwrap_or(record.amount_stroops);
+        let held = inner
+            .holds
+            .get(authorization_id)
+            .copied()
+            .unwrap_or(record.amount_stroops);
         if held == 0 {
             return Err(StoreError::HoldNotFound);
         }
@@ -203,11 +218,17 @@ impl CardStore for InMemoryCardStore {
         record.amount_stroops = 0;
         record.spent_stroops = 0;
         record.state = AuthorizationState::Reversed;
-        inner.authorizations.insert(authorization_id.to_string(), record.clone());
+        inner
+            .authorizations
+            .insert(authorization_id.to_string(), record.clone());
         Ok(record)
     }
 
-    fn refund_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError> {
+    fn refund_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError> {
         let mut inner = self.inner.lock();
         let mut record = inner
             .authorizations
@@ -220,22 +241,34 @@ impl CardStore for InMemoryCardStore {
         }
 
         record.spent_stroops -= amount_stroops;
-        let hold = inner.holds.get(authorization_id).copied().unwrap_or(record.amount_stroops);
-        inner.holds.insert(authorization_id.to_string(), hold + amount_stroops);
+        let hold = inner
+            .holds
+            .get(authorization_id)
+            .copied()
+            .unwrap_or(record.amount_stroops);
+        inner
+            .holds
+            .insert(authorization_id.to_string(), hold + amount_stroops);
         record.state = AuthorizationState::Refunded;
-        inner.authorizations.insert(authorization_id.to_string(), record.clone());
+        inner
+            .authorizations
+            .insert(authorization_id.to_string(), record.clone());
         Ok(record)
     }
 
     fn list_authorizations(&self) -> Vec<AuthorizationRecord> {
-        let mut inner = self.inner.lock();
+        let inner = self.inner.lock();
         let mut records: Vec<_> = inner.authorizations.values().cloned().collect();
         records.sort_by(|a, b| a.authorization_id.cmp(&b.authorization_id));
         records
     }
 
     fn authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord> {
-        self.inner.lock().authorizations.get(authorization_id).cloned()
+        self.inner
+            .lock()
+            .authorizations
+            .get(authorization_id)
+            .cloned()
     }
 
     fn held_stroops(&self, authorization_id: &str) -> i64 {

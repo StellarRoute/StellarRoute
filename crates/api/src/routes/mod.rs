@@ -1,9 +1,9 @@
 //! API routes
 
 pub mod activity;
-pub mod agent;
 pub mod admin;
 pub mod admin_cache;
+pub mod agent;
 pub mod assets;
 pub mod canary;
 pub mod card;
@@ -157,7 +157,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Health check
         .route("/health", get(health::health_check))
         .route("/health/deps", get(health::dependency_health))
-        .merge(crate::card::router())
+        // The card sub-router applies its own `CardState`, so it arrives as a
+        // stateless `Router<()>`; re-label it for this `Arc<AppState>` tree.
+        .merge(crate::card::router().with_state(()))
         .merge(operator_routes)
         .merge(live_path_routes)
         // API v2 seam (chain-aware assets; quotes remain on v1)

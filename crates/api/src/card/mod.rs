@@ -1,81 +1,3 @@
-//! Card payment processing module
-//!
-//! This module is gated behind the `CARD_ENABLED` feature flag.
-//! When the flag is disabled, all card-related routes return 404.
-
-pub mod fixtures;
-pub mod screening;
-pub mod webhooks;
-
-use std::sync::Arc;
-
-/// Check if card functionality is enabled via environment variable
-pub fn is_card_enabled() -> bool {
-    std::env::var("CARD_ENABLED")
-        .ok()
-        .map(|v| v.trim().to_ascii_lowercase())
-        .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
-}
-
-/// Card-specific application state extension
-#[derive(Clone)]
-pub struct CardState {
-    /// Screening service for country validation
-    pub screening: Arc<dyn screening::Screening>,
-}
-
-impl CardState {
-    /// Create new card state with default screening (AllowAll)
-    pub fn new() -> Self {
-        Self {
-            screening: Arc::new(screening::AllowAllScreening::new(
-                std::env::var("CARD_COUNTRY_DENYLIST")
-                    .ok()
-                    .map(|v| {
-                        v.split(',')
-                            .map(|s| s.trim().to_uppercase())
-                            .filter(|s| !s.is_empty())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            )),
-        }
-    }
-}
-
-impl Default for CardState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_card_enabled_defaults_false() {
-        std::env::remove_var("CARD_ENABLED");
-        assert!(!is_card_enabled());
-    }
-
-    #[test]
-    fn test_is_card_enabled_true_values() {
-        for val in ["1", "true", "yes", "on", "TRUE", "Yes"] {
-            std::env::set_var("CARD_ENABLED", val);
-            assert!(is_card_enabled(), "failed for value: {}", val);
-        }
-        std::env::remove_var("CARD_ENABLED");
-    }
-
-    #[test]
-    fn test_is_card_enabled_false_values() {
-        for val in ["0", "false", "no", "off", "FALSE", "No"] {
-            std::env::set_var("CARD_ENABLED", val);
-            assert!(!is_card_enabled(), "failed for value: {}", val);
-        }
-        std::env::remove_var("CARD_ENABLED");
 //! Card program (stablecoin debit) — additive, default-off.
 //!
 //! Every route in this module is gated by `CARD_ENABLED`. When the flag is
@@ -85,13 +7,16 @@ mod tests {
 //! user signs the partner payment in their own wallet and the partner owns the
 //! card credentials.
 
-pub mod authorization;
 pub mod errors;
-pub mod fx;
-pub mod horizon;
+pub mod fiat;
+pub mod fixtures;
+pub mod ledger;
 pub mod limits;
 pub mod mcc;
+pub mod reconcile;
+pub mod screening;
 pub mod store;
+pub mod webhooks;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -109,9 +34,7 @@ use serde::Deserialize;
 
 use crate::models::{ApiErrorCode, ErrorResponse};
 
-use store::{
-    AuthorizationRecord, CardStore, InMemoryCardStore, PartnerEventRecord, StoreError,
-};
+use store::{CardStore, InMemoryCardStore, PartnerEventRecord, StoreError};
 
 /// Master card feature flag. Defaults to off.
 pub const CARD_ENABLED_ENV: &str = "CARD_ENABLED";
@@ -291,8 +214,10 @@ async fn handle_partner_event(
     }
 
     let result = match payload.event_type.as_str() {
-        "authorization" => {
-            state.store.authorization(&payload.authorization_id).map_or_else(
+        "authorization" => state
+            .store
+            .authorization(&payload.authorization_id)
+            .map_or_else(
                 || {
                     state.store.approve_and_hold_with_fx(
                         &payload.authorization_id,
@@ -305,16 +230,17 @@ async fn handle_partner_event(
                     )
                 },
                 Ok,
-            )
-        }
+            ),
         "clearing" => {
             let auth = match state.store.authorization(&payload.authorization_id) {
                 Some(auth) => auth,
-                None => return card_error(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    "authorization_not_found",
-                    "Authorization was not found for clearing.",
-                ),
+                None => {
+                    return card_error(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "authorization_not_found",
+                        "Authorization was not found for clearing.",
+                    )
+                }
             };
             let webhook_fiat = payload.fiat_amount.unwrap_or(auth.fiat_amount);
             if (webhook_fiat - auth.fiat_amount).abs() > 1 {
@@ -461,10 +387,7 @@ pub fn router_with_state(state: Arc<CardState>) -> Router {
             "/api/v1/card/authorizations",
             get(list_authorizations).post(record_authorization),
         )
-        .route(
-            "/api/v1/card/partner/events",
-            post(handle_partner_event),
-        )
+        .route("/api/v1/card/partner/events", post(handle_partner_event))
         .with_state(state)
 }
 

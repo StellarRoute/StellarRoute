@@ -34,10 +34,23 @@ impl ReconciliationEngine {
 
     /// Run a complete reconciliation cycle
     pub async fn run_reconciliation_cycle(&self) -> Result<ReconciliationRun> {
+        self.run_reconciliation_cycle_with_mode(false).await
+    }
+
+    /// Run a reconciliation cycle in dry-run mode (no database writes)
+    pub async fn run_reconciliation_cycle_dry_run(&self) -> Result<ReconciliationRun> {
+        self.run_reconciliation_cycle_with_mode(true).await
+    }
+
+    /// Internal: run reconciliation with optional dry-run mode
+    async fn run_reconciliation_cycle_with_mode(&self, dry_run: bool) -> Result<ReconciliationRun> {
         let run_id = Uuid::new_v4();
         let started_at = Utc::now();
 
-        info!("Starting reconciliation cycle: {}", run_id);
+        info!(
+            "Starting reconciliation cycle: {}, dry_run={}",
+            run_id, dry_run
+        );
 
         let mut checks_passed = 0;
         let mut checks_failed = 0;
@@ -50,12 +63,16 @@ impl ReconciliationEngine {
         let checks_executed = check_results.len();
 
         for result in check_results {
-            // Save the check result
-            let _check_id = result.save(&self.db).await?;
+            // Save the check result (skip in dry-run)
+            if !dry_run {
+                let _check_id = result.save(&self.db).await?;
+            }
 
-            // Emit drift metrics
+            // Emit drift metrics (skip in dry-run)
             let drift_metric = DriftMetrics::from_check_result(&result);
-            drift_metric.save(&self.db).await?;
+            if !dry_run {
+                drift_metric.save(&self.db).await?;
+            }
             drift_events.push(drift_metric);
 
             // Track pass/fail
@@ -86,14 +103,18 @@ impl ReconciliationEngine {
             successful_repairs: _successful_repairs,
             failed_repairs: 0,
             duration_ms,
+            dry_run,
         };
 
-        run.save(&self.db).await?;
-        self.metrics.record_cycle(&run);
+        // Save run only in live mode
+        if !dry_run {
+            run.save(&self.db).await?;
+            self.metrics.record_cycle(&run);
+        }
 
         info!(
-            "Reconciliation cycle complete: id={}, duration={}ms, checks_executed={}, drift_events={}",
-            run_id, duration_ms, checks_executed, drift_events.len()
+            "Reconciliation cycle complete: id={}, duration={}ms, checks_executed={}, drift_events={}, dry_run={}",
+            run_id, duration_ms, checks_executed, drift_events.len(), dry_run
         );
 
         Ok(run)
@@ -147,6 +168,7 @@ pub struct ReconciliationRun {
     pub successful_repairs: usize,
     pub failed_repairs: usize,
     pub duration_ms: i64,
+    pub dry_run: bool,
 }
 
 impl ReconciliationRun {

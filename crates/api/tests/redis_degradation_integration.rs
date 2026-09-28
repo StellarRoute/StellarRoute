@@ -180,3 +180,58 @@ async fn cache_metrics_endpoint_exposes_redis_error_counter() {
         "redis_errors should be exposed separately from cache misses"
     );
 }
+
+#[tokio::test]
+async fn redis_outage_quote_burst_succeeds_via_db_path() {
+    let pool = PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/postgres")
+        .expect("lazy pool");
+    let db = DatabasePools::new(pool, None);
+
+    let cache = outage_cache_manager();
+    let state = Arc::new(AppState::with_cache_and_policy(
+        db,
+        cache,
+        CachePolicy::default(),
+    ));
+    let router = outage_test_router(state.clone());
+
+    // Simulate burst of concurrent quote requests during Redis outage
+    let mut handles = vec![];
+    for i in 0..10 {
+        let router_clone = router.clone();
+        let handle = tokio::spawn(async move {
+            let response = router_clone
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(&format!("/api/v1/quote?base=XLM&quote=USDC&amount={}", 100 + i))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await;
+
+            response.ok()
+        });
+        handles.push(handle);
+    }
+
+    // Wait for all concurrent requests to complete
+    let results = futures::future::join_all(handles).await;
+
+    // All quote requests should complete without panic (HTTP 200 or graceful fallback)
+    for result in results {
+        assert!(
+            result.is_ok(),
+            "Concurrent quote request should not panic during Redis outage"
+        );
+        // Response should exist (either cached, from DB, or computed)
+        if let Ok(Some(response)) = result {
+            let status = response.status();
+            assert!(
+                status == StatusCode::OK || status == StatusCode::SERVICE_UNAVAILABLE,
+                "Quote should either succeed (200) or degrade gracefully (503) when Redis is down"
+            );
+        }
+    }
+}

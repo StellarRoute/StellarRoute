@@ -9,6 +9,7 @@ import { TradeActivityTable } from '../../components/shared/TradeActivityTable';
 export default function HistoryPage() {
   // 1. Keep your existing wallet/account address logic intact
   // const { address } = useWallet(); 
+  // Hardcoded sample address retained per issue #1219 — see PR description for rationale.
   const sampleAddress = "GBRPDEJSTXWHLT2YTIU6X7E3E5B5O3N4CUXOAT76O4Q4WUPTFBJMDSZH"; // Fallback/Placeholder
 
   return (

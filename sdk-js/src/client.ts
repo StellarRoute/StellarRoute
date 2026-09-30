@@ -42,6 +42,10 @@ import type {
   CctpSubmitMintRequest,
   CctpSubmitMintResponse,
   CctpReattestResponse,
+  AgentHealth,
+  AgentCatalogResponse,
+  ValidateAgentIntentRequest,
+  ValidateAgentIntentResponse,
 } from './types.js';
 import {
   DEFAULT_STALENESS_CONFIG,
@@ -938,6 +942,89 @@ export class StellarRouteClient {
   // New routes return 404 when CARD_ENABLED is unset/false. `cardHealth`
   // normalizes that to `{ enabled: false }` instead of throwing, so existing
   // callers never see a new required error path.
+
+  // ── Agent methods (AI-35, additive, flag-gated) ─────────────────────────────
+  // New routes return 404 when AI_AGENT_ENABLED is unset/false. These methods
+  // normalize 404 to a typed disabled result instead of throwing, so existing
+  // callers (getQuote, swap, etc.) are never affected.
+
+  /**
+   * `GET /api/v1/agent/health` — agent program health.
+   *
+   * Returns `{ enabled: false }` when the backend answers 404 (flag-gated
+   * preview disabled) instead of throwing. Existing methods are untouched.
+   */
+  async agentHealth(signal?: AbortSignal): Promise<AgentHealth> {
+    try {
+      const body = await this.request<unknown>(
+        '/api/v1/agent/health',
+        signal,
+        this.retries,
+        'GET',
+        undefined,
+      );
+      return unwrapApiData<AgentHealth>(body);
+    } catch (err) {
+      if (isStellarRouteApiError(err) && err.status === 404) {
+        return { enabled: false };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * `GET /api/v1/agent/catalog` — list available agent tools.
+   *
+   * Returns `{ enabled: false }` when the backend answers 404 (flag-gated
+   * preview disabled) instead of throwing.
+   */
+  async agentTools(
+    signal?: AbortSignal,
+  ): Promise<AgentCatalogResponse | { enabled: false }> {
+    try {
+      const body = await this.request<unknown>(
+        '/api/v1/agent/catalog',
+        signal,
+        this.retries,
+        'GET',
+        undefined,
+      );
+      return unwrapApiData<AgentCatalogResponse>(body);
+    } catch (err) {
+      if (isStellarRouteApiError(err) && err.status === 404) {
+        return { enabled: false };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * `POST /api/v1/agent/intents/validate` — validate an agent intent.
+   *
+   * Returns `{ enabled: false }` when the backend answers 404 (flag-gated
+   * preview disabled) instead of throwing. On 200 returns the validated
+   * intent with normalized fields.
+   */
+  async validateAgentIntent(
+    intent: ValidateAgentIntentRequest,
+    signal?: AbortSignal,
+  ): Promise<ValidateAgentIntentResponse | { enabled: false }> {
+    try {
+      const body = await this.request<unknown>(
+        '/api/v1/agent/intents/validate',
+        signal,
+        this.retries,
+        'POST',
+        intent,
+      );
+      return unwrapApiData<ValidateAgentIntentResponse>(body);
+    } catch (err) {
+      if (isStellarRouteApiError(err) && err.status === 404) {
+        return { enabled: false };
+      }
+      throw err;
+    }
+  }
 
   /**
    * `GET /api/v1/card/health` — card program health.

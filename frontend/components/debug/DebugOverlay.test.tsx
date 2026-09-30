@@ -11,6 +11,40 @@ import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DebugOverlay } from "./DebugOverlay";
 
+// A separate describe block that forces `process.env.NODE_ENV === "production"`
+// before the module is (re)imported. This is intentionally isolated from the
+// default test environment so the two "default-off" behaviours are asserted
+// explicitly and independently (issue #1285).
+describe("DebugOverlay (production build)", () => {
+  afterEach(() => {
+    delete process.env.NODE_ENV;
+    vi.resetModules();
+  });
+
+  it("stays off by default when process.env.NODE_ENV is production", async () => {
+    process.env.NODE_ENV = "production";
+
+    const { DebugOverlay: ProdDebugOverlay } = await import("./DebugOverlay");
+
+    render(<ProdDebugOverlay />);
+
+    // The shortcut must NOT enable it either — in production the component
+    // short-circuits before attaching any keyboard handler.
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "D",
+          shiftKey: true,
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
+    });
+
+    expect(screen.queryByTestId("debug-overlay")).not.toBeInTheDocument();
+  });
+});
+
 // useSearchParams must be mocked because we're not running inside Next.js
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),

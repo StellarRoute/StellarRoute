@@ -590,4 +590,12 @@ mod tests {
 
         reset_cors_env();
     }
+
+    #[test]
+    fn card_tables_not_queried_when_card_enabled_false() {
+        use crate::env_profile::card_enabled;
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("CARD_ENABLED");
+        assert!(!card_enabled());
+    }
 }

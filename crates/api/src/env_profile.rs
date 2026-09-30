@@ -36,6 +36,11 @@ pub fn require_strict_cors() -> bool {
     is_production() || parse_bool_env("REQUIRE_STRICT_CORS")
 }
 
+/// Whether the card feature is enabled. Controlled by `CARD_ENABLED`.
+pub fn card_enabled() -> bool {
+    parse_bool_env("CARD_ENABLED")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +78,24 @@ mod tests {
         assert!(require_strict_cors());
 
         std::env::remove_var("REQUIRE_STRICT_CORS");
+    }
+
+    #[test]
+    fn card_enabled_returns_false_by_default() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("CARD_ENABLED");
+        assert!(!card_enabled());
+    }
+
+    #[test]
+    fn card_enabled_returns_true_when_set() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CARD_ENABLED", "true");
+        assert!(card_enabled());
+
+        std::env::set_var("CARD_ENABLED", "1");
+        assert!(card_enabled());
+
+        std::env::remove_var("CARD_ENABLED");
     }
 }

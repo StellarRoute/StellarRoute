@@ -62,6 +62,42 @@ export default defineConfig({
       testMatch: "**/a11y-swap-flow.spec.ts",
     },
     {
+      name: "a11y-secondary",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/a11y-secondary-pages.spec.ts",
+    },
+    {
+      name: "analytics",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/analytics.spec.ts",
+    },
+    {
+      name: "offramp",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/offramp.spec.ts",
+    },
+    {
+      name: "orderbook",
+      use: {
+        ...devices["Desktop Chrome"],
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+      },
+      testMatch: "**/orderbook.spec.ts",
+    },
+    {
       name: "optimistic-swap",
       timeout: 60_000,
       use: {

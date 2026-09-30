@@ -555,6 +555,63 @@ pub struct CardAuthorizationsResponse {
     pub total: usize,
 }
 
+// ── Agent preview (AI-36, additive, flag-gated) ────────────────────────────────
+// Backend is fail-closed behind `AI_AGENT_ENABLED` (404 when disabled).
+
+/// Agent feature health (`GET /api/v1/agent/health`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentHealth {
+    /// Whether the agent feature is enabled on this deployment.
+    pub enabled: bool,
+}
+
+impl AgentHealth {
+    /// Disabled shape returned when the backend answers 404.
+    pub fn disabled() -> Self {
+        Self { enabled: false }
+    }
+
+    /// Returns `true` when the agent feature is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+/// Request to validate an AI agent intent (`POST /api/v1/agent/intents/validate`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidateIntentRequest {
+    /// Intent type (send, swap, bridge, etc.)
+    pub r#type: String,
+    /// Amount as a string
+    pub amount: String,
+    /// Asset code
+    pub asset: String,
+    /// Optional recipient address
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient: Option<String>,
+    /// Optional destination chain/asset
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    /// Optional source chain/asset
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Optional currency
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub currency: Option<String>,
+    /// Optional recurrence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recurrence: Option<String>,
+}
+
+/// Validated intent response from `POST /api/v1/agent/intents/validate`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidateIntentResponse {
+    /// Normalized amount string.
+    pub amount: String,
+    /// Intent type.
+    pub r#type: String,
+}
+
 // ── Internal error response ───────────────────────────────────────────────────
 
 /// Wire format of the API error body — used internally by the client.

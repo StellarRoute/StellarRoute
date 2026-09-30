@@ -26,11 +26,11 @@ use reqwest::{header, Url};
 use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
-        BatchQuoteRequest, BatchQuoteResponse, CardApplicationDraft, CardApplicationValidation,
-        CardAuthorization, CardAuthorizationsResponse, CardHealth, ErrorResponse, HealthResponse,
-        OrderbookResponse, PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest,
-        RoutesResponse, SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest,
-        SwapSubmitResponse,
+        AgentHealth, BatchQuoteRequest, BatchQuoteResponse, CardApplicationDraft,
+        CardApplicationValidation, CardAuthorization, CardAuthorizationsResponse, CardHealth,
+        ErrorResponse, HealthResponse, OrderbookResponse, PairsResponse, QuoteRequest,
+        QuoteResponse, RoutesRequest, RoutesResponse, SwapPrepareRequest, SwapPrepareResponse,
+        SwapSubmitRequest, SwapSubmitResponse, ValidateIntentRequest, ValidateIntentResponse,
     },
 };
 
@@ -372,6 +372,31 @@ impl StellarRouteClient {
             Err(e) if e.status_code() == Some(404) => Ok(Vec::new()),
             Err(e) => Err(e),
         }
+    }
+
+    // ── Agent preview (AI-36, additive, flag-gated) ─────────────────────────────
+    // New routes return 404 when `AI_AGENT_ENABLED` is unset/false. `agent_health`
+    // normalizes that to `AgentHealth::disabled()` instead of panicking.
+
+    /// `GET /api/v1/agent/health` — agent feature health.
+    ///
+    /// A `404` (flag-gated preview disabled) becomes
+    /// `Ok(AgentHealth { enabled: false })`, never a panic. Any other error
+    /// is propagated unchanged.
+    pub async fn agent_health(&self) -> Result<AgentHealth> {
+        match self.get_unwrapped::<AgentHealth>("api/v1/agent/health").await {
+            Ok(health) => Ok(health),
+            Err(e) if e.status_code() == Some(404) => Ok(AgentHealth::disabled()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `POST /api/v1/agent/intents/validate` — validate an agent intent.
+    ///
+    /// Posts the intent as JSON. Returns the normalized intent on success.
+    pub async fn validate_intent(&self, request: ValidateIntentRequest) -> Result<ValidateIntentResponse> {
+        self.post_unwrapped("api/v1/agent/intents/validate", &request)
+            .await
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

@@ -1,11 +1,11 @@
-//! Card store: authorizations, USDC holds, and partner events.
+//! Card store: applications, authorizations, USDC holds, and partner events.
 //!
-//! In-memory only. Nothing here is touched while `CARD_ENABLED` is off.
+//! In-memory implementation for CARD-14. Nothing here is touched while `CARD_ENABLED` is off.
 
 use std::collections::HashMap;
 
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Authorization lifecycle states used by the recording path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -18,7 +18,17 @@ pub enum AuthorizationState {
     Refunded,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationRecord {
+    pub application_id: String,
+    pub name: String,
+    pub country: String,
+    pub currency: String,
+    pub monthly_limit_usdc: u64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorizationRecord {
     pub authorization_id: String,
     pub state: AuthorizationState,
@@ -33,18 +43,22 @@ pub struct AuthorizationRecord {
     pub tx_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartnerEventRecord {
     pub event_id: String,
     pub event_type: Option<String>,
     pub payload: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
-    /// The authorization id is already approved.
+    #[error("record with id '{0}' not found")]
+    UnknownId(String),
+    #[error("record with id '{0}' already exists")]
+    AlreadyExists(String),
+    #[error("authorization already approved")]
     AlreadyApproved,
-    /// The tx hash already approved a different authorization.
+    #[error("tx hash already used for another authorization")]
     TxAlreadyUsed,
     /// Authorization record is not known.
     AuthorizationNotFound,
@@ -61,7 +75,23 @@ pub enum StoreError {
 }
 
 pub trait CardStore: Send + Sync {
-    /// Mark an authorization approved and hold `amount_stroops` in one step.
+    // Applications (CARD-14)
+    fn insert_application(&self, app: ApplicationRecord) -> Result<ApplicationRecord, StoreError>;
+    fn get_application(&self, application_id: &str) -> Option<ApplicationRecord>;
+    fn update_application(&self, app: ApplicationRecord) -> Result<ApplicationRecord, StoreError>;
+
+    // Authorizations (CARD-14)
+    fn insert_authorization(
+        &self,
+        auth: AuthorizationRecord,
+    ) -> Result<AuthorizationRecord, StoreError>;
+    fn get_authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord>;
+    fn update_authorization(
+        &self,
+        auth: AuthorizationRecord,
+    ) -> Result<AuthorizationRecord, StoreError>;
+
+    // Backwards-compatible authorization helper
     fn approve_and_hold(
         &self,
         authorization_id: &str,
@@ -99,7 +129,8 @@ pub trait CardStore: Send + Sync {
     fn authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord>;
     /// Current held amount in stroops for an authorization (0 if none).
     fn held_stroops(&self, authorization_id: &str) -> i64;
-    /// Store a partner event. Returns `false` if the id was already stored.
+
+    // Partner events
     fn insert_partner_event(&self, event: PartnerEventRecord) -> bool;
     fn partner_event(&self, event_id: &str) -> Option<PartnerEventRecord>;
     fn partner_event_count(&self) -> usize;
@@ -107,6 +138,7 @@ pub trait CardStore: Send + Sync {
 
 #[derive(Default)]
 struct Inner {
+    applications: HashMap<String, ApplicationRecord>,
     authorizations: HashMap<String, AuthorizationRecord>,
     tx_to_auth: HashMap<String, String>,
     holds: HashMap<String, i64>,
@@ -119,6 +151,83 @@ pub struct InMemoryCardStore {
 }
 
 impl CardStore for InMemoryCardStore {
+    fn insert_application(&self, app: ApplicationRecord) -> Result<ApplicationRecord, StoreError> {
+        let mut inner = self.inner.lock();
+        if inner.applications.contains_key(&app.application_id) {
+            return Err(StoreError::AlreadyExists(app.application_id));
+        }
+        inner
+            .applications
+            .insert(app.application_id.clone(), app.clone());
+        Ok(app)
+    }
+
+    fn get_application(&self, application_id: &str) -> Option<ApplicationRecord> {
+        self.inner.lock().applications.get(application_id).cloned()
+    }
+
+    fn update_application(&self, app: ApplicationRecord) -> Result<ApplicationRecord, StoreError> {
+        let mut inner = self.inner.lock();
+        if !inner.applications.contains_key(&app.application_id) {
+            return Err(StoreError::UnknownId(app.application_id));
+        }
+        inner
+            .applications
+            .insert(app.application_id.clone(), app.clone());
+        Ok(app)
+    }
+
+    fn insert_authorization(
+        &self,
+        auth: AuthorizationRecord,
+    ) -> Result<AuthorizationRecord, StoreError> {
+        let mut inner = self.inner.lock();
+        if inner.authorizations.contains_key(&auth.authorization_id) {
+            return Err(StoreError::AlreadyExists(auth.authorization_id));
+        }
+        if !auth.tx_hash.is_empty() {
+            if let Some(existing) = inner.tx_to_auth.get(&auth.tx_hash) {
+                if existing != &auth.authorization_id {
+                    return Err(StoreError::TxAlreadyUsed);
+                }
+            }
+            inner
+                .tx_to_auth
+                .insert(auth.tx_hash.clone(), auth.authorization_id.clone());
+        }
+        if auth.amount_stroops > 0 {
+            inner
+                .holds
+                .insert(auth.authorization_id.clone(), auth.amount_stroops);
+        }
+        inner
+            .authorizations
+            .insert(auth.authorization_id.clone(), auth.clone());
+        Ok(auth)
+    }
+
+    fn get_authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord> {
+        self.inner
+            .lock()
+            .authorizations
+            .get(authorization_id)
+            .cloned()
+    }
+
+    fn update_authorization(
+        &self,
+        auth: AuthorizationRecord,
+    ) -> Result<AuthorizationRecord, StoreError> {
+        let mut inner = self.inner.lock();
+        if !inner.authorizations.contains_key(&auth.authorization_id) {
+            return Err(StoreError::UnknownId(auth.authorization_id));
+        }
+        inner
+            .authorizations
+            .insert(auth.authorization_id.clone(), auth.clone());
+        Ok(auth)
+    }
+
     fn approve_and_hold_with_fx(
         &self,
         authorization_id: &str,
@@ -235,7 +344,7 @@ impl CardStore for InMemoryCardStore {
     }
 
     fn authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord> {
-        self.inner.lock().authorizations.get(authorization_id).cloned()
+        self.get_authorization(authorization_id)
     }
 
     fn held_stroops(&self, authorization_id: &str) -> i64 {
@@ -268,6 +377,101 @@ impl CardStore for InMemoryCardStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_application_insert_then_get_returns_row() {
+        let store = InMemoryCardStore::default();
+        let app = ApplicationRecord {
+            application_id: "app-1".into(),
+            name: "Alice Smith".into(),
+            country: "US".into(),
+            currency: "USD".into(),
+            monthly_limit_usdc: 1500,
+            status: "draft".into(),
+        };
+        assert_eq!(store.get_application("app-1"), None);
+        assert_eq!(store.insert_application(app.clone()), Ok(app.clone()));
+        assert_eq!(store.get_application("app-1"), Some(app));
+    }
+
+    #[test]
+    fn test_application_update_unknown_id_errors() {
+        let store = InMemoryCardStore::default();
+        let app = ApplicationRecord {
+            application_id: "unknown-app".into(),
+            name: "Bob".into(),
+            country: "GB".into(),
+            currency: "GBP".into(),
+            monthly_limit_usdc: 2000,
+            status: "draft".into(),
+        };
+        assert_eq!(
+            store.update_application(app),
+            Err(StoreError::UnknownId("unknown-app".into()))
+        );
+    }
+
+    #[test]
+    fn test_application_update_success() {
+        let store = InMemoryCardStore::default();
+        let mut app = ApplicationRecord {
+            application_id: "app-2".into(),
+            name: "Carol".into(),
+            country: "FR".into(),
+            currency: "EUR".into(),
+            monthly_limit_usdc: 1000,
+            status: "draft".into(),
+        };
+        store.insert_application(app.clone()).unwrap();
+        app.status = "approved".into();
+        app.monthly_limit_usdc = 2500;
+        assert_eq!(store.update_application(app.clone()), Ok(app.clone()));
+        assert_eq!(store.get_application("app-2"), Some(app));
+    }
+
+    #[test]
+    fn test_authorization_insert_then_get_returns_row() {
+        let store = InMemoryCardStore::default();
+        let auth = AuthorizationRecord {
+            authorization_id: "auth-1".into(),
+            state: AuthorizationState::Pending,
+            amount_stroops: 50_000_000,
+            tx_hash: "tx_hash_1".into(),
+        };
+        assert_eq!(store.get_authorization("auth-1"), None);
+        assert_eq!(store.insert_authorization(auth.clone()), Ok(auth.clone()));
+        assert_eq!(store.get_authorization("auth-1"), Some(auth));
+    }
+
+    #[test]
+    fn test_authorization_update_unknown_id_errors() {
+        let store = InMemoryCardStore::default();
+        let auth = AuthorizationRecord {
+            authorization_id: "nonexistent".into(),
+            state: AuthorizationState::Approved,
+            amount_stroops: 100,
+            tx_hash: "hash".into(),
+        };
+        assert_eq!(
+            store.update_authorization(auth),
+            Err(StoreError::UnknownId("nonexistent".into()))
+        );
+    }
+
+    #[test]
+    fn test_authorization_update_success() {
+        let store = InMemoryCardStore::default();
+        let mut auth = AuthorizationRecord {
+            authorization_id: "auth-2".into(),
+            state: AuthorizationState::Pending,
+            amount_stroops: 1000,
+            tx_hash: "tx-2".into(),
+        };
+        store.insert_authorization(auth.clone()).unwrap();
+        auth.state = AuthorizationState::Approved;
+        assert_eq!(store.update_authorization(auth.clone()), Ok(auth.clone()));
+        assert_eq!(store.get_authorization("auth-2"), Some(auth));
+    }
 
     #[test]
     fn approve_holds_amount_and_rejects_tx_reuse() {

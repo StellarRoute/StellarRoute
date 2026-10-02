@@ -13,6 +13,11 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { label: "History", href: "/history" },
 ];
 
+const CARD_NAV_ITEM: NavItem = {
+  label: "Card",
+  href: "/card",
+};
+
 const ANALYTICS_NAV_ITEM: NavItem = {
   label: "Analytics",
   href: "/analytics",
@@ -23,10 +28,11 @@ const AGENT_NAV_ITEM: NavItem = {
   href: "/ai",
 };
 
-/** Build header navigation items, optionally including analytics and agent when enabled. */
+/** Build header navigation items, optionally including analytics, agent, and card when enabled. */
 export function getNavItems(options?: {
   analyticsEnabled?: boolean;
   aiAgentEnabled?: boolean;
+  cardEnabled?: boolean;
 }): NavItem[] {
   const items = [...BASE_NAV_ITEMS];
   if (options?.analyticsEnabled) {
@@ -34,6 +40,9 @@ export function getNavItems(options?: {
   }
   if (options?.aiAgentEnabled) {
     items.push(AGENT_NAV_ITEM);
+  }
+  if (options?.cardEnabled) {
+    items.push(CARD_NAV_ITEM);
   }
   return items;
 }

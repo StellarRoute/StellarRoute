@@ -31,9 +31,10 @@ export function Header() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const { enabled: analyticsEnabled } = useFeatureFlag('analytics');
+  const { enabled: cardEnabled } = useFeatureFlag('card');
   const navItems = React.useMemo(
-    () => getNavItems({ analyticsEnabled }),
-    [analyticsEnabled],
+    () => getNavItems({ analyticsEnabled, cardEnabled }),
+    [analyticsEnabled, cardEnabled],
   );
 
 

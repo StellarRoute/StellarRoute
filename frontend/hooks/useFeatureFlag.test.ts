@@ -180,6 +180,15 @@ describe("useFeatureFlag", () => {
     expect(result.current.enabled).toBe(true);
   });
 
+  it("defaults card to false when unset and honors NEXT_PUBLIC_FLAG_CARD", () => {
+    const { result: defaultResult } = renderHook(() => useFeatureFlag("card"));
+    expect(defaultResult.current.enabled).toBe(false);
+
+    process.env.NEXT_PUBLIC_FLAG_CARD = "true";
+    const { result: enabledResult } = renderHook(() => useFeatureFlag("card"));
+    expect(enabledResult.current.enabled).toBe(true);
+  });
+
   it("falls back to false on remote fetch failure", async () => {
     process.env.NEXT_PUBLIC_FLAGS_URL = "https://flags.example.com/flags.json";
     global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));

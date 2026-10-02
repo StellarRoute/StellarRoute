@@ -124,6 +124,7 @@ export function SwapPage() {
 | `NEXT_PUBLIC_FLAG_TRANSACTION_HISTORY` | Enable transaction history tab |
 | `NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE` | Enable advanced slippage controls |
 | `NEXT_PUBLIC_FLAG_AI_AGENT` | Enable AI assistant and `/ai` route (`true`/`false`, default `false`). Nav and route remain hidden/disabled when false or unset. |
+| `NEXT_PUBLIC_FLAG_CARD` | Enable card program UI (`/card`) (`true`/`false`, default `false`) |
 | `NEXT_PUBLIC_FLAG_REAL_XDR` | **Default on** when unset. Classic API prepare → Freighter sign → API submit → Horizon confirm (`real_xdr`; one-hop SDEX only). Security-pinned: remote flags cannot disable. When false, product swaps fail closed (no client-XDR fallback). |
 
 ---

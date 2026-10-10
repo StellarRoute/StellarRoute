@@ -71,6 +71,70 @@ describe('QuoteInspector', () => {
     expect(screen.getByText('Malformed Venue')).toBeInTheDocument();
   });
 
+  it('renders an empty state for an empty route-list (no sources)', () => {
+    const handleSelect = vi.fn();
+    // Empty route-list fixture: an empty array of quotes. This renders the
+    // dedicated empty state rather than any crash.
+    render(<QuoteInspector quotes={[]} onSelect={handleSelect} />);
+
+    expect(screen.getByText('0 Sources')).toBeInTheDocument();
+    expect(
+      screen.getByText('Select a venue to begin deterministic reconciliation')
+    ).toBeInTheDocument();
+  });
+
+  it('renders malformed route hop fixtures without crashing', () => {
+    const handleSelect = vi.fn();
+    // Malformed payload: a hop with an empty/missing source string must render
+    // without throwing. The component guards path access with optional chaining.
+    const malformedHopQuotes: VenueQuote[] = [{
+      ...mockQuotes[0],
+      path: [{
+        from_asset: { asset_type: 'native' },
+        to_asset: { asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: 'GA5Z' },
+        price: '0.1052',
+        source: '',
+      }],
+    }];
+
+    const { container } = render(
+      <QuoteInspector quotes={malformedHopQuotes} onSelect={handleSelect} />
+    );
+
+    expect(screen.getByText('Stellar SDEX')).toBeInTheDocument();
+    expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
+  });
+
+  it('renders malformed JSON payloads without throwing', () => {
+    const handleSelect = vi.fn();
+    // Malformed payload: non-numeric price/total fields plus extra unknown
+    // fields. The component must render the row without throwing.
+    const malformedPayload: VenueQuote[] = [{
+      base_asset: { asset_type: 'native' },
+      quote_asset: { asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: 'GA5Z' },
+      amount: 'NOT_A_NUMBER',
+      price: 'not-a-price',
+      total: 'NaN',
+      quote_type: 'sell',
+      timestamp: MOCK_TIMESTAMP,
+      venueName: 'Broken Venue',
+      path: [{
+        from_asset: { asset_type: 'native' },
+        to_asset: { asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: 'GA5Z' },
+        price: '0.1052',
+        source: 'sdex',
+      }],
+    }];
+
+    const { container } = render(
+      <QuoteInspector quotes={malformedPayload} onSelect={handleSelect} />
+    );
+
+    // The row still renders rather than throwing.
+    expect(screen.getByText('Broken Venue')).toBeInTheDocument();
+    expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
+  });
+
   it('allows selection and shows reconciliation complete', async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();

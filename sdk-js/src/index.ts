@@ -36,6 +36,9 @@ export type {
   ApiError,
   ApiErrorCode,
   ApiV2Info,
+  AgentCatalogResponse,
+  AgentHealth,
+  AgentToolInfo,
   Asset,
   BridgeVenueMeta,
   BatchItemError,
@@ -100,6 +103,8 @@ export type {
   CctpSubmitMintRequest,
   CctpSubmitMintResponse,
   CctpReattestResponse,
+  ValidateAgentIntentRequest,
+  ValidateAgentIntentResponse,
 } from './types.js';
 
 export {

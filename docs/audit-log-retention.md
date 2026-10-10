@@ -100,11 +100,32 @@ if should_log {
 }
 ```
 
-### Option 4 — Offload to object storage
+### Option 4 — Offload to object storage with redaction
 
-Use `COPY … TO` to export old rows to S3/GCS before deleting them:
+Use the `audit-export` tool (`cargo run -p stellarroute-api --bin audit-export`) or shell script (`scripts/export-audit-logs.sh`) to export redacted audit logs from `route_audit_log` and `swap_submit_audit_log` before pruning.
 
-```sql
+All exported entries are passed through [`AuditRedactor`] to strip asset issuers to `[REDACTED]` and format account keys into non-reversible fingerprints (`GABC...LA5#<sha256-prefix>`).
+
+#### Dry-run mode (output to stdout)
+
+To inspect redacted audit entries without writing to storage or external buckets:
+
+```bash
+./scripts/export-audit-logs.sh --dry-run
+# or
+cargo run -p stellarroute-api --bin audit-export -- --dry-run
+```
+
+#### Export to local file or S3 object storage
+
+```bash
+# Export to a local JSON lines (.jsonl) file
+./scripts/export-audit-logs.sh --table all --output-file /tmp/audit_export_2026-08.jsonl
+
+# Export directly to an S3 / GCS object storage bucket
+./scripts/export-audit-logs.sh --s3-bucket my-audit-bucket --s3-prefix audit/2026-08/
+
+# SQL COPY / AWS S3 direct stream fallback
 COPY (
     SELECT * FROM route_audit_log
     WHERE logged_at < NOW() - INTERVAL '7 days'
@@ -114,6 +135,7 @@ WITH (FORMAT CSV, HEADER);
 DELETE FROM route_audit_log
 WHERE logged_at < NOW() - INTERVAL '7 days';
 ```
+
 
 ---
 

@@ -26,6 +26,15 @@ describe("DebugOverlay", () => {
     expect(screen.queryByTestId("debug-overlay")).not.toBeInTheDocument();
   });
 
+  it("stays hidden by default even when debug info is supplied (no explicit enable)", () => {
+    // Default-off must be driven purely by the activation flags, never by the
+    // presence of debug data. Passing `info` alone must not reveal the panel.
+    render(
+      <DebugOverlay info={{ quoteId: "qid-abc123", snapshotVersion: "v42" }} />
+    );
+    expect(screen.queryByTestId("debug-overlay")).not.toBeInTheDocument();
+  });
+
   it("becomes visible when Ctrl+Shift+D is pressed", async () => {
     render(<DebugOverlay />);
     expect(screen.queryByTestId("debug-overlay")).not.toBeInTheDocument();
@@ -168,5 +177,49 @@ describe("DebugOverlay", () => {
     expect(screen.queryByText(stellarAddress)).not.toBeInTheDocument();
     // Masked form should appear
     expect(screen.getByText("GABC…KLMN")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Explicit default-off coverage for issue #1285.
+ *
+ * The production gate (`process.env.NODE_ENV === "production"`) lives inside the
+ * component body, so it can only be exercised by re-importing the module with a
+ * production environment. This block deliberately sets that env, resets the
+ * module registry, and asserts the overlay never mounts in production — not via
+ * the default render, and not even after the developer shortcut is pressed.
+ */
+describe("DebugOverlay (production build)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it("stays off in a production build even after the debug shortcut is pressed", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.resetModules();
+
+    const { DebugOverlay: ProductionDebugOverlay } = await import(
+      "./DebugOverlay"
+    );
+
+    render(<ProductionDebugOverlay />);
+    expect(screen.queryByTestId("debug-overlay")).not.toBeInTheDocument();
+
+    // The shortcut must be inert in production: the component short-circuits
+    // before attaching any keydown listener, so nothing can reveal the panel.
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "D",
+          shiftKey: true,
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
+    });
+
+    expect(screen.queryByTestId("debug-overlay")).not.toBeInTheDocument();
   });
 });

@@ -71,6 +71,83 @@ describe('QuoteInspector', () => {
     expect(screen.getByText('Malformed Venue')).toBeInTheDocument();
   });
 
+  it('renders an empty route-list fixture (path: []) without crashing', () => {
+    const handleSelect = vi.fn();
+    const emptyRouteList: VenueQuote[] = [
+      {
+        ...mockQuotes[0],
+        venueName: 'Empty Route Venue',
+        path: [],
+      },
+    ];
+
+    render(<QuoteInspector quotes={emptyRouteList} onSelect={handleSelect} />);
+
+    // The row still renders — an empty hop list summarises as zero hops rather
+    // than throwing while reading the first hop.
+    expect(screen.getByText('Empty Route Venue')).toBeInTheDocument();
+    expect(screen.getByText(/0 Hops/)).toBeInTheDocument();
+    expect(screen.getByText('1 Sources')).toBeInTheDocument();
+  });
+
+  it('renders a malformed hop fixture with a blank source without crashing', () => {
+    const handleSelect = vi.fn();
+    const malformedHop: VenueQuote[] = [
+      {
+        ...mockQuotes[0],
+        venueName: 'Malformed Hop Venue',
+        path: [
+          {
+            from_asset: { asset_type: 'native' },
+            to_asset: {
+              asset_type: 'credit_alphanum4',
+              asset_code: 'USDC',
+              asset_issuer: 'GA5Z',
+            },
+            price: 'not-a-price',
+            source: '',
+          },
+        ],
+      },
+    ];
+
+    render(<QuoteInspector quotes={malformedHop} onSelect={handleSelect} />);
+
+    expect(screen.getByText('Malformed Hop Venue')).toBeInTheDocument();
+    expect(screen.getByText('1 Sources')).toBeInTheDocument();
+  });
+
+  it('does not throw on a malformed JSON payload with non-numeric fields', () => {
+    const handleSelect = vi.fn();
+    const malformedPayload = [
+      {
+        base_asset: { asset_type: 'native' },
+        quote_asset: {
+          asset_type: 'credit_alphanum4',
+          asset_code: 'USDC',
+          asset_issuer: 'GA5Z',
+        },
+        amount: 'NOT_A_NUMBER',
+        price: 'not-a-price',
+        total: 'NaN',
+        quote_type: 'sell',
+        timestamp: MOCK_TIMESTAMP,
+        venueName: 'Broken JSON Venue',
+        path: [],
+        // Unknown field, as would arrive from a drifted/partial API payload.
+        unexpected_field: 'ignored',
+      } as unknown as VenueQuote,
+    ];
+
+    expect(() =>
+      render(<QuoteInspector quotes={malformedPayload} onSelect={handleSelect} />)
+    ).not.toThrow();
+
+    // The malformed row is surfaced (not swallowed into a blank/error screen).
+    expect(screen.getByText('Broken JSON Venue')).toBeInTheDocument();
+    expect(screen.getByText('1 Sources')).toBeInTheDocument();
+  });
+
   it('allows selection and shows reconciliation complete', async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();

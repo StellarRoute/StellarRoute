@@ -8,4 +8,7 @@ credentials-file: /home/ubuntu/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
 ingress:
   - hostname: api.example.com
     service: http://127.0.0.1:8080
+  # NOTE: This catch-all rule is required. cloudflared rejects an ingress list
+  # that doesn't end with a rule that has no hostname. Any request whose hostname
+  # doesn't match a rule above gets a 404 instead of reaching the API.
   - service: http_status:404

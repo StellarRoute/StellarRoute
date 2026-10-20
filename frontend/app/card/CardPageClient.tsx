@@ -3,35 +3,46 @@
 import { useEffect, useState } from 'react';
 
 import { useWallet } from '@/hooks/useWallet';
+import { calculateDailySpendingProgress } from '@/lib/card/limits';
+import { CardDailyLimitProgress } from '@/components/card/CardDailyLimitProgress';
 
 type ActivityRow = {
   authorization_id: string;
+  type: string;
   state: string;
   merchant: string;
   fiat_amount: number;
   fiat_currency: string;
   amount_stroops: number;
   status: string;
+  settledAt: string;
 };
+
+/** Default daily limit in USDC ($500.00). */
+const DAILY_LIMIT_USDC = 500;
 
 const FIXTURE_ROWS: ActivityRow[] = [
   {
     authorization_id: 'auth-1001',
-    state: 'approved',
+    type: 'pos_debit',
+    state: 'settled',
     merchant: 'Café Verde',
     fiat_amount: 4200,
     fiat_currency: 'USD',
     amount_stroops: 42_000_000,
     status: 'active',
+    settledAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
   {
     authorization_id: 'auth-1002',
-    state: 'captured',
+    type: 'pos_debit',
+    state: 'settled',
     merchant: 'Northwind Market',
     fiat_amount: 1850,
     fiat_currency: 'USD',
     amount_stroops: 18_500_000,
     status: 'cleared',
+    settledAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
   },
 ];
 
@@ -91,6 +102,8 @@ export function CardPageClient() {
     setIsFrozen(false);
   };
 
+  const dailyProgress = calculateDailySpendingProgress(rows, DAILY_LIMIT_USDC);
+
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-12">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">
@@ -127,6 +140,9 @@ export function CardPageClient() {
             ? 'Wallet connected. Unfreeze can be used at any time.'
             : 'Connect a wallet to enable Unfreeze.'}
         </div>
+
+        {/* ── Daily spending meter (CARD-49) ─────────────────────────── */}
+        <CardDailyLimitProgress progress={dailyProgress} className="mt-6" />
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">

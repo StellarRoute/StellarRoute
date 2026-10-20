@@ -5,6 +5,8 @@
  * Use these in tests, storybooks, or development.
  */
 
+import type { CardCctpSourceNetwork } from './CardNetworkSelect';
+
 export const cardFaceFixtures = {
   active: {
     last4: '4567',
@@ -110,6 +112,45 @@ export const viewFullDetailsFixtures = {
 };
 
 /**
+ * CARD-47 — CCTP source networks for the top-up selector.
+ *
+ * `corridorReady` gives every option a USDC contract so a test can watch the
+ * balance and gas reads re-fire on each switch; the shipped catalogue leaves
+ * Base and Arbitrum Sepolia unexecutable until the bridge wires them up.
+ */
+export const cardNetworkFixtures: Record<'corridorReady', CardCctpSourceNetwork[]> = {
+  corridorReady: [
+    {
+      id: 'ethereum-sepolia',
+      label: 'Ethereum Sepolia',
+      network: 'eip155:11155111',
+      chainId: 11155111,
+      circleDomain: 0,
+      usdcAddress: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238',
+      executable: true,
+    },
+    {
+      id: 'base-sepolia',
+      label: 'Base Sepolia',
+      network: 'eip155:84532',
+      chainId: 84532,
+      circleDomain: 16,
+      usdcAddress: '0x0000000000000000000000000000000000000001',
+      executable: true,
+    },
+    {
+      id: 'arbitrum-sepolia',
+      label: 'Arbitrum Sepolia',
+      network: 'eip155:421614',
+      chainId: 421614,
+      circleDomain: 18,
+      usdcAddress: '0x0000000000000000000000000000000000000002',
+      executable: true,
+    },
+  ],
+};
+
+/**
  * Complete card scenario combining multiple components
  */
 export const cardScenarios = {
@@ -173,6 +214,7 @@ export default {
   cardFace: cardFaceFixtures,
   cardConfirm: cardConfirmFixtures,
   viewFullDetails: viewFullDetailsFixtures,
+  cardNetwork: cardNetworkFixtures,
   scenarios: cardScenarios,
   transactions: transactionScenarios,
 };

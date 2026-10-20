@@ -3,6 +3,17 @@
 import { useEffect, useState } from 'react';
 
 import { useWallet } from '@/hooks/useWallet';
+import {
+  CardBalanceAlert,
+  cardBalanceAlertDismissKey,
+} from '@/components/card/CardBalanceAlert';
+import { CardFace } from '@/components/card/CardFace';
+import { CardTopUpModal } from '@/components/card/CardTopUpModal';
+import {
+  DEFAULT_CARD_ALERT_THRESHOLD_USDC,
+  DEFAULT_CARD_TOP_UP_USDC,
+  getCardTopUpPreferences,
+} from '@/lib/card/preferences';
 
 type ActivityRow = {
   authorization_id: string;
@@ -35,12 +46,49 @@ const FIXTURE_ROWS: ActivityRow[] = [
   },
 ];
 
+/**
+ * CARD-45 — fields mirror `CardAccount` (lib/card/types.ts) on the wire,
+ * in snake_case like every other card payload.
+ */
+type CardAccountSummary = {
+  id: string;
+  status: string;
+  last4: string;
+  expiry: string;
+  available_usdc: string;
+};
+
+const FIXTURE_ACCOUNT: CardAccountSummary = {
+  id: 'card-acct-fixture',
+  status: 'active',
+  last4: '4567',
+  expiry: '12/28',
+  available_usdc: '18.40',
+};
+
+const USDC_INPUT_PATTERN = /^\d+(\.\d{1,7})?$/;
+
+function formatUsdc(value: number): string {
+  return value.toFixed(2);
+}
+
+function parseUsdcAmount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!USDC_INPUT_PATTERN.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function CardPageClient() {
   const { session } = useWallet();
   const [isFrozen, setIsFrozen] = useState(false);
   const [rows, setRows] = useState<ActivityRow[]>(FIXTURE_ROWS);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [account, setAccount] = useState<CardAccountSummary | null>(FIXTURE_ACCOUNT);
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpError, setTopUpError] = useState<string | null>(null);
   const canUnfreeze = Boolean(session.isConnected);
 
   useEffect(() => {
@@ -74,7 +122,77 @@ export function CardPageClient() {
     }
 
     void loadActivity();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // CARD-45: the alert needs the cardholder's available USDC. The endpoint is
+  // gated with the card program, so a 404/invalid payload keeps the demo
+  // account — the same degradation the activity list already uses.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccount() {
+      try {
+        const response = await fetch('/api/v1/card/accounts');
+        if (!response.ok) return;
+
+        const payload = (await response.json()) as {
+          accounts?: CardAccountSummary[];
+        } | CardAccountSummary[];
+        const accounts = Array.isArray(payload) ? payload : payload.accounts;
+        const first = accounts?.[0];
+        if (!cancelled && first && parseUsdcAmount(first.available_usdc) !== null) {
+          setAccount(first);
+        }
+      } catch {
+        // Keep the current account; a missing backend never breaks the page.
+      }
+    }
+
+    void loadAccount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Preferences are per-address and browser-only (CARD-52); defaults apply
+  // when disconnected or unset.
+  const { alertThresholdUsdc, recommendedTopUpUsdc } = (() => {
+    if (!session.address) {
+      return {
+        alertThresholdUsdc: DEFAULT_CARD_ALERT_THRESHOLD_USDC,
+        recommendedTopUpUsdc: DEFAULT_CARD_TOP_UP_USDC,
+      };
+    }
+    const preferences = getCardTopUpPreferences(session.address);
+    return {
+      alertThresholdUsdc: preferences.alertThresholdUsdc,
+      recommendedTopUpUsdc: preferences.defaultTopUpUsdc,
+    };
+  })();
+
+  const availableUsdc = account
+    ? Number.parseFloat(account.available_usdc)
+    : null;
+
+  const handleTopUp = (recommendedUsdc: number) => {
+    setTopUpAmount(formatUsdc(recommendedUsdc));
+    setTopUpError(null);
+    setTopUpOpen(true);
+  };
+
+  const handleConfirmTopUp = () => {
+    const amount = parseUsdcAmount(topUpAmount);
+    if (amount === null) {
+      setTopUpError('Enter a top-up amount greater than 0 USDC.');
+      return;
+    }
+    setTopUpOpen(false);
+  };
 
   const handleFreeze = () => {
     if (typeof window !== 'undefined' && !window.confirm('Freeze this card program? New authorizations will be declined immediately.')) {
@@ -93,6 +211,33 @@ export function CardPageClient() {
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-12">
+      <section
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+        data-testid="card-balance-section"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+          Your card
+        </h2>
+        <div className="mt-4 flex flex-col gap-4">
+          <CardFace
+            last4={account?.last4 ?? '0000'}
+            expiry={account?.expiry ?? '--/--'}
+            usdcAvailable={formatUsdc(availableUsdc ?? 0)}
+            isFrozen={isFrozen}
+          />
+          <CardBalanceAlert
+            availableUsdc={availableUsdc}
+            thresholdUsdc={alertThresholdUsdc}
+            recommendedUsdc={recommendedTopUpUsdc}
+            dismissKey={cardBalanceAlertDismissKey(
+              session.address ?? null,
+              alertThresholdUsdc,
+            )}
+            onTopUp={handleTopUp}
+          />
+        </div>
+      </section>
+
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">
           Card Controls
@@ -174,6 +319,18 @@ export function CardPageClient() {
           </div>
         )}
       </section>
+
+      <CardTopUpModal
+        open={topUpOpen}
+        amount={topUpAmount}
+        error={topUpError}
+        onAmountChange={(raw) => {
+          setTopUpAmount(raw);
+          setTopUpError(null);
+        }}
+        onOpenChange={setTopUpOpen}
+        onConfirm={handleConfirmTopUp}
+      />
     </main>
   );
 }

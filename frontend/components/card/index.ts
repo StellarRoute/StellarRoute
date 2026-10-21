@@ -18,3 +18,5 @@ export {
 } from './ViewFullDetailsButton';
 export { CardDepositReceiptModal } from './CardDepositReceiptModal';
 export type { CardDepositReceiptModalProps } from './CardDepositReceiptModal';
+export { CardFreezeButton } from './CardFreezeButton';
+export type { CardFreezeButtonProps } from './CardFreezeButton';

@@ -18,3 +18,5 @@ export {
 } from './ViewFullDetailsButton';
 export { CardDepositReceiptModal } from './CardDepositReceiptModal';
 export type { CardDepositReceiptModalProps } from './CardDepositReceiptModal';
+export { CardCategoryBreakdown } from './CardCategoryBreakdown';
+export type { CardCategoryBreakdownProps } from './CardCategoryBreakdown';

@@ -18,3 +18,5 @@ export {
 } from './ViewFullDetailsButton';
 export { CardDepositReceiptModal } from './CardDepositReceiptModal';
 export type { CardDepositReceiptModalProps } from './CardDepositReceiptModal';
+export { CardTargetSpendCalculator } from './CardTargetSpendCalculator';
+export type { CardTargetSpendCalculatorProps } from './CardTargetSpendCalculator';

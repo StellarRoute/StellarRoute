@@ -21,9 +21,11 @@ export const TradeActivityTable: React.FC<TradeActivityTableProps> = ({ address,
     sortDirection,
     isLoading,
     isEmpty,
+    error,
   } = useTradeActivity({ address, initialData });
 
   if (isLoading) return <div data-testid="loading-state">Loading trade activity...</div>;
+  if (error) return <div data-testid="error-state">Unable to load trade activity.</div>;
   if (isEmpty) return <div data-testid="empty-state">No trade activity found.</div>;
 
   return (

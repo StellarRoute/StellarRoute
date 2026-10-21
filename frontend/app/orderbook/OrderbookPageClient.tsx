@@ -131,6 +131,26 @@ function VirtualizedOrderSide({
   );
 }
 
+/**
+ * Decorative empty-state artwork for this page (issue #1263).
+ *
+ * `aria-hidden` with an empty `alt`: the surrounding `ViewState` title and
+ * description already carry the meaning, per docs/design/empty-states-spec.md.
+ */
+function EmptyOrderbookIllustration() {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- static SVG from /public, no optimisation needed
+    <img
+      src="/illustrations/empty-orderbook.svg"
+      alt=""
+      aria-hidden="true"
+      width={120}
+      height={96}
+      className="h-24 w-auto opacity-90"
+    />
+  );
+}
+
 export function OrderbookPageClient() {
   const { data: pairs, loading: pairsLoading, error: pairsError } = usePairs();
   const [selectedPairKey, setSelectedPairKey] = useState<string>('');
@@ -222,6 +242,20 @@ export function OrderbookPageClient() {
         </div>
       ) : (
         <>
+          {!pairs?.length ? (
+            <ViewState
+              variant="empty"
+              title="No markets available"
+              description="The indexer is syncing trading pairs. Check back in a few moments."
+              illustration={<EmptyOrderbookIllustration />}
+              action={
+                <Button type="button" variant="default" onClick={refresh}>
+                  {t('orderbook.button.refresh')}
+                </Button>
+              }
+            />
+          ) : (
+          <>
           <div className="flex flex-wrap gap-2">
             {pairs?.map((pair) => {
               const key = pairKey(pair);
@@ -249,6 +283,13 @@ export function OrderbookPageClient() {
             <div className="text-center p-4 text-xs text-muted-foreground font-mono">
               {t('orderbook.standby')}
             </div>
+          ) : orderbook.bids.length === 0 && orderbook.asks.length === 0 ? (
+            <ViewState
+              variant="empty"
+              title="No orderbook entries"
+              description="There are currently no bids or asks for this pair. Check another pair or try later."
+              illustration={<EmptyOrderbookIllustration />}
+            />
           ) : (
             <>
               {isHighlightedPair && (
@@ -303,6 +344,8 @@ export function OrderbookPageClient() {
                 </Card>
               </div>
             </>
+          )}
+          </>
           )}
         </>
       )}

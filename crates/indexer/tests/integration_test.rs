@@ -37,6 +37,7 @@ async fn test_database_connection() {
         hot_pair_volume_threshold: 1_000_000_000,
         hot_pair_window_secs: 300,
         partition_id: 0,
+        indexer_health_file: None,
     };
 
     let db = Database::new(&config)
@@ -90,6 +91,7 @@ async fn test_amm_aggregator_initialization() {
         hot_pair_volume_threshold: 1_000_000_000,
         hot_pair_window_secs: 300,
         partition_id: 0,
+        indexer_health_file: None,
     };
 
     let db = Database::new(&config)
@@ -145,6 +147,7 @@ async fn test_registry_seed_and_indexer_bootstrap() {
         hot_pair_volume_threshold: 1_000_000_000,
         hot_pair_window_secs: 300,
         partition_id: 0,
+        indexer_health_file: None,
     };
 
     let db = Database::new(&config)

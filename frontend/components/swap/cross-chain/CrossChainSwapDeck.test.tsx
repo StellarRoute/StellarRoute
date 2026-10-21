@@ -5,6 +5,7 @@ import { CrossChainSwapDeck } from './CrossChainSwapDeck';
 import { SettingsProvider } from '@/components/providers/settings-provider';
 import { WalletProvider } from '@/components/providers/wallet-provider';
 import { useApiV2Readiness } from '@/hooks/useApiV2Readiness';
+import { useCctpSaga } from '@/hooks/useCctpSaga';
 import { useCrossChainWalletRoles } from '@/hooks/useCrossChainWalletRoles';
 import type { UseCrossChainWalletRolesInput } from '@/hooks/useCrossChainWalletRoles';
 
@@ -91,6 +92,7 @@ vi.mock('@/hooks/useChainWallet', () => ({
 import type { CrossChainDeckStoryPresentation } from './crossChainStoryPresentation';
 
 const mockUseApiV2Readiness = vi.mocked(useApiV2Readiness);
+const mockUseCctpSaga = vi.mocked(useCctpSaga);
 const mockUseCrossChainWalletRoles = vi.mocked(useCrossChainWalletRoles);
 
 function mockStellarToSepoliaWalletRoles(
@@ -107,6 +109,35 @@ function mockStellarToSepoliaWalletRoles(
     mintSubmitterChipBinding: null,
     sagaWallets: { recipient: destRecipientAddress },
   };
+}
+
+/**
+ * Mirrors what the real `useCctpSaga` returns when `bridgeReady` is false
+ * (`CCTP_ENABLED=false`, or no executable corridor in `/api/v2`). Kept in one
+ * place so the gated tests below assert the deck's wiring, not a literal.
+ */
+function mockGatedCctpSaga() {
+  const requestQuote = vi.fn();
+  const runPrimaryAction = vi.fn();
+
+  mockUseCctpSaga.mockReturnValue({
+    stage: 'idle',
+    quote: null,
+    transferStatus: null,
+    error: null,
+    busy: false,
+    inputsLocked: false,
+    resumeMismatch: false,
+    sessionPublic: null,
+    primaryAction: { label: 'Bridge unavailable', disabled: true, action: 'none' },
+    runPrimaryAction,
+    requestQuote,
+    reconcileOnLoad: vi.fn(),
+    resetSaga: vi.fn(),
+    reattestCooldownUntil: null,
+  } as unknown as ReturnType<typeof useCctpSaga>);
+
+  return { requestQuote, runPrimaryAction };
 }
 
 function renderDeck(presentation?: CrossChainDeckStoryPresentation) {
@@ -254,5 +285,121 @@ describe('CrossChainSwapDeck CCTP CTA hints', () => {
       /Bridges USDC only/i,
     );
     expect(screen.getByTestId('swap-to-usdc-on-stellar-link')).toBeInTheDocument();
+  });
+});
+
+describe('CrossChainSwapDeck gated when CCTP is not enabled', () => {
+  // With `CCTP_ENABLED=false` the API still answers `/api/v2` with
+  // `executable: false` corridors, so the deck must render in a fail-closed
+  // state: gated copy, no executable burn/mint control.
+  const gatedReadiness = (loading = false) =>
+    mockUseApiV2Readiness.mockReturnValue({
+      loaded: !loading,
+      corridors: [],
+      cctpGloballyReady: false,
+      providerKilled: false,
+      error: null,
+      fetchedAt: Date.now(),
+      loading,
+      refresh: vi.fn(),
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    gatedReadiness();
+    mockGatedCctpSaga();
+    mockUseCrossChainWalletRoles.mockImplementation((input) =>
+      mockStellarToSepoliaWalletRoles(
+        input,
+        '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0',
+      ),
+    );
+  });
+
+  it('shows the bridge-unavailable copy and no executable burn/mint CTA', async () => {
+    const user = userEvent.setup();
+    renderDeck();
+
+    // A fully-connected, fully-populated deck is the worst case: every input
+    // the live CTA needs is present, and it must still be gated.
+    await user.type(screen.getByTestId('cctp-source-amount'), '10');
+
+    const cta = screen.getByTestId('cross-chain-review-cta');
+    expect(cta).toBeDisabled();
+    expect(cta).toHaveTextContent(/Bridge unavailable/i);
+    // The panel and the CTA hint both carry the gated message.
+    expect(
+      screen.getAllByText(/Bridge is not available on this API right now\./i),
+    ).not.toHaveLength(0);
+  });
+
+  it('enables no button anywhere in the deck while gated', async () => {
+    const user = userEvent.setup();
+    renderDeck();
+
+    await user.type(screen.getByTestId('cctp-source-amount'), '10');
+
+    // The acceptance criterion: no burn or mint button may be enabled. Scoped
+    // to the execution panel because corridor/chain selectors stay
+    // interactive on purpose — switching corridors is not an execution.
+    const panel = screen.getByTestId('cctp-execution-panel');
+    const panelButtons = panel.querySelectorAll('button');
+    expect(panelButtons.length).toBeGreaterThan(0);
+    for (const button of panelButtons) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it('never labels a control with an executable burn or mint action', async () => {
+    const user = userEvent.setup();
+    renderDeck();
+
+    await user.type(screen.getByTestId('cctp-source-amount'), '10');
+
+    const executable = /^(Confirm lock on source chain|Confirm receive on destination|Prepare source transaction|Approve USDC spend|Get quote)$/;
+    for (const button of screen
+      .getByTestId('cctp-execution-panel')
+      .querySelectorAll('button')) {
+      expect(button.textContent ?? '').not.toMatch(executable);
+    }
+  });
+
+  it('requests no quote while gated', async () => {
+    const user = userEvent.setup();
+    const { requestQuote, runPrimaryAction } = mockGatedCctpSaga();
+    renderDeck();
+
+    await user.type(screen.getByTestId('cctp-source-amount'), '10');
+    await user.click(screen.getByTestId('cross-chain-review-cta'));
+
+    expect(requestQuote).not.toHaveBeenCalled();
+    expect(runPrimaryAction).not.toHaveBeenCalled();
+  });
+
+  it('prefers the bridge hint over a wallet or amount prompt', async () => {
+    renderDeck();
+
+    expect(screen.getByTestId('cctp-cta-hint')).toHaveTextContent(
+      /Bridge is not available on this API right now\./i,
+    );
+  });
+
+  it('stays gated while readiness is still loading', () => {
+    gatedReadiness(true);
+    renderDeck();
+
+    expect(screen.getByTestId('cross-chain-review-cta')).toBeDisabled();
+    expect(screen.getByTestId('cctp-cta-hint')).toHaveTextContent(
+      /Checking bridge availability/i,
+    );
+  });
+
+  it('shows no burn/mint labels, quote or destination amount', () => {
+    renderDeck();
+
+    // "Burn"/"Mint" step chips are preview-only rail text, not CTAs; assert no
+    // destination amount or execution timeline is surfaced while gated.
+    expect(screen.queryByTestId('execution-timeline')).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\.00 USDC/)).not.toBeInTheDocument();
   });
 });

@@ -129,7 +129,7 @@ describe('OrderbookPage with highlighting', () => {
     expect(screen.getByText(/Market list indexer offline/i)).toBeInTheDocument();
   });
 
-  it.skip('handles empty orderbook gracefully', async () => {
+  it('handles empty orderbook gracefully', async () => {
     vi.mocked(useApiHooks.usePairs).mockReturnValue({
       data: mockPairs,
       loading: false,
@@ -153,6 +153,43 @@ describe('OrderbookPage with highlighting', () => {
     await waitFor(() => {
       expect(screen.getByText('No orderbook entries')).toBeInTheDocument();
     });
+
+    // Issue #1263: the empty state carries an illustration, not the default icon.
+    const illustration = document.querySelector(
+      'img[src="/illustrations/empty-orderbook.svg"]'
+    );
+    expect(illustration).toBeInTheDocument();
+    expect(illustration).toHaveAttribute('aria-hidden', 'true');
+    expect(illustration).toHaveAttribute('alt', '');
+  });
+
+  it('shows an illustrated empty state when the indexer has no pairs', async () => {
+    vi.mocked(useApiHooks.usePairs).mockReturnValue({
+      data: [],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(
+      <TradingPairProvider>
+        <OrderbookPage />
+      </TradingPairProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('No markets available')).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector('img[src="/illustrations/empty-orderbook.svg"]')
+    ).toBeInTheDocument();
   });
 
   it('shows hover effects on orderbook rows', async () => {

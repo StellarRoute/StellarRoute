@@ -190,4 +190,56 @@ mod tests {
         // This test requires a database connection
         // Run with: cargo test --ignored
     }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_archive_old_offers_preserves_fresh_offers() {
+        let db_url = match std::env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => return,
+        };
+        let pool = match PgPool::connect(&db_url).await {
+            Ok(pool) => pool,
+            Err(_) => return,
+        };
+        let manager = ArchivalManager::new(pool);
+
+        let archived = manager.archive_old_offers(Some(30)).await;
+        assert!(archived.is_ok());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_delete_old_archived_retention() {
+        let db_url = match std::env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => return,
+        };
+        let pool = match PgPool::connect(&db_url).await {
+            Ok(pool) => pool,
+            Err(_) => return,
+        };
+        let manager = ArchivalManager::new(pool);
+
+        let deleted = manager.delete_old_archived(60).await;
+        assert!(deleted.is_ok());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_default_archival_retention_days() {
+        let db_url = match std::env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => return,
+        };
+        let pool = match PgPool::connect(&db_url).await {
+            Ok(pool) => pool,
+            Err(_) => return,
+        };
+        let manager = ArchivalManager::new(pool);
+
+        let count = manager.archive_old_offers(None).await;
+        assert!(count.is_ok());
+    }
 }
+

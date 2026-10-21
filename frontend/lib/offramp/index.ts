@@ -15,3 +15,10 @@ export {
   isValidNigerianAccountNumber,
 } from './quote';
 export { NIGERIAN_BANKS, findNigerianBank } from './nigerian-banks';
+export {
+  NIGERIAN_CBN_BANK_CODE_LENGTH,
+  NIGERIAN_INSTITUTION_CODE_LENGTH,
+  isNigerianCbnBankCode,
+  isValidNigerianInstitutionCode,
+  normalizeNigerianInstitutionCode,
+} from './institution-codes';

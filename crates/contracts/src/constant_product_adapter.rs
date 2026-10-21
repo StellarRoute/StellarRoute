@@ -71,6 +71,7 @@ mod tests {
     use super::ConstantProductAdapter;
     use crate::adapters::PoolAdapterClient;
     use crate::types::Asset;
+    use proptest::proptest;
     use soroban_sdk::{contract, contractimpl, symbol_short, Env};
 
     // Minimal pool stub whose reserves are configurable, so we can drive the
@@ -146,5 +147,65 @@ mod tests {
         // Empty reserves and a zero input collapse the denominator to zero,
         // which the adapter rejects by panicking (documented behaviour).
         adapter.adapter_quote(&Asset::Native, &Asset::Native, &0);
+    }
+
+    // Property tests for reserve invariance and edge cases
+    proptest! {
+        #[test]
+        fn prop_reserve_invariance_within_fee(
+            reserve_in in 1_000_000i128..1_000_000_000_000i128,
+            reserve_out in 1_000_000i128..1_000_000_000_000i128,
+            amount_in in 1i128..1_000_000_000i128,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            // Before swap: x * y = k
+            let k_before = reserve_in.saturating_mul(reserve_out);
+
+            // Quote the output amount
+            let amount_out = adapter.adapter_quote(&Asset::Native, &Asset::Native, &amount_in);
+
+            // After swap: (x + input_with_fee) * (y - output) ≈ k
+            let fee_multiplier: i128 = 997;
+            let amount_with_fee = amount_in.saturating_mul(fee_multiplier);
+            let reserve_in_after = reserve_in.saturating_add(amount_with_fee);
+            let reserve_out_after = reserve_out.saturating_sub(amount_out);
+
+            let k_after = reserve_in_after.saturating_mul(reserve_out_after);
+
+            // k_after should be greater than or equal to k_before (within fee tolerance)
+            // allowing for small precision loss in division
+            prop_assert!(k_after >= k_before,
+                "Reserve invariance violated: k_before={}, k_after={}",
+                k_before, k_after);
+        }
+
+        #[test]
+        fn prop_zero_input_returns_zero(
+            reserve_in in 1_000_000i128..1_000_000_000_000i128,
+            reserve_out in 1_000_000i128..1_000_000_000_000i128,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            // Zero input should always return zero output
+            let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &0);
+            prop_assert_eq!(quote, 0, "Zero input should produce zero output");
+        }
+
+        #[test]
+        fn prop_positive_input_positive_output(
+            reserve_in in 1_000_000i128..1_000_000_000_000i128,
+            reserve_out in 1_000_000i128..1_000_000_000_000i128,
+            amount_in in 1i128..1_000_000_000i128,
+        ) {
+            let env = Env::default();
+            let adapter = setup(&env, reserve_in, reserve_out);
+
+            // Positive input should yield non-negative output
+            let quote = adapter.adapter_quote(&Asset::Native, &Asset::Native, &amount_in);
+            prop_assert!(quote >= 0, "Quote should be non-negative for positive input");
+        }
     }
 }

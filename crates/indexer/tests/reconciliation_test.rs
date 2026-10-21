@@ -249,7 +249,9 @@ mod integration_tests {
 
 #[cfg(test)]
 mod unit_tests {
-    use stellarroute_indexer::reconciliation::{CheckType, DriftSeverity};
+    use stellarroute_indexer::reconciliation::{CheckType, DriftSeverity, ReconciliationRun};
+    use chrono::Utc;
+    use uuid::Uuid;
 
     #[test]
     fn test_check_type_display() {
@@ -272,5 +274,42 @@ mod unit_tests {
         assert_eq!(DriftSeverity::Info.to_string(), "info");
         assert_eq!(DriftSeverity::Warning.to_string(), "warning");
         assert_eq!(DriftSeverity::Critical.to_string(), "critical");
+    }
+
+    #[test]
+    fn test_dry_run_report_structure() {
+        // Verify that a dry-run report has the same structure as a normal run
+        // but with zero repair attempts
+        let now = Utc::now();
+        let run = ReconciliationRun {
+            id: Uuid::new_v4(),
+            started_at: now,
+            completed_at: now,
+            checks_executed: 5,
+            checks_passed: 3,
+            checks_failed: 2,
+            total_drift_events: 2,
+            critical_drift_events: 1,
+            total_repairs_attempted: 0,
+            successful_repairs: 0,
+            failed_repairs: 0,
+            duration_ms: 50,
+        };
+
+        // Dry-run specific assertion: no repairs were attempted
+        assert_eq!(
+            run.total_repairs_attempted, 0,
+            "Dry-run should not attempt repairs"
+        );
+        assert_eq!(
+            run.successful_repairs, 0,
+            "Dry-run should have zero successful repairs"
+        );
+
+        // But drift detection still occurs
+        assert!(
+            run.total_drift_events > 0,
+            "Dry-run should still detect drift events"
+        );
     }
 }

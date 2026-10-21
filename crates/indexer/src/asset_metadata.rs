@@ -86,20 +86,57 @@ pub struct AssetMetadata {
 
 /// Partial stellar.toml representation (only the fields we care about).
 #[derive(Debug, Deserialize, Default)]
-struct StellarToml {
-    #[serde(default)]
-    currencies: Vec<TomlCurrency>,
+pub(crate) struct StellarToml {
+    #[serde(default, alias = "CURRENCIES", alias = "currencies")]
+    pub(crate) currencies: Vec<TomlCurrency>,
 }
 
-#[derive(Debug, Deserialize)]
-struct TomlCurrency {
-    code: Option<String>,
-    issuer: Option<String>,
-    decimals: Option<i16>,
-    image: Option<String>,
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct TomlCurrency {
+    pub(crate) code: Option<String>,
+    pub(crate) issuer: Option<String>,
+    pub(crate) decimals: Option<i16>,
+    pub(crate) image: Option<String>,
     #[serde(rename = "anchor_asset")]
-    _anchor_asset: Option<String>,
+    pub(crate) _anchor_asset: Option<String>,
 }
+
+/// Helper to parse a stellar.toml document string.
+pub(crate) fn parse_stellar_toml(content: &str) -> Result<StellarToml> {
+    toml::from_str(content).map_err(|e| crate::error::IndexerError::JsonParse {
+        context: "stellar.toml".to_string(),
+        error: e.to_string(),
+    })
+}
+
+/// Helper to parse Horizon `/assets` JSON response string.
+pub(crate) fn parse_horizon_assets_json(content: &str) -> Result<AssetMetadata> {
+    let body: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| crate::error::IndexerError::JsonParse {
+            context: "Horizon /assets response".to_string(),
+            error: e.to_string(),
+        })?;
+
+    let record = body
+        .pointer("/_embedded/records/0")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    let domain = record
+        .get("_links")
+        .and_then(|l| l.get("toml"))
+        .and_then(|t| t.get("href"))
+        .and_then(|h| h.as_str())
+        .map(|s| s.to_string());
+
+    Ok(AssetMetadata {
+        decimals: None,
+        domain,
+        icon_url: None,
+        source: "horizon_assets".to_string(),
+    })
+}
+
 
 // ---------------------------------------------------------------------------
 // Job implementation
@@ -482,13 +519,42 @@ issuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
 decimals = 6
 image = "https://example.com/usdc.png"
 "#;
-        // toml crate uses lowercase keys by default; stellar.toml uses uppercase.
-        // In production we'd use a case-insensitive parser or pre-lowercase the input.
-        // For this test we verify the struct parses correctly with lowercase keys.
-        let toml_lower = toml_text.to_lowercase();
-        let parsed: StellarToml = toml::from_str(&toml_lower).unwrap_or_default();
-        // The currencies array may or may not parse depending on key casing;
-        // the important thing is the struct doesn't panic.
-        let _ = parsed;
+        let parsed: StellarToml = parse_stellar_toml(toml_text).expect("should parse CURRENCIES block");
+        assert_eq!(parsed.currencies.len(), 1);
+        assert_eq!(parsed.currencies[0].code.as_deref(), Some("USDC"));
+    }
+
+    #[test]
+    fn test_parse_valid_stellar_toml_fixture() {
+        let fixture = include_str!("../tests/fixtures/assets/usdc_stellar.toml");
+        let parsed: StellarToml = parse_stellar_toml(fixture).expect("should parse valid stellar.toml");
+        assert_eq!(parsed.currencies.len(), 1);
+        let c = &parsed.currencies[0];
+        assert_eq!(c.code.as_deref(), Some("USDC"));
+        assert_eq!(c.issuer.as_deref(), Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"));
+        assert_eq!(c.decimals, Some(7));
+        assert_eq!(c.image.as_deref(), Some("https://www.circle.com/hubfs/usdc.png"));
+    }
+
+    #[test]
+    fn test_parse_valid_horizon_assets_fixture() {
+        let fixture = include_str!("../tests/fixtures/assets/horizon_assets_valid.json");
+        let meta = parse_horizon_assets_json(fixture).expect("should parse valid horizon assets json");
+        assert_eq!(meta.source, "horizon_assets");
+        assert_eq!(meta.domain.as_deref(), Some("https://www.circle.com/.well-known/stellar.toml"));
+    }
+
+    #[test]
+    fn test_parse_malformed_horizon_assets_fixture_returns_typed_error() {
+        let fixture = include_str!("../tests/fixtures/assets/horizon_assets_malformed.json");
+        let result = parse_horizon_assets_json(fixture);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::error::IndexerError::JsonParse { context, error: _ } => {
+                assert_eq!(context, "Horizon /assets response");
+            }
+            other => panic!("expected JsonParse error, got: {:?}", other),
+        }
     }
 }
+

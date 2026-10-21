@@ -4,6 +4,8 @@ import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
 import { ViewState } from "@/components/shared/ViewState";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 
+import { PairSparklineCard } from "./PairSparklineCard";
+
 /**
  * Client wrapper for /analytics.
  *
@@ -12,7 +14,12 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
  * - Live metrics are sourced from GET /metrics/cache and GET /metrics/pool.
  * - Gated by the `analytics` feature flag (`NEXT_PUBLIC_FEATURE_ANALYTICS`).
  *   When disabled, the route remains reachable but shows a placeholder instead
- *   of live API metrics.
+ *   of live API metrics. The flag's default is unchanged by this component:
+ *   `defaultFlagValue` in `hooks/useFeatureFlag` returns true only for
+ *   `swap_ui_v2`, so `analytics` still defaults to **false** when the env var
+ *   is unset.
+ * - The 24h pair sparkline renders here, behind the same flag, and never on
+ *   the swap surface.
  */
 export function AnalyticsPageClient() {
   const { enabled: analyticsEnabled } = useFeatureFlag("analytics");
@@ -35,5 +42,12 @@ export function AnalyticsPageClient() {
     );
   }
 
-  return <AnalyticsDashboard />;
+  return (
+    <>
+      <AnalyticsDashboard />
+      <div className="w-full px-4 pb-8 sm:px-6 lg:px-8">
+        <PairSparklineCard />
+      </div>
+    </>
+  );
 }

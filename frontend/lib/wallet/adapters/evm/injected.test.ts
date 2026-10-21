@@ -186,7 +186,27 @@ describe('injected EVM adapter', () => {
     ).toBe('not_connected');
   });
 
-  it('reports chain_signing_available after connect for a backend route', async () => {
+  it('reports a routed direction as signing-only after connect', async () => {
+    const request = vi.fn(async ({ method }: { method: string }) => {
+      if (method === 'eth_requestAccounts') return ['0xabc'];
+      if (method === 'eth_accounts') return ['0xabc'];
+      if (method === 'eth_chainId') return '0xaa36a7';
+      return null;
+    });
+    installProvider({ request });
+    const adapter = createInjectedEvmAdapter();
+    await adapter.connect('eip155:11155111');
+    // evm->stellar is a proven testnet CCTP backend route, so support
+    // degrades to chain-native signing availability rather than no-route.
+    expect(
+      adapter.getExecutionSupport({
+        sourceChain: 'evm',
+        destinationChain: 'stellar',
+      }).code
+    ).toBe('chain_signing_available');
+  });
+
+  it('reports no_backend_route on an unrouted cross-chain direction after connect', async () => {
     const request = vi.fn(async ({ method }: { method: string }) => {
       if (method === 'eth_requestAccounts') return ['0xabc'];
       if (method === 'eth_accounts') return ['0xabc'];
@@ -199,8 +219,8 @@ describe('injected EVM adapter', () => {
     expect(
       adapter.getExecutionSupport({
         sourceChain: 'evm',
-        destinationChain: 'stellar',
+        destinationChain: 'bitcoin',
       }).code
-    ).toBe('chain_signing_available');
+    ).toBe('no_backend_route');
   });
 });

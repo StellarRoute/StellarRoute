@@ -662,3 +662,101 @@ describe('useCctpSaga reverse mint trustline', () => {
     expect(submitMint).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useCctpSaga fails closed when CCTP is not enabled', () => {
+  // `bridgeReady` is the frontend's view of `CCTP_ENABLED` + live corridor
+  // readiness. With `CCTP_ENABLED=false` the API returns `executable: false`
+  // corridors and 503s on every mutation, so the saga must offer no
+  // executable action at all.
+  const gatedInput = { ...baseInput, bridgeReady: false };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    prepareBurn.mockReset();
+    submitBurn.mockReset();
+    prepareMint.mockReset();
+    submitMint.mockReset();
+    getTransfer.mockReset();
+    executePreparedPayload.mockReset();
+    startPoll.mockClear();
+  });
+
+  it('offers only a disabled "Bridge unavailable" primary action', () => {
+    const { result } = renderHook(() => useCctpSaga(gatedInput));
+
+    expect(result.current.primaryAction).toEqual({
+      label: 'Bridge unavailable',
+      disabled: true,
+      action: 'none',
+    });
+  });
+
+  it('never offers a burn, mint or quote action while gated', () => {
+    const { result } = renderHook(() => useCctpSaga(gatedInput));
+
+    // Guard the whole action union, not just the current value: a regression
+    // that re-enables any executable action must fail here.
+    expect(result.current.primaryAction.action).not.toBe('burn');
+    expect(result.current.primaryAction.action).not.toBe('mint');
+    expect(result.current.primaryAction.action).not.toBe('quote');
+    expect(result.current.primaryAction.action).not.toBe('prepare');
+    expect(result.current.primaryAction.action).not.toBe('approve');
+    expect(result.current.primaryAction.disabled).toBe(true);
+  });
+
+  it('runPrimaryAction is a no-op and reaches no wallet or API call', async () => {
+    const { result } = renderHook(() => useCctpSaga(gatedInput));
+
+    await act(async () => {
+      await result.current.runPrimaryAction();
+    });
+
+    expect(prepareBurn).not.toHaveBeenCalled();
+    expect(submitBurn).not.toHaveBeenCalled();
+    expect(prepareMint).not.toHaveBeenCalled();
+    expect(submitMint).not.toHaveBeenCalled();
+    expect(executePreparedPayload).not.toHaveBeenCalled();
+    expect(startPoll).not.toHaveBeenCalled();
+    expect(result.current.stage).toBe('idle');
+  });
+
+  it('surfaces a 503 cctp_not_enabled error instead of quoting', async () => {
+    const { result } = renderHook(() => useCctpSaga(gatedInput));
+
+    await act(async () => {
+      await result.current.requestQuote();
+    });
+
+    expect(result.current.stage).toBe('unavailable');
+    // `cctp_not_enabled` maps to the `dependency_unavailable` kind so the UI
+    // shows "Bridge temporarily unavailable" rather than a signing prompt.
+    expect(result.current.error?.kind).toBe('dependency_unavailable');
+    expect(result.current.error?.title).toBe('Bridge temporarily unavailable');
+    expect(result.current.error?.message).toMatch(/CCTP is not ready/i);
+    expect(result.current.quote).toBeNull();
+  });
+
+  it('does not auto-reconcile a seeded session while gated', async () => {
+    seedSession({ burnPrepareStep: 'burn_ready' });
+
+    renderHook(() => useCctpSaga(gatedInput));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A stored session must not be replayed against a disabled bridge.
+    expect(getTransfer).not.toHaveBeenCalled();
+  });
+
+  it('ignores a seeded session for wallet-role purposes', () => {
+    const session = seedSession({ burnPrepareStep: 'burn_ready' });
+
+    const { result } = renderHook(() => useCctpSaga(gatedInput));
+
+    // The session is still readable for recovery UI, but it cannot make the
+    // primary action executable.
+    expect(result.current.sessionPublic?.transferId).toBe(session.transferId);
+    expect(result.current.primaryAction.disabled).toBe(true);
+  });
+});

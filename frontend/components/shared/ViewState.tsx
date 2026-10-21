@@ -10,6 +10,17 @@ interface ViewStateProps {
   description: string;
   action?: ReactNode;
   className?: string;
+  /**
+   * Optional illustration rendered in place of the default variant icon.
+   *
+   * Additive: when omitted (every existing call site, including the swap
+   * surface) the icon mapping below is used exactly as before. Pass a
+   * decorative node — the title and description carry the meaning, so the
+   * illustration should be `aria-hidden`.
+   *
+   * See docs/design/empty-states-spec.md.
+   */
+  illustration?: ReactNode;
 }
 
 const iconByVariant: Record<ViewStateVariant, ReactNode> = {
@@ -24,6 +35,7 @@ export function ViewState({
   description,
   action,
   className,
+  illustration,
 }: ViewStateProps) {
   const role = variant === "error" ? "alert" : "status";
 
@@ -32,7 +44,7 @@ export function ViewState({
       role={role}
       className={`flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center ${className ?? ""}`}
     >
-      {iconByVariant[variant]}
+      {illustration ?? iconByVariant[variant]}
       <div className="space-y-1">
         <h3 className="text-sm font-semibold">{title}</h3>
         <p className="text-sm text-muted-foreground">{description}</p>

@@ -100,6 +100,51 @@ rule_files:
   - 'monitoring/prometheus/slo-alerts.yml'
 ```
 
+## Recording Rules
+
+Pre-computed series for the quote-latency and indexer-lag panels live in
+[`monitoring/prometheus/recording-rules.yaml`](../monitoring/prometheus/recording-rules.yaml).
+They derive new series from metrics the API and indexer already export — no
+underlying metric is renamed or replaced — so adding the file is safe on a
+running Prometheus.
+
+```yaml
+rule_files:
+  - 'monitoring/prometheus/recording-rules.yaml'
+  - 'monitoring/prometheus/slo-alerts.yml'
+```
+
+| Recorded series | Derived from | Use |
+|-----------------|--------------|-----|
+| `job:stellarroute_quote_request_duration_seconds:p95_5m` | `stellarroute_quote_request_duration_seconds_bucket` | Quote P95 against the 500ms SLO |
+| `job:stellarroute_quote_request_duration_seconds:p95_30m` | same | Long window for burn-rate panels |
+| `job_outcome:stellarroute_quote_request_duration_seconds:p95_5m` | same | P95 split by `outcome` |
+| `job_cache_hit:stellarroute_quote_request_duration_seconds:p95_5m` | same | Cold-path (cache miss) P95 |
+| `job:stellarroute_indexer_lag_ledgers:max` | `stellarroute_indexer_lag_ledgers` | Worst lag across sources, for a status tile |
+| `source:stellarroute_indexer_lag_ledgers:max` | same | Per-source lag, aggregated across replicas |
+| `source:stellarroute_indexer_lag_ledgers:avg_5m` | same | Smoothed lag for trend panels |
+| `source:stellarroute_indexer_lag_seconds:max` | `stellarroute_indexer_lag_seconds` | Wall-clock staleness per source |
+
+Names follow the Prometheus `level:metric:operations` convention. Grafana panels
+can swap a `histogram_quantile(...)` expression for the recorded series directly:
+
+```promql
+# Before
+histogram_quantile(0.95, rate(stellarroute_quote_request_duration_seconds_bucket[5m]))
+# After
+job:stellarroute_quote_request_duration_seconds:p95_5m
+```
+
+### Validating the rules
+
+`promtool` ships with Prometheus. CI does not run it — validate locally before
+changing the file:
+
+```bash
+promtool check rules monitoring/prometheus/recording-rules.yaml
+# SUCCESS: 8 rules found
+```
+
 ## Service Level Objectives (SLOs)
 
 SLO definitions are maintained as code in [`config/slo.yaml`](../config/slo.yaml). The following objectives are defined:
@@ -362,6 +407,7 @@ with the metric(s) that back it.
 ## References
 
 - **SLO definitions**: [`config/slo.yaml`](../config/slo.yaml)
+- **Prometheus recording rules**: [`monitoring/prometheus/recording-rules.yaml`](../monitoring/prometheus/recording-rules.yaml)
 - **Prometheus alerting rules**: [`monitoring/prometheus/slo-alerts.yml`](../monitoring/prometheus/slo-alerts.yml)
 - **Grafana SLO dashboard**: [`monitoring/grafana/slo-dashboard.json`](../monitoring/grafana/slo-dashboard.json)
 - **Grafana indexer lag dashboard**: [`monitoring/grafana/indexer-lag-dashboard.json`](../monitoring/grafana/indexer-lag-dashboard.json)

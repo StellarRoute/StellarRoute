@@ -1,116 +1,106 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import React from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 
-import { TradeActivityTable } from '@/components/shared/TradeActivityTable';
+import { HistoryPageClient } from './HistoryPageClient';
 
-const mockUseTradeActivity = vi.fn();
+const getSwapActivity = vi.fn();
 
-vi.mock('@/hooks/useTradeActivity', () => ({
-  useTradeActivity: (args: unknown) => mockUseTradeActivity(args),
+// Stable reference, matching the real hook: `useStellarRouteClient` memoises on
+// `network`, so the client identity must not change between renders or every
+// consumer's fetch effect would re-run.
+const mockClient = { getSwapActivity };
+
+vi.mock('@/hooks/useStellarRouteClient', () => ({
+  useStellarRouteClient: () => mockClient,
 }));
 
-describe('History page trade activity states', () => {
+const ADDRESS = 'GBRPDEJSTXWHLT2YTIU6X7E3E5B5O3N4CUXOAT76O4Q4WUPTFBJMDSZH';
+
+function swap(overrides: Record<string, unknown> = {}) {
+  return {
+    event_id: 'evt-1',
+    contract_id: 'contract-1',
+    ledger: 100,
+    ledger_closed_at: '2026-01-01T00:00:00Z',
+    paging_token: 'abc123def456',
+    sender: ADDRESS,
+    amount_in: '100.0000000',
+    amount_out: '10.5000000',
+    fee_amount: '0.0000100',
+    route: null,
+    source_asset: 'XLM',
+    destination_asset: 'USDC',
+    ...overrides,
+  };
+}
+
+describe('HistoryPageClient', () => {
   beforeEach(() => {
-    mockUseTradeActivity.mockReset();
+    vi.clearAllMocks();
   });
 
-  it('shows a loading state while trade activity is pending', () => {
-    mockUseTradeActivity.mockReturnValue({
-      data: [],
-      page: 1,
-      totalPages: 1,
-      setPage: vi.fn(),
-      handleSort: vi.fn(),
-      sortField: 'timestamp',
-      sortDirection: 'desc',
-      isLoading: true,
-      isEmpty: false,
-      error: null,
-    });
-
-    render(<TradeActivityTable address="GTESTADDRESS" />);
-
-    expect(screen.getByTestId('loading-state')).toBeInTheDocument();
+  afterEach(() => {
+    cleanup();
   });
 
-  it('shows an empty state when no trade activity exists', () => {
-    mockUseTradeActivity.mockReturnValue({
-      data: [],
-      page: 1,
-      totalPages: 1,
-      setPage: vi.fn(),
-      handleSort: vi.fn(),
-      sortField: 'timestamp',
-      sortDirection: 'desc',
-      isLoading: false,
-      isEmpty: true,
-      error: null,
-    });
+  it('shows an illustrated empty state when the wallet has no swaps', async () => {
+    getSwapActivity.mockResolvedValue({ swaps: [] });
 
-    render(<TradeActivityTable address="GTESTADDRESS" />);
-
-    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
-  });
-
-  it('shows an error state when trade activity fails to load', async () => {
-    mockUseTradeActivity.mockReturnValue({
-      data: [],
-      page: 1,
-      totalPages: 1,
-      setPage: vi.fn(),
-      handleSort: vi.fn(),
-      sortField: 'timestamp',
-      sortDirection: 'desc',
-      isLoading: false,
-      isEmpty: false,
-      error: new Error('Network error'),
-    });
-
-    render(<TradeActivityTable address="GTESTADDRESS" />);
+    render(<HistoryPageClient address={ADDRESS} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('error-state')).toBeInTheDocument();
+      expect(screen.getByText('No transactions yet')).toBeInTheDocument();
+    });
+
+    const illustration = document.querySelector(
+      'img[src="/illustrations/empty-history.svg"]'
+    );
+    expect(illustration).toBeInTheDocument();
+    expect(illustration).toHaveAttribute('aria-hidden', 'true');
+    expect(illustration).toHaveAttribute('alt', '');
+
+    expect(
+      screen.getByRole('link', { name: /make your first swap/i })
+    ).toHaveAttribute('href', '/swap');
+  });
+
+  it('treats swaps from other senders as empty', async () => {
+    getSwapActivity.mockResolvedValue({
+      swaps: [swap({ sender: 'GSOMEONEELSE' })],
+    });
+
+    render(<HistoryPageClient address={ADDRESS} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No transactions yet')).toBeInTheDocument();
     });
   });
 
-  it('renders the populated table structure with the expected rows', () => {
-    const rows = [
-      {
-        id: 'trade-1',
-        txHash: '123456789012345',
-        timestamp: new Date('2026-01-01T00:00:00Z'),
-        action: 'BUY',
-        amount: '100',
-        asset: 'XLM',
-      },
-      {
-        id: 'trade-2',
-        txHash: '234567890123456',
-        timestamp: new Date('2026-01-02T00:00:00Z'),
-        action: 'SELL',
-        amount: '75',
-        asset: 'USDC',
-      },
-    ];
+  it('renders the activity table when swaps exist, without a second fetch', async () => {
+    getSwapActivity.mockResolvedValue({ swaps: [swap()] });
 
-    mockUseTradeActivity.mockReturnValue({
-      data: rows,
-      page: 1,
-      totalPages: 1,
-      setPage: vi.fn(),
-      handleSort: vi.fn(),
-      sortField: 'timestamp',
-      sortDirection: 'desc',
-      isLoading: false,
-      isEmpty: false,
-      error: null,
+    render(<HistoryPageClient address={ADDRESS} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trade-row')).toBeInTheDocument();
     });
 
-    render(<TradeActivityTable address="GTESTADDRESS" />);
+    expect(screen.queryByText('No transactions yet')).not.toBeInTheDocument();
+    // The page owns the fetch and hands rows down via `initialData`.
+    expect(getSwapActivity).toHaveBeenCalledTimes(1);
+  });
 
-    expect(screen.getAllByTestId('trade-row')).toHaveLength(2);
-    expect(screen.getByText('BUY')).toBeInTheDocument();
-    expect(screen.getByText('SELL')).toBeInTheDocument();
-    expect(screen.getByText('Page 1 of 1')).toBeInTheDocument();
+  it('shows an error state when the activity request fails', async () => {
+    getSwapActivity.mockRejectedValue(new Error('upstream down'));
+
+    render(<HistoryPageClient address={ADDRESS} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not load history')).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector('img[src="/illustrations/empty-history.svg"]')
+    ).not.toBeInTheDocument();
   });
 });

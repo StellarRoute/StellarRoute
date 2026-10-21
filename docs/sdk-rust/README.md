@@ -309,6 +309,7 @@ cargo run -p stellarroute-sdk --bin stellarroute -- \
 ## Related documentation
 
 - [Rust SDK CLI reference](../../crates/sdk-rust/README.md)
+- [StellarRoute CLI cookbook](cli-cookbook.md)
 - [API error taxonomy](../api/error_taxonomy.md)
 - [API integrator error guide](../api/integrator-error-guide.md)
 - [TypeScript SDK quickstart](../../sdk-js/README.md)

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, CheckCircle2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +25,14 @@ import { OfframpQuoteSummary } from './OfframpQuoteSummary';
 
 type SubmitState = 'idle' | 'ready' | 'blocked_coming_soon';
 
-export function OfframpDashboard() {
+interface OfframpDashboardProps {
+  prefill?: {
+    amount?: string | null;
+    sourceId?: string | null;
+  };
+}
+
+export function OfframpDashboard({ prefill }: OfframpDashboardProps) {
   const [mode, setMode] = useState<OfframpMode>('direct');
   const [sourceId, setSourceId] = useState(DEFAULT_OFFRAMP_SOURCE_ID);
   const [amount, setAmount] = useState('');
@@ -34,6 +41,21 @@ export function OfframpDashboard() {
   const [accountName, setAccountName] = useState('');
   const [touchedAccount, setTouchedAccount] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
+
+  useEffect(() => {
+    if (!prefill || !prefill.amount || !prefill.sourceId) {
+      return;
+    }
+
+    const source = findOfframpSource(prefill.sourceId);
+    if (!source) {
+      return;
+    }
+
+    setSourceId(source.id);
+    setAmount(prefill.amount);
+    setMode(source.isStellarUsdc ? 'direct' : 'bridge');
+  }, [prefill]);
 
   const asset =
     findOfframpSource(sourceId) ??

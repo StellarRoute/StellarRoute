@@ -111,4 +111,95 @@ impl PartitionManager {
             .with_label_values(&["partition"])
             .set(lag.abs());
     }
+
+    /// Record observed trading volume for a market pair to support volume-based hot-pair detection.
+    pub fn record_volume(&self, pair: &str, volume: u64) {
+        let now = chrono::Utc::now().timestamp();
+        self.volume_map.write().insert(pair.to_string(), (volume, now));
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_config(partition_count: usize, partition_id: usize, hot_allowlist: &str) -> IndexerConfig {
+        IndexerConfig {
+            partition_count,
+            partition_id,
+            hot_pair_allowlist: hot_allowlist.to_string(),
+            hot_pair_volume_threshold: 1000,
+            hot_pair_window_secs: 600,
+            ..IndexerConfig::default()
+        }
+    }
+
+
+
+    #[test]
+    fn test_partition_assignment_fairness_synthetic() {
+        let count = 4;
+        let mut managers = Vec::new();
+        for id in 0..count {
+            let cfg = make_test_config(count, id, "");
+            managers.push(PartitionManager::from_config(&cfg));
+        }
+
+        let mut processed_counts = vec![0usize; count];
+        for i in 0..100 {
+            let pair = format!("ASSET_{}/XLM", i);
+            let mut handled = 0;
+            for (id, mgr) in managers.iter().enumerate() {
+                if mgr.should_process(&pair) {
+                    handled += 1;
+                    processed_counts[id] += 1;
+                }
+            }
+            assert_eq!(handled, 1, "pair {} should be routed to exactly 1 partition", pair);
+        }
+
+        for (id, &c) in processed_counts.iter().enumerate() {
+            assert!(c > 0, "partition {} should receive at least 1 pair", id);
+        }
+    }
+
+    #[test]
+    fn test_hot_allowlist_overrides_partition_id() {
+        let cfg = make_test_config(5, 0, "XLM/USDC,BTC/XLM");
+
+        let mgr = PartitionManager::from_config(&cfg);
+        assert!(mgr.is_hot("XLM/USDC"));
+        assert!(mgr.is_hot("BTC/XLM"));
+        assert!(mgr.should_process("XLM/USDC"));
+
+        let cfg_other = make_test_config(5, 3, "XLM/USDC,BTC/XLM");
+
+        let mgr_other = PartitionManager::from_config(&cfg_other);
+        assert!(mgr_other.should_process("XLM/USDC"));
+    }
+
+    #[test]
+    fn test_volume_based_hot_pair_detection() {
+        let cfg = make_test_config(10, 0, "");
+
+        let mgr = PartitionManager::from_config(&cfg);
+        let pair = "ETH/USDC";
+        assert!(!mgr.is_hot(pair));
+
+        mgr.record_volume(pair, 500);
+        assert!(!mgr.is_hot(pair));
+
+        mgr.record_volume(pair, 1500);
+        assert!(mgr.is_hot(pair));
+        assert!(mgr.should_process(pair));
+    }
+
+    #[test]
+    fn test_record_metrics_no_panic() {
+        let cfg = make_test_config(1, 0, "");
+        let mgr = PartitionManager::from_config(&cfg);
+        mgr.record_metrics(10, 50);
+    }
+}
+
+

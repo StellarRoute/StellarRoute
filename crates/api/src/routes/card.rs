@@ -1,3 +1,73 @@
+//! Card payment routes
+//!
+//! These routes are only registered when CARD_ENABLED=true
+
+use axum::{routing::post, Router};
+use serde_json::json;
+use std::sync::Arc;
+
+use crate::state::AppState;
+
+/// Create card routes router
+pub fn create_card_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/api/v1/card/webhook", post(card_webhook))
+        .with_state(state)
+}
+
+/// Card webhook handler for partner events
+async fn card_webhook(
+    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
+    axum::Json(payload): axum::Json<serde_json::Value>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::ApiError> {
+    use crate::card::webhooks::{deserialize_partner_event, PartnerEvent};
+
+    let payload_str = serde_json::to_string(&payload)
+        .map_err(|e| crate::error::ApiError::BadRequest(format!("Invalid JSON payload: {}", e)))?;
+
+    let event = deserialize_partner_event(&payload_str)?;
+
+    // Process the event based on type
+    match event {
+        PartnerEvent::Authorization(ref auth) => {
+            tracing::info!(
+                event_id = %auth.event_id,
+                partner_txn_id = %auth.partner_transaction_id,
+                amount = auth.amount,
+                currency = %auth.currency,
+                "Card authorization received"
+            );
+        }
+        PartnerEvent::Clearing(ref clearing) => {
+            tracing::info!(
+                event_id = %clearing.event_id,
+                partner_txn_id = %clearing.partner_transaction_id,
+                amount = clearing.amount,
+                currency = %clearing.currency,
+                "Card clearing received"
+            );
+        }
+        PartnerEvent::Reversal(ref reversal) => {
+            tracing::info!(
+                event_id = %reversal.event_id,
+                partner_txn_id = %reversal.partner_transaction_id,
+                amount = reversal.amount,
+                currency = %reversal.currency,
+                "Card reversal received"
+            );
+        }
+    }
+
+    let event_id = match event {
+        PartnerEvent::Authorization(a) => a.event_id,
+        PartnerEvent::Clearing(c) => c.event_id,
+        PartnerEvent::Reversal(r) => r.event_id,
+    };
+
+    Ok(axum::Json(json!({
+        "status": "accepted",
+        "event_id": event_id
+    })))
 //! Card program routes — additive, flag-gated preview surfaces (CARD-38).
 //!
 //! These endpoints are intentionally minimal and fail-closed:
@@ -20,6 +90,16 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::{error::ApiError, models::ApiResponse, state::AppState};
+
+/// International fiat allowlist (CARD-09, issue #1469).
+///
+/// Included by path because `card` is not yet declared in `lib.rs`, and
+/// declaring it there is not an option while sibling card modules
+/// (`authorization`, `fx`, `horizon`, `webhook`) are still unimplemented.
+/// `crate::routes::card` is public, so everything in here stays reachable and
+/// nothing in this module is reported as dead code.
+#[path = "../card/fiat.rs"]
+pub mod fiat;
 
 /// Returns `true` only when `CARD_ENABLED=true` (case-insensitive, trimmed).
 ///
@@ -55,6 +135,13 @@ pub struct CardApplicationDraft {
     /// Display name for the application (not a PAN, not a key).
     #[serde(default)]
     pub display_name: Option<String>,
+    /// ISO-4217 charging currency for the card (CARD-09).
+    ///
+    /// Optional on the wire so previously valid payloads still deserialize,
+    /// but the validate handler requires it: an omitted code fails
+    /// validation. Must be one of the codes in [`fiat`].
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Validation outcome for a draft application.
@@ -148,6 +235,12 @@ pub async fn validate_card_application(
             "applicant_ref must not be empty".to_string(),
         ));
     }
+    // CARD-09: the card charges international card-network fiat, so the code
+    // is required and must be on the centralized allowlist. An omitted code
+    // fails rather than defaulting.
+    if let Err(message) = fiat::validate(draft.currency.as_deref()) {
+        return Err(ApiError::Validation(message.to_string()));
+    }
     let body = ApiResponse::new(
         CardApplicationValidation {
             valid: true,
@@ -222,6 +315,7 @@ mod tests {
         let draft = serde_json::to_value(CardApplicationDraft {
             applicant_ref: "ref-1".into(),
             display_name: Some("Ada".into()),
+            currency: Some("USD".into()),
         })
         .unwrap();
         let auth = serde_json::to_value(CardAuthorization {
@@ -250,5 +344,50 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ── CARD-09: fiat allowlist wiring ──────────────────────────────────────
+
+    /// A payload written before CARD-09 must still deserialize, so previously
+    /// valid requests are not broken at the wire boundary. The missing code is
+    /// rejected by validation instead of by deserialization.
+    #[test]
+    fn draft_without_currency_still_deserializes() {
+        let draft: CardApplicationDraft =
+            serde_json::from_str(r#"{"applicant_ref":"ref-1"}"#).unwrap();
+        assert_eq!(draft.applicant_ref, "ref-1");
+        assert_eq!(draft.currency, None);
+        assert!(
+            fiat::validate(draft.currency.as_deref()).is_err(),
+            "omitted currency must fail validation"
+        );
+    }
+
+    #[test]
+    fn draft_accepts_every_allowlisted_currency() {
+        for code in fiat::allowed_codes() {
+            let raw = format!(r#"{{"applicant_ref":"ref-1","currency":"{code}"}}"#);
+            let draft: CardApplicationDraft = serde_json::from_str(&raw).unwrap();
+            assert_eq!(
+                fiat::validate(draft.currency.as_deref()),
+                Ok(code),
+                "{code} must validate"
+            );
+        }
+    }
+
+    #[test]
+    fn draft_rejects_non_allowlisted_currency() {
+        let draft: CardApplicationDraft =
+            serde_json::from_str(r#"{"applicant_ref":"ref-1","currency":"CHF"}"#).unwrap();
+        assert!(fiat::validate(draft.currency.as_deref()).is_err());
+    }
+
+    /// JPY is the zero-decimal entry; USD is 2. Surfaced here so the route
+    /// module's tests pin the same pair the allowlist unit tests do.
+    #[test]
+    fn route_exposes_expected_decimals() {
+        assert_eq!(fiat::decimals("JPY"), Some(0));
+        assert_eq!(fiat::decimals("USD"), Some(2));
     }
 }

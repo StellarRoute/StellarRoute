@@ -146,6 +146,8 @@ enum Commands {
         long_about = "Calls GET /api/v1/agent/health and prints enabled or disabled."
     )]
     AgentHealth,
+    #[command(about = "Check card preview health")]
+    CardHealth,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -284,6 +286,7 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
         .await
         .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::AgentHealth => render_agent_health(&cli.api_url, cli.output).await,
+        Commands::CardHealth => render_card_health(&cli.api_url, cli.output).await,
     }
 }
 
@@ -367,6 +370,90 @@ async fn render_agent_health(api_url: &str, output: OutputFormat) -> Result<Stri
 }
 
 fn format_agent_health_disabled(output: OutputFormat) -> String {
+    match output {
+        OutputFormat::Human => "disabled".to_string(),
+        OutputFormat::Table => format_table(
+            &["field", "value"],
+            vec![vec!["status".to_string(), "disabled".to_string()]],
+        ),
+        OutputFormat::Json => serde_json::json!({
+            "enabled": false,
+            "status": "disabled",
+        })
+        .to_string(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CardHealthResponse {
+    enabled: bool,
+    issuer: String,
+}
+
+/// Read the card preview health endpoint without changing any SDK or API
+/// contract. A 404 is the expected fail-closed response while `CARD_ENABLED`
+/// is unset or false.
+async fn render_card_health(api_url: &str, output: OutputFormat) -> Result<String, (i32, String)> {
+    let url = format!("{}/api/v1/card/health", api_url.trim_end_matches('/'));
+    let response = reqwest::get(&url).await.map_err(|error| {
+        (
+            EXIT_RUNTIME_ERROR,
+            format!("card health request failed: {error}"),
+        )
+    })?;
+    let status = response.status();
+
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(format_card_health_disabled(output));
+    }
+
+    let body = response.text().await.map_err(|error| {
+        (
+            EXIT_RUNTIME_ERROR,
+            format!("failed to read card health response: {error}"),
+        )
+    })?;
+
+    if !status.is_success() {
+        return Err((
+            EXIT_RUNTIME_ERROR,
+            format!("card health request failed with status {status}"),
+        ));
+    }
+
+    let payload: CardHealthResponse = serde_json::from_str(&body).map_err(|error| {
+        (
+            EXIT_RUNTIME_ERROR,
+            format!("invalid card health response: {error}"),
+        )
+    })?;
+    if !payload.enabled {
+        return Ok(format_card_health_disabled(output));
+    }
+
+    match output {
+        OutputFormat::Human => Ok(format!("enabled\nissuer: {}", payload.issuer)),
+        OutputFormat::Table => Ok(format_table(
+            &["field", "value"],
+            vec![
+                vec!["enabled".to_string(), "true".to_string()],
+                vec!["issuer".to_string(), payload.issuer],
+            ],
+        )),
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "enabled": true,
+            "issuer": payload.issuer,
+        }))
+        .map_err(|error| {
+            (
+                EXIT_RUNTIME_ERROR,
+                format!("failed to encode card health: {error}"),
+            )
+        }),
+    }
+}
+
+fn format_card_health_disabled(output: OutputFormat) -> String {
     match output {
         OutputFormat::Human => "disabled".to_string(),
         OutputFormat::Table => format_table(
@@ -1042,6 +1129,65 @@ mod tests {
         let cli = Cli::try_parse_from(["stellarroute", "agent-health"])
             .expect("agent-health command should parse");
         assert!(matches!(cli.command, Commands::AgentHealth));
+    }
+
+    #[tokio::test]
+    async fn card_health_404_prints_disabled_and_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/card/health"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let output = render_card_health(&server.uri(), OutputFormat::Human)
+            .await
+            .expect("404 should mean disabled");
+
+        assert_eq!(output, "disabled");
+    }
+
+    #[tokio::test]
+    async fn card_health_200_prints_enabled_and_partner_unconfigured() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/card/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "enabled": true,
+                "issuer": "partner_unconfigured",
+            })))
+            .mount(&server)
+            .await;
+
+        let output = render_card_health(&server.uri(), OutputFormat::Human)
+            .await
+            .expect("200 should render card health");
+
+        assert_eq!(output, "enabled\nissuer: partner_unconfigured");
+    }
+
+    #[tokio::test]
+    async fn card_health_500_is_not_treated_as_disabled() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/card/health"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let (code, message) = render_card_health(&server.uri(), OutputFormat::Human)
+            .await
+            .expect_err("500 should be a runtime error");
+
+        assert_eq!(code, EXIT_RUNTIME_ERROR);
+        assert!(message.contains("500"));
+    }
+
+    #[test]
+    fn parses_card_health_command() {
+        let cli = Cli::try_parse_from(["stellarroute", "card-health"])
+            .expect("card-health command should parse");
+        assert!(matches!(cli.command, Commands::CardHealth));
     }
 
     #[test]

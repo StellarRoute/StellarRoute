@@ -42,10 +42,14 @@ export const APP_DESCRIPTION =
 export const STELLAR_NETWORK =
   process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
 
+export const CARD_ENABLED =
+  process.env.NEXT_PUBLIC_CARD_ENABLED === 'true';
+
 export const ROUTES = {
   HOME: '/',
   SWAP: '/swap',
   OFFRAMP: '/offramp',
+  CARD: '/card',
   GUIDE: '/guide',
   DOCS: '/docs',
   STATUS: '/status',

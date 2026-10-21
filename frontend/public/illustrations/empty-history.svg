@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 96" role="img" fill="none">
+  <title>A trade history list with no entries</title>
+  <!-- Referenced via <img>, which isolates the SVG from page CSS, so
+       `currentColor` is not available. #94a3b8 (slate-400) is chosen to stay
+       legible against both the light and dark app backgrounds; callers dim it
+       further with a Tailwind opacity class. -->
+  <g stroke="#94a3b8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="18.5" y="10.5" width="83" height="75" rx="8" stroke-width="2" opacity="0.5" />
+    <path d="M18.5 27.5h83" stroke-width="2" opacity="0.5" />
+    <g stroke-width="3" opacity="0.28">
+      <path d="M28 41h26M64 41h28" />
+      <path d="M28 55h34M70 55h22" />
+      <path d="M28 69h20M58 69h34" />
+    </g>
+  </g>
+  <circle cx="34" cy="18.5" r="2.5" fill="#94a3b8" opacity="0.45" />
+  <circle cx="43" cy="18.5" r="2.5" fill="#94a3b8" opacity="0.45" />
+  <g transform="translate(74 52)">
+    <circle cx="16" cy="16" r="15.5" fill="#94a3b8" opacity="0.12" />
+    <circle cx="16" cy="16" r="15.5" stroke="#94a3b8" stroke-width="2" opacity="0.6" />
+    <path d="M16 8v8.5l5.5 4" stroke="#94a3b8" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round" opacity="0.7" />
+  </g>
+</svg>

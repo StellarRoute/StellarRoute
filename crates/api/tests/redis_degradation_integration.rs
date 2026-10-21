@@ -180,3 +180,47 @@ async fn cache_metrics_endpoint_exposes_redis_error_counter() {
         "redis_errors should be exposed separately from cache misses"
     );
 }
+
+#[tokio::test]
+async fn quote_burst_succeeds_with_redis_down() {
+    let pool = PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/postgres")
+        .expect("lazy pool");
+    let db = DatabasePools::new(pool, None);
+
+    let cache = outage_cache_manager();
+    let state = Arc::new(AppState::with_cache_and_policy(
+        db,
+        cache,
+        CachePolicy::default(),
+    ));
+    let router = Arc::new(outage_test_router(state));
+
+    // Simulate burst of concurrent quote requests
+    let mut tasks = vec![];
+    for _ in 0..10 {
+        let router_clone = Arc::clone(&router);
+        let task = tokio::spawn(async move {
+            router_clone
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/v1/quote/native/USDC")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+        });
+        tasks.push(task);
+    }
+
+    // Wait for all requests to complete
+    for task in tasks {
+        let response = task.await.expect("task failed").expect("request failed");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "All quote requests should return 200 when Redis is down (DB path)"
+        );
+    }
+}

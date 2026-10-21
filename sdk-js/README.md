@@ -125,6 +125,8 @@ Additional runnable quickstart files are in `sdk-js/examples/`:
 
 - [Health check](./examples/quickstart-health.ts)
 - [Trading pairs](./examples/quickstart-pairs.ts)
+- [Orderbook](./examples/quickstart-orderbook.ts) — single and batch orderbook snapshots (read-only)
+- [Batch quote](./examples/quickstart-batch-quote.ts) — multiple price quotes in one request (read-only)
 
 See the [price history example](./examples/quickstart-price-history.ts) for a read-only 24-hour history query.
 

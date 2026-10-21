@@ -8,6 +8,7 @@ pub mod audit;
 pub mod broadcast;
 pub mod budget;
 pub mod cache;
+pub mod card;
 pub mod cctp;
 pub mod compression;
 pub mod consistency_guard;

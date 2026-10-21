@@ -28,6 +28,50 @@ function isAiAgentEnabled(): boolean {
   return process.env.NEXT_PUBLIC_AI_AGENT === 'true' || process.env.NEXT_PUBLIC_AI_AGENT === '1';
 }
 
+export function resolveOfframpSourceId(intent: ParsedAgentIntent): string | null {
+  if (intent.kind !== 'offramp') {
+    return null;
+  }
+
+  const value = (intent.fromAsset ?? '').trim().toLowerCase();
+
+  if (!value) {
+    return 'stellar-usdc';
+  }
+
+  const aliases: Record<string, string> = {
+    usdc: 'stellar-usdc',
+    'stellar-usdc': 'stellar-usdc',
+    xlm: 'stellar-xlm',
+    'stellar-xlm': 'stellar-xlm',
+    eth: 'eth-usdc',
+    'eth-usdc': 'eth-usdc',
+    base: 'base-usdc',
+    'base-usdc': 'base-usdc',
+    arbitrum: 'base-usdc',
+    'arb-usdc': 'base-usdc',
+    sol: 'sol-usdc',
+    'sol-usdc': 'sol-usdc',
+  };
+
+  return aliases[value] ?? 'stellar-usdc';
+}
+
+export function buildOfframpRedirectUrl(intent: ParsedAgentIntent): string | null {
+  if (intent.kind !== 'offramp') {
+    return null;
+  }
+
+  const amount = (intent.amount ?? '').trim();
+  const source = resolveOfframpSourceId(intent);
+
+  if (!amount || !source) {
+    return null;
+  }
+
+  return `/offramp?${new URLSearchParams({ amount, source }).toString()}`;
+}
+
 export async function validateIntent(
   intent: ParsedAgentIntent,
 ): Promise<ValidateIntentResponse | null> {

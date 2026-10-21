@@ -1,0 +1,103 @@
+# StellarRoute Prometheus Recording Rules
+# =======================================
+# Pre-computed series for the quote latency and indexer lag panels in Grafana.
+#
+# Why: `histogram_quantile(...)` over a large `_bucket` series is evaluated on
+# every dashboard refresh and every alert tick. Recording the quantiles once per
+# evaluation interval keeps dashboards responsive and makes the same numbers
+# available to alerts and ad-hoc queries.
+#
+# These rules are additive and read-only: they only derive new series from
+# metrics the API and indexer already export. No underlying metric is renamed,
+# relabelled, or replaced, and no alert routing changes.
+#
+# Naming follows the Prometheus convention `level:metric:operations`:
+#   - `level`      — the aggregation level (`job`, `source`)
+#   - `metric`     — the source metric name
+#   - `operations` — what was applied (`p95_5m`, `max`, ...)
+#
+# Usage — add alongside the existing alert rules in `prometheus.yml`:
+#
+#   rule_files:
+#     - 'monitoring/prometheus/recording-rules.yaml'
+#     - 'monitoring/prometheus/slo-alerts.yml'
+#
+# Local validation (promtool ships with Prometheus; it is not required by CI):
+#
+#   promtool check rules monitoring/prometheus/recording-rules.yaml
+
+groups:
+  # ── Quote request latency ────────────────────────────────────────────────
+  #
+  # Source metric: stellarroute_quote_request_duration_seconds (histogram)
+  # SLO target:    P95 < 500ms (see config/slo.yaml)
+  #
+  # The 5m window matches the SLO measurement window; the 30m window matches
+  # the long window used by the burn-rate alerts in slo-alerts.yml.
+  - name: stellarroute_quote_latency_recording
+    interval: 30s
+    rules:
+      - record: job:stellarroute_quote_request_duration_seconds:p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (
+              rate(stellarroute_quote_request_duration_seconds_bucket[5m])
+            )
+          )
+
+      - record: job:stellarroute_quote_request_duration_seconds:p95_30m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (
+              rate(stellarroute_quote_request_duration_seconds_bucket[30m])
+            )
+          )
+
+      # P95 split by outcome, so a latency regression can be attributed to
+      # successful requests rather than a burst of fast errors.
+      - record: job_outcome:stellarroute_quote_request_duration_seconds:p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, outcome, le) (
+              rate(stellarroute_quote_request_duration_seconds_bucket[5m])
+            )
+          )
+
+      # P95 split by cache_hit, to show the cold-path latency the SLO is
+      # actually sensitive to.
+      - record: job_cache_hit:stellarroute_quote_request_duration_seconds:p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, cache_hit, le) (
+              rate(stellarroute_quote_request_duration_seconds_bucket[5m])
+            )
+          )
+
+  # ── Indexer lag ──────────────────────────────────────────────────────────
+  #
+  # Source metric: stellarroute_indexer_lag_ledgers (gauge, label: source)
+  # See docs/indexer-lag-monitoring.md for the full metric reference.
+  - name: stellarroute_indexer_lag_recording
+    interval: 30s
+    rules:
+      # Worst lag across every source — the single number for a status tile.
+      - record: job:stellarroute_indexer_lag_ledgers:max
+        expr: max by (job) (stellarroute_indexer_lag_ledgers)
+
+      # Per-source lag, pre-aggregated across instances so a multi-replica
+      # indexer does not fan out the panel into one series per pod.
+      - record: source:stellarroute_indexer_lag_ledgers:max
+        expr: max by (job, source) (stellarroute_indexer_lag_ledgers)
+
+      # Smoothed lag for trend panels — a single slow ledger should not make
+      # the graph spike.
+      - record: source:stellarroute_indexer_lag_ledgers:avg_5m
+        expr: avg by (job, source) (avg_over_time(stellarroute_indexer_lag_ledgers[5m]))
+
+      # Wall-clock companion to the ledger count, for "how stale is this?"
+      - record: source:stellarroute_indexer_lag_seconds:max
+        expr: max by (job, source) (stellarroute_indexer_lag_seconds)

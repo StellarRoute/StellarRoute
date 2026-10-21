@@ -99,6 +99,69 @@ impl ReconciliationEngine {
         Ok(run)
     }
 
+    /// Run a dry-run reconciliation cycle without writing to the database or triggering repairs
+    ///
+    /// This method executes all consistency checks and returns the report without:
+    /// - Saving results to the database
+    /// - Triggering repair actions
+    /// - Recording metrics
+    pub async fn run_dry_run(&self) -> Result<ReconciliationRun> {
+        let run_id = Uuid::new_v4();
+        let started_at = Utc::now();
+
+        info!("Starting dry-run reconciliation cycle: {}", run_id);
+
+        let mut checks_passed = 0;
+        let mut checks_failed = 0;
+        let mut drift_events = Vec::new();
+
+        // Run all consistency checks (same checks, no writes)
+        let check_results = self.run_all_checks().await?;
+        let checks_executed = check_results.len();
+
+        for result in check_results {
+            // Emit drift metrics IN MEMORY ONLY (no database write)
+            let drift_metric = DriftMetrics::from_check_result(&result);
+            drift_events.push(drift_metric);
+
+            // Track pass/fail
+            if result.severity == DriftSeverity::Info {
+                checks_passed += 1;
+            } else {
+                checks_failed += 1;
+            }
+        }
+
+        let completed_at = Utc::now();
+        let duration_ms = (completed_at - started_at).num_milliseconds();
+
+        // Create and return reconciliation run summary (NOT saved to DB)
+        let run = ReconciliationRun {
+            id: run_id,
+            started_at,
+            completed_at,
+            checks_executed,
+            checks_passed,
+            checks_failed,
+            total_drift_events: drift_events.len(),
+            critical_drift_events: drift_events
+                .iter()
+                .filter(|d| d.severity == DriftSeverity::Critical)
+                .count(),
+            total_repairs_attempted: 0,
+            successful_repairs: 0,
+            failed_repairs: 0,
+            duration_ms,
+        };
+
+        info!(
+            "Dry-run reconciliation complete: id={}, duration={}ms, checks_executed={}, drift_events={} (NOT SAVED)",
+            run_id, duration_ms, checks_executed, drift_events.len()
+        );
+
+        Ok(run)
+    }
+
     /// Run all consistency checks
     async fn run_all_checks(&self) -> Result<Vec<ConsistencyCheckResult>> {
         let mut all_results = Vec::new();

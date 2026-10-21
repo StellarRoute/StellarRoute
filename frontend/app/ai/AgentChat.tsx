@@ -6,6 +6,11 @@ import { Input } from '@/components/ui/input';
 import { IntentPreviewCard, type ParsedAgentIntent } from './IntentPreviewCard';
 import { emitAgentTelemetry, type AgentIntentKind } from './telemetry';
 import { validateIntent } from '@/lib/ai/client';
+import { loadCap } from '@/lib/ai/cap';
+import { parsePlan, splitSteps } from '@/lib/ai/plan';
+import type { Intent } from '@/lib/ai/parse';
+import { PlanRunner } from './PlanRunner';
+import { SpendingCapSettings } from './SpendingCapSettings';
 import { ArrowRight } from 'lucide-react';
 
 export function parsePromptToIntent(text: string): ParsedAgentIntent | null {
@@ -125,10 +130,27 @@ export function AgentChat() {
   const [activeIntent, setActiveIntent] = React.useState<ParsedAgentIntent | null>(null);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [isValidating, setIsValidating] = React.useState(false);
+  const [planSteps, setPlanSteps] = React.useState<Intent[] | null>(null);
+  const [usdcCap, setUsdcCap] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    setUsdcCap(loadCap());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
+
+    // Multi-step prompts ("… then …") render as a plan; single steps keep the existing card.
+    if (splitSteps(input).length > 1) {
+      const plan = parsePlan(input);
+      setActiveIntent(null);
+      setPlanSteps(plan.kind === 'plan' ? plan.steps : null);
+      setValidationError(plan.kind === 'plan' ? null : plan.message);
+      setInput('');
+      return;
+    }
+    setPlanSteps(null);
 
     const parsed = parsePromptToIntent(input);
     if (parsed) {
@@ -173,8 +195,11 @@ export function AgentChat() {
         <IntentPreviewCard
           intent={activeIntent}
           onCancel={handleCancel}
+          usdcCap={usdcCap}
         />
       )}
+
+      {planSteps && <PlanRunner steps={planSteps} usdcCap={usdcCap} />}
 
       <form onSubmit={handleSubmit} className="flex gap-2">
         <Input
@@ -196,6 +221,8 @@ export function AgentChat() {
           {isValidating ? 'Validating...' : 'Send'}
         </Button>
       </form>
+
+      <SpendingCapSettings cap={usdcCap} onChange={setUsdcCap} />
     </div>
   );
 }

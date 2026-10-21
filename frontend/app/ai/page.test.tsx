@@ -4,13 +4,40 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AiPage from './page';
 import { AGENT_TELEMETRY_EVENT, type AgentTelemetryPayload } from './telemetry';
 
+const mockPush = vi.hoisted(() => vi.fn());
+const mockUseSearchParams = vi.hoisted(() => vi.fn(() => new URLSearchParams()));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  useSearchParams: () => mockUseSearchParams(),
+}));
+
 describe('AiPage (#1455, #1456)', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({ enabled: true, execution: 'preview_only' }),
-    } as Response));
+    mockPush.mockClear();
+    mockUseSearchParams.mockReturnValue(new URLSearchParams());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        if (String(input) === '/api/v1/agent/intents/validate') {
+          return {
+            status: 200,
+            ok: true,
+            json: async () => ({ data: { amount: '1', type: 'convert' } }),
+          } as Response;
+        }
+
+        return {
+          status: 200,
+          ok: true,
+          json: async () => ({ enabled: true, execution: 'preview_only' }),
+        } as Response;
+      }),
+    );
   });
 
   afterEach(() => {
@@ -87,14 +114,19 @@ describe('AiPage (#1455, #1456)', () => {
       fireEvent.change(input, { target: { value: 'swap 10 XLM to USDC' } });
       fireEvent.click(submit);
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({
-        eventName: 'agent_intent_parsed',
-        kind: 'convert',
+      await waitFor(() => {
+        expect(events).toHaveLength(1);
+        expect(events[0]).toEqual({
+          eventName: 'agent_intent_parsed',
+          kind: 'convert',
+        });
       });
+
       expect(Object.keys(events[0]).sort()).toEqual(['eventName', 'kind'].sort());
 
-      expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      });
       expect(screen.getByTestId('intent-description')).toHaveTextContent(
         'Convert 10 XLM to USDC',
       );
@@ -136,7 +168,9 @@ describe('AiPage (#1455, #1456)', () => {
       fireEvent.change(input, { target: { value: 'send 5 USDC to GABC123' } });
       fireEvent.click(submit);
 
-      expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('intent-preview-card')).toBeInTheDocument();
+      });
 
       const cancelBtn = screen.getByTestId('cancel-btn');
       fireEvent.click(cancelBtn);
@@ -152,5 +186,43 @@ describe('AiPage (#1455, #1456)', () => {
     } finally {
       window.removeEventListener(AGENT_TELEMETRY_EVENT, listener);
     }
+  });
+
+  it('navigates to the offramp with amount and source when confirming a cash-out intent without submitting a payout', async () => {
+    process.env.NEXT_PUBLIC_AI_AGENT = 'true';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    mockPush.mockClear();
+
+    render(<AiPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-chat-input')).toBeInTheDocument();
+    });
+
+    const input = screen.getByTestId('agent-chat-input');
+    const submit = screen.getByTestId('agent-chat-submit');
+
+    fireEvent.change(input, { target: { value: 'cash out 20 USDC to naira' } });
+    fireEvent.click(submit);
+
+    const confirmBtn = await screen.findByTestId('confirm-btn');
+    fireEvent.click(confirmBtn);
+
+    expect(mockPush).toHaveBeenCalledWith('/offramp?amount=20&source=stellar-usdc');
+
+    const payoutRequestUrls = fetchSpy.mock.calls
+      .map(([url]) => String(url))
+      .filter(
+        (url) =>
+          url.includes('/submit') ||
+          url.includes('/prepare') ||
+          url.includes('/payout') ||
+          url.includes('submit') ||
+          url.includes('prepare') ||
+          url.includes('payout'),
+      );
+
+    expect(payoutRequestUrls).toHaveLength(0);
+    expect(fetchSpy.mock.calls.some(([url]) => String(url) === '/api/v1/agent/intents/validate')).toBe(true);
   });
 });

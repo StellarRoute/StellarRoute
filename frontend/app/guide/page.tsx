@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
 import { buildPageMetadata } from "@/lib/seo";
+import { CARD_ENABLED } from "@/lib/constants";
+import AgentGuideSection from "./agent-guide-section";
 
 export const metadata = buildPageMetadata({
   title: "First Stellar DEX Swap Guide",
@@ -108,6 +110,8 @@ export default function FirstSwapGuidePage() {
           ))}
         </ol>
 
+        <AgentGuideSection />
+
         <aside className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">Before you confirm</p>
           <p className="mt-2 leading-6">
@@ -128,6 +132,15 @@ export default function FirstSwapGuidePage() {
             on the swap card anytime for shortcuts and a link back here.
           </p>
         </aside>
+
+        {CARD_ENABLED && (
+          <aside className="rounded-xl border border-primary/30 bg-primary/5 p-5 text-sm text-primary-foreground">
+            <p className="font-medium">Card payments (beta)</p>
+            <p className="mt-2 leading-6">
+              Pay with a card: USDC balance, fiat charge, confirm in the wallet.
+            </p>
+          </aside>
+        )}
       </div>
     </main>
   );

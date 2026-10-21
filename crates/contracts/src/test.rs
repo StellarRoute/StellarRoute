@@ -1834,6 +1834,66 @@ fn test_cancel_upgrade_clears_pending_state() {
         .is_ok());
 }
 
+#[test]
+fn test_unauthorized_propose_upgrade_single_admin_rejected() {
+    let env = setup_env();
+    let (_admin, _fee_to, client) = deploy_router(&env);
+    let unauthorized = Address::generate(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x99; 32]);
+    let execute_after = current_seq(&env) + 100;
+    let result = client.try_propose_upgrade(&unauthorized, &new_hash, &execute_after);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+#[test]
+fn test_unauthorized_execute_upgrade_single_admin_rejected() {
+    let env = setup_env();
+    let (admin, _fee_to, client) = deploy_router(&env);
+    let unauthorized = Address::generate(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x42; 32]);
+    let execute_after = current_seq(&env) + 100;
+    let proposal_seq = current_seq(&env);
+    client.propose_upgrade(&admin, &new_hash, &execute_after);
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = (proposal_seq + crate::upgrade::MIN_DELAY_LEDGERS + 1) as u32;
+    });
+
+    let result = client.try_execute_upgrade(&unauthorized);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+#[test]
+fn test_unauthorized_governance_upgrade_proposal_rejected() {
+    let env = setup_env();
+    let (_s1, _s2, _s3, _admin, client) = deploy_multisig_router(&env);
+    let unauthorized = Address::generate(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x77; 32]);
+    let action = ProposalAction::Upgrade(new_hash);
+
+    let result = client.try_propose(&unauthorized, &action);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+#[test]
+fn test_authorized_governance_upgrade_proposal_succeeds() {
+    let env = setup_env();
+    let (s1, s2, _s3, _admin, client) = deploy_multisig_router(&env);
+
+    let new_hash = BytesN::from_array(&env, &[0x88; 32]);
+    let action = ProposalAction::Upgrade(new_hash.clone());
+
+    let proposal_id = client.propose(&s1, &action);
+    client.approve(&s2, &proposal_id);
+
+    let ver = client.get_version();
+    assert_eq!(ver.wasm_hash, new_hash);
+}
+
+
 // ─── Token Allowlist Tests ────────────────────────────────────────────────────
 
 use super::types::{TokenCategory, TokenInfo};

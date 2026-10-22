@@ -97,7 +97,11 @@ mod tests {
         std::env::remove_var("AI_AGENT_ENABLED");
     }
 }
-//! AI agent routes and handlers
+// Agent routes and handlers.
+//
+// Registration lives in outes/mod.rs; every agent route runs behind the
+// global RateLimitLayer applied in Server::build_app, so agent traffic
+// shares the existing public rate-limit budget (AI-42).
 
 pub mod intents;
 pub mod tools;

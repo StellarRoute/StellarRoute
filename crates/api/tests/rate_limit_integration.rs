@@ -214,7 +214,7 @@ async fn rate_limit_returns_429_after_limit_exceeded() {
             max_requests: 200,
             window: Duration::from_secs(60),
         },
-        tenant_overrides: std::collections::HashMap::new(),
+        ..EndpointConfig::default()
     };
 
     let layer = RateLimitLayer::in_memory(cfg);
@@ -303,7 +303,7 @@ async fn rate_limit_429_content_type_is_json() {
             max_requests: 200,
             window: Duration::from_secs(60),
         },
-        tenant_overrides: std::collections::HashMap::new(),
+        ..EndpointConfig::default()
     };
 
     let layer = RateLimitLayer::in_memory(cfg);
@@ -373,7 +373,7 @@ async fn different_ips_have_independent_limits() {
             max_requests: 200,
             window: Duration::from_secs(60),
         },
-        tenant_overrides: std::collections::HashMap::new(),
+        ..EndpointConfig::default()
     };
 
     use axum::{routing::get, Router};
@@ -424,3 +424,4 @@ async fn different_ips_have_independent_limits() {
         .unwrap();
     assert_eq!(allowed.status(), StatusCode::OK);
 }
+

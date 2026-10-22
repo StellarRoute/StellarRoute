@@ -68,28 +68,29 @@ async fn card_webhook(
         "status": "accepted",
         "event_id": event_id
     })))
-//! Card program routes — additive, flag-gated preview surfaces (CARD-38).
-//!
-//! These endpoints are intentionally minimal and fail-closed:
-//! - When `CARD_ENABLED` is unset or anything other than `"true"`, every
-//!   handler returns `404 not_found` (`card disabled`). StellarRoute never
-//!   holds API keys or card PANs; no PAN, card number, CVV/CVC, or expiry
-//!   field exists on any request or response schema here.
-//! - When `CARD_ENABLED=true`, handlers return static, non-sensitive shapes
-//!   so SDK and frontend integrators can build against a stable contract
-//!   without touching the live swap/quote path.
-//!
-//! Nothing in this module touches:
-//! - classic one-hop SDEX prepare → sign → submit (`routes::swap`),
-//! - quote selection / ranking (`routes::quote`),
-//! - CORS allowlists, `CCTP_ENABLED` default, or existing OpenAPI field names.
+}
+
+// Card program routes — additive, flag-gated preview surfaces (CARD-38).
+//
+// These endpoints are intentionally minimal and fail-closed:
+// - When `CARD_ENABLED` is unset or anything other than `"true"`, every
+//   handler returns `404 not_found` (`card disabled`). StellarRoute never
+//   holds API keys or card PANs; no PAN, card number, CVV/CVC, or expiry
+//   field exists on any request or response schema here.
+// - When `CARD_ENABLED=true`, handlers return static, non-sensitive shapes
+//   so SDK and frontend integrators can build against a stable contract
+//   without touching the live swap/quote path.
+//
+// Nothing in this module touches:
+// - classic one-hop SDEX prepare → sign → submit (`routes::swap`),
+// - quote selection / ranking (`routes::quote`),
+// - CORS allowlists, `CCTP_ENABLED` default, or existing OpenAPI field names.
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::{error::ApiError, models::ApiResponse, state::AppState};
+use crate::{error::ApiError, models::ApiResponse};
 
 /// International fiat allowlist (CARD-09, issue #1469).
 ///
@@ -124,6 +125,11 @@ fn card_disabled() -> ApiError {
 pub struct CardHealth {
     /// Whether the card program is enabled on this deployment.
     pub enabled: bool,
+    /// Partner configuration state (CARD-03): `partner_unconfigured` while
+    /// `CARD_PARTNER_STELLAR_ADDRESS` is unset or empty, otherwise the
+    /// configured public partner Stellar address. Additive field; clients
+    /// that predate it ignore the extra JSON key.
+    pub issuer: String,
 }
 
 /// Minimal application draft. Integrators POST a caller-chosen reference and
@@ -204,7 +210,10 @@ pub async fn card_health(
         return Err(card_disabled());
     }
     let body = ApiResponse::new(
-        CardHealth { enabled: true },
+        CardHealth {
+            enabled: true,
+            issuer: crate::card::health::issuer(),
+        },
         request_id.as_str().to_string(),
     );
     Ok((StatusCode::OK, Json(body)))
@@ -311,7 +320,11 @@ mod tests {
 
     #[test]
     fn card_schemas_carry_no_pan_fields() {
-        let health = serde_json::to_value(CardHealth { enabled: true }).unwrap();
+        let health = serde_json::to_value(CardHealth {
+            enabled: true,
+            issuer: crate::card::health::PARTNER_UNCONFIGURED.to_string(),
+        })
+        .unwrap();
         let draft = serde_json::to_value(CardApplicationDraft {
             applicant_ref: "ref-1".into(),
             display_name: Some("Ada".into()),

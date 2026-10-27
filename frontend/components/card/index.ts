@@ -20,8 +20,13 @@ export {
 export { CardDepositReceiptModal } from './CardDepositReceiptModal';
 export type { CardDepositReceiptModalProps } from './CardDepositReceiptModal';
 
+
+export { CardTargetSpendCalculator } from './CardTargetSpendCalculator';
+export type { CardTargetSpendCalculatorProps } from './CardTargetSpendCalculator';
+
 export { CardFreezeButton } from './CardFreezeButton';
 export type { CardFreezeButtonProps } from './CardFreezeButton';
+
 
 export { CardTopUpPreferencesModal } from './CardTopUpPreferencesModal';
 export type { CardTopUpPreferencesModalProps } from './CardTopUpPreferencesModal';

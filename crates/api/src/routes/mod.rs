@@ -71,7 +71,9 @@ async fn production_admin_guard(
     };
 
     match crate::middleware::admin::extract_admin_token(request.headers()) {
-        Some(token) if token == *expected_token => next.run(request).await,
+        Some(token) if crate::middleware::admin::admin_token_matches(&token, expected_token) => {
+            next.run(request).await
+        }
         _ => unauthorized("Missing or invalid admin credentials"),
     }
 }

@@ -76,4 +76,6 @@ pub enum ContractError {
     // ── Fee Distribution ─────────────────────────────────────────────────
     /// Fee configuration is invalid (e.g., shares don't sum to 10000 bps or too many recipients).
     InvalidFeeConfig = 100,
+    /// Pool address is already registered on the router.
+    PoolAlreadyRegistered = 101,
 }

@@ -403,7 +403,7 @@ fn test_register_pool_duplicate() {
     let pool = deploy_mock_pool(&env);
     client.register_pool(&pool);
     let result = client.try_register_pool(&pool);
-    assert_eq!(result, Err(Ok(ContractError::PoolNotSupported)));
+    assert_eq!(result, Err(Ok(ContractError::PoolAlreadyRegistered)));
 }
 
 #[test]
@@ -1254,14 +1254,18 @@ fn property_all_contract_errors_are_reachable() {
         );
     }
 
-    // PoolNotSupported (duplicate registration)
+    // PoolNotSupported (route references unregistered pool) & PoolAlreadyRegistered (duplicate)
     {
         let (_, _, c) = deploy_router(&env);
-        let pool = deploy_mock_pool(&env);
-        c.register_pool(&pool);
+        let unregistered = deploy_mock_pool(&env);
         assert_eq!(
-            c.try_register_pool(&pool),
+            c.try_get_quote(&1000, &make_route(&env, &unregistered, 1)),
             Err(Ok(ContractError::PoolNotSupported))
+        );
+        c.register_pool(&unregistered);
+        assert_eq!(
+            c.try_register_pool(&unregistered),
+            Err(Ok(ContractError::PoolAlreadyRegistered))
         );
     }
 
@@ -1892,7 +1896,6 @@ fn test_authorized_governance_upgrade_proposal_succeeds() {
     let ver = client.get_version();
     assert_eq!(ver.wasm_hash, new_hash);
 }
-
 
 // ─── Token Allowlist Tests ────────────────────────────────────────────────────
 
@@ -2545,18 +2548,110 @@ fn test_auto_distribution_triggers() {
 fn test_burn_recipient_tracking() {
     let env = setup_env();
     let (_admin, _, client) = deploy_router(&env);
-    let pool = deploy_mock_pool(&env);
-    client.register_pool(&pool);
 
+    // Register a real Soroban Stellar Asset Contract token so burn actually destroys supply.
+    let token_admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = sac.address();
+    let token_client = soroban_sdk::token::Client::new(&env, &token_addr);
+    let sac_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_addr);
+
+    let treasury = Address::generate(&env);
     let mut recipients = Vec::new(&env);
     recipients.push_back(FeeRecipient {
+        address: treasury.clone(),
+        share_bps: 6000, // 60% (+ rounding dust)
+        label: Symbol::new(&env, "treasury"),
+    });
+    recipients.push_back(FeeRecipient {
         address: Address::generate(&env),
-        share_bps: 10000, // 100%
+        share_bps: 4000, // 40% burned
         label: Symbol::new(&env, "burn"),
     });
 
     client.set_fee_distribution_config(&FeeConfig {
         recipients,
+        min_distribution: 0,
+        auto_distribute: false,
+    });
+
+    // Fund the router contract with 2_971 token units of collected fees.
+    sac_admin_client.mint(&client.address, &2_971);
+    let soroban_asset = Asset::Soroban(token_addr.clone());
+    env.as_contract(&client.address, || {
+        crate::storage::set_fee_balance(&env, &soroban_asset, 2_971);
+    });
+
+    client.distribute_fees(&soroban_asset);
+
+    // 40% of 2_971 = 1_188 burned; remaining 1_783 (60% + 1 dust) transferred to treasury.
+    assert_eq!(token_client.balance(&client.address), 0);
+    assert_eq!(token_client.balance(&treasury), 1_783);
+    assert_eq!(client.get_fee_balance(&soroban_asset), 0);
+    assert_eq!(client.get_total_fees_burned(&soroban_asset), 1_188);
+}
+
+#[test]
+fn test_native_fee_burn_never_leaves_untracked_xlm_or_false_burn_count() {
+    let env = setup_env();
+    let (_admin, _fee_to, client) = deploy_router(&env);
+    let pool = deploy_mock_pool(&env);
+    client.register_pool(&pool);
+
+    // Case 1: 100% burn recipient on Asset::Native routes to configured fee_to sink
+    // and never increments TotalFeesBurned.
+    let mut burn_only = Vec::new(&env);
+    burn_only.push_back(FeeRecipient {
+        address: Address::generate(&env),
+        share_bps: 10000,
+        label: Symbol::new(&env, "burn"),
+    });
+    client.set_fee_distribution_config(&FeeConfig {
+        recipients: burn_only,
+        min_distribution: 0,
+        auto_distribute: false,
+    });
+
+    client.execute_swap(
+        &Address::generate(&env),
+        &swap_params_for(
+            &env,
+            make_route(&env, &pool, 1),
+            1_000_000,
+            0,
+            current_seq(&env) + 100,
+        ),
+    );
+    assert_eq!(client.get_fee_balance(&Asset::Native), 2970);
+
+    client.distribute_fees(&Asset::Native);
+    assert_eq!(client.get_fee_balance(&Asset::Native), 0);
+    assert_eq!(client.get_total_fees_burned(&Asset::Native), 0);
+    assert_eq!(
+        client
+            .get_distribution_history(&Asset::Native)
+            .get(0)
+            .unwrap()
+            .total_distributed,
+        2970
+    );
+
+    // Case 2: Mixed treasury + burn on Asset::Native routes burn share to treasury
+    // without incrementing TotalFeesBurned.
+    let treasury = Address::generate(&env);
+    let mut mixed = Vec::new(&env);
+    mixed.push_back(FeeRecipient {
+        address: treasury,
+        share_bps: 5000,
+        label: Symbol::new(&env, "treasury"),
+    });
+    mixed.push_back(FeeRecipient {
+        address: Address::generate(&env),
+        share_bps: 5000,
+        label: Symbol::new(&env, "burn"),
+    });
+    client.set_fee_distribution_config(&FeeConfig {
+        recipients: mixed,
         min_distribution: 0,
         auto_distribute: false,
     });
@@ -2572,6 +2667,121 @@ fn test_burn_recipient_tracking() {
         ),
     );
     client.distribute_fees(&Asset::Native);
+    assert_eq!(client.get_fee_balance(&Asset::Native), 0);
+    assert_eq!(client.get_total_fees_burned(&Asset::Native), 0);
 
-    assert_eq!(client.get_total_fees_burned(&Asset::Native), 2970);
+    // Case 3: If neither a treasury recipient nor FeeTo exists, distribution fails
+    // before zeroing FeeBalance so native fees are never left untracked.
+    let mut no_treasury = Vec::new(&env);
+    no_treasury.push_back(FeeRecipient {
+        address: Address::generate(&env),
+        share_bps: 10000,
+        label: Symbol::new(&env, "burn"),
+    });
+    client.set_fee_distribution_config(&FeeConfig {
+        recipients: no_treasury,
+        min_distribution: 0,
+        auto_distribute: false,
+    });
+    env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .remove(&crate::storage::StorageKey::FeeTo);
+        crate::storage::set_fee_balance(&env, &Asset::Native, 5_000);
+    });
+
+    let err = client.try_distribute_fees(&Asset::Native);
+    assert_eq!(err, Err(Ok(ContractError::InvalidFeeConfig)));
+    assert_eq!(client.get_fee_balance(&Asset::Native), 5_000);
+    assert_eq!(client.get_total_fees_burned(&Asset::Native), 0);
+}
+
+#[test]
+fn test_distribute_fees_share_math_overflow_returns_error() {
+    let env = setup_env();
+    let (_admin, _, client) = deploy_router(&env);
+
+    let config = valid_fee_config(&env, Address::generate(&env), Address::generate(&env));
+    client.set_fee_distribution_config(&config);
+
+    // Seed a balance where total_balance * 6000 overflows i128::MAX.
+    let huge_balance = i128::MAX / 2;
+    env.as_contract(&client.address, || {
+        crate::storage::set_fee_balance(&env, &Asset::Native, huge_balance);
+    });
+
+    let res = client.try_distribute_fees(&Asset::Native);
+    assert_eq!(res, Err(Ok(ContractError::Overflow)));
+    // Tracked fee balance must remain intact when distribution fails.
+    assert_eq!(client.get_fee_balance(&Asset::Native), huge_balance);
+    assert_eq!(client.get_distribution_history(&Asset::Native).len(), 0);
+}
+
+#[test]
+fn test_distribution_record_holds_unix_timestamp() {
+    let env = setup_env();
+    let (_admin, _, client) = deploy_router(&env);
+    let pool = deploy_mock_pool(&env);
+    client.register_pool(&pool);
+
+    let config = valid_fee_config(&env, Address::generate(&env), Address::generate(&env));
+    client.set_fee_distribution_config(&config);
+
+    // Set distinct ledger sequence vs UNIX timestamp to prove timestamp is not sequence.
+    let expected_unix_ts: u64 = 1_731_318_000;
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 77;
+        li.timestamp = expected_unix_ts;
+    });
+
+    client.execute_swap(
+        &Address::generate(&env),
+        &swap_params_for(
+            &env,
+            make_route(&env, &pool, 1),
+            1_000_000,
+            0,
+            current_seq(&env) + 100,
+        ),
+    );
+    client.distribute_fees(&Asset::Native);
+
+    let history = client.get_distribution_history(&Asset::Native);
+    assert_eq!(history.len(), 1);
+    let record = history.get(0).unwrap();
+    assert_eq!(record.timestamp, expected_unix_ts);
+    assert_ne!(record.timestamp, 77);
+    assert_eq!(record.total_distributed, 2970);
+}
+
+#[test]
+fn test_duplicate_register_pool_returns_pool_already_registered_and_preserves_error_codes() {
+    let env = setup_env();
+    let (_, _, client) = deploy_router(&env);
+    let pool = deploy_mock_pool(&env);
+
+    client.register_pool(&pool);
+    assert_eq!(
+        client.try_register_pool(&pool),
+        Err(Ok(ContractError::PoolAlreadyRegistered))
+    );
+
+    // Verify existing ContractError discriminants remain completely unchanged.
+    assert_eq!(ContractError::NotInitialized as u32, 1);
+    assert_eq!(ContractError::AlreadyInitialized as u32, 2);
+    assert_eq!(ContractError::Unauthorized as u32, 3);
+    assert_eq!(ContractError::Paused as u32, 4);
+    assert_eq!(ContractError::InvalidRoute as u32, 10);
+    assert_eq!(ContractError::PoolNotSupported as u32, 30);
+    assert_eq!(ContractError::InvalidAmount as u32, 40);
+    assert_eq!(ContractError::Overflow as u32, 41);
+    assert_eq!(ContractError::InvalidRecipient as u32, 42);
+    assert_eq!(ContractError::UseGovernance as u32, 50);
+    assert_eq!(ContractError::UpgradeLocked as u32, 60);
+    assert_eq!(ContractError::MigrationAlreadyDone as u32, 70);
+    assert_eq!(ContractError::TokenNotAllowed as u32, 80);
+    assert_eq!(ContractError::CommitmentRequired as u32, 90);
+    assert_eq!(ContractError::RateLimitExceeded as u32, 94);
+    assert_eq!(ContractError::InvalidFeeConfig as u32, 100);
+    assert_eq!(ContractError::PoolAlreadyRegistered as u32, 101);
 }

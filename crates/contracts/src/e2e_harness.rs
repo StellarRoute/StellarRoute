@@ -1251,7 +1251,7 @@ fn val_register_pool_duplicate_rejected() {
     let pool = deploy_pool_99(&env);
     client.register_pool(&pool);
     let result = client.try_register_pool(&pool);
-    assert_eq!(result, Err(Ok(ContractError::PoolNotSupported)));
+    assert_eq!(result, Err(Ok(ContractError::PoolAlreadyRegistered)));
 }
 
 // ── configure_mev() ──────────────────────────────────────────────────────────

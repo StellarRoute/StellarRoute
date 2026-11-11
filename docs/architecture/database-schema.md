@@ -444,9 +444,14 @@ Returns current database health metrics.
 
 ## Migration Files
 
+Indexer schema migrations live in `crates/indexer/migrations/` and are embedded in strict numeric order in `Database::migrate` (`crates/indexer/src/db/connection.rs`). Every `*.sql` file in `crates/indexer/migrations/` must use a unique numeric prefix and be registered in `MIGRATIONS` (enforced by unit tests):
+
 1. **0001_init.sql** - Core schema (assets, sdex_offers, ingestion_state)
 2. **0002_performance_indexes.sql** - Performance indexes, archival, health metrics
 3. **0003_trading_pairs_and_snapshots.sql** - Trading pairs and orderbook snapshots
+4. **0004_normalized_liquidity.sql** – **0011_trace_context_provenance.sql** - Unified SDEX/AMM liquidity surface, health scores, discovery cursors, asset metadata, and trace provenance
+5. **0012_contract_swap_activity.sql** – **0015_swap_prepared_quotes.sql** - Contract swap activity, AMM pools, native singleton constraint, and classic swap prepared quotes/audit tables
+6. **0016_notify_liquidity_update.sql** - Replaces `upsert_amm_pool_reserve` and `sync_normalized_liquidity_from_sdex` to emit `pg_notify('liquidity_update', 'amm:' || pool_address)` and `pg_notify('liquidity_update', 'sdex:' || offer_id)` for immediate API `GraphManager` wake-up
 
 **Run migrations:**
 

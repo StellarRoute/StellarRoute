@@ -35,6 +35,7 @@ pub struct Route {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SwapParams {
     pub route: Route,
     pub amount_in: i128,
@@ -211,12 +212,13 @@ pub struct PendingUpgrade {
     pub proposer: Address,
 }
 
-/// Commit-reveal swap intent.
-/// Stored in Instance storage.
+/// Commit-reveal swap intent with escrowed input asset.
+/// Stored in Persistent storage keyed by `(sender, commitment_hash)`.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct CommitmentData {
     pub sender: Address,
+    pub deposit_asset: Asset,
     pub deposit_amount: i128,
     pub commitment_hash: BytesN<32>,
     pub created_at: u64,
@@ -231,4 +233,5 @@ pub struct MevConfig {
     pub rate_limit_window_ledgers: u32,
     pub rate_limit_max_swaps: u32,
     pub commitment_required_above: i128,
+    pub min_reveal_delay_ledgers: u32,
 }

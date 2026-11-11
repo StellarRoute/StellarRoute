@@ -519,6 +519,18 @@ impl StellarRoute {
 
     // --- Commit-Reveal Pattern ---
 
+    /// Record a sender-scoped swap commitment in temporary storage.
+    ///
+    /// Storage & event note: commitments are keyed by `(sender, commitment_hash)`
+    /// (`StorageKey::Commitment(Address, BytesN<32>)`) so another address
+    /// submitting the same `commitment_hash` cannot overwrite or block the
+    /// original sender's reveal. Re-committing an unexpired `(sender, hash)`
+    /// entry fails with [`ContractError::CommitmentAlreadyExists`]. Both
+    /// `cmt_new` and `cmt_rvl` events already index `sender` in topic `[2]`
+    /// and publish `commitment_hash` in event data. Because commitments are
+    /// non-custodial temporary entries with TTL `rate_limit_window_ledgers`,
+    /// any pre-upgrade `Commitment(BytesN<32>)` entries expire naturally
+    /// without stranding funds.
     pub fn commit_swap(
         e: Env,
         sender: Address,
@@ -539,6 +551,11 @@ impl StellarRoute {
         let mev_config = storage::get_mev_config(&e).ok_or(ContractError::NotInitialized)?;
 
         let current_ledger = e.ledger().sequence();
+        if let Some(existing) = storage::get_commitment(&e, &sender, &commitment_hash) {
+            if u64::from(current_ledger) <= existing.expires_at {
+                return Err(ContractError::CommitmentAlreadyExists);
+            }
+        }
         let expires_at = current_ledger + mev_config.rate_limit_window_ledgers;
 
         let commitment = CommitmentData {
@@ -551,6 +568,7 @@ impl StellarRoute {
 
         storage::set_commitment(
             &e,
+            &sender,
             &commitment_hash,
             &commitment,
             mev_config.rate_limit_window_ledgers,
@@ -579,9 +597,9 @@ impl StellarRoute {
         payload.append(&salt_bytes);
         let computed_hash: BytesN<32> = e.crypto().sha256(&payload).into();
 
-        // Verify commitment exists
-        let commitment =
-            storage::get_commitment(&e, &computed_hash).ok_or(ContractError::CommitmentNotFound)?;
+        // Verify commitment exists for this (sender, commitment_hash)
+        let commitment = storage::get_commitment(&e, &sender, &computed_hash)
+            .ok_or(ContractError::CommitmentNotFound)?;
 
         // Verify sender matches
         if commitment.sender != sender {
@@ -594,7 +612,7 @@ impl StellarRoute {
         }
 
         // Remove commitment
-        storage::remove_commitment(&e, &computed_hash);
+        storage::remove_commitment(&e, &sender, &computed_hash);
 
         events::commitment_revealed(&e, sender.clone(), computed_hash);
 

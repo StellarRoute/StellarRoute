@@ -24,6 +24,10 @@ use crate::models::request::AssetPath;
 use crate::swap::route::ValidatedClassicRoute;
 use crate::swap::store::hash_xdr;
 
+#[path = "amount.rs"]
+pub mod amount;
+pub use amount::{format_stroops, parse_stroops, stroops_to_f64_lossy, AmountError};
+
 pub const TESTNET_PASSPHRASE: &str = "Test SDF Network ; September 2015";
 pub const PUBLIC_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";
 pub const DEFAULT_BASE_FEE: u32 = 100;
@@ -234,6 +238,18 @@ pub struct PrepareTxInput<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct PrepareTxStroopsInput<'a> {
+    pub sender: &'a str,
+    pub validated: &'a ValidatedClassicRoute,
+    pub send_amount: i64,
+    pub dest_min: i64,
+    pub sequence: i64,
+    pub timeout_secs: u64,
+    pub base_fee: u32,
+    pub network_passphrase: &'a str,
+}
+
+#[derive(Debug, Clone)]
 pub struct PreparedTransaction {
     pub xdr_envelope: String,
     pub execution_mode: ExecutionMode,
@@ -244,6 +260,9 @@ pub struct PreparedTransaction {
     pub network_passphrase: String,
 }
 
+/// First `f64` value above `i64::MAX` (`2^63`), since `i64::MAX as f64` rounds up to `2^63`.
+const F64_I64_EXCLUSIVE_UPPER_BOUND: f64 = 9_223_372_036_854_775_808.0;
+
 pub fn to_stroop_amount(amount: f64) -> Result<i64, TxBuildError> {
     if !amount.is_finite() || amount <= 0.0 {
         return Err(TxBuildError::Validation(
@@ -251,7 +270,7 @@ pub fn to_stroop_amount(amount: f64) -> Result<i64, TxBuildError> {
         ));
     }
     let scaled = (amount * 10_000_000.0).round();
-    if scaled > i64::MAX as f64 {
+    if !scaled.is_finite() || scaled <= 0.0 || scaled >= F64_I64_EXCLUSIVE_UPPER_BOUND {
         return Err(TxBuildError::Validation("amount too large".to_string()));
     }
     Ok(scaled as i64)
@@ -335,14 +354,51 @@ pub fn transaction_hash_hex(tx: &Transaction, passphrase: &str) -> Result<String
     Ok(hex::encode(transaction_hash(tx, passphrase)?))
 }
 
-/// Build an unsigned classic PathPaymentStrictSend envelope.
+/// Build an unsigned classic PathPaymentStrictSend envelope from float amounts.
 pub fn build_unsigned_swap_tx(
     input: PrepareTxInput<'_>,
 ) -> Result<PreparedTransaction, TxBuildError> {
-    let send_asset = asset_from_path(&input.validated.send_asset)?;
-    let dest_asset = asset_from_path(&input.validated.dest_asset)?;
     let send_amount = to_stroop_amount(input.amount)?;
     let dest_min = to_stroop_amount(input.min_output)?;
+    build_unsigned_swap_tx_stroops(PrepareTxStroopsInput {
+        sender: input.sender,
+        validated: input.validated,
+        send_amount,
+        dest_min,
+        sequence: input.sequence,
+        timeout_secs: input.timeout_secs,
+        base_fee: input.base_fee,
+        network_passphrase: input.network_passphrase,
+    })
+}
+
+/// Build an unsigned classic PathPaymentStrictSend envelope from exact `i64` stroops.
+pub fn build_unsigned_swap_tx_stroops(
+    input: PrepareTxStroopsInput<'_>,
+) -> Result<PreparedTransaction, TxBuildError> {
+    let now = Utc::now().timestamp().max(0) as u64;
+    build_unsigned_swap_tx_at(input, now)
+}
+
+fn build_unsigned_swap_tx_at(
+    input: PrepareTxStroopsInput<'_>,
+    now_unix: u64,
+) -> Result<PreparedTransaction, TxBuildError> {
+    if input.send_amount <= 0 {
+        return Err(TxBuildError::Validation(
+            "send_amount must be greater than zero".to_string(),
+        ));
+    }
+    if input.dest_min <= 0 {
+        return Err(TxBuildError::Validation(
+            "dest_min must be greater than zero".to_string(),
+        ));
+    }
+
+    let send_asset = asset_from_path(&input.validated.send_asset)?;
+    let dest_asset = asset_from_path(&input.validated.dest_asset)?;
+    let send_amount = input.send_amount;
+    let dest_min = input.dest_min;
 
     let mut path_assets = Vec::new();
     for a in &input.validated.path_assets {
@@ -354,8 +410,7 @@ pub fn build_unsigned_swap_tx(
 
     let source = muxed_account(input.sender)?;
     let source_sequence = input.sequence.saturating_add(1);
-    let now = Utc::now().timestamp().max(0) as u64;
-    let timebounds_max = now.saturating_add(input.timeout_secs);
+    let timebounds_max = now_unix.saturating_add(input.timeout_secs);
 
     let op = Operation {
         source_account: None,
@@ -724,5 +779,59 @@ mod tests {
             p == TESTNET_PASSPHRASE || p == PUBLIC_PASSPHRASE || !p.is_empty(),
             "passphrase must resolve"
         );
+    }
+
+    #[test]
+    fn unsigned_xdr_is_byte_identical_for_existing_swap_fixtures() {
+        let (_seed, sender) = test_keypair();
+        let validated = classic_route(&sender);
+        let fixed_now = 1_700_000_000u64;
+
+        for (amt_str, min_str, amt_f64, min_f64) in [
+            ("100", "99.5000000", 100.0, 99.5),
+            ("10", "1", 10.0, 1.0),
+            ("5.1234567", "0.5000001", 5.1234567, 0.5000001),
+        ] {
+            let legacy = build_unsigned_swap_tx_at(
+                PrepareTxStroopsInput {
+                    sender: &sender,
+                    validated: &validated,
+                    send_amount: to_stroop_amount(amt_f64).unwrap(),
+                    dest_min: to_stroop_amount(min_f64).unwrap(),
+                    sequence: 40,
+                    timeout_secs: 120,
+                    base_fee: DEFAULT_BASE_FEE,
+                    network_passphrase: TESTNET_PASSPHRASE,
+                },
+                fixed_now,
+            )
+            .unwrap();
+
+            let exact = build_unsigned_swap_tx_at(
+                PrepareTxStroopsInput {
+                    sender: &sender,
+                    validated: &validated,
+                    send_amount: parse_stroops(amt_str).unwrap(),
+                    dest_min: parse_stroops(min_str).unwrap(),
+                    sequence: 40,
+                    timeout_secs: 120,
+                    base_fee: DEFAULT_BASE_FEE,
+                    network_passphrase: TESTNET_PASSPHRASE,
+                },
+                fixed_now,
+            )
+            .unwrap();
+
+            assert_eq!(exact.xdr_envelope, legacy.xdr_envelope);
+            assert_eq!(exact.unsigned_xdr_hash, legacy.unsigned_xdr_hash);
+            assert_eq!(exact.tx_hash, legacy.tx_hash);
+        }
+    }
+
+    #[test]
+    fn to_stroop_amount_rejects_2_pow_63_saturation_boundary() {
+        // 922_337_203_685.4775808 * 1e7 == 2^63 == i64::MAX as f64
+        let at_2_pow_63 = (i64::MAX as f64) / 10_000_000.0;
+        assert!(to_stroop_amount(at_2_pow_63).is_err());
     }
 }

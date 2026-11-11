@@ -24,9 +24,10 @@ use crate::{
         hash_xdr, ClaimSubmitOutcome, PreparedSwapQuote, SubmissionStatus, SwapStoreError,
     },
     swap::tx::{
-        base_fee_from_env, build_unsigned_swap_tx, network_passphrase_from_env,
-        prepare_timeout_secs_from_env, validate_signed_against_prepared, EnvelopeValidationError,
-        ExecutionMode, PrepareTxInput, TxBuildError,
+        base_fee_from_env, build_unsigned_swap_tx_stroops, format_stroops,
+        network_passphrase_from_env, parse_stroops, prepare_timeout_secs_from_env,
+        stroops_to_f64_lossy, to_stroop_amount, validate_signed_against_prepared,
+        EnvelopeValidationError, ExecutionMode, PrepareTxStroopsInput, TxBuildError,
     },
     swap::venue::classify_venue,
 };
@@ -113,15 +114,9 @@ async fn prepare_swap_inner(
 ) -> Result<SwapPrepareResponse> {
     validate_stellar_account(&body.sender)?;
 
-    let amount: f64 = body
-        .amount
-        .parse()
-        .map_err(|_| ApiError::Validation("amount must be a valid number".to_string()))?;
-    if !amount.is_finite() || amount <= 0.0 {
-        return Err(ApiError::Validation(
-            "amount must be greater than zero".to_string(),
-        ));
-    }
+    let send_amount_stroops = parse_stroops(&body.amount)
+        .map_err(|e| ApiError::Validation(format!("amount invalid: {e}")))?;
+    let amount = stroops_to_f64_lossy(send_amount_stroops);
 
     let validated = validate_classic_route(&body.route)?;
     reject_paused_venues(state, &validated.hops).await?;
@@ -134,14 +129,22 @@ async fn prepare_swap_inner(
     }
 
     let priced = authoritative_price(state, &validated, amount).await?;
-    let client_min = match &body.min_output {
+    let client_min_stroops = match &body.min_output {
         Some(raw) => Some(
-            raw.parse::<f64>()
-                .map_err(|_| ApiError::Validation("min_output must be a valid number".into()))?,
+            parse_stroops(raw)
+                .map_err(|e| ApiError::Validation(format!("min_output invalid: {e}")))?,
         ),
         None => None,
     };
-    let min_output = resolve_min_output(priced.expected_output, slippage_bps, client_min)?;
+    let min_output = resolve_min_output(
+        priced.expected_output,
+        slippage_bps,
+        client_min_stroops.map(stroops_to_f64_lossy),
+    )?;
+    let dest_min_stroops = match client_min_stroops {
+        Some(exact_stroops) => exact_stroops,
+        None => to_stroop_amount(min_output).map_err(map_tx_build_error)?,
+    };
 
     let network_passphrase = network_passphrase_from_env();
     let base_fee = base_fee_from_env();
@@ -153,11 +156,11 @@ async fn prepare_swap_inner(
         .await
         .map_err(map_tx_build_error)?;
 
-    let built = build_unsigned_swap_tx(PrepareTxInput {
+    let built = build_unsigned_swap_tx_stroops(PrepareTxStroopsInput {
         sender: body.sender.trim(),
         validated: &validated,
-        amount,
-        min_output,
+        send_amount: send_amount_stroops,
+        dest_min: dest_min_stroops,
         sequence,
         timeout_secs,
         base_fee,
@@ -171,8 +174,8 @@ async fn prepare_swap_inner(
     let expires_at =
         Utc::now() + Duration::seconds(DEFAULT_PREPARE_TTL_SECS.min(timeout_secs as i64));
     let expected_output_str = format!("{:.7}", priced.expected_output);
-    let min_output_str = format!("{:.7}", min_output);
-    let amount_in_str = format!("{:.7}", amount);
+    let min_output_str = format_stroops(dest_min_stroops);
+    let amount_in_str = format_stroops(send_amount_stroops);
 
     let _ = state
         .swap_quote_store
@@ -1000,5 +1003,126 @@ mod tests {
         assert!(quote_timebounds_expired(&quote));
         quote.timebounds_max = Some(Utc::now().timestamp() + 60);
         assert!(!quote_timebounds_expired(&quote));
+    }
+
+    fn sample_prepare_request(
+        sender: &str,
+        issuer: &str,
+        amount: &str,
+        min_output: Option<&str>,
+    ) -> SwapPrepareRequest {
+        use crate::models::request::AssetPath;
+        use crate::routes::simulation_route::{RouteDryRunHop, RouteDryRunPath};
+
+        SwapPrepareRequest {
+            route: RouteDryRunPath {
+                hops: vec![RouteDryRunHop {
+                    from_asset: AssetPath {
+                        asset_code: "native".into(),
+                        asset_issuer: None,
+                    },
+                    to_asset: AssetPath {
+                        asset_code: "USDC".into(),
+                        asset_issuer: Some(issuer.to_string()),
+                    },
+                    source: "sdex".into(),
+                    fee_bps: Some(30),
+                    price: Some("0.12".into()),
+                    venue_ref: Some("sdex-venue".into()),
+                }],
+            },
+            amount: amount.to_string(),
+            sender: sender.to_string(),
+            slippage_bps: Some(50),
+            min_output: min_output.map(ToOwned::to_owned),
+        }
+    }
+
+    fn test_app_state() -> Arc<AppState> {
+        use crate::broadcast::MockTransactionBroadcaster;
+        use crate::state::DatabasePools;
+        use crate::swap::store::InMemorySwapQuoteStore;
+        use sqlx::postgres::PgPoolOptions;
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://localhost/unused")
+            .expect("lazy pool");
+        AppState::new(DatabasePools::new(pool, None))
+            .with_swap_services(
+                Arc::new(InMemorySwapQuoteStore::default()),
+                Arc::new(MockTransactionBroadcaster::succeed("")),
+            )
+            .into_arc()
+    }
+
+    #[tokio::test]
+    async fn prepare_rejects_exponents_nan_excess_decimals_and_overflow_with_validation_error() {
+        use axum::response::IntoResponse;
+
+        let (_seed, sender) = crate::swap::tx::test_keypair();
+        let state = test_app_state();
+
+        for invalid in [
+            "1e3",
+            "1E-4",
+            "NaN",
+            "inf",
+            "-1",
+            "0",
+            "0.00000001",
+            "922337203685.4775808",
+        ] {
+            let req = sample_prepare_request(&sender, &sender, invalid, None);
+            let err = prepare_swap_inner(&state, &req).await.unwrap_err();
+            assert!(
+                matches!(err, ApiError::Validation(_)),
+                "expected Validation error for amount='{invalid}', got {err:?}"
+            );
+            let resp = err.into_response();
+            let bytes = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
+            let body_json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(body_json["data"]["error"], "validation_error");
+
+            let req_min = sample_prepare_request(&sender, &sender, "100", Some(invalid));
+            let err_min = prepare_swap_inner(&state, &req_min).await.unwrap_err();
+            assert!(
+                matches!(err_min, ApiError::Validation(_)),
+                "expected Validation error for min_output='{invalid}', got {err_min:?}"
+            );
+            let resp_min = err_min.into_response();
+            let bytes_min = axum::body::to_bytes(resp_min.into_body(), 8192)
+                .await
+                .unwrap();
+            let body_min_json: serde_json::Value = serde_json::from_slice(&bytes_min).unwrap();
+            assert_eq!(body_min_json["data"]["error"], "validation_error");
+        }
+    }
+
+    #[tokio::test]
+    async fn prepare_preserves_exact_stroops_above_f64_mantissa_limit_in_xdr() {
+        use stellar_xdr::curr::{Limits, OperationBody, ReadXdr, TransactionEnvelope};
+
+        let (_seed, sender) = crate::swap::tx::test_keypair();
+        let state = test_app_state();
+
+        // 9_007_199_254_740_993 stroops = 2^53 + 1 (f64 rounded this down to ...992)
+        let exact_amount = "900719925.4740993";
+        let req = sample_prepare_request(&sender, &sender, exact_amount, Some(exact_amount));
+        let resp = prepare_swap_inner(&state, &req)
+            .await
+            .expect("prepare succeeds");
+        assert_eq!(resp.min_output.as_deref(), Some("900719925.4740993"));
+
+        let env = TransactionEnvelope::from_xdr_base64(&resp.xdr_envelope, Limits::none())
+            .expect("valid XDR");
+        let TransactionEnvelope::Tx(v1) = env else {
+            panic!("expected TxV1 envelope");
+        };
+        let OperationBody::PathPaymentStrictSend(op) = &v1.tx.operations[0].body else {
+            panic!("expected PathPaymentStrictSend");
+        };
+        assert_eq!(op.send_amount, 9_007_199_254_740_993);
+        assert_eq!(op.dest_min, 9_007_199_254_740_993);
     }
 }

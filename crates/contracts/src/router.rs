@@ -130,7 +130,9 @@ impl StellarRoute {
 
         let mut total_bps: u32 = 0;
         for recipient in config.recipients.iter() {
-            total_bps += recipient.share_bps;
+            total_bps = total_bps
+                .checked_add(recipient.share_bps)
+                .ok_or(ContractError::InvalidFeeConfig)?;
         }
         if total_bps != 10000 || config.recipients.len() > 5 {
             return Err(ContractError::InvalidFeeConfig);
@@ -145,56 +147,88 @@ impl StellarRoute {
 
     pub fn distribute_fees(e: Env, asset: crate::types::Asset) -> Result<(), ContractError> {
         let config = storage::get_fee_config(&e).ok_or(ContractError::NotInitialized)?;
-        Self::distribute_fees_internal(&e, &asset, &config);
-        Ok(())
+        Self::distribute_fees_internal(&e, &asset, &config)
     }
 
-    fn distribute_fees_internal(e: &Env, asset: &crate::types::Asset, config: &FeeConfig) {
+    fn distribute_fees_internal(
+        e: &Env,
+        asset: &crate::types::Asset,
+        config: &FeeConfig,
+    ) -> Result<(), ContractError> {
         let total_balance = storage::get_fee_balance(e, asset);
-        if total_balance == 0 {
-            return;
+        if total_balance <= 0 {
+            return Ok(());
         }
-
-        // Reset balance immediately
-        storage::set_fee_balance(e, asset, 0);
-
-        let mut remaining_dust = total_balance;
-        let mut treasury_idx = 0;
-        let mut found_treasury = false;
-
-        // Locate treasury for dust allocation
-        for (i, rec) in config.recipients.iter().enumerate() {
-            if rec.label == symbol_short!("treasury") {
-                treasury_idx = i;
-                found_treasury = true;
-                break;
-            }
+        if config.recipients.is_empty() {
+            return Err(ContractError::InvalidFeeConfig);
         }
 
         let num_recipients = config.recipients.len() as usize;
+        let mut treasury_idx: Option<usize> = None;
+        let mut has_burn_share = false;
+
+        // Locate treasury for dust allocation and native-burn fallback routing.
+        for (i, rec) in config.recipients.iter().enumerate() {
+            if treasury_idx.is_none() && rec.label == symbol_short!("treasury") {
+                treasury_idx = Some(i);
+            }
+            if rec.label == symbol_short!("burn") && rec.share_bps > 0 {
+                has_burn_share = true;
+            }
+        }
+
+        // Native XLM cannot be burned; ensure a configured sink (treasury recipient
+        // or router fee_to) exists before touching tracked fee balances.
+        let native_burn_sink = if matches!(asset, crate::types::Asset::Native) && has_burn_share {
+            let sink = treasury_idx
+                .and_then(|idx| config.recipients.get(idx as u32).map(|r| r.address))
+                .or_else(|| storage::get_fee_to_optional(e))
+                .ok_or(ContractError::InvalidFeeConfig)?;
+            Some(sink)
+        } else {
+            None
+        };
+
+        let dust_idx = treasury_idx.unwrap_or(num_recipients - 1);
+        let mut shares: Vec<i128> = Vec::new(e);
+        let mut allocated_non_dust: i128 = 0;
 
         for (i, rec) in config.recipients.iter().enumerate() {
-            let mut amount = (total_balance
-                .checked_mul(rec.share_bps as i128)
-                .unwrap_or(i128::MAX))
-            .checked_div(10000)
-            .unwrap_or(0);
-
-            // Add rounding dust to treasury or last recipient
-            if (found_treasury && i == treasury_idx) || (!found_treasury && i == num_recipients - 1)
-            {
-                amount = remaining_dust;
+            let share = total_balance
+                .checked_mul(i128::from(rec.share_bps))
+                .ok_or(ContractError::Overflow)?
+                .checked_div(10_000)
+                .ok_or(ContractError::Overflow)?;
+            if i != dust_idx {
+                allocated_non_dust = allocated_non_dust
+                    .checked_add(share)
+                    .ok_or(ContractError::Overflow)?;
             }
+            shares.push_back(share);
+        }
+
+        let dust_share = total_balance
+            .checked_sub(allocated_non_dust)
+            .ok_or(ContractError::Overflow)?;
+        if dust_share < 0 {
+            return Err(ContractError::InvalidFeeConfig);
+        }
+        shares.set(dust_idx as u32, dust_share);
+
+        // Reset tracked balance only after sink validation and checked share math succeed.
+        storage::set_fee_balance(e, asset, 0);
+
+        for (i, rec) in config.recipients.iter().enumerate() {
+            let amount = shares.get(i as u32).unwrap_or(0);
 
             if amount > 0 {
-                remaining_dust = remaining_dust.saturating_sub(amount);
-
                 if rec.label == symbol_short!("burn") {
                     match asset {
                         crate::types::Asset::Soroban(ref token_addr) => {
                             let client = soroban_sdk::token::Client::new(e, token_addr);
                             client.burn(&e.current_contract_address(), &amount);
                             events::fees_burned(e, asset.clone(), amount);
+                            storage::add_total_burned(e, asset, amount);
                         }
                         crate::types::Asset::Issued(ref issuer, _) => {
                             storage::transfer_asset(
@@ -205,10 +239,21 @@ impl StellarRoute {
                                 amount,
                             );
                             events::fees_burned(e, asset.clone(), amount);
+                            storage::add_total_burned(e, asset, amount);
                         }
-                        crate::types::Asset::Native => { /* XLM has no standard burn, skip */ }
+                        crate::types::Asset::Native => {
+                            let sink = native_burn_sink
+                                .as_ref()
+                                .ok_or(ContractError::InvalidFeeConfig)?;
+                            storage::transfer_asset(
+                                e,
+                                asset,
+                                &e.current_contract_address(),
+                                sink,
+                                amount,
+                            );
+                        }
                     }
-                    storage::add_total_burned(e, asset, amount);
                 } else {
                     storage::transfer_asset(
                         e,
@@ -225,12 +270,13 @@ impl StellarRoute {
             e,
             asset,
             DistributionRecord {
-                timestamp: e.ledger().sequence() as u64,
+                timestamp: e.ledger().timestamp(),
                 total_distributed: total_balance,
             },
         );
 
         events::fees_distributed(e, asset.clone(), total_balance);
+        Ok(())
     }
 
     pub fn register_pool(e: Env, pool: Address) -> Result<(), ContractError> {
@@ -245,7 +291,7 @@ impl StellarRoute {
 
         let key = StorageKey::SupportedPool(pool.clone());
         if e.storage().persistent().has(&key) {
-            return Err(ContractError::PoolNotSupported);
+            return Err(ContractError::PoolAlreadyRegistered);
         }
 
         e.storage().persistent().set(&key, &true);
@@ -984,7 +1030,7 @@ impl StellarRoute {
                 if config.auto_distribute {
                     let current_balance = storage::get_fee_balance(e, &last_hop.destination);
                     if current_balance >= config.min_distribution {
-                        Self::distribute_fees_internal(e, &last_hop.destination, &config);
+                        Self::distribute_fees_internal(e, &last_hop.destination, &config)?;
                     }
                 }
             }

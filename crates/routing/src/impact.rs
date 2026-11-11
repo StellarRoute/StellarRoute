@@ -49,12 +49,18 @@ impl OrderbookImpactCalculator {
             }
 
             let fill_amount = remaining.min(*available_e7);
-            let cost = (fill_amount * price_e7) / SCALE_1E7;
+            let cost = fill_amount
+                .checked_mul(*price_e7)
+                .ok_or(RoutingError::Overflow)?
+                .checked_div(SCALE_1E7)
+                .ok_or(RoutingError::Overflow)?;
 
             total_cost = total_cost.checked_add(cost).ok_or(RoutingError::Overflow)?;
             partial_fills.push((fill_amount, *price_e7));
 
-            remaining -= fill_amount;
+            remaining = remaining
+                .checked_sub(fill_amount)
+                .ok_or(RoutingError::Overflow)?;
         }
 
         if remaining > 0 {
@@ -65,19 +71,31 @@ impl OrderbookImpactCalculator {
         }
 
         // Effective price
-        let effective_price = (total_cost * SCALE_1E7) / amount_in;
+        let effective_price = total_cost
+            .checked_mul(SCALE_1E7)
+            .ok_or(RoutingError::Overflow)?
+            .checked_div(amount_in)
+            .ok_or(RoutingError::Overflow)?;
 
         // VWAP price (first level as baseline)
         let baseline_price = orderbook_levels[0].0;
 
         // Impact in bps
         let impact_bps = if effective_price > baseline_price {
-            ((effective_price - baseline_price) * BASIS_POINTS) / baseline_price
+            let diff = effective_price
+                .checked_sub(baseline_price)
+                .ok_or(RoutingError::Overflow)?;
+            let raw = diff
+                .checked_mul(BASIS_POINTS)
+                .ok_or(RoutingError::Overflow)?
+                .checked_div(baseline_price)
+                .ok_or(RoutingError::Overflow)?;
+            u32::try_from(raw).map_err(|_| RoutingError::Overflow)?
         } else {
             0
         };
 
-        Ok((impact_bps as u32, effective_price, partial_fills))
+        Ok((impact_bps, effective_price, partial_fills))
     }
 
     /// Handle thin and empty orderbooks
@@ -118,8 +136,14 @@ impl AmmQuoteCalculator {
         }
 
         // Apply fee: amount_in_with_fee = amount_in * (1 - fee_bps / 10000)
-        let fee_multiplier = 10_000i128 - i128::from(fee_bps);
-        let amount_in_with_fee = (amount_in * fee_multiplier) / 10_000;
+        let fee_multiplier = BASIS_POINTS
+            .checked_sub(i128::from(fee_bps))
+            .ok_or(RoutingError::Overflow)?;
+        let amount_in_with_fee = amount_in
+            .checked_mul(fee_multiplier)
+            .ok_or(RoutingError::Overflow)?
+            .checked_div(BASIS_POINTS)
+            .ok_or(RoutingError::Overflow)?;
 
         // Constant product: x * y = k
         // output = (amount_in_with_fee * reserve_out) / (reserve_in + amount_in_with_fee)
@@ -137,7 +161,9 @@ impl AmmQuoteCalculator {
             ));
         }
 
-        let output = numerator / denominator;
+        let output = numerator
+            .checked_div(denominator)
+            .ok_or(RoutingError::Overflow)?;
 
         if output <= 0 {
             return Err(RoutingError::InsufficientLiquidity(
@@ -145,21 +171,10 @@ impl AmmQuoteCalculator {
             ));
         }
 
-        // Price impact calculation
-        // Spot price before: p_before = reserve_out / reserve_in
-        // Execution price: p_after = amount_in / output
-        // Impact = (p_after - p_before) / p_before * 10000 bps
+        let impact_bps =
+            Self::compute_price_impact_bps(amount_in, output, reserve_in, reserve_out)?;
 
-        let price_before = (reserve_out * SCALE_1E7) / reserve_in;
-        let price_after = (amount_in * SCALE_1E7) / output;
-
-        let impact_bps = if price_after > price_before {
-            ((price_after - price_before) * BASIS_POINTS) / price_before
-        } else {
-            0
-        };
-
-        Ok((output, impact_bps as u32))
+        Ok((output, impact_bps))
     }
 
     /// Calculate swap input needed for exact output (reverse quote)
@@ -197,29 +212,69 @@ impl AmmQuoteCalculator {
             ));
         }
 
-        let input_before_fee = (numerator / denominator)
+        let input_before_fee = numerator
+            .checked_div(denominator)
+            .ok_or(RoutingError::Overflow)?
             .checked_add(1) // Round up
             .ok_or(RoutingError::Overflow)?;
 
         // Account for fee
-        let fee_divisor = 10_000i128 - i128::from(fee_bps);
+        let fee_divisor = BASIS_POINTS
+            .checked_sub(i128::from(fee_bps))
+            .ok_or(RoutingError::Overflow)?;
         if fee_divisor <= 0 {
             return Err(RoutingError::InvalidAmount("invalid fee".to_string()));
         }
 
-        let input_required = (input_before_fee * 10_000) / fee_divisor + 1; // Round up
+        let input_required = input_before_fee
+            .checked_mul(BASIS_POINTS)
+            .ok_or(RoutingError::Overflow)?
+            .checked_div(fee_divisor)
+            .ok_or(RoutingError::Overflow)?
+            .checked_add(1) // Round up
+            .ok_or(RoutingError::Overflow)?;
 
-        // Impact calculation
-        let price_before = (reserve_out * SCALE_1E7) / reserve_in;
-        let price_after = (input_required * SCALE_1E7) / amount_out;
+        let impact_bps =
+            Self::compute_price_impact_bps(input_required, amount_out, reserve_in, reserve_out)?;
 
-        let impact_bps = if price_after > price_before {
-            ((price_after - price_before) * BASIS_POINTS) / price_before
-        } else {
-            0
-        };
+        Ok((input_required, impact_bps))
+    }
 
-        Ok((input_required, impact_bps as u32))
+    /// Compute price impact in basis points using consistent output-per-input units:
+    /// `(spot_out_per_in - exec_out_per_in) / spot_out_per_in`, clamped to `[0, 10_000]`.
+    fn compute_price_impact_bps(
+        amount_in: i128,
+        amount_out: i128,
+        reserve_in: i128,
+        reserve_out: i128,
+    ) -> Result<u32> {
+        let spot_notional = amount_in
+            .checked_mul(reserve_out)
+            .ok_or(RoutingError::Overflow)?;
+        let exec_notional = amount_out
+            .checked_mul(reserve_in)
+            .ok_or(RoutingError::Overflow)?;
+
+        if spot_notional <= 0 {
+            return Err(RoutingError::InvalidAmount(
+                "invalid spot notional".to_string(),
+            ));
+        }
+
+        if exec_notional >= spot_notional {
+            return Ok(0);
+        }
+
+        let shortfall = spot_notional
+            .checked_sub(exec_notional)
+            .ok_or(RoutingError::Overflow)?;
+        let raw_bps = shortfall
+            .checked_mul(BASIS_POINTS)
+            .ok_or(RoutingError::Overflow)?
+            .checked_div(spot_notional)
+            .ok_or(RoutingError::Overflow)?;
+
+        Ok(raw_bps.clamp(0, BASIS_POINTS) as u32)
     }
 
     /// Detect edge cases: large/small trades

@@ -183,7 +183,8 @@ pub async fn check_data_staleness(
     .bind(format!("{} seconds", thresholds.staleness_threshold_secs))
     .fetch_all(db)
     .await
-    .unwrap_or_default();
+    // A failed query must not read as "nothing is stale".
+    .map_err(IndexerError::DatabaseQuery)?;
 
     for row in stale_offers {
         let offer_id: i64 = row.get("offer_id");
@@ -220,7 +221,7 @@ pub async fn check_data_staleness(
     .bind(format!("{} seconds", thresholds.staleness_threshold_secs))
     .fetch_all(db)
     .await
-    .unwrap_or_default();
+    .map_err(IndexerError::DatabaseQuery)?;
 
     for row in stale_pools {
         let pool_address: String = row.get("pool_address");
@@ -303,6 +304,37 @@ mod tests {
     fn test_drift_severity_ordering() {
         assert!(DriftSeverity::Info < DriftSeverity::Warning);
         assert!(DriftSeverity::Warning < DriftSeverity::Critical);
+    }
+
+    /// A pool whose every connection attempt fails: nothing listens on
+    /// port 1, so any query returns an error instead of rows.
+    fn unreachable_pool() -> PgPool {
+        sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_secs(2))
+            .connect_lazy("postgres://stellarroute@127.0.0.1:1/unreachable")
+            .expect("lazy pool")
+    }
+
+    fn thresholds() -> CheckThresholds {
+        CheckThresholds {
+            staleness_threshold_secs: 300,
+            price_divergence_pct: 2.5,
+            liquidity_change_pct: 15.0,
+            ledger_lag_threshold: 100,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_data_staleness_reports_a_failed_query() {
+        let result = check_data_staleness(&unreachable_pool(), &thresholds()).await;
+        match result {
+            Err(IndexerError::DatabaseQuery(_)) => {}
+            Err(other) => panic!("expected a database query error, got {other:?}"),
+            Ok(results) => panic!(
+                "a failed query must not look healthy, got {} results",
+                results.len()
+            ),
+        }
     }
 
     #[test]

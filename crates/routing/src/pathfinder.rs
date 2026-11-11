@@ -252,10 +252,6 @@ impl Pathfinder {
         queue.push_back((from.to_string(), Vec::new(), initial_visited, amount_in));
 
         while let Some((current, path_hops, visited, estimated_output)) = queue.pop_front() {
-            if path_hops.len() >= max_hops {
-                continue;
-            }
-
             if current == to {
                 paths.push(SwapPath {
                     hops: path_hops.clone(),
@@ -264,8 +260,17 @@ impl Pathfinder {
                 continue;
             }
 
+            if path_hops.len() >= max_hops {
+                continue;
+            }
+
             if let Some(neighbors) = graph.get(&current) {
+                let at_last_allowed_hop = path_hops.len() + 1 >= max_hops;
                 for edge in neighbors {
+                    if at_last_allowed_hop && edge.to != to {
+                        continue;
+                    }
+
                     if visited.contains(&edge.to) {
                         continue;
                     }
@@ -450,5 +455,78 @@ mod tests {
 
         let result = pathfinder.find_paths("native", "USDC:issuer", &edges, -1_000_000, &policy);
         assert!(result.is_err());
+    }
+
+    fn chain_edge(from: &str, to: &str, idx: usize) -> LiquidityEdge {
+        LiquidityEdge {
+            from: from.to_string(),
+            to: to.to_string(),
+            venue_type: "sdex".to_string(),
+            venue_ref: format!("sdex:{idx}"),
+            liquidity: 10_000_000,
+            price: 1.0,
+            fee_bps: 0,
+            provider: None,
+            bridge: None,
+        }
+    }
+
+    #[test]
+    fn test_direct_route_found_with_max_hops_one() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy().with_max_hops(1);
+        let edges = vec![chain_edge("A", "B", 1)];
+
+        let paths = pathfinder
+            .find_paths("A", "B", &edges, 1_000_000, &policy)
+            .expect("direct 1-hop route must be found when max_hops = 1");
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].hops.len(), 1);
+        assert_eq!(paths[0].hops[0].source_asset, "A");
+        assert_eq!(paths[0].hops[0].destination_asset, "B");
+    }
+
+    #[test]
+    fn test_exact_max_hops_returned_and_longer_rejected() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let edges = vec![
+            chain_edge("A", "B", 1),
+            chain_edge("B", "C", 2),
+            chain_edge("C", "D", 3),
+            chain_edge("D", "E", 4),
+            chain_edge("E", "F", 5),
+        ];
+
+        for max_hops in 1..=4 {
+            let policy = test_policy().with_max_hops(max_hops);
+            let targets = ["B", "C", "D", "E", "F"];
+            let exact_target = targets[max_hops - 1];
+            let too_far_target = targets[max_hops];
+
+            let found = pathfinder
+                .find_paths("A", exact_target, &edges, 1_000_000, &policy)
+                .unwrap_or_else(|e| {
+                    panic!("expected {max_hops}-hop path to {exact_target} at max_hops={max_hops}, got {e:?}")
+                });
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].hops.len(), max_hops);
+
+            let rejected = pathfinder.find_paths("A", too_far_target, &edges, 1_000_000, &policy);
+            assert!(
+                matches!(rejected, Err(RoutingError::NoRoute(_, _))),
+                "expected ({max_hops}+1)-hop path to {too_far_target} to be rejected at max_hops={max_hops}, got {rejected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_max_hops_zero_returns_no_route() {
+        let pathfinder = Pathfinder::new(PathfinderConfig::default());
+        let policy = test_policy().with_max_hops(0);
+        let edges = vec![chain_edge("A", "B", 1)];
+
+        let result = pathfinder.find_paths("A", "B", &edges, 1_000_000, &policy);
+        assert!(matches!(result, Err(RoutingError::NoRoute(_, _))));
     }
 }

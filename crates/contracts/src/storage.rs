@@ -26,9 +26,9 @@ pub enum StorageKey {
     PendingUpgradeKey,
     TokenCount,
     MevConfig,
-    // ── Temporary (auto-expiring) ──────────────────────────────────────
+    // ── Temporary / Persistent MEV keys ────────────────────────────────
     PendingUpgrade,
-    Commitment(BytesN<32>),
+    Commitment(Address, BytesN<32>),
     AccountSwapCount(Address),
     AccountSwapWindowStart(Address),
     Whitelisted(Address),
@@ -65,6 +65,10 @@ pub const VOLUME_TTL_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
 /// Persistent swap nonce: extend +30 days, threshold at 25% (~7 days)
 pub const NONCE_TTL_EXTEND_TO: u32 = 30 * DAY_IN_LEDGERS;
 pub const NONCE_TTL_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
+
+/// Persistent commitment escrow records: extend >= +30 days so expired deposits remain reclaimable
+pub const COMMITMENT_TTL_EXTEND_TO: u32 = 30 * DAY_IN_LEDGERS;
+pub const COMMITMENT_TTL_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
 
 /// Temporary storage TTLs
 pub const PENDING_UPGRADE_TTL: u32 = 6 * 720; // ~6 hours
@@ -409,24 +413,41 @@ pub fn set_mev_config(e: &Env, config: &MevConfig) {
     e.storage().instance().set(&StorageKey::MevConfig, config);
 }
 
-// --- Commitment storage (Temporary) ---
+// --- Commitment storage (Persistent so escrowed deposits never auto-evict before reclaim) ---
 
-pub fn get_commitment(e: &Env, hash: &BytesN<32>) -> Option<CommitmentData> {
-    let key = StorageKey::Commitment(hash.clone());
-    e.storage().temporary().get(&key)
+pub fn has_commitment(e: &Env, sender: &Address, hash: &BytesN<32>) -> bool {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
+    e.storage().persistent().has(&key)
 }
 
-pub fn set_commitment(e: &Env, hash: &BytesN<32>, data: &CommitmentData, ttl_ledgers: u32) {
-    let key = StorageKey::Commitment(hash.clone());
-    e.storage().temporary().set(&key, data);
+pub fn get_commitment(e: &Env, sender: &Address, hash: &BytesN<32>) -> Option<CommitmentData> {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
+    let val = e.storage().persistent().get(&key);
+    if val.is_some() {
+        extend_persistent_ttl(e, &key, COMMITMENT_TTL_THRESHOLD, COMMITMENT_TTL_EXTEND_TO);
+    }
+    val
+}
+
+pub fn set_commitment(
+    e: &Env,
+    sender: &Address,
+    hash: &BytesN<32>,
+    data: &CommitmentData,
+    ttl_ledgers: u32,
+) {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
+    let extend_to = ttl_ledgers.max(COMMITMENT_TTL_EXTEND_TO);
+    let threshold = COMMITMENT_TTL_THRESHOLD.min(extend_to);
+    e.storage().persistent().set(&key, data);
     e.storage()
-        .temporary()
-        .extend_ttl(&key, ttl_ledgers, ttl_ledgers);
+        .persistent()
+        .extend_ttl(&key, threshold, extend_to);
 }
 
-pub fn remove_commitment(e: &Env, hash: &BytesN<32>) {
-    let key = StorageKey::Commitment(hash.clone());
-    e.storage().temporary().remove(&key);
+pub fn remove_commitment(e: &Env, sender: &Address, hash: &BytesN<32>) {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
+    e.storage().persistent().remove(&key);
 }
 
 // --- Rate limiting (Temporary) ---

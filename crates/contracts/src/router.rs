@@ -13,7 +13,8 @@ use crate::types::{
 };
 use crate::{governance, tokens, upgrade};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Vec,
+    contract, contractimpl, contracttype, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env,
+    Vec,
 };
 
 const MAX_HOPS: u32 = 4;
@@ -489,6 +490,11 @@ impl StellarRoute {
         if config.max_execution_spread_bps > 10_000 {
             return Err(ContractError::InvalidAmount);
         }
+        if config.min_reveal_delay_ledgers == 0
+            || config.min_reveal_delay_ledgers > config.rate_limit_window_ledgers
+        {
+            return Err(ContractError::InvalidAmount);
+        }
         storage::set_mev_config(&e, &config);
         extend_instance_ttl(&e);
         Ok(())
@@ -519,10 +525,22 @@ impl StellarRoute {
 
     // --- Commit-Reveal Pattern ---
 
+    /// Compute the canonical commitment hash over `(sender, params, salt)` using
+    /// Soroban `ScVal` XDR serialization: `SHA-256(XDR(sender) || XDR(params) || XDR(salt))`.
+    pub fn compute_commitment_hash(
+        e: Env,
+        sender: Address,
+        params: SwapParams,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        Self::commitment_hash_internal(&e, &sender, &params, &salt)
+    }
+
     pub fn commit_swap(
         e: Env,
         sender: Address,
         commitment_hash: BytesN<32>,
+        deposit_asset: crate::types::Asset,
         deposit_amount: i128,
     ) -> Result<(), ContractError> {
         sender.require_auth();
@@ -535,22 +553,38 @@ impl StellarRoute {
         if commitment_hash == BytesN::from_array(&e, &[0u8; 32]) {
             return Err(ContractError::InvalidAmount);
         }
+        // Enforce token allowlist on escrowed deposit when allowlist is active.
+        if storage::get_token_count(&e) > 0 && !storage::is_token_allowed(&e, &deposit_asset) {
+            return Err(ContractError::TokenNotAllowed);
+        }
 
         let mev_config = storage::get_mev_config(&e).ok_or(ContractError::NotInitialized)?;
 
-        let current_ledger = e.ledger().sequence();
-        let expires_at = current_ledger + mev_config.rate_limit_window_ledgers;
+        if storage::has_commitment(&e, &sender, &commitment_hash) {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        // Escrow the input deposit into the router contract.
+        let router_addr = e.current_contract_address();
+        transfer_asset(&e, &deposit_asset, &sender, &router_addr, deposit_amount);
+
+        let current_ledger = u64::from(e.ledger().sequence());
+        let expires_at = current_ledger
+            .checked_add(u64::from(mev_config.rate_limit_window_ledgers))
+            .ok_or(ContractError::Overflow)?;
 
         let commitment = CommitmentData {
             sender: sender.clone(),
+            deposit_asset,
             deposit_amount,
             commitment_hash: commitment_hash.clone(),
-            created_at: u64::from(current_ledger),
-            expires_at: u64::from(expires_at),
+            created_at: current_ledger,
+            expires_at,
         };
 
         storage::set_commitment(
             &e,
+            &sender,
             &commitment_hash,
             &commitment,
             mev_config.rate_limit_window_ledgers,
@@ -569,37 +603,96 @@ impl StellarRoute {
     ) -> Result<SwapResult, ContractError> {
         sender.require_auth();
         StellarRoute::require_not_paused(&e)?;
+        tokens::validate_route_assets(&e, &params.route)?;
 
-        // Recompute hash from params + salt
-        let mut payload = Bytes::new(&e);
-        payload.append(&Bytes::from_slice(&e, &params.amount_in.to_be_bytes()));
-        payload.append(&Bytes::from_slice(&e, &params.min_amount_out.to_be_bytes()));
-        payload.append(&Bytes::from_slice(&e, &params.deadline.to_be_bytes()));
-        let salt_bytes: Bytes = salt.into();
-        payload.append(&salt_bytes);
-        let computed_hash: BytesN<32> = e.crypto().sha256(&payload).into();
+        let mev_config = storage::get_mev_config(&e).ok_or(ContractError::NotInitialized)?;
 
-        // Verify commitment exists
-        let commitment =
-            storage::get_commitment(&e, &computed_hash).ok_or(ContractError::CommitmentNotFound)?;
+        // Recompute canonical XDR hash over (sender, full SwapParams, salt)
+        let computed_hash = Self::commitment_hash_internal(&e, &sender, &params, &salt);
+
+        // Verify commitment exists for this sender
+        let commitment = storage::get_commitment(&e, &sender, &computed_hash)
+            .ok_or(ContractError::CommitmentNotFound)?;
 
         // Verify sender matches
         if commitment.sender != sender {
             return Err(ContractError::InvalidReveal);
         }
 
+        let current_ledger = u64::from(e.ledger().sequence());
+        let earliest_reveal = commitment
+            .created_at
+            .checked_add(u64::from(mev_config.min_reveal_delay_ledgers))
+            .ok_or(ContractError::Overflow)?;
+
+        // Enforce minimum reveal delay so commit and reveal cannot land in the same ledger
+        if current_ledger < earliest_reveal {
+            return Err(ContractError::ExecutionTooEarly);
+        }
+
         // Verify not expired
-        if u64::from(e.ledger().sequence()) > commitment.expires_at {
+        if current_ledger > commitment.expires_at {
             return Err(ContractError::CommitmentExpired);
         }
 
-        // Remove commitment
-        storage::remove_commitment(&e, &computed_hash);
+        // Bind escrowed deposit asset and amount to the revealed swap input
+        let first_hop = params
+            .route
+            .hops
+            .get(0)
+            .ok_or(ContractError::InvalidRoute)?;
+        if first_hop.source != commitment.deposit_asset
+            || params.amount_in != commitment.deposit_amount
+        {
+            return Err(ContractError::InvalidReveal);
+        }
+
+        // Remove commitment prior to swap execution (atomic rollback on failure)
+        storage::remove_commitment(&e, &sender, &computed_hash);
 
         events::commitment_revealed(&e, sender.clone(), computed_hash);
 
-        // Execute the swap using the internal logic
-        Self::execute_swap_internal(&e, &sender, &params)
+        // Execute the swap funded directly by the router's escrowed deposit
+        let escrow_source = e.current_contract_address();
+        Self::execute_swap_internal_from(&e, &sender, &escrow_source, &params)
+    }
+
+    /// Refund an expired commitment's escrowed deposit back to `sender`.
+    ///
+    /// Intentionally permitted while the router is paused so users can always
+    /// recover expired deposits during an emergency pause.
+    pub fn reclaim_commitment(
+        e: Env,
+        sender: Address,
+        commitment_hash: BytesN<32>,
+    ) -> Result<i128, ContractError> {
+        sender.require_auth();
+
+        let commitment = storage::get_commitment(&e, &sender, &commitment_hash)
+            .ok_or(ContractError::CommitmentNotFound)?;
+
+        if commitment.sender != sender {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let current_ledger = u64::from(e.ledger().sequence());
+        if current_ledger <= commitment.expires_at {
+            return Err(ContractError::ExecutionTooEarly);
+        }
+
+        storage::remove_commitment(&e, &sender, &commitment_hash);
+
+        let router_addr = e.current_contract_address();
+        transfer_asset(
+            &e,
+            &commitment.deposit_asset,
+            &router_addr,
+            &sender,
+            commitment.deposit_amount,
+        );
+
+        extend_instance_ttl(&e);
+        Ok(commitment.deposit_amount)
     }
 
     // --- Core operations ---
@@ -755,9 +848,31 @@ impl StellarRoute {
 
     // --- Internal swap execution (shared by execute_swap and reveal_and_execute) ---
 
+    fn commitment_hash_internal(
+        e: &Env,
+        sender: &Address,
+        params: &SwapParams,
+        salt: &BytesN<32>,
+    ) -> BytesN<32> {
+        let mut preimage = Bytes::new(e);
+        preimage.append(&sender.clone().to_xdr(e));
+        preimage.append(&params.clone().to_xdr(e));
+        preimage.append(&salt.clone().to_xdr(e));
+        e.crypto().sha256(&preimage).into()
+    }
+
     fn execute_swap_internal(
         e: &Env,
         sender: &Address,
+        params: &SwapParams,
+    ) -> Result<SwapResult, ContractError> {
+        Self::execute_swap_internal_from(e, sender, sender, params)
+    }
+
+    fn execute_swap_internal_from(
+        e: &Env,
+        sender: &Address,
+        input_source: &Address,
         params: &SwapParams,
     ) -> Result<SwapResult, ContractError> {
         if params.amount_in <= 0 {
@@ -862,7 +977,7 @@ impl StellarRoute {
         transfer_asset(
             e,
             &first_hop.source,
-            sender,
+            input_source,
             &first_hop.pool,
             params.amount_in,
         );

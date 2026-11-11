@@ -257,14 +257,16 @@ assert_eq!(client.get_total_swap_volume(), vol_before);
 
 The harness covers three MEV protection modes, enabled via `client.configure_mev(&mev_config)`.
 
-**Commit-reveal**
+**Commit-reveal (with deposit escrow)**
 
-Swaps where `amount_in >= commitment_required_above` (set to `100_000` in harness tests) require a prior commitment. Without one, execution returns `ContractError::CommitmentRequired`. The full flow is:
+Swaps where `amount_in >= commitment_required_above` (set to `100_000` in harness tests) require a prior commitment. Without one, execution returns `ContractError::CommitmentRequired`. See [`mev-commit-reveal.md`](./mev-commit-reveal.md) for the exact canonical XDR hash pre-image and upgrade/migration notes. The full flow is:
 
-1. Call `client.commit_swap(&sender, &commitment_hash, &amount_in)` — submit the hash of `(amount_in, min_out, deadline, salt)`.
-2. Call `client.execute_swap` (or the `execute` alias) with the matching parameters — the contract verifies the hash before executing.
+1. Compute `commitment_hash = SHA-256(sender.to_xdr(&env) || params.to_xdr(&env) || salt.to_xdr(&env))` (or call `client.compute_commitment_hash(&sender, &params, &salt)`).
+2. Call `client.commit_swap(&sender, &commitment_hash, &deposit_asset, &deposit_amount)` — escrows `deposit_amount` of `deposit_asset` into the router contract and records the commitment in persistent storage keyed by `(sender, commitment_hash)`.
+3. Wait at least `min_reveal_delay_ledgers` ledgers, then call `client.reveal_and_execute(&sender, &params, &salt)` — the contract verifies the canonical XDR hash, reveal delay, expiry, and `first_hop.source == deposit_asset && params.amount_in == deposit_amount`, and funds the swap directly from the escrowed balance.
+4. If a commitment expires unrevealed (`current_ledger > expires_at`), call `client.reclaim_commitment(&sender, &commitment_hash)` to refund the escrowed `deposit_amount` back to `sender`.
 
-`ContractError::ExecutionTooEarly` is returned when execution is attempted before the commit window opens.
+`ContractError::ExecutionTooEarly` is returned when `reveal_and_execute` is attempted before `created_at + min_reveal_delay_ledgers`, when `not_before > current_ledger`, or when `reclaim_commitment` is called before `expires_at`.
 
 **Rate limiting**
 

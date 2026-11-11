@@ -165,6 +165,7 @@ mod tests {
             excluded_routes: vec![],
             active_scorer_name: "default".to_string(),
             flagged_venues: vec![],
+            non_finite_scores_dropped: 0,
         }
     }
 

@@ -171,6 +171,9 @@ pub struct OptimizerDiagnostics {
     /// Venues flagged with anomalies but still included
     #[serde(default)]
     pub flagged_venues: Vec<crate::health::anomaly::AnomalyResult>,
+    /// Candidate routes dropped because their score was NaN or infinite
+    #[serde(default)]
+    pub non_finite_scores_dropped: usize,
 }
 
 /// Hybrid route optimizer with configurable policies
@@ -384,6 +387,18 @@ impl HybridOptimizer {
             scored_paths.push((path.clone(), metrics));
         }
 
+        // A NaN score would make the comparison below meaningless (and used to
+        // panic via `partial_cmp(..).unwrap()`), so drop non-finite scores first.
+        let candidates_before = scored_paths.len();
+        scored_paths.retain(|(_, metrics)| metrics.score.is_finite());
+        let non_finite_scores_dropped = candidates_before - scored_paths.len();
+        if non_finite_scores_dropped > 0 {
+            tracing::warn!(
+                dropped = non_finite_scores_dropped,
+                "dropped candidate routes with non-finite scores"
+            );
+        }
+
         if scored_paths.is_empty() {
             return Err(RoutingError::NoRoute(
                 "".to_string(),
@@ -391,7 +406,7 @@ impl HybridOptimizer {
             ));
         }
 
-        scored_paths.sort_by(|a, b| b.1.score.partial_cmp(&a.1.score).unwrap());
+        scored_paths.sort_by(|a, b| b.1.score.total_cmp(&a.1.score));
 
         let (selected_path, selected_metrics) = scored_paths[0].clone();
         let alternatives: Vec<(SwapPath, RouteMetrics)> =
@@ -412,6 +427,7 @@ impl HybridOptimizer {
             excluded_routes,
             active_scorer_name: self.scorer_registry.active_scorer_name().to_string(),
             flagged_venues: vec![],
+            non_finite_scores_dropped,
         })
     }
 
@@ -641,6 +657,59 @@ mod tests {
         assert!(result.is_ok());
         let diag = result.unwrap();
         assert_eq!(diag.active_scorer_name, "default");
+    }
+
+    #[test]
+    fn test_nan_score_is_dropped_instead_of_panicking() {
+        use crate::pathfinder::LiquidityEdge;
+        use crate::policy::RoutingPolicy;
+        use crate::scorer::{RouteScorer, ScorerInput, ScorerOutput};
+
+        // Scores the orderbook route (0.2% fee -> 998_000 out) as NaN and
+        // every other route as 0.5.
+        struct NanForOrderbook;
+        impl RouteScorer for NanForOrderbook {
+            fn score(&self, input: &ScorerInput) -> ScorerOutput {
+                let score = if input.output_amount == 998_000 {
+                    f64::NAN
+                } else {
+                    0.5
+                };
+                ScorerOutput {
+                    score,
+                    diagnostics: None,
+                }
+            }
+        }
+
+        let mut registry = ScorerRegistry::new();
+        registry
+            .register("nan_for_orderbook", Box::new(NanForOrderbook))
+            .unwrap();
+        registry.set_active("nan_for_orderbook").unwrap();
+        let optimizer =
+            HybridOptimizer::with_scorer_registry(PathfinderConfig::default(), registry);
+
+        let edge = |venue_type: &str, venue_ref: &str| LiquidityEdge {
+            from: "XLM".to_string(),
+            to: "USDC".to_string(),
+            venue_type: venue_type.to_string(),
+            venue_ref: venue_ref.to_string(),
+            liquidity: 10_000_000,
+            price: 0.1,
+            fee_bps: 30,
+            ..Default::default()
+        };
+        let edges = vec![edge("amm", "pool1"), edge("sdex", "offer1")];
+
+        let diag = optimizer
+            .find_optimal_routes("XLM", "USDC", &edges, 1_000_000, &RoutingPolicy::default())
+            .expect("a NaN score must not fail or panic the request");
+
+        assert_eq!(diag.selected_path.hops[0].venue_ref, "pool1");
+        assert!(diag.metrics.score.is_finite());
+        assert!(diag.alternatives.iter().all(|(_, m)| m.score.is_finite()));
+        assert_eq!(diag.non_finite_scores_dropped, 1);
     }
 
     #[test]

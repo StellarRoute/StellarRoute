@@ -191,7 +191,8 @@ async fn main() {
     let partition_manager = stellarroute_indexer::partition::PartitionManager::from_config(&config);
     let sdex_indexer = SdexIndexer::with_mode(horizon, db.clone(), sdex_mode, partition_manager);
 
-    if let Some(sidecar) = stellarroute_indexer::health_sidecar::HealthSidecar::from_config(&config) {
+    if let Some(sidecar) = stellarroute_indexer::health_sidecar::HealthSidecar::from_config(&config)
+    {
         let db_for_sidecar = db.clone();
         let horizon_url = config.stellar_horizon_url.clone();
         info!(path = %sidecar.path(), "Starting indexer health sidecar writer");
@@ -199,7 +200,9 @@ async fn main() {
             let db = db_for_sidecar.clone();
             let horizon_url = horizon_url.clone();
             async move {
-                let snapshot = stellarroute_indexer::health_sidecar::snapshot_from_db(&db, &horizon_url).await?;
+                let snapshot =
+                    stellarroute_indexer::health_sidecar::snapshot_from_db(db.pool(), &horizon_url)
+                        .await?;
                 Ok(snapshot)
             }
         });
@@ -262,10 +265,13 @@ async fn main() {
     // Maintenance loop
     let archival_manager = ArchivalManager::new(db.pool().clone());
     let maintenance_config = config.clone();
+    let offer_archival_days =
+        stellarroute_indexer::db::archival::resolve_offer_archival_days_from_env();
     let maintenance_shutdown = shutdown.clone();
     let maintenance_handle = tokio::spawn(async move {
         let interval = Duration::from_secs(maintenance_config.maintenance_interval_mins * 60);
         info!(
+            offer_archival_days = offer_archival_days,
             "Starting maintenance loop with interval of {} minutes",
             maintenance_config.maintenance_interval_mins
         );
@@ -279,6 +285,24 @@ async fn main() {
             }
 
             info!("Triggering scheduled maintenance tasks");
+
+            match archival_manager
+                .archive_old_offers(Some(offer_archival_days))
+                .await
+            {
+                Ok(archived_count) => {
+                    info!(
+                        target: "stellarroute.indexer.maintenance",
+                        metric = "stellarroute.indexer.offer_archival",
+                        archived_count = archived_count,
+                        retention_days = offer_archival_days,
+                        "Scheduled old offer archival completed"
+                    );
+                }
+                Err(e) => {
+                    error!("Maintenance error during old offer archival: {}", e);
+                }
+            }
 
             if let Err(e) = archival_manager
                 .compact_snapshots(

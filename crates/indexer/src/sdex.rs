@@ -1,5 +1,7 @@
 //! SDEX (Stellar Decentralized Exchange) orderbook indexing
 
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter, register_int_gauge, IntCounter, IntGauge};
 use sqlx::PgPool;
 use tracing::{debug, error, info, warn};
 
@@ -8,6 +10,38 @@ use crate::error::{IndexerError, Result};
 use crate::horizon::HorizonClient;
 use crate::models::{asset::Asset, offer::Offer};
 use crate::telemetry::TraceContext;
+
+/// Default Horizon page size for SDEX offer polling.
+pub const DEFAULT_SDEX_PAGE_LIMIT: u32 = 200;
+
+/// Default maximum number of Horizon pages fetched per SDEX poll cycle.
+pub const DEFAULT_SDEX_MAX_PAGES_PER_POLL: usize = 100;
+
+lazy_static! {
+    /// Total number of disappeared SDEX offers deleted across complete polling sweeps.
+    pub static ref SDEX_OFFERS_SWEPT_TOTAL: IntCounter = register_int_counter!(
+        "stellarroute_indexer_sdex_offers_swept_total",
+        "Total number of disappeared SDEX offers swept after complete Horizon polls"
+    )
+    .expect("Can't create SDEX_OFFERS_SWEPT_TOTAL counter");
+
+    /// Number of disappeared SDEX offers deleted in the most recent complete poll sweep.
+    pub static ref SDEX_OFFERS_SWEPT_LAST_POLL: IntGauge = register_int_gauge!(
+        "stellarroute_indexer_sdex_offers_swept_last_poll",
+        "Number of disappeared SDEX offers swept in the most recent complete Horizon poll"
+    )
+    .expect("Can't create SDEX_OFFERS_SWEPT_LAST_POLL gauge");
+}
+
+/// Total number of disappeared SDEX offers swept since process start.
+pub fn offers_swept_total() -> u64 {
+    SDEX_OFFERS_SWEPT_TOTAL.get()
+}
+
+/// Number of disappeared SDEX offers swept during the latest complete poll.
+pub fn offers_swept_last_poll() -> i64 {
+    SDEX_OFFERS_SWEPT_LAST_POLL.get()
+}
 
 /// Indexing mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +58,8 @@ pub struct SdexIndexer {
     db: Database,
     mode: IndexingMode,
     partition_manager: crate::partition::PartitionManager,
+    page_limit: u32,
+    max_pages_per_poll: usize,
 }
 
 fn pair_key(selling: &Asset, buying: &Asset) -> String {
@@ -47,6 +83,8 @@ impl SdexIndexer {
             db,
             mode: IndexingMode::Polling,
             partition_manager,
+            page_limit: DEFAULT_SDEX_PAGE_LIMIT,
+            max_pages_per_poll: DEFAULT_SDEX_MAX_PAGES_PER_POLL,
         }
     }
 
@@ -62,7 +100,16 @@ impl SdexIndexer {
             db,
             mode,
             partition_manager,
+            page_limit: DEFAULT_SDEX_PAGE_LIMIT,
+            max_pages_per_poll: DEFAULT_SDEX_MAX_PAGES_PER_POLL,
         }
+    }
+
+    /// Override pagination bounds (page size and max pages per poll).
+    pub fn with_pagination(mut self, page_limit: u32, max_pages_per_poll: usize) -> Self {
+        self.page_limit = page_limit.max(1);
+        self.max_pages_per_poll = max_pages_per_poll.max(1);
+        self
     }
 
     /// Start indexing offers from Horizon
@@ -252,25 +299,36 @@ impl SdexIndexer {
         })
     }
 
-    /// Index offers from Horizon API
+    /// Execute one Horizon SDEX poll cycle and, when the poll reads every page
+    /// cleanly without hitting the page cap, sweep offers whose `updated_at`
+    /// precedes the poll's database start timestamp.
     #[tracing::instrument(skip(self), fields(source = "horizon"))]
-    async fn index_offers(&self) -> Result<usize> {
+    pub async fn index_offers(&self) -> Result<usize> {
         debug!("Fetching offers from Horizon");
 
         let pool = self.db.pool();
+        let poll_started_at: chrono::DateTime<chrono::Utc> =
+            sqlx::query_scalar("SELECT clock_timestamp()")
+                .fetch_one(pool)
+                .await
+                .map_err(IndexerError::DatabaseQuery)?;
+
         let mut indexed = 0;
-        let page_limit = 200u32;
+        let page_limit = self.page_limit;
         let mut cursor: Option<String> = None;
+        let mut reached_end_of_book = false;
+        let mut had_upsert_error = false;
 
         // Horizon returns offers in pages; polling only the first page misses most
         // of testnet/mainnet liquidity (including native/XLM sell offers).
-        for _ in 0..100 {
+        for _ in 0..self.max_pages_per_poll {
             let horizon_offers = self
                 .horizon
                 .get_offers(Some(page_limit), cursor.as_deref(), None)
                 .await?;
             let batch_len = horizon_offers.len();
             if batch_len == 0 {
+                reached_end_of_book = true;
                 break;
             }
 
@@ -303,6 +361,7 @@ impl SdexIndexer {
                 let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
                     Ok(id) => id,
                     Err(e) => {
+                        had_upsert_error = true;
                         warn!("Failed to upsert selling asset: {}", e);
                         continue;
                     }
@@ -310,6 +369,7 @@ impl SdexIndexer {
                 let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
                     Ok(id) => id,
                     Err(e) => {
+                        had_upsert_error = true;
                         warn!("Failed to upsert buying asset: {}", e);
                         continue;
                     }
@@ -322,22 +382,133 @@ impl SdexIndexer {
                 {
                     Ok(_) => indexed += 1,
                     Err(e) => {
+                        had_upsert_error = true;
                         warn!("Failed to upsert offer {}: {}", offer.id, e);
                     }
                 }
             }
 
             if batch_len < page_limit as usize {
+                reached_end_of_book = true;
                 break;
             }
 
             cursor = next_cursor;
             if cursor.is_none() {
+                warn!(
+                    "Horizon returned a full SDEX offer page without paging_token; skipping sweep"
+                );
                 break;
             }
         }
 
+        if reached_end_of_book && !had_upsert_error {
+            let swept = self.sweep_disappeared_offers(pool, poll_started_at).await?;
+            SDEX_OFFERS_SWEPT_TOTAL.inc_by(swept);
+            SDEX_OFFERS_SWEPT_LAST_POLL.set(swept as i64);
+            if swept > 0 {
+                info!(
+                    swept_offers = swept,
+                    "Swept disappeared SDEX offers after complete poll"
+                );
+            } else {
+                debug!("Complete SDEX poll finished with zero disappeared offers");
+            }
+        } else {
+            debug!(
+                reached_end_of_book = reached_end_of_book,
+                had_upsert_error = had_upsert_error,
+                "Skipping SDEX offer sweep because poll did not complete cleanly or hit page cap"
+            );
+        }
+
         Ok(indexed)
+    }
+
+    /// Delete SDEX offers that were not touched during a complete poll in a single
+    /// `DELETE FROM sdex_offers` statement so `trg_sync_normalized_sdex` removes
+    /// their corresponding `normalized_liquidity` rows.
+    async fn sweep_disappeared_offers(
+        &self,
+        pool: &PgPool,
+        poll_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64> {
+        if self.partition_manager.partition_count <= 1 {
+            let result = sqlx::query("DELETE FROM sdex_offers WHERE updated_at < $1")
+                .bind(poll_started_at)
+                .execute(pool)
+                .await
+                .map_err(IndexerError::DatabaseQuery)?;
+            return Ok(result.rows_affected());
+        }
+
+        // Partitioned replicas share `sdex_offers`: only sweep pairs owned by this partition.
+        type StalePairRow = (
+            uuid::Uuid,
+            uuid::Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<String>,
+            Option<String>,
+        );
+
+        let stale_pairs: Vec<StalePairRow> = sqlx::query_as(
+            r#"
+            SELECT DISTINCT
+                o.selling_asset_id,
+                o.buying_asset_id,
+                sa.asset_type,
+                sa.asset_code,
+                sa.asset_issuer,
+                ba.asset_type,
+                ba.asset_code,
+                ba.asset_issuer
+            FROM sdex_offers o
+            JOIN assets sa ON sa.id = o.selling_asset_id
+            JOIN assets ba ON ba.id = o.buying_asset_id
+            WHERE o.updated_at < $1
+            "#,
+        )
+        .bind(poll_started_at)
+        .fetch_all(pool)
+        .await
+        .map_err(IndexerError::DatabaseQuery)?;
+
+        let mut owned_selling = Vec::new();
+        let mut owned_buying = Vec::new();
+        for (s_id, b_id, s_type, s_code, _s_iss, b_type, b_code, _b_iss) in stale_pairs {
+            let s_label = s_code.unwrap_or(s_type);
+            let b_label = b_code.unwrap_or(b_type);
+            let p_key = format!("{}/{}", s_label, b_label);
+            if self.partition_manager.should_process(&p_key) {
+                owned_selling.push(s_id);
+                owned_buying.push(b_id);
+            }
+        }
+
+        if owned_selling.is_empty() {
+            return Ok(0);
+        }
+
+        let result = sqlx::query(
+            r#"
+            DELETE FROM sdex_offers o
+            USING UNNEST($2::uuid[], $3::uuid[]) AS owned(selling_id, buying_id)
+            WHERE o.updated_at < $1
+              AND o.selling_asset_id = owned.selling_id
+              AND o.buying_asset_id = owned.buying_id
+            "#,
+        )
+        .bind(poll_started_at)
+        .bind(&owned_selling)
+        .bind(&owned_buying)
+        .execute(pool)
+        .await
+        .map_err(IndexerError::DatabaseQuery)?;
+
+        Ok(result.rows_affected())
     }
 
     /// Upsert an asset into the database

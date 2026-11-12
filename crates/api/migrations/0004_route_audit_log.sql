@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS route_audit_log (
 
     -- Retention
     retained_until  TIMESTAMPTZ NOT NULL
-                    GENERATED ALWAYS AS (logged_at + INTERVAL '30 days') STORED
+                    GENERATED ALWAYS AS ((logged_at AT TIME ZONE 'UTC' + INTERVAL '30 days') AT TIME ZONE 'UTC') STORED
 );
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
@@ -83,10 +83,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_trace_id
 CREATE INDEX IF NOT EXISTS idx_audit_logged_at
     ON route_audit_log(logged_at DESC);
 
--- Retention pruning (partial index — only rows eligible for deletion)
+-- Retention pruning range index
 CREATE INDEX IF NOT EXISTS idx_audit_retention
-    ON route_audit_log(retained_until)
-    WHERE retained_until <= NOW();
+    ON route_audit_log(retained_until);
 
 -- Outcome-based filtering (e.g. "show me all no_route events in the last hour")
 CREATE INDEX IF NOT EXISTS idx_audit_outcome_time

@@ -5,6 +5,26 @@ use tracing::{info, warn};
 
 use crate::error::Result;
 
+/// Default retention threshold (in days) before inactive `sdex_offers` rows are moved to `archived_offers`.
+pub const DEFAULT_OFFER_ARCHIVAL_DAYS: i32 = 30;
+
+/// Parse the configured offer archival age (in days), falling back to [`DEFAULT_OFFER_ARCHIVAL_DAYS`]
+/// when unset, invalid, or non-positive.
+pub fn resolve_offer_archival_days(raw: Option<&str>) -> i32 {
+    raw.and_then(|v| v.trim().parse::<i32>().ok())
+        .filter(|&days| days > 0)
+        .unwrap_or(DEFAULT_OFFER_ARCHIVAL_DAYS)
+}
+
+/// Read the configured offer archival age (in days) from `OFFER_ARCHIVAL_DAYS` or
+/// `ARCHIVE_OLD_OFFERS_DAYS`, defaulting to `30`.
+pub fn resolve_offer_archival_days_from_env() -> i32 {
+    let val = std::env::var("OFFER_ARCHIVAL_DAYS")
+        .ok()
+        .or_else(|| std::env::var("ARCHIVE_OLD_OFFERS_DAYS").ok());
+    resolve_offer_archival_days(val.as_deref())
+}
+
 /// Data archival manager
 pub struct ArchivalManager {
     pool: PgPool,
@@ -18,8 +38,9 @@ impl ArchivalManager {
 
     /// Archive old offers (older than specified days)
     ///
-    /// This moves old offers from the main table to the archive table
-    /// to keep the main table performant.
+    /// Moves offers older than `days_old` from `sdex_offers` into `archived_offers`
+    /// in a single statement so `trg_sync_normalized_sdex` also removes them from
+    /// `normalized_liquidity`.
     ///
     /// # Arguments
     /// * `days_old` - Archive offers older than this many days (default: 30)
@@ -27,19 +48,93 @@ impl ArchivalManager {
     /// # Returns
     /// Number of offers archived
     pub async fn archive_old_offers(&self, days_old: Option<i32>) -> Result<i64> {
-        let days = days_old.unwrap_or(30);
+        let days = days_old
+            .filter(|&d| d > 0)
+            .unwrap_or(DEFAULT_OFFER_ARCHIVAL_DAYS);
         info!("Archiving offers older than {} days", days);
 
-        let result: (Option<i32>,) = sqlx::query_as(
+        let result: (i64,) = sqlx::query_as(
             r#"
-            select archive_old_offers($1)
+            WITH moved AS (
+                DELETE FROM sdex_offers o
+                USING assets sa, assets ba
+                WHERE o.selling_asset_id = sa.id
+                  AND o.buying_asset_id = ba.id
+                  AND o.updated_at < NOW() - ($1 * INTERVAL '1 day')
+                RETURNING
+                    o.offer_id,
+                    o.seller,
+                    sa.asset_type AS selling_asset_type,
+                    sa.asset_code AS selling_asset_code,
+                    sa.asset_issuer AS selling_asset_issuer,
+                    ba.asset_type AS buying_asset_type,
+                    ba.asset_code AS buying_asset_code,
+                    ba.asset_issuer AS buying_asset_issuer,
+                    o.amount,
+                    o.price,
+                    o.price_n,
+                    o.price_d,
+                    o.last_modified_ledger
+            ),
+            ins AS (
+                INSERT INTO archived_offers (
+                    offer_id,
+                    seller,
+                    selling_asset_type,
+                    selling_asset_code,
+                    selling_asset_issuer,
+                    buying_asset_type,
+                    buying_asset_code,
+                    buying_asset_issuer,
+                    amount,
+                    price,
+                    price_n,
+                    price_d,
+                    last_modified_ledger,
+                    archived_at,
+                    archive_reason
+                )
+                SELECT
+                    offer_id,
+                    seller,
+                    selling_asset_type,
+                    selling_asset_code,
+                    selling_asset_issuer,
+                    buying_asset_type,
+                    buying_asset_code,
+                    buying_asset_issuer,
+                    amount,
+                    price,
+                    price_n,
+                    price_d,
+                    last_modified_ledger,
+                    NOW(),
+                    'old_age'
+                FROM moved
+                ON CONFLICT (offer_id) DO UPDATE SET
+                    seller = EXCLUDED.seller,
+                    selling_asset_type = EXCLUDED.selling_asset_type,
+                    selling_asset_code = EXCLUDED.selling_asset_code,
+                    selling_asset_issuer = EXCLUDED.selling_asset_issuer,
+                    buying_asset_type = EXCLUDED.buying_asset_type,
+                    buying_asset_code = EXCLUDED.buying_asset_code,
+                    buying_asset_issuer = EXCLUDED.buying_asset_issuer,
+                    amount = EXCLUDED.amount,
+                    price = EXCLUDED.price,
+                    price_n = EXCLUDED.price_n,
+                    price_d = EXCLUDED.price_d,
+                    last_modified_ledger = EXCLUDED.last_modified_ledger,
+                    archived_at = NOW(),
+                    archive_reason = 'old_age'
+            )
+            SELECT COUNT(*)::bigint FROM moved
             "#,
         )
         .bind(days)
         .fetch_one(&self.pool)
         .await?;
 
-        let archived_count = result.0.unwrap_or(0) as i64;
+        let archived_count = result.0;
         info!("Archived {} offers", archived_count);
 
         Ok(archived_count)
@@ -184,6 +279,17 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
 
+    #[test]
+    fn test_resolve_offer_archival_days_parsing_and_defaults() {
+        assert_eq!(resolve_offer_archival_days(None), 30);
+        assert_eq!(resolve_offer_archival_days(Some("")), 30);
+        assert_eq!(resolve_offer_archival_days(Some("0")), 30);
+        assert_eq!(resolve_offer_archival_days(Some("-7")), 30);
+        assert_eq!(resolve_offer_archival_days(Some("invalid")), 30);
+        assert_eq!(resolve_offer_archival_days(Some("14")), 14);
+        assert_eq!(resolve_offer_archival_days(Some(" 45 ")), 45);
+    }
+
     #[tokio::test]
     #[ignore]
     async fn test_archival_manager_creation() {
@@ -242,4 +348,3 @@ mod tests {
         assert!(count.is_ok());
     }
 }
-

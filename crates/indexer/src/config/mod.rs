@@ -159,7 +159,6 @@ impl Default for IndexerConfig {
 }
 
 impl std::fmt::Debug for IndexerConfig {
-
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IndexerConfig")
             .field("stellar_horizon_url", &self.stellar_horizon_url)
@@ -176,6 +175,7 @@ impl std::fmt::Debug for IndexerConfig {
             .field("amm_poll_interval_secs", &self.amm_poll_interval_secs)
             .field("stale_threshold_secs", &self.stale_threshold_secs)
             .field("horizon_limit", &self.horizon_limit)
+            .field("sdex_max_pages_per_poll", &self.sdex_max_pages_per_poll())
             .field("max_connections", &self.max_connections)
             .field("min_connections", &self.min_connections)
             .field("connection_timeout_secs", &self.connection_timeout_secs)
@@ -203,6 +203,42 @@ fn default_stale_threshold_secs() -> u64 {
 
 fn default_horizon_limit() -> u32 {
     200
+}
+
+/// Default maximum number of Horizon pages read in a single SDEX poll cycle (`100 * 200 = 20_000` offers).
+pub const DEFAULT_SDEX_MAX_PAGES_PER_POLL: usize = 100;
+
+/// SDEX Horizon polling configuration (env: `SDEX_MAX_PAGES_PER_POLL`).
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+pub struct SdexPollConfig {
+    /// Maximum number of Horizon `/offers` pages fetched per poll cycle.
+    #[serde(default = "default_sdex_max_pages_per_poll")]
+    pub sdex_max_pages_per_poll: usize,
+}
+
+impl Default for SdexPollConfig {
+    fn default() -> Self {
+        Self {
+            sdex_max_pages_per_poll: DEFAULT_SDEX_MAX_PAGES_PER_POLL,
+        }
+    }
+}
+
+fn default_sdex_max_pages_per_poll() -> usize {
+    DEFAULT_SDEX_MAX_PAGES_PER_POLL
+}
+
+/// Parse `SDEX_MAX_PAGES_PER_POLL` from an optional raw string, falling back to
+/// [`DEFAULT_SDEX_MAX_PAGES_PER_POLL`] (`100`) when unset, empty, non-numeric, or `0`.
+pub fn parse_sdex_max_pages_per_poll(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_SDEX_MAX_PAGES_PER_POLL)
+}
+
+/// Resolve `SDEX_MAX_PAGES_PER_POLL` from the process environment.
+pub fn sdex_max_pages_per_poll_from_env() -> usize {
+    parse_sdex_max_pages_per_poll(std::env::var("SDEX_MAX_PAGES_PER_POLL").ok().as_deref())
 }
 
 fn default_max_connections() -> u32 {
@@ -326,6 +362,11 @@ impl IndexerConfig {
         let mut urls = vec![self.stellar_horizon_url.trim_end_matches('/').to_string()];
         urls.extend(parse_url_list(&self.stellar_horizon_fallback_urls));
         urls
+    }
+
+    /// Maximum number of Horizon `/offers` pages read per SDEX poll cycle (`SDEX_MAX_PAGES_PER_POLL`, default `100`).
+    pub fn sdex_max_pages_per_poll(&self) -> usize {
+        sdex_max_pages_per_poll_from_env()
     }
 
     /// Returns whether the optional JSON health sidecar is enabled.
@@ -465,5 +506,18 @@ mod router_contract_tests {
     #[test]
     fn allow_empty_router_does_not_excuse_a_malformed_id() {
         assert!(check_router_contract_address(Some("not-a-contract-id"), true, false).is_err());
+    }
+
+    #[test]
+    fn sdex_max_pages_per_poll_defaults_to_100_and_parses_overrides() {
+        assert_eq!(
+            super::SdexPollConfig::default().sdex_max_pages_per_poll,
+            super::DEFAULT_SDEX_MAX_PAGES_PER_POLL
+        );
+        assert_eq!(super::parse_sdex_max_pages_per_poll(None), 100);
+        assert_eq!(super::parse_sdex_max_pages_per_poll(Some("")), 100);
+        assert_eq!(super::parse_sdex_max_pages_per_poll(Some("0")), 100);
+        assert_eq!(super::parse_sdex_max_pages_per_poll(Some("invalid")), 100);
+        assert_eq!(super::parse_sdex_max_pages_per_poll(Some(" 250 ")), 250);
     }
 }

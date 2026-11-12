@@ -24,6 +24,7 @@ pub struct SdexIndexer {
     db: Database,
     mode: IndexingMode,
     partition_manager: crate::partition::PartitionManager,
+    max_pages_per_poll: usize,
 }
 
 fn pair_key(selling: &Asset, buying: &Asset) -> String {
@@ -47,6 +48,7 @@ impl SdexIndexer {
             db,
             mode: IndexingMode::Polling,
             partition_manager,
+            max_pages_per_poll: crate::config::sdex_max_pages_per_poll_from_env(),
         }
     }
 
@@ -62,7 +64,14 @@ impl SdexIndexer {
             db,
             mode,
             partition_manager,
+            max_pages_per_poll: crate::config::sdex_max_pages_per_poll_from_env(),
         }
+    }
+
+    /// Override the maximum number of Horizon pages fetched per poll cycle.
+    pub fn with_max_pages_per_poll(mut self, max_pages_per_poll: usize) -> Self {
+        self.max_pages_per_poll = max_pages_per_poll.max(1);
+        self
     }
 
     /// Start indexing offers from Horizon
@@ -256,17 +265,69 @@ impl SdexIndexer {
     #[tracing::instrument(skip(self), fields(source = "horizon"))]
     async fn index_offers(&self) -> Result<usize> {
         debug!("Fetching offers from Horizon");
-
         let pool = self.db.pool();
-        let mut indexed = 0;
-        let page_limit = 200u32;
+        Self::poll_offers_pages(
+            &self.horizon,
+            &self.partition_manager,
+            200u32,
+            self.max_pages_per_poll,
+            |offer| async move {
+                let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!("Failed to upsert selling asset: {}", e);
+                        return false;
+                    }
+                };
+                let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!("Failed to upsert buying asset: {}", e);
+                        return false;
+                    }
+                };
+                match self
+                    .upsert_offer(pool, &offer, selling_asset_id, buying_asset_id)
+                    .await
+                {
+                    Ok(_) => true,
+                    Err(e) => {
+                        warn!("Failed to upsert offer {}: {}", offer.id, e);
+                        false
+                    }
+                }
+            },
+        )
+        .await
+    }
+
+    /// Page through Horizon `/offers` up to `max_pages_per_poll` pages per poll cycle.
+    ///
+    /// Each poll intentionally starts from `cursor = None` rather than resuming mid-book:
+    /// Horizon orders `/offers` by ascending `offer_id`, so carrying a mid-book cursor across
+    /// polls would delay refreshes of active low-ID offers and prevent deterministic full-book
+    /// sweeps. When the cap is reached while Horizon still returns a full page with a cursor,
+    /// we emit a structured `warn!` and increment `stellarroute_indexer_sdex_page_cap_hit_total`
+    /// so operators can raise `SDEX_MAX_PAGES_PER_POLL` or switch to SSE mode.
+    async fn poll_offers_pages<F, Fut>(
+        horizon: &HorizonClient,
+        partition_manager: &crate::partition::PartitionManager,
+        page_limit: u32,
+        max_pages_per_poll: usize,
+        mut persist_offer: F,
+    ) -> Result<usize>
+    where
+        F: FnMut(Offer) -> Fut,
+        Fut: std::future::Future<Output = bool>,
+    {
+        let max_pages = max_pages_per_poll.max(1);
+        let mut indexed = 0usize;
         let mut cursor: Option<String> = None;
 
         // Horizon returns offers in pages; polling only the first page misses most
         // of testnet/mainnet liquidity (including native/XLM sell offers).
-        for _ in 0..100 {
-            let horizon_offers = self
-                .horizon
+        for page_idx in 0..max_pages {
+            let horizon_offers = horizon
                 .get_offers(Some(page_limit), cursor.as_deref(), None)
                 .await?;
             let batch_len = horizon_offers.len();
@@ -280,7 +341,6 @@ impl SdexIndexer {
                 .and_then(|offer| offer.paging_token.clone());
 
             for horizon_offer in horizon_offers {
-                // Convert Horizon offer to our Offer model
                 let offer = match Offer::try_from(horizon_offer) {
                     Ok(o) => o,
                     Err(e) => {
@@ -289,41 +349,17 @@ impl SdexIndexer {
                     }
                 };
 
-                // Determine market pair identifier for partitioning
                 let pair_key = pair_key(&offer.selling, &offer.buying);
-                if !self.partition_manager.should_process(&pair_key) {
+                if !partition_manager.should_process(&pair_key) {
                     debug!(
                         "Skipping pair {} on partition {}",
-                        pair_key, self.partition_manager.partition_id
+                        pair_key, partition_manager.partition_id
                     );
                     continue;
                 }
 
-                // Extract and upsert assets
-                let selling_asset_id = match self.upsert_asset(pool, &offer.selling).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        warn!("Failed to upsert selling asset: {}", e);
-                        continue;
-                    }
-                };
-                let buying_asset_id = match self.upsert_asset(pool, &offer.buying).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        warn!("Failed to upsert buying asset: {}", e);
-                        continue;
-                    }
-                };
-
-                // Upsert offer
-                match self
-                    .upsert_offer(pool, &offer, selling_asset_id, buying_asset_id)
-                    .await
-                {
-                    Ok(_) => indexed += 1,
-                    Err(e) => {
-                        warn!("Failed to upsert offer {}: {}", offer.id, e);
-                    }
+                if persist_offer(offer).await {
+                    indexed += 1;
                 }
             }
 
@@ -334,6 +370,16 @@ impl SdexIndexer {
             cursor = next_cursor;
             if cursor.is_none() {
                 break;
+            }
+
+            if page_idx + 1 == max_pages {
+                warn!(
+                    offers_indexed = indexed,
+                    max_pages_per_poll = max_pages,
+                    page_limit = page_limit,
+                    "SDEX polling hit page cap while Horizon still had full pages; orderbook snapshot may be truncated"
+                );
+                crate::metrics::record_sdex_page_cap_hit();
             }
         }
 
@@ -711,5 +757,261 @@ mod tests {
             }),
         };
         assert_eq!(links.next.unwrap().href, next_href);
+    }
+
+    // -----------------------------------------------------------------------
+    // Page-cap observability and env configuration (#1652)
+    // -----------------------------------------------------------------------
+
+    fn make_horizon_offer_with_cursor(id: &str, cursor: &str, seller: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "paging_token": cursor,
+            "seller": seller,
+            "selling": {"asset_type": "native"},
+            "buying": {
+                "asset_type": "credit_alphanum4",
+                "asset_code": "USDC",
+                "asset_issuer": seller
+            },
+            "amount": "100.0",
+            "price": "1.5",
+            "price_r": {"n": 3, "d": 2},
+            "last_modified_ledger": 12345
+        })
+    }
+
+    struct WarnCapture {
+        warnings: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    struct FieldFormatter(String);
+
+    impl tracing::field::Visit for FieldFormatter {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            use std::fmt::Write;
+            let _ = write!(&mut self.0, "{}={:?} ", field.name(), value);
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnCapture {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if *event.metadata().level() == tracing::Level::WARN {
+                let mut visitor = FieldFormatter(String::new());
+                event.record(&mut visitor);
+                self.warnings.lock().unwrap().push(visitor.0);
+            }
+        }
+    }
+
+    static METRIC_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[tokio::test]
+    async fn sdex_poll_hitting_page_cap_logs_warning_and_increments_metric() {
+        use tracing_subscriber::layer::SubscriberExt;
+        use wiremock::matchers::{method, path, query_param, query_param_is_missing};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let seller = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "2"))
+            .and(query_param_is_missing("cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": {
+                    "records": [
+                        make_horizon_offer_with_cursor("1", "tok1", seller),
+                        make_horizon_offer_with_cursor("2", "tok2", seller)
+                    ]
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "2"))
+            .and(query_param("cursor", "tok2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": {
+                    "records": [
+                        make_horizon_offer_with_cursor("3", "tok3", seller),
+                        make_horizon_offer_with_cursor("4", "tok4", seller)
+                    ]
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let warnings = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(WarnCapture {
+            warnings: warnings.clone(),
+        });
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let horizon = HorizonClient::new(server.uri());
+        let pm = crate::partition::PartitionManager::from_config(
+            &crate::config::IndexerConfig::default(),
+        );
+
+        let before = {
+            let _lock = METRIC_TEST_LOCK.lock().unwrap();
+            crate::metrics::SDEX_PAGE_CAP_HIT_TOTAL.get()
+        };
+
+        let indexed = SdexIndexer::poll_offers_pages(&horizon, &pm, 2, 2, |_offer| async { true })
+            .await
+            .expect("poll must succeed");
+
+        let after = crate::metrics::SDEX_PAGE_CAP_HIT_TOTAL.get();
+        assert_eq!(indexed, 4);
+        assert!(
+            after >= before + 1,
+            "expected page-cap counter to increment (before={before}, after={after})"
+        );
+
+        let encoded = crate::metrics::encode_metrics().expect("encode metrics");
+        assert!(encoded.contains("stellarroute_indexer_sdex_page_cap_hit_total"));
+
+        let captured = warnings.lock().unwrap();
+        assert!(
+            captured.iter().any(|msg| {
+                msg.contains("SDEX polling hit page cap") && msg.contains("offers_indexed=4")
+            }),
+            "expected page-cap warning with offers_indexed=4, got: {:?}",
+            *captured
+        );
+    }
+
+    #[tokio::test]
+    async fn sdex_poll_under_cap_does_not_warn_or_increment_metric() {
+        use tracing_subscriber::layer::SubscriberExt;
+        use wiremock::matchers::{method, path, query_param, query_param_is_missing};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let seller = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "2"))
+            .and(query_param_is_missing("cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": {
+                    "records": [
+                        make_horizon_offer_with_cursor("1", "tok1", seller),
+                        make_horizon_offer_with_cursor("2", "tok2", seller)
+                    ]
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        // Second page is partial (1 < limit=2), so book is exhausted before max_pages=3.
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "2"))
+            .and(query_param("cursor", "tok2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": {
+                    "records": [
+                        make_horizon_offer_with_cursor("3", "tok3", seller)
+                    ]
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let warnings = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(WarnCapture {
+            warnings: warnings.clone(),
+        });
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let horizon = HorizonClient::new(server.uri());
+        let pm = crate::partition::PartitionManager::from_config(
+            &crate::config::IndexerConfig::default(),
+        );
+
+        let _lock = METRIC_TEST_LOCK.lock().unwrap();
+        let before = crate::metrics::SDEX_PAGE_CAP_HIT_TOTAL.get();
+        let indexed = SdexIndexer::poll_offers_pages(&horizon, &pm, 2, 3, |_offer| async { true })
+            .await
+            .expect("poll must succeed");
+        let after = crate::metrics::SDEX_PAGE_CAP_HIT_TOTAL.get();
+        drop(_lock);
+
+        assert_eq!(indexed, 3);
+        assert_eq!(after, before, "counter must not increment when under cap");
+        let captured = warnings.lock().unwrap();
+        assert!(
+            !captured
+                .iter()
+                .any(|m| m.contains("SDEX polling hit page cap")),
+            "unexpected page-cap warning: {:?}",
+            *captured
+        );
+    }
+
+    #[tokio::test]
+    async fn sdex_max_pages_per_poll_can_be_raised_by_env() {
+        use wiremock::matchers::{method, path, query_param, query_param_is_missing};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let seller = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "1"))
+            .and(query_param_is_missing("cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": {"records": [make_horizon_offer_with_cursor("1", "c1", seller)]}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "1"))
+            .and(query_param("cursor", "c1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "_embedded": {"records": [make_horizon_offer_with_cursor("2", "c2", seller)]}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/offers"))
+            .and(query_param("limit", "1"))
+            .and(query_param("cursor", "c2"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"_embedded": {"records": []}})),
+            )
+            .mount(&server)
+            .await;
+
+        let prev = std::env::var("SDEX_MAX_PAGES_PER_POLL").ok();
+        std::env::set_var("SDEX_MAX_PAGES_PER_POLL", "5");
+        let resolved = crate::config::IndexerConfig::default().sdex_max_pages_per_poll();
+        match prev {
+            Some(v) => std::env::set_var("SDEX_MAX_PAGES_PER_POLL", v),
+            None => std::env::remove_var("SDEX_MAX_PAGES_PER_POLL"),
+        }
+        assert_eq!(resolved, 5);
+
+        let horizon = HorizonClient::new(server.uri());
+        let pm = crate::partition::PartitionManager::from_config(
+            &crate::config::IndexerConfig::default(),
+        );
+        let indexed =
+            SdexIndexer::poll_offers_pages(&horizon, &pm, 1, resolved, |_offer| async { true })
+                .await
+                .expect("raised cap must read all pages");
+        assert_eq!(indexed, 2);
     }
 }

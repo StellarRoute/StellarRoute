@@ -9,6 +9,12 @@ listed under a **Breaking** heading below.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve per-call headers (including `x-cctp-transfer-access` and `idempotency-key`) across network-error and HTTP-status retries in `StellarRouteClient`, and forward `idempotencyKey` across all CCTP mutation helpers.
+- Honor caller `AbortSignal` cancellation immediately with `StellarRouteApiError` (`code === "aborted"`) without retrying, check pre-aborted signals before `fetch`, and remove `abort` listeners on every settled attempt and backoff wait.
+- Gate automatic `POST` retries on `429` / `5xx` / network errors so non-idempotent `POST` calls only retry when an `Idempotency-Key` header is present (read-only batch/simulation/validation `POST` helpers remain retryable).
+
 ### Added
 
 - Chain-aware asset foundation (`ChainAsset`, `canonicalizeAssetId`, `looksLikeCaip`).

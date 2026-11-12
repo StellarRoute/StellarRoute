@@ -196,7 +196,12 @@ export class StellarRouteApiError extends Error {
 
   /** Returns `true` for network-level failures (no HTTP response). */
   isNetworkError(): boolean {
-    return this.status === 0;
+    return this.status === 0 && this.code !== 'aborted';
+  }
+
+  /** Returns `true` when the caller aborted the request via `AbortSignal`. */
+  isAborted(): boolean {
+    return this.code === 'aborted';
   }
 }
 
@@ -275,14 +280,14 @@ export class StellarRouteClient {
    * `GET /health` — probe service and dependency health.
    */
   getHealth(signal?: AbortSignal): Promise<HealthStatus> {
-    return this.request<HealthStatus>('/health', signal);
+    return this.request<HealthStatus>('/health', { signal });
   }
 
   /**
    * `GET /api/v1/pairs` — list active trading pairs.
    */
   getPairs(signal?: AbortSignal): Promise<PairsResponse> {
-    return this.request<PairsResponse>('/api/v1/pairs', signal);
+    return this.request<PairsResponse>('/api/v1/pairs', { signal });
   }
 
   /**
@@ -297,7 +302,7 @@ export class StellarRouteClient {
     signal?: AbortSignal,
   ): Promise<Orderbook> {
     const path = `/api/v1/orderbook/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
-    return this.request<Orderbook>(path, signal);
+    return this.request<Orderbook>(path, { signal });
   }
 
   /**
@@ -310,13 +315,12 @@ export class StellarRouteClient {
     signal?: AbortSignal,
   ): Promise<BatchOrderbookResponse> {
     const path = '/api/v1/batch/orderbook';
-    return this.request<BatchOrderbookResponse>(
-      path,
+    return this.request<BatchOrderbookResponse>(path, {
       signal,
-      this.retries,
-      'POST',
-      { requests },
-    );
+      method: 'POST',
+      body: { requests },
+      idempotent: true,
+    });
   }
 
   /**
@@ -343,7 +347,7 @@ export class StellarRouteClient {
     if (amount !== undefined) params.set('amount', String(amount));
     if (slippage !== undefined) params.set('slippage_bps', String(slippage));
     const path = `/api/v1/quote/${encodeURIComponent(base)}/${encodeURIComponent(quote)}?${params}`;
-    return this.request<PriceQuote>(path, signal);
+    return this.request<PriceQuote>(path, { signal });
   }
 
   /**
@@ -411,7 +415,7 @@ export class StellarRouteClient {
     if (slippage !== undefined) params.set('slippage_bps', String(slippage));
 
     const path = `/api/v1/route/${encodeURIComponent(base)}/${encodeURIComponent(quote)}?${params}`;
-    const response = await this.request<RouteResponse>(path, signal);
+    const response = await this.request<RouteResponse>(path, { signal });
     return response.path;
   }
 
@@ -445,7 +449,7 @@ export class StellarRouteClient {
 
     const qs = params.toString();
     const path = `/api/v1/routes/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${qs ? `?${qs}` : ''}`;
-    return this.request<RankedRoutesResponse>(path, signal);
+    return this.request<RankedRoutesResponse>(path, { signal });
   }
 
   /**
@@ -460,13 +464,12 @@ export class StellarRouteClient {
     signal?: AbortSignal,
   ): Promise<BatchQuoteResponse> {
     const path = '/api/v1/batch/quote';
-    return this.request<BatchQuoteResponse>(
-      path,
+    return this.request<BatchQuoteResponse>(path, {
       signal,
-      this.retries,
-      'POST',
-      requests,
-    );
+      method: 'POST',
+      body: requests,
+      idempotent: true,
+    });
   }
 
   /**
@@ -494,13 +497,12 @@ export class StellarRouteClient {
     params: SimulateRouteRequest,
     signal?: AbortSignal,
   ): Promise<SimulateRouteResponse> {
-    return this.request<SimulateRouteResponse>(
-      '/api/v1/simulate/route',
+    return this.request<SimulateRouteResponse>('/api/v1/simulate/route', {
       signal,
-      this.retries,
-      'POST',
-      params,
-    );
+      method: 'POST',
+      body: params,
+      idempotent: true,
+    });
   }
 
   /**
@@ -510,13 +512,11 @@ export class StellarRouteClient {
     params: SwapPrepareRequest,
     signal?: AbortSignal,
   ): Promise<PreparedSwapResponse> {
-    const body = await this.request<unknown>(
-      '/api/v1/swap/prepare',
+    const body = await this.request<unknown>('/api/v1/swap/prepare', {
       signal,
-      this.retries,
-      'POST',
-      params,
-    );
+      method: 'POST',
+      body: params,
+    });
     const prepared = unwrapApiData<PreparedSwapResponse>(body);
     if (!prepared?.xdr_envelope || typeof prepared.xdr_envelope !== 'string') {
       throw new StellarRouteApiError(
@@ -539,13 +539,12 @@ export class StellarRouteClient {
     signal?: AbortSignal,
     retries: number = this.retries,
   ): Promise<SwapSubmitResponse> {
-    const body = await this.request<unknown>(
-      '/api/v1/swap/submit',
+    const body = await this.request<unknown>('/api/v1/swap/submit', {
       signal,
       retries,
-      'POST',
-      params,
-    );
+      method: 'POST',
+      body: params,
+    });
     return unwrapApiData<SwapSubmitResponse>(body);
   }
 
@@ -791,14 +790,14 @@ export class StellarRouteClient {
 
     const qs = params.toString();
     const path = `/api/v1/price-history/${encodeURIComponent(base)}/${encodeURIComponent(quote)}${qs ? `?${qs}` : ''}`;
-    return this.request<PriceHistoryResponse>(path, options?.signal);
+    return this.request<PriceHistoryResponse>(path, { signal: options?.signal });
   }
 
   /**
    * `GET /api/v2` — capability descriptor including CCTP corridor metadata.
    */
   async getApiV2Info(signal?: AbortSignal): Promise<ApiV2Info> {
-    const body = await this.request<unknown>('/api/v2', signal);
+    const body = await this.request<unknown>('/api/v2', { signal });
     return unwrapApiData<ApiV2Info>(body);
   }
 
@@ -809,18 +808,12 @@ export class StellarRouteClient {
     request: CctpQuoteRequest,
     options?: CctpCallOptions,
   ): Promise<CctpQuoteResponse> {
-    const headers: Record<string, string> = {};
-    if (options?.idempotencyKey) {
-      headers[CCTP_IDEMPOTENCY_HEADER] = options.idempotencyKey;
-    }
-    const body = await this.request<unknown>(
-      '/api/v2/bridge/cctp/quote',
-      options?.signal,
-      this.retries,
-      'POST',
-      request,
-      headers,
-    );
+    const body = await this.request<unknown>('/api/v2/bridge/cctp/quote', {
+      signal: options?.signal,
+      method: 'POST',
+      body: request,
+      extraHeaders: cctpMutationHeaders(options),
+    });
     return unwrapApiData<CctpQuoteResponse>(body);
   }
 
@@ -833,11 +826,12 @@ export class StellarRouteClient {
   ): Promise<CctpPrepareBurnResponse> {
     const body = await this.request<unknown>(
       `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/prepare-burn`,
-      options?.signal,
-      this.retries,
-      'POST',
-      {},
-      cctpAccessHeaders(options),
+      {
+        signal: options?.signal,
+        method: 'POST',
+        body: {},
+        extraHeaders: cctpMutationHeaders(options),
+      },
     );
     return unwrapApiData<CctpPrepareBurnResponse>(body);
   }
@@ -852,11 +846,12 @@ export class StellarRouteClient {
   ): Promise<CctpSubmitBurnResponse> {
     const body = await this.request<unknown>(
       `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/submit-burn`,
-      options?.signal,
-      this.retries,
-      'POST',
-      request,
-      cctpAccessHeaders(options),
+      {
+        signal: options?.signal,
+        method: 'POST',
+        body: request,
+        extraHeaders: cctpMutationHeaders(options),
+      },
     );
     return unwrapApiData<CctpSubmitBurnResponse>(body);
   }
@@ -870,11 +865,10 @@ export class StellarRouteClient {
   ): Promise<CctpTransferStatusResponse> {
     const body = await this.request<unknown>(
       `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}`,
-      options?.signal,
-      this.retries,
-      'GET',
-      undefined,
-      cctpAccessHeaders(options),
+      {
+        signal: options?.signal,
+        extraHeaders: cctpAccessHeaders(options),
+      },
     );
     return unwrapApiData<CctpTransferStatusResponse>(body);
   }
@@ -888,11 +882,12 @@ export class StellarRouteClient {
   ): Promise<CctpPrepareMintResponse> {
     const body = await this.request<unknown>(
       `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/prepare-mint`,
-      options?.signal,
-      this.retries,
-      'POST',
-      {},
-      cctpAccessHeaders(options),
+      {
+        signal: options?.signal,
+        method: 'POST',
+        body: {},
+        extraHeaders: cctpMutationHeaders(options),
+      },
     );
     return unwrapApiData<CctpPrepareMintResponse>(body);
   }
@@ -907,11 +902,12 @@ export class StellarRouteClient {
   ): Promise<CctpSubmitMintResponse> {
     const body = await this.request<unknown>(
       `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/submit-mint`,
-      options?.signal,
-      this.retries,
-      'POST',
-      request,
-      cctpAccessHeaders(options),
+      {
+        signal: options?.signal,
+        method: 'POST',
+        body: request,
+        extraHeaders: cctpMutationHeaders(options),
+      },
     );
     return unwrapApiData<CctpSubmitMintResponse>(body);
   }
@@ -925,11 +921,12 @@ export class StellarRouteClient {
   ): Promise<CctpReattestResponse> {
     const body = await this.request<unknown>(
       `/api/v2/bridge/cctp/${encodeURIComponent(transferId)}/reattest`,
-      options?.signal,
-      this.retries,
-      'POST',
-      {},
-      cctpAccessHeaders(options),
+      {
+        signal: options?.signal,
+        method: 'POST',
+        body: {},
+        extraHeaders: cctpMutationHeaders(options),
+      },
     );
     return unwrapApiData<CctpReattestResponse>(body);
   }
@@ -947,13 +944,9 @@ export class StellarRouteClient {
    */
   async cardHealth(signal?: AbortSignal): Promise<CardHealth> {
     try {
-      const body = await this.request<unknown>(
-        '/api/v1/card/health',
+      const body = await this.request<unknown>('/api/v1/card/health', {
         signal,
-        this.retries,
-        'GET',
-        undefined,
-      );
+      });
       return unwrapApiData<CardHealth>(body);
     } catch (err) {
       if (isStellarRouteApiError(err) && err.status === 404) {
@@ -974,10 +967,12 @@ export class StellarRouteClient {
   ): Promise<CardApplicationValidation> {
     const body = await this.request<unknown>(
       '/api/v1/card/applications/validate',
-      signal,
-      this.retries,
-      'POST',
-      draft,
+      {
+        signal,
+        method: 'POST',
+        body: draft,
+        idempotent: true,
+      },
     );
     return unwrapApiData<CardApplicationValidation>(body);
   }
@@ -991,13 +986,9 @@ export class StellarRouteClient {
   async listCardAuthorizations(
     signal?: AbortSignal,
   ): Promise<CardAuthorization[]> {
-    const body = await this.request<unknown>(
-      '/api/v1/card/authorizations',
+    const body = await this.request<unknown>('/api/v1/card/authorizations', {
       signal,
-      this.retries,
-      'GET',
-      undefined,
-    );
+    });
     const unwrapped = unwrapApiData<
       CardAuthorizationsResponse | CardAuthorization[]
     >(body);
@@ -1018,90 +1009,137 @@ export class StellarRouteClient {
 
   private async request<T>(
     path: string,
-    signal?: AbortSignal,
-    attemptsLeft = this.retries,
-    method: 'GET' | 'POST' = 'GET',
-    body?: unknown,
-    extraHeaders?: Record<string, string>,
+    options: RequestOptions = {},
   ): Promise<T> {
+    const {
+      signal,
+      retries = this.retries,
+      method = 'GET',
+      body,
+      extraHeaders,
+      idempotent = false,
+    } = options;
+
     const url = `${this.baseUrl}${path}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    // Forward external cancellation into our controller.
-    signal?.addEventListener('abort', () => controller.abort(), { once: true });
-
-    try {
-      const fetchOptions: RequestInit = {
-        method,
-        headers: {
-          Accept: 'application/json',
-          ...this.extraHeaders,
-          ...extraHeaders,
-        },
-        signal: controller.signal,
-      };
-
-      if (body) {
-        fetchOptions.body = JSON.stringify(body);
-        (fetchOptions.headers as Record<string, string>)['Content-Type'] =
-          'application/json';
-      }
-
-      const response = await fetch(url, fetchOptions);
-
-      if (!response.ok) {
-        // Parse flat or envelope-wrapped `{ data: { error, message, details } }`.
-        let code: ApiErrorCode = 'unknown_error';
-        let message = `HTTP ${response.status}`;
-        let details: unknown;
-
-        try {
-          const parsed = parseApiErrorBody(await response.json());
-          if (parsed.error) code = parsed.error as ApiErrorCode;
-          if (parsed.message) message = parsed.message;
-          details = parsed.details;
-        } catch {
-          // Non-JSON body — keep defaults.
-        }
-
-        // Retry on 429 and 5xx (same request body — safe for idempotent submits).
-        // Do not retry 409 conflicts.
-        if (
-          response.status !== 409 &&
-          (response.status === 429 || response.status >= 500) &&
-          attemptsLeft > 0
-        ) {
-          const retryAfterSec = Number(response.headers.get('Retry-After') ?? 0);
-          const delayMs = retryAfterSec > 0
-            ? retryAfterSec * 1_000
-            : backoffMs(this.retries - attemptsLeft);
-          await sleep(delayMs);
-          return this.request<T>(path, signal, attemptsLeft - 1, method, body, extraHeaders);
-        }
-
-        throw new StellarRouteApiError(response.status, code, message, details);
-      }
-
-      return response.json() as Promise<T>;
-    } catch (err) {
-      if (err instanceof StellarRouteApiError) throw err;
-
-      // Retry on network errors.
-      if (attemptsLeft > 0) {
-        await sleep(backoffMs(this.retries - attemptsLeft));
-        return this.request<T>(path, signal, attemptsLeft - 1, method, body);
-      }
-
-      const message = err instanceof Error ? err.message : 'Network error';
-      throw new StellarRouteApiError(0, 'network_error', message);
-    } finally {
-      clearTimeout(timer);
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...this.extraHeaders,
+      ...extraHeaders,
+    };
+    const serializedBody = body !== undefined ? JSON.stringify(body) : undefined;
+    if (serializedBody !== undefined) {
+      headers['Content-Type'] = 'application/json';
     }
+
+    const canRetry =
+      method === 'GET' ||
+      idempotent ||
+      hasIdempotencyKeyHeader(headers);
+    const maxRetries = canRetry ? Math.max(0, retries) : 0;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (signal?.aborted) {
+        throw abortedError();
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      const onAbort = () => controller.abort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      let retryDelayMs: number | undefined;
+
+      try {
+        const fetchOptions: RequestInit = {
+          method,
+          headers: { ...headers },
+          signal: controller.signal,
+        };
+        if (serializedBody !== undefined) {
+          fetchOptions.body = serializedBody;
+        }
+
+        const response = await fetch(url, fetchOptions);
+
+        if (!response.ok) {
+          // Parse flat or envelope-wrapped `{ data: { error, message, details } }`.
+          let code: ApiErrorCode = 'unknown_error';
+          let message = `HTTP ${response.status}`;
+          let details: unknown;
+
+          try {
+            const parsed = parseApiErrorBody(await response.json());
+            if (parsed.error) code = parsed.error as ApiErrorCode;
+            if (parsed.message) message = parsed.message;
+            details = parsed.details;
+          } catch {
+            // Non-JSON body — keep defaults.
+          }
+
+          // Retry on 429 and 5xx when retryable (GET, marked idempotent, or Idempotency-Key present).
+          // Do not retry 409 conflicts.
+          if (
+            response.status !== 409 &&
+            (response.status === 429 || response.status >= 500) &&
+            attempt < maxRetries
+          ) {
+            const retryAfterSec = Number(response.headers.get('Retry-After') ?? 0);
+            retryDelayMs =
+              retryAfterSec > 0 ? retryAfterSec * 1_000 : backoffMs(attempt);
+          } else {
+            throw new StellarRouteApiError(response.status, code, message, details);
+          }
+        } else {
+          const json = (await response.json()) as T;
+          return json;
+        }
+      } catch (err) {
+        if (signal?.aborted) {
+          throw abortedError();
+        }
+        if (err instanceof StellarRouteApiError) throw err;
+
+        if (attempt < maxRetries) {
+          retryDelayMs = backoffMs(attempt);
+        } else {
+          const message = err instanceof Error ? err.message : 'Network error';
+          throw new StellarRouteApiError(0, 'network_error', message);
+        }
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+      }
+
+      if (retryDelayMs !== undefined) {
+        await abortableSleep(retryDelayMs, signal);
+      }
+    }
+
+    throw new StellarRouteApiError(0, 'network_error', 'Request failed');
   }
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
+
+interface RequestOptions {
+  signal?: AbortSignal;
+  retries?: number;
+  method?: 'GET' | 'POST';
+  body?: unknown;
+  extraHeaders?: Record<string, string>;
+  idempotent?: boolean;
+}
+
+function abortedError(): StellarRouteApiError {
+  return new StellarRouteApiError(0, 'aborted', 'Request aborted');
+}
+
+function hasIdempotencyKeyHeader(headers: Record<string, string>): boolean {
+  return Object.entries(headers).some(
+    ([key, value]) =>
+      key.toLowerCase() === CCTP_IDEMPOTENCY_HEADER && value.trim().length > 0,
+  );
+}
 
 function cctpAccessHeaders(
   options?: CctpCallOptions,
@@ -1110,8 +1148,39 @@ function cctpAccessHeaders(
   return { [CCTP_TRANSFER_ACCESS_HEADER]: options.accessToken };
 }
 
+function cctpMutationHeaders(
+  options?: CctpCallOptions,
+): Record<string, string> | undefined {
+  const headers: Record<string, string> = {};
+  if (options?.accessToken) {
+    headers[CCTP_TRANSFER_ACCESS_HEADER] = options.accessToken;
+  }
+  if (options?.idempotencyKey) {
+    headers[CCTP_IDEMPOTENCY_HEADER] = options.idempotencyKey;
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) return Promise.reject(abortedError());
+
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(abortedError());
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 /** Exponential back-off: 500 ms, 1 s, 2 s, … */
 const backoffMs = (attempt: number): number => 500 * Math.pow(2, attempt);

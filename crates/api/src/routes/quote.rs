@@ -1052,33 +1052,7 @@ async fn find_best_price(
     let now = chrono::Utc::now();
     let scorer_inputs: Vec<VenueScorerInput> = direct_candidates
         .iter()
-        .map(|c| {
-            if c.venue_type == "amm" {
-                VenueScorerInput {
-                    venue_ref: c.venue_ref.clone(),
-                    venue_type: VenueType::Amm,
-                    best_bid_e7: None,
-                    best_ask_e7: None,
-                    depth_top_n_e7: None,
-                    reserve_a_e7: Some(c.available_amount_e7 as i128),
-                    reserve_b_e7: Some(c.available_amount_e7 as i128),
-                    tvl_e7: Some((c.available_amount_e7 * 2) as i128),
-                    last_updated_at: c.updated_at,
-                }
-            } else {
-                VenueScorerInput {
-                    venue_ref: c.venue_ref.clone(),
-                    venue_type: VenueType::Sdex,
-                    best_bid_e7: None,
-                    best_ask_e7: Some(c.price_e7 as i128),
-                    depth_top_n_e7: Some(c.available_amount_e7 as i128),
-                    reserve_a_e7: None,
-                    reserve_b_e7: None,
-                    tvl_e7: None,
-                    last_updated_at: c.updated_at,
-                }
-            }
-        })
+        .map(build_venue_scorer_input)
         .collect();
 
     let freshness_guard = budget_tracker.stage(PipelineStage::FreshnessEval);
@@ -1332,6 +1306,9 @@ struct DirectVenueCandidate {
     provider: Option<String>,
     /// Orderbook / pool snapshot time from `normalized_liquidity.updated_at`.
     updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Real AMM pool reserves `(reserve_a_e7, reserve_b_e7)` loaded from
+    /// `amm_pool_reserves` (`None` for SDEX candidates or when unavailable).
+    amm_reserves_e7: Option<(i128, i128)>,
 }
 
 impl DirectVenueCandidate {
@@ -1349,6 +1326,83 @@ impl DirectVenueCandidate {
 
     fn source_trace_context(&self) -> Option<SourceTraceContext> {
         SourceTraceContext::from_parts(self.source_trace_id.clone(), self.source_span_id.clone())
+    }
+}
+
+/// Parse a Postgres `numeric(38, 18)` text value into an `i128` scaled by `10^7`
+/// using checked arithmetic (truncating sub-e7 fractional digits).
+fn parse_numeric_e7_checked(val: &str) -> Option<i128> {
+    let trimmed = val.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') {
+        return None;
+    }
+    if let Some(dot) = trimmed.find('.') {
+        let int_part = &trimmed[..dot];
+        let frac_part = &trimmed[dot + 1..];
+        let int_val: i128 = if int_part.is_empty() {
+            0
+        } else {
+            int_part.parse().ok()?
+        };
+        let digits = &frac_part[..frac_part.len().min(7)];
+        if !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let frac_str = format!("{digits:0<7}");
+        let frac_val: i128 = frac_str[..7].parse().ok()?;
+        int_val.checked_mul(10_000_000)?.checked_add(frac_val)
+    } else {
+        let int_val: i128 = trimmed.parse().ok()?;
+        int_val.checked_mul(10_000_000)
+    }
+}
+
+/// Build [`VenueScorerInput`] from a [`DirectVenueCandidate`].
+///
+/// For AMM venues, carries both real pool reserves (`reserve_a_e7`, `reserve_b_e7`)
+/// from `amm_pool_reserves` when present (or derives `(reserve_selling, reserve_buying)`
+/// in `i128` from `available_amount_e7` and `price_e7` when unavailable) and computes
+/// `tvl_e7` in `i128` with checked arithmetic so large reserves never overflow `i64`.
+fn build_venue_scorer_input(c: &DirectVenueCandidate) -> VenueScorerInput {
+    if c.venue_type == "amm" {
+        let (reserve_a, reserve_b) = match c.amm_reserves_e7 {
+            Some((ra, rb)) => (ra, rb),
+            None => {
+                let ra = i128::from(c.available_amount_e7).max(0);
+                let rb = if c.price_e7 > 0 && ra > 0 {
+                    ra.checked_mul(i128::from(c.price_e7))
+                        .map(|prod| prod / 10_000_000)
+                        .unwrap_or(ra)
+                } else {
+                    ra
+                };
+                (ra, rb)
+            }
+        };
+        let tvl_e7 = Some(reserve_a.checked_add(reserve_b).unwrap_or(i128::MAX));
+        VenueScorerInput {
+            venue_ref: c.venue_ref.clone(),
+            venue_type: VenueType::Amm,
+            best_bid_e7: None,
+            best_ask_e7: None,
+            depth_top_n_e7: None,
+            reserve_a_e7: Some(reserve_a),
+            reserve_b_e7: Some(reserve_b),
+            tvl_e7,
+            last_updated_at: c.updated_at,
+        }
+    } else {
+        VenueScorerInput {
+            venue_ref: c.venue_ref.clone(),
+            venue_type: VenueType::Sdex,
+            best_bid_e7: None,
+            best_ask_e7: Some(i128::from(c.price_e7)),
+            depth_top_n_e7: Some(i128::from(c.available_amount_e7)),
+            reserve_a_e7: None,
+            reserve_b_e7: None,
+            tvl_e7: None,
+            last_updated_at: c.updated_at,
+        }
     }
 }
 
@@ -1508,18 +1562,39 @@ async fn fetch_source_candidates(
     let rows = sqlx::query(
         r#"
                 select
-                    venue_type,
-                    venue_ref,
-                    price::text as price,
-                    available_amount::text as available_amount,
-                    price_e7,
-                    available_amount_e7,
-                    coalesce(source_trace_id, '') as source_trace_id,
-                    coalesce(source_span_id, '') as source_span_id,
-                    updated_at
-                from normalized_liquidity
-        where selling_asset_id = $1
-          and buying_asset_id = $2
+                    nl.venue_type,
+                    nl.venue_ref,
+                    nl.price::text as price,
+                    nl.available_amount::text as available_amount,
+                    nl.price_e7,
+                    nl.available_amount_e7,
+                    coalesce(nl.source_trace_id, '') as source_trace_id,
+                    coalesce(nl.source_span_id, '') as source_span_id,
+                    nl.updated_at,
+                    case
+                        when amm.selling_asset_id = nl.selling_asset_id
+                         and amm.buying_asset_id = nl.buying_asset_id
+                            then amm.reserve_selling::text
+                        when amm.selling_asset_id = nl.buying_asset_id
+                         and amm.buying_asset_id = nl.selling_asset_id
+                            then amm.reserve_buying::text
+                        else amm.reserve_selling::text
+                    end as amm_reserve_a,
+                    case
+                        when amm.selling_asset_id = nl.selling_asset_id
+                         and amm.buying_asset_id = nl.buying_asset_id
+                            then amm.reserve_buying::text
+                        when amm.selling_asset_id = nl.buying_asset_id
+                         and amm.buying_asset_id = nl.selling_asset_id
+                            then amm.reserve_selling::text
+                        else amm.reserve_buying::text
+                    end as amm_reserve_b
+                from normalized_liquidity nl
+                left join amm_pool_reserves amm
+                  on nl.venue_type = 'amm'
+                 and nl.venue_ref = amm.pool_address
+        where nl.selling_asset_id = $1
+          and nl.buying_asset_id = $2
           and venue_type = $3
         "#,
     )
@@ -1544,6 +1619,14 @@ async fn fetch_source_candidates(
             let source_trace_id: String = row.get("source_trace_id");
             let source_span_id: String = row.get("source_span_id");
             let updated_at: chrono::DateTime<chrono::Utc> = row.get("updated_at");
+            let amm_reserve_a: Option<String> = row.get("amm_reserve_a");
+            let amm_reserve_b: Option<String> = row.get("amm_reserve_b");
+            let amm_reserves_e7 = match (amm_reserve_a.as_deref(), amm_reserve_b.as_deref()) {
+                (Some(ra), Some(rb)) => {
+                    parse_numeric_e7_checked(ra).zip(parse_numeric_e7_checked(rb))
+                }
+                _ => None,
+            };
             DirectVenueCandidate {
                 venue_type,
                 venue_ref,
@@ -1558,6 +1641,7 @@ async fn fetch_source_candidates(
                 // Honest: no provider column in normalized_liquidity today.
                 provider: None,
                 updated_at: Some(updated_at),
+                amm_reserves_e7,
             }
         })
         .collect())
@@ -1807,6 +1891,33 @@ mod tests {
             source_span_id: "".to_string(),
             provider: None,
             updated_at: Some(chrono::Utc::now()),
+            amm_reserves_e7: None,
+        }
+    }
+
+    fn amm_candidate_with_reserves(
+        venue_ref: &str,
+        reserve_a: f64,
+        reserve_b: f64,
+        fee_bps: u32,
+    ) -> DirectVenueCandidate {
+        let price = reserve_b / reserve_a;
+        let ra_e7 = (reserve_a * 1e7).round() as i128;
+        let rb_e7 = (reserve_b * 1e7).round() as i128;
+        DirectVenueCandidate {
+            venue_type: "amm".to_string(),
+            venue_ref: venue_ref.to_string(),
+            price,
+            available_amount: reserve_a,
+            price_e7: (price * 1e7).round() as i64,
+            available_amount_e7: ra_e7 as i64,
+            fee_bps,
+            is_inverse: false,
+            source_trace_id: "".to_string(),
+            source_span_id: "".to_string(),
+            provider: None,
+            updated_at: Some(chrono::Utc::now()),
+            amm_reserves_e7: Some((ra_e7, rb_e7)),
         }
     }
 
@@ -2251,5 +2362,161 @@ mod tests {
         assert!(par_duration < seq_duration);
         assert!(par_duration >= Duration::from_millis(delay));
         assert!(par_duration < Duration::from_millis(delay * 2));
+    }
+
+    #[test]
+    fn amm_scorer_receives_distinct_real_reserves_and_checked_tvl() {
+        let amm = amm_candidate_with_reserves("pool-xlm-usdc", 500.0, 1250.0, 30);
+        let input = build_venue_scorer_input(&amm);
+
+        assert_eq!(input.venue_type, VenueType::Amm);
+        assert_eq!(input.reserve_a_e7, Some(5_000_000_000));
+        assert_eq!(input.reserve_b_e7, Some(12_500_000_000));
+        assert_ne!(
+            input.reserve_a_e7, input.reserve_b_e7,
+            "AMM scorer must receive real distinct reserves"
+        );
+        assert_eq!(input.tvl_e7, Some(17_500_000_000));
+    }
+
+    #[test]
+    fn amm_scorer_fallback_derives_distinct_reserves_when_amm_row_absent() {
+        let amm = candidate("amm", "pool-fallback", 2.5, 400.0, 30);
+        let input = build_venue_scorer_input(&amm);
+
+        assert_eq!(input.reserve_a_e7, Some(4_000_000_000));
+        assert_eq!(input.reserve_b_e7, Some(10_000_000_000));
+        assert_eq!(input.tvl_e7, Some(14_000_000_000));
+    }
+
+    #[test]
+    fn amm_tvl_uses_checked_i128_math_without_i64_overflow() {
+        for &avail in &[i64::MAX / 2, i64::MAX / 2 + 1, i64::MAX] {
+            let mut amm = candidate("amm", "deep-pool", 1.0, 1_000.0, 30);
+            amm.price_e7 = 10_000_000;
+            amm.available_amount_e7 = avail;
+            amm.amm_reserves_e7 = Some((i128::from(avail), i128::from(avail)));
+
+            let input = build_venue_scorer_input(&amm);
+            assert_eq!(input.reserve_a_e7, Some(i128::from(avail)));
+            assert_eq!(input.reserve_b_e7, Some(i128::from(avail)));
+            assert_eq!(input.tvl_e7, Some(i128::from(avail) * 2));
+        }
+
+        let mut fallback = candidate("amm", "deep-fallback", 1.0, 1_000.0, 30);
+        fallback.price_e7 = 10_000_000;
+        fallback.available_amount_e7 = i64::MAX / 2 + 1;
+        fallback.amm_reserves_e7 = None;
+        let fallback_input = build_venue_scorer_input(&fallback);
+        assert_eq!(
+            fallback_input.tvl_e7,
+            Some(i128::from(i64::MAX / 2 + 1) * 2)
+        );
+
+        let mut huge = candidate("amm", "max-i128-pool", 1.0, 1_000.0, 30);
+        huge.amm_reserves_e7 = Some((i128::MAX, 100));
+        let huge_input = build_venue_scorer_input(&huge);
+        assert_eq!(huge_input.tvl_e7, Some(i128::MAX));
+    }
+
+    #[test]
+    fn parse_numeric_e7_checked_handles_precision_and_invalid_inputs() {
+        assert_eq!(
+            parse_numeric_e7_checked("123456.789012345678901234"),
+            Some(1_234_567_890_123)
+        );
+        assert_eq!(parse_numeric_e7_checked("0.0000001"), Some(1));
+        assert_eq!(
+            parse_numeric_e7_checked("1000000000000.5"),
+            Some(10_000_000_000_005_000_000)
+        );
+        assert_eq!(parse_numeric_e7_checked("-1.0"), None);
+        assert_eq!(parse_numeric_e7_checked(""), None);
+        assert_eq!(parse_numeric_e7_checked("not-a-number"), None);
+    }
+
+    #[test]
+    fn healthy_pool_fixture_ranking_and_exclusions_unchanged() {
+        let now = chrono::Utc::now();
+        let health_config = HealthScoringConfig::default();
+        let scorer = HealthScorer {
+            sdex: SdexScorer {
+                staleness_threshold_secs: health_config.staleness_threshold_secs,
+                max_spread: 0.05,
+                target_depth_e7: 10_000_000_000,
+                depth_levels: health_config.depth_levels,
+            },
+            amm: AmmScorer {
+                staleness_threshold_secs: health_config.staleness_threshold_secs,
+                min_tvl_threshold_e7: health_config.min_tvl_threshold_e7,
+            },
+        };
+        let policy = ExclusionPolicy {
+            thresholds: health_config.thresholds.clone(),
+            overrides: Default::default(),
+            circuit_breaker: None,
+        };
+        let filter = GraphFilter::new(&policy);
+
+        let mut pool_a = amm_candidate_with_reserves("pool-xlm-usdc-a", 10_000.0, 9_800.0, 30);
+        pool_a.updated_at = Some(now);
+        let mut pool_b = amm_candidate_with_reserves("pool-xlm-usdc-b", 2_500.0, 2_550.0, 30);
+        pool_b.updated_at = Some(now);
+        let mut sdex_a = candidate("sdex", "offer-xlm-usdc-1", 0.99, 5_000.0, 0);
+        sdex_a.updated_at = Some(now);
+        let mut sdex_b = candidate("sdex", "offer-xlm-usdc-2", 1.01, 8_000.0, 0);
+        sdex_b.updated_at = Some(now);
+
+        let fixtures = vec![pool_a, pool_b, sdex_a, sdex_b];
+
+        let legacy_inputs: Vec<VenueScorerInput> = fixtures
+            .iter()
+            .map(|c| {
+                if c.venue_type == "amm" {
+                    VenueScorerInput {
+                        venue_ref: c.venue_ref.clone(),
+                        venue_type: VenueType::Amm,
+                        best_bid_e7: None,
+                        best_ask_e7: None,
+                        depth_top_n_e7: None,
+                        reserve_a_e7: Some(i128::from(c.available_amount_e7)),
+                        reserve_b_e7: Some(i128::from(c.available_amount_e7)),
+                        tvl_e7: Some(i128::from(c.available_amount_e7) * 2),
+                        last_updated_at: c.updated_at,
+                    }
+                } else {
+                    build_venue_scorer_input(c)
+                }
+            })
+            .collect();
+        let new_inputs: Vec<VenueScorerInput> =
+            fixtures.iter().map(build_venue_scorer_input).collect();
+
+        let (_, legacy_diag) =
+            filter.filter_edges_with_providers(&[], &scorer.score_venues(&legacy_inputs), None);
+        let (_, new_diag) =
+            filter.filter_edges_with_providers(&[], &scorer.score_venues(&new_inputs), None);
+        assert_eq!(
+            legacy_diag.excluded_venues.len(),
+            new_diag.excluded_venues.len(),
+            "Healthy fixture exclusions must stay identical"
+        );
+
+        let (selected, rationale) =
+            evaluate_single_hop_direct_venues(fixtures, 100.0).expect("must select winner");
+        assert_eq!(selected.comparison_source(), "amm:pool-xlm-usdc-a");
+        assert_eq!(
+            rationale
+                .compared_venues
+                .iter()
+                .map(|v| v.source.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "amm:pool-xlm-usdc-a",
+                "sdex:offer-xlm-usdc-1",
+                "sdex:offer-xlm-usdc-2",
+                "amm:pool-xlm-usdc-b",
+            ]
+        );
     }
 }

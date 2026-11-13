@@ -119,7 +119,7 @@ describe("useTradeFormStorage", () => {
     expect(stored.toToken).toBe("native");
   });
 
-  it("handles corrupted storage gracefully", async () => {
+  it("handles corrupted storage gracefully and removes the bad key", async () => {
     localStorage.setItem(STORAGE_KEY, "NOT_JSON{{{{");
 
     const { result } = renderHook(() => useTradeFormStorage());
@@ -128,5 +128,28 @@ describe("useTradeFormStorage", () => {
     expect(result.current.pendingRecovery).toBeNull();
     expect(result.current.amount).toBe("");
     expect(result.current.isHydrated).toBe(true);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("rejects wrong-shaped snapshots (e.g. non-string amount) and removes the bad key", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        amount: 12345,
+        slippage: 1.0,
+        deadline: 45,
+        fromToken: "native",
+        toToken: "EURC:GEXAMPLE",
+        side: "buy",
+        savedAt: Date.now(),
+      }),
+    );
+
+    const { result } = renderHook(() => useTradeFormStorage());
+    await act(async () => {});
+
+    expect(result.current.pendingRecovery).toBeNull();
+    expect(result.current.amount).toBe("");
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });

@@ -116,4 +116,42 @@ describe("useSystemMessages", () => {
     expect(result.current.messages.find((m) => m.id === "msg-1")).toBeUndefined();
     expect(result.current.messages).toHaveLength(1);
   });
+
+  it("falls back to defaults and removes key when stored state has wrong shape", async () => {
+    localStorage.setItem(
+      "stellarroute-system-messages-state",
+      JSON.stringify({})
+    );
+
+    const { result } = renderHook(() => useSystemMessages());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.unreadCount).toBe(2);
+    expect(localStorage.getItem("stellarroute-system-messages-state")).toBeNull();
+  });
+
+  it("falls back to defaults and removes key when stored arrays contain non-strings", async () => {
+    localStorage.setItem(
+      "stellarroute-system-messages-state",
+      JSON.stringify({ read: [123], dismissed: ["msg-1"] })
+    );
+
+    const { result } = renderHook(() => useSystemMessages());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.unreadCount).toBe(2);
+    expect(localStorage.getItem("stellarroute-system-messages-state")).toBeNull();
+  });
+
+  it("falls back to defaults and removes key when stored JSON is malformed", async () => {
+    localStorage.setItem("stellarroute-system-messages-state", "not-json{");
+
+    const { result } = renderHook(() => useSystemMessages());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(localStorage.getItem("stellarroute-system-messages-state")).toBeNull();
+  });
 });

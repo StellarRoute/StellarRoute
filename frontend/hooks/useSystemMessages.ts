@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { readJson } from "@/lib/storage/safe-json";
 
 export type MessageSeverity = "info" | "warning" | "error" | "maintenance";
 
@@ -13,7 +14,7 @@ export interface SystemMessage {
   created_at: string;
 }
 
-interface MessageState {
+export interface MessageState {
   read: string[];
   dismissed: string[];
 }
@@ -23,14 +24,19 @@ const MESSAGES_URL =
   process.env.NEXT_PUBLIC_MESSAGES_URL ?? "/api/system-messages.json";
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+export function isMessageState(v: unknown): v is MessageState {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const candidate = v as Record<string, unknown>;
+  return (
+    Array.isArray(candidate.read) &&
+    candidate.read.every((item): item is string => typeof item === "string") &&
+    Array.isArray(candidate.dismissed) &&
+    candidate.dismissed.every((item): item is string => typeof item === "string")
+  );
+}
+
 function loadState(): MessageState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as MessageState;
-  } catch {
-    // ignore
-  }
-  return { read: [], dismissed: [] };
+  return readJson(STORAGE_KEY, isMessageState, { read: [], dismissed: [] });
 }
 
 function saveState(state: MessageState): void {

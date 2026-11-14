@@ -34,6 +34,17 @@ use crate::{
     },
 };
 
+// ── API response envelope ─────────────────────────────────────────────────────
+
+/// Private deserializer for the `{ v, timestamp, request_id, data }` envelope
+/// returned by endpoints that wrap their response (e.g. `POST /api/v1/simulate/route`).
+///
+/// Only `data` is extracted; the envelope metadata is discarded.
+#[derive(serde::Deserialize)]
+struct ApiEnvelope<T> {
+    pub data: T,
+}
+
 // ── Builder ───────────────────────────────────────────────────────────────────
 
 /// Fluent builder for [`StellarRouteClient`].
@@ -175,6 +186,16 @@ impl StellarRouteClient {
     /// has no active offers.
     pub async fn orderbook(&self, base: &str, quote: &str) -> Result<OrderbookResponse> {
         self.get(&format!("api/v1/orderbook/{base}/{quote}")).await
+    }
+
+    /// `GET /api/v1/price-history/{base}/{quote}` — fetch 24-hour hourly price series.
+    ///
+    /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] for HTTP 400,
+    /// [`ApiErrorCode::NoRoute`] for HTTP 404 (pair not found or no data), and
+    /// [`SdkError::RateLimited`] after exhausted retries on HTTP 429.
+    pub async fn price_history(&self, base: &str, quote: &str) -> Result<PriceHistoryResponse> {
+        self.get(&format!("api/v1/price-history/{base}/{quote}"))
+            .await
     }
 
     /// `GET /api/v1/quote/{base}/{quote}` — get best price quote.

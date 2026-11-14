@@ -80,6 +80,16 @@ describe('execution support', () => {
       });
     }
 
+    const evmSupport = resolveExecutionSupport(
+      'evm',
+      { sourceChain: 'evm', destinationChain: 'stellar' },
+      { connected: true, networkMatch: true, canSign: true }
+    );
+    expect(evmSupport).toMatchObject({
+      kind: 'signing_only',
+      code: 'chain_signing_available',
+    });
+
     // Same-chain non-Stellar still has no backend swap route.
     const tronSame = resolveExecutionSupport(
       'tron',

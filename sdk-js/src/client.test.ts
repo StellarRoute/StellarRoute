@@ -1001,6 +1001,60 @@ describe('confirmSwap', () => {
     });
   });
 
+  it('uses pubnet Horizon when stellarNetwork is public and horizonUrl is omitted', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        ok({
+          hash: 'tx789',
+          successful: true,
+          ledger: 99,
+        }),
+      );
+
+    const result = await new StellarRouteClient({
+      retries: 0,
+      stellarNetwork: 'public',
+    }).confirmSwap('tx789', { pollIntervalMs: 1, timeoutMs: 500 });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://horizon.stellar.org/transactions/tx789',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(result.horizon_url).toBe(
+      'https://horizon.stellar.org/transactions/tx789',
+    );
+  });
+
+  it('rejects promptly when aborted during poll sleep', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
+
+    const controller = new AbortController();
+    const client = new StellarRouteClient({
+      retries: 0,
+      stellarNetwork: 'testnet',
+    });
+    const pending = client.confirmSwap('slow-tx', {
+      pollIntervalMs: 5_000,
+      timeoutMs: 30_000,
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    const err = await pending.catch((e: unknown) => e);
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).message).toBe('confirmSwap aborted');
+  });
+
+  it('throws when Horizon config is missing', async () => {
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx', { pollIntervalMs: 1, timeoutMs: 1 })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('validation_error');
+  });
+
   it('throws when Horizon never returns the transaction', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
 

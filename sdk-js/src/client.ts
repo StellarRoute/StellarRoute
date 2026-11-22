@@ -58,6 +58,15 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRIES = 2;
 /** Default Horizon testnet URL used by {@link StellarRouteClient.confirmSwap}. */
 export const DEFAULT_TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+/** Default Horizon pubnet URL used by {@link StellarRouteClient.confirmSwap}. */
+export const DEFAULT_PUBLIC_HORIZON_URL = 'https://horizon.stellar.org';
+
+const TESTNET_NETWORK_PASSPHRASE =
+  'Test SDF Network ; September 2015';
+const PUBLIC_NETWORK_PASSPHRASE =
+  'Public Global Stellar Network ; September 2017';
+
+export type StellarSdkNetwork = 'testnet' | 'public';
 const CLASSIC_EXECUTION_MODE = 'classic_path_payment';
 
 /**
@@ -232,6 +241,15 @@ export interface StellarRouteClientOptions {
    * Additional headers sent with every request.
    */
   headers?: Record<string, string>;
+  /**
+   * Default Horizon base URL for {@link StellarRouteClient.confirmSwap}.
+   * Overrides {@link stellarNetwork} when both are set.
+   */
+  horizonUrl?: string;
+  /**
+   * Stellar network for default Horizon confirmation polling (`testnet` or `public`).
+   */
+  stellarNetwork?: StellarSdkNetwork;
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -257,6 +275,8 @@ export class StellarRouteClient {
   private readonly timeoutMs: number;
   private readonly retries: number;
   private readonly extraHeaders: Record<string, string>;
+  private readonly defaultHorizonUrl?: string;
+  private readonly stellarNetwork?: StellarSdkNetwork;
 
   constructor(options: StellarRouteClientOptions | string = {}) {
     // Accept a plain string for backward compatibility.
@@ -267,6 +287,8 @@ export class StellarRouteClient {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.retries = options.retries ?? DEFAULT_RETRIES;
     this.extraHeaders = options.headers ?? {};
+    this.defaultHorizonUrl = options.horizonUrl?.replace(/\/$/, '');
+    this.stellarNetwork = options.stellarNetwork;
   }
 
   // ── Public API methods ──────────────────────────────────────────────────────
@@ -556,6 +578,7 @@ export class StellarRouteClient {
     txHash: string,
     options?: {
       horizonUrl?: string;
+      networkPassphrase?: string;
       timeoutMs?: number;
       pollIntervalMs?: number;
       signal?: AbortSignal;
@@ -563,10 +586,12 @@ export class StellarRouteClient {
     },
   ): Promise<SwapConfirmResult> {
     const expected = options?.expectedTxHash ?? txHash;
-    const horizonUrl = (options?.horizonUrl ?? DEFAULT_TESTNET_HORIZON_URL).replace(
-      /\/$/,
-      '',
-    );
+    const horizonUrl = resolveHorizonUrl({
+      horizonUrl: options?.horizonUrl,
+      networkPassphrase: options?.networkPassphrase,
+      clientHorizonUrl: this.defaultHorizonUrl,
+      stellarNetwork: this.stellarNetwork,
+    });
     const timeoutMs = options?.timeoutMs ?? 60_000;
     const pollIntervalMs = options?.pollIntervalMs ?? 2_000;
     const url = `${horizonUrl}/transactions/${encodeURIComponent(expected)}`;
@@ -589,13 +614,13 @@ export class StellarRouteClient {
           const message = err instanceof Error ? err.message : 'Network error';
           throw new StellarRouteApiError(0, 'network_error', message);
         }
-        await sleep(pollIntervalMs);
+        await sleepAbortable(pollIntervalMs, options?.signal);
         continue;
       }
 
       if (response.status === 404) {
         if (Date.now() + pollIntervalMs > deadline) break;
-        await sleep(pollIntervalMs);
+        await sleepAbortable(pollIntervalMs, options?.signal);
         continue;
       }
 
@@ -1112,6 +1137,72 @@ function cctpAccessHeaders(
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) {
+    return Promise.reject(
+      new StellarRouteApiError(0, 'network_error', 'confirmSwap aborted'),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(new StellarRouteApiError(0, 'network_error', 'confirmSwap aborted'));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function horizonUrlForNetwork(network: StellarSdkNetwork): string {
+  return network === 'public'
+    ? DEFAULT_PUBLIC_HORIZON_URL
+    : DEFAULT_TESTNET_HORIZON_URL;
+}
+
+function horizonUrlForPassphrase(passphrase: string): string | undefined {
+  const trimmed = passphrase.trim();
+  if (trimmed === TESTNET_NETWORK_PASSPHRASE) {
+    return DEFAULT_TESTNET_HORIZON_URL;
+  }
+  if (trimmed === PUBLIC_NETWORK_PASSPHRASE) {
+    return DEFAULT_PUBLIC_HORIZON_URL;
+  }
+  return undefined;
+}
+
+function resolveHorizonUrl(input: {
+  horizonUrl?: string;
+  networkPassphrase?: string;
+  clientHorizonUrl?: string;
+  stellarNetwork?: StellarSdkNetwork;
+}): string {
+  if (input.horizonUrl?.trim()) {
+    return input.horizonUrl.trim().replace(/\/$/, '');
+  }
+  if (input.clientHorizonUrl?.trim()) {
+    return input.clientHorizonUrl.trim().replace(/\/$/, '');
+  }
+  if (input.stellarNetwork) {
+    return horizonUrlForNetwork(input.stellarNetwork);
+  }
+  const fromPassphrase = input.networkPassphrase
+    ? horizonUrlForPassphrase(input.networkPassphrase)
+    : undefined;
+  if (fromPassphrase) return fromPassphrase.replace(/\/$/, '');
+
+  throw new StellarRouteApiError(
+    400,
+    'validation_error',
+    'confirmSwap requires horizonUrl, stellarNetwork on the client, or a known networkPassphrase',
+    { status: 'missing_horizon_config' },
+  );
+}
 
 /** Exponential back-off: 500 ms, 1 s, 2 s, … */
 const backoffMs = (attempt: number): number => 500 * Math.pow(2, attempt);

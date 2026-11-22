@@ -13,12 +13,16 @@ import { AccentColorPicker } from '@/components/settings/AccentColorPicker';
 import { FontScaleControl } from '@/components/settings/FontScaleControl';
 import { HighContrastToggle } from '@/components/settings/HighContrastToggle';
 import { BrowserNotificationSettings } from '@/components/settings/BrowserNotificationSettings';
+import { ThemePreview } from '@/components/settings/ThemePreview';
 import { useBrowserNotifications } from '@/hooks/useBrowserNotifications';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { useSwapI18n } from '@/lib/swap-i18n';
 
 export function SettingsPageClient() {
   const { settings, updateSlippage, updateTheme, resetSettings } = useSettings();
   const [localSlippage, setLocalSlippage] = useState(settings.slippageTolerance.toString());
+  const [pendingTheme, setPendingTheme] = useState<ThemeSetting | null>(null);
+  const { enabled: themePreviewEnabled } = useFeatureFlag('settings_theme_preview');
   const {
     browserNotifications,
     permissionState,
@@ -42,8 +46,26 @@ export function SettingsPageClient() {
     }
   };
 
+  const handleThemeChange = (value: string) => {
+    const theme = value as ThemeSetting;
+    if (themePreviewEnabled) {
+      setPendingTheme(theme);
+    } else {
+      updateTheme(theme);
+    }
+  };
+
+  const handleApplyTheme = () => {
+    if (pendingTheme) {
+      updateTheme(pendingTheme);
+      setPendingTheme(null);
+      toast.success(t('settings.theme.applied'));
+    }
+  };
+
   const handleReset = () => {
     resetSettings();
+    setPendingTheme(null);
     toast.success(t('settings.reset.success'));
   };
 
@@ -95,8 +117,8 @@ export function SettingsPageClient() {
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('settings.theme.label')}</label>
               <Select
-                value={settings.theme}
-                onValueChange={(value) => updateTheme(value as ThemeSetting)}
+                value={pendingTheme ?? settings.theme}
+                onValueChange={handleThemeChange}
               >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder={t('settings.theme.placeholder')} />
@@ -107,6 +129,18 @@ export function SettingsPageClient() {
                   <SelectItem value="system">{t('settings.theme.system')}</SelectItem>
                 </SelectContent>
               </Select>
+              {themePreviewEnabled && pendingTheme && (
+                <div className="space-y-2">
+                  <ThemePreview previewTheme={pendingTheme} />
+                  <Button
+                    size="sm"
+                    onClick={handleApplyTheme}
+                    data-testid="theme-preview-apply"
+                  >
+                    Apply theme
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Accent colour picker — issue #521 */}

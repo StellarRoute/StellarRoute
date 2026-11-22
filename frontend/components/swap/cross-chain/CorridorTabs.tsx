@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import type { CorridorId, CorridorSelectionId } from '@/lib/cross-chain/types';
 import { UNMATCHED_CORRIDOR_ID } from '@/lib/cross-chain/corridors';
 import { useCorridorCatalog } from '@/hooks/useCorridorCatalog';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
 interface CorridorTabsProps {
   activeId: CorridorSelectionId;
@@ -14,13 +15,54 @@ interface CorridorTabsProps {
 
 export function CorridorTabs({ activeId, onSelect, disabled }: CorridorTabsProps) {
   const { corridors } = useCorridorCatalog();
+  const { enabled: keyboardNavEnabled } = useFeatureFlag('corridor_keyboard_nav');
   const isUnmatched = activeId === UNMATCHED_CORRIDOR_ID;
+  const listRef = useRef<HTMLDivElement>(null);
 
   const { ready, soon } = useMemo(() => {
     const readyCorridors = corridors.filter((c) => c.executable);
     const soonCorridors = corridors.filter((c) => !c.executable);
     return { ready: readyCorridors, soon: soonCorridors };
   }, [corridors]);
+
+  const allIds: CorridorId[] = useMemo(
+    () => [...ready, ...soon].map((c) => c.id),
+    [ready, soon]
+  );
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!keyboardNavEnabled || disabled) return;
+      const tabs = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([disabled])');
+      if (!tabs || tabs.length === 0) return;
+
+      const focused = document.activeElement as HTMLButtonElement | null;
+      const tabArray = Array.from(tabs);
+      const currentIndex = focused ? tabArray.indexOf(focused) : -1;
+
+      let nextIndex: number | undefined;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % tabArray.length;
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        nextIndex = currentIndex <= 0 ? tabArray.length - 1 : currentIndex - 1;
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        nextIndex = tabArray.length - 1;
+      }
+
+      if (nextIndex !== undefined) {
+        tabArray[nextIndex].focus();
+        const id = tabArray[nextIndex].dataset.corridorId as CorridorId | undefined;
+        if (id) onSelect(id);
+      }
+    },
+    [keyboardNavEnabled, disabled, onSelect]
+  );
 
   return (
     <nav aria-label="Cross-chain corridors" className="space-y-2.5">
@@ -36,9 +78,11 @@ export function CorridorTabs({ activeId, onSelect, disabled }: CorridorTabsProps
       </div>
 
       <div
+        ref={listRef}
         role="tablist"
         className="flex flex-wrap items-center gap-2"
         aria-orientation="horizontal"
+        onKeyDown={keyboardNavEnabled ? handleKeyDown : undefined}
       >
         {ready.map((corridor) => {
           const selected = !isUnmatched && corridor.id === activeId;
@@ -105,6 +149,7 @@ function CorridorChip({
       aria-controls={`corridor-panel-${id}`}
       onClick={() => onSelect(id)}
       disabled={disabled}
+      data-corridor-id={id}
       className={cn(
         'min-h-11 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',

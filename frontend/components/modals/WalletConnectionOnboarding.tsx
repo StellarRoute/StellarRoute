@@ -73,6 +73,21 @@ export function WalletConnectionOnboarding({
   const [isRefreshingWallets, setIsRefreshingWallets] = useState(false);
   const connectAttemptRef = useRef(0);
   const dismissedRef = useRef(false);
+  const dialogContentRef = useRef<HTMLDivElement>(null);
+
+  // Focus the first interactive element when the dialog opens (W12-FE-07).
+  useEffect(() => {
+    if (!open) return;
+    // Allow Radix to finish rendering / animating before focusing.
+    const id = window.setTimeout(() => {
+      if (!dialogContentRef.current) return;
+      const focusable = dialogContentRef.current.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      focusable?.focus();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [open, step]);
 
   useEffect(() => {
     const normalizedApp = normalizeAppNetwork(appNetwork);
@@ -279,7 +294,7 @@ export function WalletConnectionOnboarding({
         data-testid="wallet-connect-dialog"
         className="flex w-[min(100%,90vw)] max-h-[min(90dvh,90vh)] flex-col gap-0 overflow-hidden p-4 sm:p-6 sm:max-w-[425px] md:max-w-[600px] pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div ref={dialogContentRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {step === 'welcome' && (
           <>
             <DialogHeader>

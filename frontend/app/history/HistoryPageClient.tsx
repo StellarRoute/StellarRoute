@@ -1,12 +1,35 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 
 import { TradeActivityTable } from '@/components/shared/TradeActivityTable';
 import { ViewState } from '@/components/shared/ViewState';
 import { Button } from '@/components/ui/button';
 import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import type { TradeRecord } from '@/types/trade';
+
+/** Serialises trade records to a RFC 4180-compliant CSV string. */
+export function recordsToCsv(records: TradeRecord[]): string {
+  const header = 'id,txHash,timestamp,action,amount,asset';
+  const rows = records.map((r) => {
+    const ts = r.timestamp instanceof Date ? r.timestamp.toISOString() : String(r.timestamp);
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    return [escape(r.id), escape(r.txHash), ts, escape(r.action), escape(r.amount), escape(r.asset)].join(',');
+  });
+  return [header, ...rows].join('\n');
+}
+
+/** Triggers a browser download of the given CSV text. */
+export function triggerCsvDownload(csv: string, filename: string): void {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Decorative empty-state artwork for this page (issue #1263).
@@ -42,6 +65,13 @@ export function HistoryPageClient({ address }: { address?: string }) {
   const client = useStellarRouteClient();
   const [records, setRecords] = useState<TradeRecord[] | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const { enabled: csvEnabled } = useFeatureFlag('history_csv_export');
+
+  const handleExportCsv = useCallback(() => {
+    if (!records || records.length === 0) return;
+    const csv = recordsToCsv(records);
+    triggerCsvDownload(csv, `stellarroute-history-${Date.now()}.csv`);
+  }, [records]);
 
   useEffect(() => {
     if (!address) {
@@ -130,7 +160,23 @@ export function HistoryPageClient({ address }: { address?: string }) {
     );
   }
 
-  return <TradeActivityTable address={address} initialData={records} />;
+  return (
+    <div className="space-y-3">
+      {csvEnabled && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            data-testid="history-csv-export"
+          >
+            Export CSV
+          </Button>
+        </div>
+      )}
+      <TradeActivityTable address={address} initialData={records} />
+    </div>
+  );
 }
 
 export default HistoryPageClient;

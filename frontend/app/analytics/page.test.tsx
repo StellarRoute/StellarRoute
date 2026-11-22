@@ -216,4 +216,65 @@ describe("AnalyticsPageClient", () => {
       screen.queryByRole("group", { name: "Select a trading pair" }),
     ).not.toBeInTheDocument();
   });
+
+  // ── Skeleton loading state (issue #1732) ──────────────────────────────────
+
+  it("renders the skeleton when the feature flag is loading", () => {
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: false, loading: true });
+
+    render(<AnalyticsPageClient />);
+
+    const skeleton = screen.getByTestId("analytics-skeleton");
+    expect(skeleton).toBeInTheDocument();
+  });
+
+  it("skeleton has aria-busy=true and an accessible label", () => {
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: false, loading: true });
+
+    render(<AnalyticsPageClient />);
+
+    const skeleton = screen.getByTestId("analytics-skeleton");
+    expect(skeleton).toHaveAttribute("aria-busy", "true");
+    expect(skeleton).toHaveAttribute("aria-label", "Loading analytics");
+  });
+
+  it("does not show the disabled placeholder or the dashboard while loading", () => {
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: false, loading: true });
+
+    render(<AnalyticsPageClient />);
+
+    expect(screen.queryByText("Analytics preview disabled")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quote cache")).not.toBeInTheDocument();
+  });
+
+  it("hides the skeleton once the flag resolves to disabled", () => {
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: false, loading: false });
+
+    render(<AnalyticsPageClient />);
+
+    expect(screen.queryByTestId("analytics-skeleton")).not.toBeInTheDocument();
+    expect(screen.getByText("Analytics preview disabled")).toBeInTheDocument();
+  });
+
+  it("hides the skeleton once the flag resolves to enabled and shows live metrics", () => {
+    vi.mocked(useFeatureFlag).mockReturnValue({ enabled: true, loading: false });
+    vi.mocked(useApiHooks.useCacheMetrics).mockReturnValue({
+      data: mockCacheMetrics,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    vi.mocked(useApiHooks.usePoolStats).mockReturnValue({
+      data: mockPoolStats,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    mockSparklineHooks();
+
+    render(<AnalyticsPageClient />);
+
+    expect(screen.queryByTestId("analytics-skeleton")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Analytics" })).toBeInTheDocument();
+  });
 });

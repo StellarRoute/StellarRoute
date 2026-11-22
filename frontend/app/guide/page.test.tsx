@@ -98,4 +98,48 @@ describe('FirstSwapGuidePage', () => {
       screen.getByText(/StellarRoute never holds your keys/i),
     ).toBeInTheDocument();
   });
+
+  // ── Table of contents + skip link (issue #1735) ───────────────────────────
+
+  it('renders a "Skip to steps" skip link targeting #guide-steps', () => {
+    render(<FirstSwapGuidePage />);
+    const skipLink = screen.getByRole('link', { name: /skip to steps/i });
+    expect(skipLink).toBeInTheDocument();
+    expect(skipLink).toHaveAttribute('href', '#guide-steps');
+  });
+
+  it('renders a TOC nav landmark with accessible label', () => {
+    render(<FirstSwapGuidePage />);
+    const toc = screen.getByRole('navigation', { name: /guide table of contents/i });
+    expect(toc).toBeInTheDocument();
+  });
+
+  it('renders TOC links for all 6 steps', () => {
+    render(<FirstSwapGuidePage />);
+    const toc = screen.getByTestId('guide-toc');
+    const tocLinks = toc.querySelectorAll('a');
+    expect(tocLinks).toHaveLength(6);
+  });
+
+  it('renders TOC anchor links with correct fragment hrefs', () => {
+    render(<FirstSwapGuidePage />);
+    const connectLink = screen.getByRole('link', { name: /1\.\s*Connect your wallet/i });
+    expect(connectLink).toHaveAttribute('href', '#step-connect-wallet');
+
+    const confirmLink = screen.getByRole('link', { name: /6\.\s*Confirm in your wallet/i });
+    expect(confirmLink).toHaveAttribute('href', '#step-confirm-wallet');
+  });
+
+  it('each step li has an id matching the TOC fragment', () => {
+    const { container } = render(<FirstSwapGuidePage />);
+    const stepList = container.querySelector('#guide-steps');
+    expect(stepList).toBeInTheDocument();
+
+    const stepIds = Array.from(stepList!.querySelectorAll('li[id]')).map(
+      (el) => el.getAttribute('id'),
+    );
+    expect(stepIds).toContain('step-connect-wallet');
+    expect(stepIds).toContain('step-confirm-wallet');
+    expect(stepIds).toHaveLength(6);
+  });
 });

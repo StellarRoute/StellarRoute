@@ -14,36 +14,42 @@ export const metadata = buildPageMetadata({
 
 const steps = [
   {
+    id: "step-connect-wallet",
     title: "Connect your wallet",
     body: "Use Freighter or xBull. Match the network badge in the footer (Testnet vs Mainnet) before you trade.",
     image: "/guide/01-connect.svg",
     alt: "Wallet connect screen showing Freighter and xBull options with network badge",
   },
   {
+    id: "step-fund-reserve",
     title: "Fund and reserve XLM",
     body: "Keep enough XLM for network fees and Stellar base reserves. On testnet, Friendbot can fund a new account.",
     image: "/guide/02-fund.svg",
     alt: "Account balance panel showing XLM balance and base reserve requirement",
   },
   {
+    id: "step-add-trustline",
     title: "Add a trustline if needed",
     body: "Non-XLM receive assets usually need a trustline. Approve the trustline transaction in your wallet when prompted.",
     image: "/guide/03-trustline.svg",
     alt: "Trustline approval prompt in the wallet for the receive asset",
   },
   {
+    id: "step-pick-pair",
     title: "Pick a pair and enter a small amount",
     body: "Choose pay/receive assets, enter a modest size for your first live swap, and wait for the best-route quote.",
     image: "/guide/04-pair.svg",
     alt: "Swap card with pay and receive assets selected and a best-route quote displayed",
   },
   {
+    id: "step-set-slippage",
     title: "Set slippage and review the route",
     body: "Start near 0.5% slippage unless markets are moving quickly. Read high-impact warnings before confirming.",
     image: "/guide/05-slippage.svg",
     alt: "Slippage selector set to 0.5% with route details and impact level shown",
   },
   {
+    id: "step-confirm-wallet",
     title: "Confirm in your wallet",
     body: "Review amounts in the wallet prompt, sign, then track status in the app. StellarRoute never holds your keys.",
     image: "/guide/06-confirm.svg",
@@ -54,6 +60,14 @@ const steps = [
 export default function FirstSwapGuidePage() {
   return (
     <main className="min-h-[calc(100vh-80px)] px-4 py-10 sm:px-6 lg:px-8">
+      {/* Skip link: lets keyboard users jump straight to the step list */}
+      <a
+        href="#guide-steps"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      >
+        Skip to steps
+      </a>
+
       <div className="container mx-auto max-w-3xl space-y-8">
         <header className="space-y-3">
           <p className="text-sm font-medium uppercase text-muted-foreground">
@@ -83,13 +97,36 @@ export default function FirstSwapGuidePage() {
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
           </div>
+
+          {/* Table of contents */}
+          <nav aria-label="Guide table of contents" className="pt-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              Steps
+            </p>
+            <ol className="space-y-1 text-sm" data-testid="guide-toc">
+              {steps.map((step, index) => (
+                <li key={step.id}>
+                  <a
+                    href={`#${step.id}`}
+                    className="inline-flex items-center gap-1.5 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm"
+                  >
+                    <span className="tabular-nums text-xs font-medium w-4 shrink-0">
+                      {index + 1}.
+                    </span>
+                    {step.title}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </nav>
         </header>
 
-        <ol className="space-y-4">
+        <ol id="guide-steps" className="space-y-4">
           {steps.map((step, index) => (
             <li
               key={step.title}
-              className="rounded-xl border bg-card p-5 text-card-foreground"
+              id={step.id}
+              className="rounded-xl border bg-card p-5 text-card-foreground scroll-mt-4"
             >
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Step {index + 1}

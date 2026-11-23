@@ -82,6 +82,7 @@ describe('env-guard', () => {
         NEXT_PUBLIC_STELLAR_NETWORK: 'testnet',
         NEXT_PUBLIC_API_URL_TESTNET: 'https://api-test.example.com',
         NEXT_PUBLIC_API_URL: 'https://api-shared.example.com',
+        NODE_ENV: 'test',
       })
     ).toBe('https://api-test.example.com');
   });
@@ -91,6 +92,7 @@ describe('env-guard', () => {
       enforceFrontendProductionEnv({
         VERCEL_ENV: 'production',
         NEXT_PUBLIC_API_URL: 'http://127.0.0.1:3000',
+        NODE_ENV: 'production',
       })
     ).toThrow(/env-guard/);
   });

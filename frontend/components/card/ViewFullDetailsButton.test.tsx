@@ -7,7 +7,10 @@ import {
 
 describe('ViewFullDetailsButton', () => {
   const mockUrl = 'https://issuer-partner.example.com/card-details';
-  let windowOpenSpy: ReturnType<typeof vi.spyOn>;
+  function createWindowOpenSpy() {
+    return vi.spyOn(window, 'open');
+  }
+  let windowOpenSpy: ReturnType<typeof createWindowOpenSpy>;
 
   beforeEach(() => {
     windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null);

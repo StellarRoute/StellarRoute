@@ -32,7 +32,7 @@ const base = {
   sourceAddress: SOURCE,
   networkPassphrase: Networks.TESTNET,
   horizonUrl: 'https://horizon-testnet.stellar.org',
-  sequenceOverride: 100n,
+  sequenceOverride: BigInt(100),
   now: NOW,
 };
 
@@ -48,7 +48,7 @@ describe('confirmDuePayment', () => {
       amount: '5',
       networkPassphrase: Networks.TESTNET,
       horizonUrl: base.horizonUrl,
-      sequenceOverride: 100n,
+      sequenceOverride: BigInt(100),
     });
     expect(signAndSubmit).toHaveBeenCalledTimes(1);
     expect(signAndSubmit).toHaveBeenCalledWith(expected);

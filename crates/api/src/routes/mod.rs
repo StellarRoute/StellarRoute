@@ -1,9 +1,9 @@
 //! API routes
 
 pub mod activity;
-pub mod agent;
 pub mod admin;
 pub mod admin_cache;
+pub mod agent;
 pub mod assets;
 pub mod canary;
 pub mod card;
@@ -157,7 +157,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Health check
         .route("/health", get(health::health_check))
         .route("/health/deps", get(health::dependency_health))
-        .merge(crate::card::router())
+        .merge(crate::card::router_for_app())
         .merge(operator_routes)
         .merge(live_path_routes)
         // API v2 seam (chain-aware assets; quotes remain on v1)
@@ -264,7 +264,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // AI agent health check (fail-closed behind AI_AGENT_ENABLED)
         .route("/api/v1/agent/health", get(crate::agent::agent_health))
         // Agent feature routes (AI-37). Return 404 when AI_AGENT_ENABLED is unset.
-        .route("/api/v1/agent/health", get(agent::agent_health))
         .route("/api/v1/agent/tools", get(agent::agent_tools))
         .route(
             "/api/v1/agent/intents/validate",

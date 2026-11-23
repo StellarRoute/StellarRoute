@@ -14,14 +14,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { useCardFreezeAction } from '@/hooks/useCardFreezeAction';
 import { CardFreezeButton } from '@/components/card/CardFreezeButton';
 import { CardFace } from '@/components/card/CardFace';
-<CardFace
-  last4="4567"
-  expiry="12/27"
-  usdcAvailable="1,234.56"
-  isFrozen={isFrozen}
-/>
-
-<CardFreezeButton api={freezeApi} />
+import { CardNicknameEditor } from '@/components/card/CardNicknameEditor';
 
 import { calculateDailySpendingProgress } from '@/lib/card/limits';
 import { CardDailyLimitProgress } from '@/components/card/CardDailyLimitProgress';
@@ -72,13 +65,13 @@ const FIXTURE_ROWS: ActivityRow[] = [
 
 export function CardPageClient() {
   const { session } = useWallet();
-const freezeApi = useCardFreezeAction({
-  onSuccess: (action, txHash) => {
-    console.info(`Card ${action} completed`, txHash);
-  },
-});
+  const freezeApi = useCardFreezeAction({
+    onSuccess: (action, txHash) => {
+      console.info(`Card ${action} completed`, txHash);
+    },
+  });
 
-const isFrozen = freezeApi.isFrozen;
+  const isFrozen = freezeApi.isFrozen;
   const [rows, setRows] = useState<ActivityRow[]>(FIXTURE_ROWS);
   const [fxSnapshot, setFxSnapshot] = useState<CardFxSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,26 +121,22 @@ const isFrozen = freezeApi.isFrozen;
     void loadActivity();
   }, []);
 
-  const freezeApi = useCardFreezeAction({
-  onSuccess: (action, txHash) => {
-    console.info(`Card ${action} completed`, txHash);
-  },
-});
-
-const isFrozen = freezeApi.isFrozen;
-
-  const freezeApi = useCardFreezeAction({
-  onSuccess: (action, txHash) => {
-    console.info(`Card ${action} completed`, txHash);
-  },
-});
-
-const isFrozen = freezeApi.isFrozen;
-
   const dailyProgress = calculateDailySpendingProgress(rows, DAILY_LIMIT_USDC);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-12">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <div className="mb-4">
+          <CardNicknameEditor stellarAddress={session.address} />
+        </div>
+        <CardFace
+          last4="4567"
+          expiry="12/27"
+          usdcAvailable="1,234.56"
+          isFrozen={isFrozen}
+        />
+      </section>
+
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">
           Card Controls

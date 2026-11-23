@@ -151,7 +151,7 @@ describe('useWalletBalance', () => {
         status: 404,
         json: () => Promise.reject(new Error('not found')),
       })
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { result } = renderHook(() =>
       useWalletBalance({
@@ -180,7 +180,7 @@ describe('useWalletBalance', () => {
         status: 500,
         json: () => Promise.reject(new Error('server error')),
       })
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { result } = renderHook(() =>
       useWalletBalance({

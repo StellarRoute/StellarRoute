@@ -19,6 +19,7 @@ import {
   fetchAccountSequence,
   buildSendPaymentXdr,
   SendPaymentError,
+  type SendPaymentErrorCode,
   type BuildSendPaymentXdrParams,
 } from './send';
 import { Asset } from '@stellar/stellar-base';
@@ -27,7 +28,8 @@ import { Asset } from '@stellar/stellar-base';
 
 /** A valid G-address used consistently across all tests */
 const SOURCE = 'GDJTD6CQBWST7MW4T64GQK542YDVTZUSS4WK4NPCFHCGVYUD3CJ6IETQ';
-const DESTINATION = 'GB5476V37DI6S7ZJ7YQQ3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q';
+const DESTINATION = 'GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR';
+const SECOND_DESTINATION = 'GCATS5YOVB6ROX2WUNKGNQ2MP3GMXDMKSG2O4N5CLX3A6W4PZGZZI55U';
 const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
 const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 const HORIZON_TESTNET = 'https://horizon-testnet.stellar.org';
@@ -45,11 +47,11 @@ const FROZEN_NOW_MS = 1740312000000; // 2026-02-23T12:00:00Z
 const FROZEN_XDR = {
   /** Payment: XLM → destination, amount=100, seq=100, no memo */
   singleHopXlm:
-    'AAAAAgAAAADTMfhQDaU/styfuGgrvNYHWeaSlyyuNeIpxGrig9iT5AAAAGQAAAAAAAAAAQAAAAEAAAAAAAAAAAAAAABnuw3eAAAAAAAAAAEAAAAAAAAADQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHk0gAAAAAAAAAAAQAAAAEAAAAA',
+    'AAAAAgAAAADTMfhQDaU/styfuGgrvNYHWeaSlyyuNeIpxGrig9iT5AAAAGQAAAAAAAAAZQAAAAEAAAAAAAAAAAAAAABnuw3eAAAAAAAAAAEAAAAAAAAAAQAAAACKiOPddAnxlf1S2y08ul1yymcJvx2UEhvzdIgBtA9vXAAAAAAAAAAAO5rKAAAAAAAAAAAA',
 
   /** Payment: USDC → destination, amount=50.5, seq=200, text memo "test" */
   singleHopUsdcWithMemo:
-    'AAAAAgAAAADTMfhQDaU/styfuGgrvNYHWeaSlyyuNeIpxGrig9iT5AAAAGQAAAAAAAAAyQAAAAEAAAAAAAAAAAAAAABnuw3eAAAAAAAAAAEAAAAAAAAADQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHk0gAAAAAAAAAAAQAAAAEAAAAA',
+    'AAAAAgAAAADTMfhQDaU/styfuGgrvNYHWeaSlyyuNeIpxGrig9iT5AAAAGQAAAAAAAAAyQAAAAEAAAAAAAAAAAAAAABnuw3eAAAAAQAAAAR0ZXN0AAAAAQAAAAAAAAABAAAAAIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cAAAAAVVTREMAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcUAAAAAHhmwQAAAAAAAAAAA',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -296,13 +298,13 @@ describe('buildMemo', () => {
   test('id memo with valid number', () => {
     const memo = buildMemo({ type: 'id', value: 12345 });
     expect(memo.type).toBe('id');
-    expect(memo.value).toBe(12345);
+    expect(memo.value).toBe('12345');
   });
 
   test('id memo with numeric string', () => {
     const memo = buildMemo({ type: 'id', value: '67890' });
     expect(memo.type).toBe('id');
-    expect(memo.value).toBe(67890);
+    expect(memo.value).toBe('67890');
   });
 
   test('id memo with negative number throws invalid_memo', () => {
@@ -422,8 +424,7 @@ describe('buildSendPaymentXdr — frozen XDR fixtures', () => {
 
   test('single-hop XLM payment produces frozen XDR', async () => {
     const xdr = await buildSendPaymentXdr(baseParams());
-    console.log('Generated XDR (XLM):', xdr);
-    // expect(xdr).toBe(FROZEN_XDR.singleHopXlm);
+    expect(xdr).toBe(FROZEN_XDR.singleHopXlm);
   });
 
   test('single-hop XDR is stable across two calls with same inputs', async () => {
@@ -434,8 +435,7 @@ describe('buildSendPaymentXdr — frozen XDR fixtures', () => {
 
   test('single-hop USDC payment with text memo produces frozen XDR', async () => {
     const xdr = await buildSendPaymentXdr(baseParamsUsdc());
-    console.log('Generated XDR (USDC with memo):', xdr);
-    // expect(xdr).toBe(FROZEN_XDR.singleHopUsdcWithMemo);
+    expect(xdr).toBe(FROZEN_XDR.singleHopUsdcWithMemo);
   });
 
   test('XDR changes when sequence number changes', async () => {
@@ -451,9 +451,11 @@ describe('buildSendPaymentXdr — frozen XDR fixtures', () => {
   });
 
   test('XDR changes when destination changes', async () => {
-    const dest2 = 'GC5476V37DI6S7ZJ7YQQ3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q3Q';
     const xdr1 = await buildSendPaymentXdr(baseParams());
-    const xdr2 = await buildSendPaymentXdr({ ...baseParams(), destination: dest2 });
+    const xdr2 = await buildSendPaymentXdr({
+      ...baseParams(),
+      destination: SECOND_DESTINATION,
+    });
     expect(xdr1).not.toBe(xdr2);
   });
 
@@ -569,7 +571,7 @@ describe('buildSendPaymentXdr — does not call swap/prepare', () => {
       } as Response;
     });
 
-    await buildSendPaymentXdr(baseParams());
+    await buildSendPaymentXdr({ ...baseParams(), sequenceOverride: undefined });
 
     // Verify fetch was called for Horizon (sequence lookup) but not swap/prepare
     expect(fetchSpy).toHaveBeenCalledTimes(1);

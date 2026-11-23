@@ -22,7 +22,7 @@ use std::sync::{
 };
 
 use axum::{
-    extract::State,
+    extract::Extension,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -32,10 +32,7 @@ use serde::Deserialize;
 
 use crate::models::{ApiErrorCode, ErrorResponse};
 
-use store::{
-    ApplicationRecord, AuthorizationRecord, CardStore, InMemoryCardStore, PartnerEventRecord,
-    StoreError,
-};
+use store::{CardStore, InMemoryCardStore, PartnerEventRecord, StoreError};
 
 pub use auth_state::{
     apply_event, transition, AuthorizationEvent, AuthorizationState, TransitionError,
@@ -151,7 +148,7 @@ struct PartnerEventRequest {
     payload: Option<serde_json::Value>,
 }
 
-async fn freeze_card(State(state): State<Arc<CardState>>) -> Response {
+async fn freeze_card(Extension(state): Extension<Arc<CardState>>) -> Response {
     if !state.config.enabled {
         return not_found();
     }
@@ -163,7 +160,7 @@ async fn freeze_card(State(state): State<Arc<CardState>>) -> Response {
         .into_response()
 }
 
-async fn unfreeze_card(State(state): State<Arc<CardState>>) -> Response {
+async fn unfreeze_card(Extension(state): Extension<Arc<CardState>>) -> Response {
     if !state.config.enabled {
         return not_found();
     }
@@ -175,7 +172,7 @@ async fn unfreeze_card(State(state): State<Arc<CardState>>) -> Response {
         .into_response()
 }
 
-async fn list_authorizations(State(state): State<Arc<CardState>>) -> Response {
+async fn list_authorizations(Extension(state): Extension<Arc<CardState>>) -> Response {
     if !state.config.enabled {
         return not_found();
     }
@@ -185,7 +182,7 @@ async fn list_authorizations(State(state): State<Arc<CardState>>) -> Response {
 }
 
 async fn handle_partner_event(
-    State(state): State<Arc<CardState>>,
+    Extension(state): Extension<Arc<CardState>>,
     Json(payload): Json<PartnerEventRequest>,
 ) -> Response {
     if !state.config.enabled {
@@ -219,8 +216,10 @@ async fn handle_partner_event(
     }
 
     let result = match payload.event_type.as_str() {
-        "authorization" => {
-            state.store.authorization(&payload.authorization_id).map_or_else(
+        "authorization" => state
+            .store
+            .authorization(&payload.authorization_id)
+            .map_or_else(
                 || {
                     state.store.approve_and_hold_with_fx(
                         &payload.authorization_id,
@@ -233,16 +232,17 @@ async fn handle_partner_event(
                     )
                 },
                 Ok,
-            )
-        }
+            ),
         "clearing" => {
             let auth = match state.store.authorization(&payload.authorization_id) {
                 Some(auth) => auth,
-                None => return card_error(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    "authorization_not_found",
-                    "Authorization was not found for clearing.",
-                ),
+                None => {
+                    return card_error(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "authorization_not_found",
+                        "Authorization was not found for clearing.",
+                    )
+                }
             };
             let webhook_fiat = payload.fiat_amount.unwrap_or(auth.fiat_amount);
             if (webhook_fiat - auth.fiat_amount).abs() > 1 {
@@ -312,7 +312,7 @@ async fn handle_partner_event(
 }
 
 async fn record_authorization(
-    State(state): State<Arc<CardState>>,
+    Extension(state): Extension<Arc<CardState>>,
     Json(payload): Json<CardAuthorizationRequest>,
 ) -> Response {
     if !state.config.enabled {
@@ -380,25 +380,39 @@ pub(crate) fn card_error(status: StatusCode, code: &str, message: impl Into<Stri
         .into_response()
 }
 
-/// Card routes bound to an explicit state (used by tests).
-pub fn router_with_state(state: Arc<CardState>) -> Router {
-    Router::new()
+fn card_routes<S>(state: Arc<CardState>, include_authorization_list: bool) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    let authorization_route = if include_authorization_list {
+        get(list_authorizations).post(record_authorization)
+    } else {
+        post(record_authorization)
+    };
+
+    Router::<S>::new()
         .route("/api/v1/card/freeze", post(freeze_card))
         .route("/api/v1/card/unfreeze", post(unfreeze_card))
-        .route(
-            "/api/v1/card/authorizations",
-            get(list_authorizations).post(record_authorization),
-        )
-        .route(
-            "/api/v1/card/partner/events",
-            post(handle_partner_event),
-        )
-        .with_state(state)
+        .route("/api/v1/card/authorizations", authorization_route)
+        .route("/api/v1/card/partner/events", post(handle_partner_event))
+        .layer(Extension(state))
+}
+
+/// Card routes bound to an explicit state (used by tests).
+pub fn router_with_state(state: Arc<CardState>) -> Router {
+    card_routes(state, true)
 }
 
 /// Card routes configured from the environment.
 pub fn router() -> Router {
     router_with_state(Arc::new(CardState::from_env()))
+}
+
+/// Card mutation routes for the main API router. The existing card
+/// authorizations GET route keeps its response contract; this router adds the
+/// POST method without replacing it.
+pub fn router_for_app() -> Router<Arc<crate::state::AppState>> {
+    card_routes(Arc::new(CardState::from_env()), false)
 }
 
 #[cfg(test)]

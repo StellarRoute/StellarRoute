@@ -105,24 +105,24 @@ describe('buildExplorerUrl', () => {
 
 describe('isNotificationSupported', () => {
   it('returns false when window.Notification is absent', () => {
-    const original = (window as Record<string, unknown>).Notification;
+    const original = (window as unknown as Record<string, unknown>).Notification;
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete (window as Record<string, unknown>).Notification;
+    delete (window as unknown as Record<string, unknown>).Notification;
 
     expect(isNotificationSupported()).toBe(false);
 
     // Restore
-    (window as Record<string, unknown>).Notification = original;
+    (window as unknown as Record<string, unknown>).Notification = original;
   });
 
   it('returns true when window.Notification is present', () => {
     // jsdom does not provide Notification by default, so we install a stub
-    const original = (window as Record<string, unknown>).Notification;
-    (window as Record<string, unknown>).Notification = vi.fn();
+    const original = (window as unknown as Record<string, unknown>).Notification;
+    (window as unknown as Record<string, unknown>).Notification = vi.fn();
 
     expect(isNotificationSupported()).toBe(true);
 
-    (window as Record<string, unknown>).Notification = original;
+    (window as unknown as Record<string, unknown>).Notification = original;
   });
 });
 
@@ -141,12 +141,12 @@ describe('dispatchTransactionNotification', () => {
       configurable: true,
       writable: true,
     });
-    (window as Record<string, unknown>).Notification = NotificationMock;
+    (window as unknown as Record<string, unknown>).Notification = NotificationMock;
   });
 
   afterEach(() => {
     // Remove the mock so other tests start clean
-    delete (window as Record<string, unknown>).Notification;
+    delete (window as unknown as Record<string, unknown>).Notification;
     vi.restoreAllMocks();
   });
 
@@ -165,7 +165,7 @@ describe('dispatchTransactionNotification', () => {
   });
 
   it('does not throw when window.Notification is undefined', () => {
-    delete (window as Record<string, unknown>).Notification;
+    delete (window as unknown as Record<string, unknown>).Notification;
     expect(() =>
       dispatchTransactionNotification(confirmedParams, enabledPreference),
     ).not.toThrow();

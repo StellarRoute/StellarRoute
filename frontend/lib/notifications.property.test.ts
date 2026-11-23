@@ -127,11 +127,11 @@ describe('Property 4: No notification dispatched when preference false or permis
       configurable: true,
       writable: true,
     });
-    (window as Record<string, unknown>).Notification = NotificationMock;
+    (window as unknown as Record<string, unknown>).Notification = NotificationMock;
   });
 
   afterEach(() => {
-    delete (window as Record<string, unknown>).Notification;
+    delete (window as unknown as Record<string, unknown>).Notification;
     vi.restoreAllMocks();
   });
 
@@ -190,7 +190,7 @@ describe('Property 4: No notification dispatched when preference false or permis
 // Feature: browser-transaction-notifications, Property 5: Dispatch does not mutate transaction params
 describe('Property 5: Dispatch does not mutate transaction params', () => {
   afterEach(() => {
-    delete (window as Record<string, unknown>).Notification;
+    delete (window as unknown as Record<string, unknown>).Notification;
     vi.restoreAllMocks();
   });
 
@@ -203,7 +203,7 @@ describe('Property 5: Dispatch does not mutate transaction params', () => {
           value: 'denied',
           configurable: true,
         });
-        (window as Record<string, unknown>).Notification = NotificationMock;
+        (window as unknown as Record<string, unknown>).Notification = NotificationMock;
 
         const snapshot = { ...params };
         dispatchTransactionNotification(params, { enabled: true });
@@ -228,7 +228,7 @@ describe('Property 5: Dispatch does not mutate transaction params', () => {
           value: 'granted',
           configurable: true,
         });
-        (window as Record<string, unknown>).Notification = NotificationMock;
+        (window as unknown as Record<string, unknown>).Notification = NotificationMock;
 
         const snapshot = { ...params };
         dispatchTransactionNotification(params, { enabled: true });
@@ -260,11 +260,11 @@ describe('Property 6: Notification tag equals transaction id for any dispatched 
       value: 'granted',
       configurable: true,
     });
-    (window as Record<string, unknown>).Notification = NotificationMock;
+    (window as unknown as Record<string, unknown>).Notification = NotificationMock;
   });
 
   afterEach(() => {
-    delete (window as Record<string, unknown>).Notification;
+    delete (window as unknown as Record<string, unknown>).Notification;
     vi.restoreAllMocks();
   });
 
@@ -331,7 +331,7 @@ describe('Property 10: Correct notification title for each terminal status', () 
       value: 'granted',
       configurable: true,
     });
-    (window as Record<string, unknown>).Notification = NotificationMock;
+    (window as unknown as Record<string, unknown>).Notification = NotificationMock;
 
     try {
       fc.assert(
@@ -346,7 +346,7 @@ describe('Property 10: Correct notification title for each terminal status', () 
         { numRuns: 100 },
       );
     } finally {
-      delete (window as Record<string, unknown>).Notification;
+      delete (window as unknown as Record<string, unknown>).Notification;
     }
   });
 });

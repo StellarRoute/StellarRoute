@@ -26,3 +26,6 @@ export type { CardFreezeButtonProps } from './CardFreezeButton';
 export { CardTopUpPreferencesModal } from './CardTopUpPreferencesModal';
 export type { CardTopUpPreferencesModalProps } from './CardTopUpPreferencesModal';
 
+export { CardFxMatrixModal } from './CardFxMatrixModal';
+export type { CardFxMatrixModalProps } from './CardFxMatrixModal';
+

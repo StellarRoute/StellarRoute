@@ -85,3 +85,85 @@ export function getCardFxQuote(
   }
   return quote;
 }
+
+export type CardFxMatrixCurrency = 'EUR' | 'GBP' | 'JPY' | 'CAD';
+
+export const CARD_FX_MATRIX_CURRENCIES: readonly CardFxMatrixCurrency[] = [
+  'EUR',
+  'GBP',
+  'JPY',
+  'CAD',
+];
+
+export const CARD_FX_MATRIX_FIXTURE_DATE = '2026-11-01';
+
+const MATRIX_FIXTURE_RATES: Record<CardFxMatrixCurrency, number> = {
+  EUR: FIXTURE_BASE_RATES.EUR,
+  GBP: FIXTURE_BASE_RATES.GBP,
+  JPY: 151.62,
+  CAD: 1.3874,
+};
+
+const MATRIX_RATE_DECIMALS: Record<CardFxMatrixCurrency, number> = {
+  EUR: 4,
+  GBP: 4,
+  JPY: 2,
+  CAD: 4,
+};
+
+const MATRIX_AMOUNT_DECIMALS: Record<CardFxMatrixCurrency, number> = {
+  EUR: 2,
+  GBP: 2,
+  JPY: 0,
+  CAD: 2,
+};
+
+const MATRIX_FLAGS: Record<CardFxMatrixCurrency, string> = {
+  EUR: '🇪🇺',
+  GBP: '🇬🇧',
+  JPY: '🇯🇵',
+  CAD: '🇨🇦',
+};
+
+export interface CardFxMatrixRow {
+  fiatCurrency: CardFxMatrixCurrency;
+  flag: string;
+  ratePerUsdc: string;
+  convertedAmount: string;
+}
+
+export interface CardFxMatrix {
+  usdcAmount: number;
+  fixtureDate: string;
+  indicative: true;
+  rows: CardFxMatrixRow[];
+}
+
+export interface IndicativeRatesMatrixInput {
+  usdcAmount: number;
+  targetCurrencies?: readonly CardFxMatrixCurrency[];
+}
+
+export function getIndicativeRatesMatrix({
+  usdcAmount,
+  targetCurrencies = CARD_FX_MATRIX_CURRENCIES,
+}: IndicativeRatesMatrixInput): CardFxMatrix {
+  const amount = Number.isFinite(usdcAmount) && usdcAmount > 0 ? usdcAmount : 0;
+
+  return {
+    usdcAmount: amount,
+    fixtureDate: CARD_FX_MATRIX_FIXTURE_DATE,
+    indicative: true,
+    rows: targetCurrencies.map((fiatCurrency) => {
+      const rate = MATRIX_FIXTURE_RATES[fiatCurrency];
+      return {
+        fiatCurrency,
+        flag: MATRIX_FLAGS[fiatCurrency],
+        ratePerUsdc: rate.toFixed(MATRIX_RATE_DECIMALS[fiatCurrency]),
+        convertedAmount: (amount * rate).toFixed(
+          MATRIX_AMOUNT_DECIMALS[fiatCurrency],
+        ),
+      };
+    }),
+  };
+}

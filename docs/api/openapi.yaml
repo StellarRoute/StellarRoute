@@ -64,6 +64,8 @@ tags:
     description: Indexed on-chain contract swap activity
   - name: trading
     description: Market data — trading pairs, orderbooks, and price quotes
+  - name: swap
+    description: Classic SDEX unsigned swap transaction preparation and signed submission
 
 paths:
   /health:
@@ -802,6 +804,112 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /api/v1/swap/prepare:
+    post:
+      operationId: prepare_swap
+      summary: Build an unsigned classic PathPaymentStrictSend transaction
+      description: |
+        Validates a pre-selected classic SDEX route and returns an unsigned XDR
+        transaction envelope together with the exact `network_passphrase` the
+        envelope was built for. Wallets and callers MUST verify
+        `network_passphrase` matches the active signer network before signing.
+      tags:
+        - swap
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        description: Build an unsigned classic PathPaymentStrictSend
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwapPrepareRequest"
+      responses:
+        "200":
+          description: Unsigned transaction envelope with target network passphrase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwapPrepareEnvelopeResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Route not executable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Active prepare exists for sender
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Unsupported mode, not executable, or stale quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/swap/submit:
+    post:
+      operationId: submit_swap
+      summary: Submit a signed swap transaction envelope
+      description: |
+        Verifies the signed XDR envelope against the prepared quote (`quote_id`,
+        hash, expiration, and `network_passphrase`) and broadcasts it to Horizon.
+      tags:
+        - swap
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        description: Signed XDR envelope matching a prepared quote
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwapSubmitRequest"
+      responses:
+        "200":
+          description: Submitted transaction hash and status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwapSubmitEnvelopeResponse"
+        "400":
+          description: Malformed XDR or invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Prepared quote not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate or concurrent submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Envelope mismatch or expired prepared quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
 components:
   parameters:
     RequestIdHeader:
@@ -1419,6 +1527,165 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SwapActivityItem"
+
+    AssetPath:
+      description: Asset identifier accepted as legacy string ("native" or "CODE:ISSUER") or canonical object
+      oneOf:
+        - type: string
+          description: Legacy/client asset string ("native" or "CODE:ISSUER")
+          example: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        - type: object
+          required: [asset_code]
+          properties:
+            asset_code:
+              type: string
+              description: Asset code, or "native" for XLM
+              example: USDC
+            asset_issuer:
+              type: string
+              nullable: true
+              description: Issuer account for credit assets; null for native
+              example: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+
+    RouteDryRunHop:
+      type: object
+      required: [from_asset, to_asset, source]
+      properties:
+        from_asset:
+          $ref: "#/components/schemas/AssetPath"
+        to_asset:
+          $ref: "#/components/schemas/AssetPath"
+        source:
+          type: string
+          description: Venue identifier (for example "sdex" or "amm:<pool_address>")
+          example: sdex
+        fee_bps:
+          type: integer
+          nullable: true
+          example: 30
+        price:
+          type: string
+          nullable: true
+          example: "0.1050000"
+        venue_ref:
+          type: string
+          nullable: true
+
+    RouteDryRunPath:
+      type: object
+      required: [hops]
+      properties:
+        hops:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteDryRunHop"
+
+    SwapPrepareRequest:
+      type: object
+      required: [route, amount, sender]
+      description: Parameters for POST /api/v1/swap/prepare
+      properties:
+        route:
+          $ref: "#/components/schemas/RouteDryRunPath"
+        amount:
+          type: string
+          description: Input sell amount encoded as a decimal string
+          example: "100.0000000"
+        sender:
+          type: string
+          description: Stellar public key (G...) that will sign and submit the transaction
+          example: GBV4FDE6VRZHQ2YG5NKB7RJE36GDEW3Y3L6YQ4Q5UZ6VJZGJLKZ46AAA
+        min_output:
+          type: string
+          nullable: true
+          description: Optional explicit minimum destination output amount
+          example: "10.4475000"
+        slippage_bps:
+          type: integer
+          nullable: true
+          description: Optional slippage tolerance in basis points (default 50)
+          example: 50
+
+    SwapPrepareResponse:
+      type: object
+      required: [quote_id, xdr_envelope, expected_output, expires_at, execution_mode, network_passphrase]
+      description: Unsigned swap envelope and network binding returned by POST /api/v1/swap/prepare
+      properties:
+        quote_id:
+          type: string
+          description: Server-issued identifier for the prepared swap quote
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        xdr_envelope:
+          type: string
+          description: Base64-encoded unsigned Stellar TransactionEnvelope XDR
+        expected_output:
+          type: string
+          description: Expected output amount encoded as a decimal string
+          example: "10.5000000"
+        min_output:
+          type: string
+          nullable: true
+          description: Minimum destination amount enforced in PathPaymentStrictSend
+          example: "10.4475000"
+        expires_at:
+          type: integer
+          format: int64
+          description: Unix timestamp (seconds) after which the prepared envelope cannot be submitted
+          example: 1740312120
+        execution_mode:
+          type: string
+          description: Always classic_path_payment on success
+          example: classic_path_payment
+        network_passphrase:
+          type: string
+          description: Stellar network passphrase the unsigned envelope was built for (must match wallet before signing)
+          example: "Test SDF Network ; September 2015"
+
+    SwapPrepareEnvelopeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/SwapPrepareResponse"
+
+    SwapSubmitRequest:
+      type: object
+      required: [quote_id, signed_xdr]
+      description: Parameters for POST /api/v1/swap/submit
+      properties:
+        quote_id:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        signed_xdr:
+          type: string
+          description: Base64-encoded signed Stellar TransactionEnvelope XDR
+
+    SwapSubmitResponse:
+      type: object
+      required: [quote_id, tx_hash, status]
+      description: Submission receipt returned by POST /api/v1/swap/submit
+      properties:
+        quote_id:
+          type: string
+        tx_hash:
+          type: string
+        status:
+          type: string
+          example: submitted
+        output_amount:
+          type: string
+          nullable: true
+        ledger:
+          type: integer
+          format: int64
+          nullable: true
+
+    SwapSubmitEnvelopeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/SwapSubmitResponse"
 
   # Authentication is planned for a future release.
   # securitySchemes:

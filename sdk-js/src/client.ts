@@ -56,6 +56,8 @@ import {
 const DEFAULT_BASE_URL = 'http://localhost:8080';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRIES = 2;
+/** Default Horizon public network URL for StellarRoute clients. */
+export const DEFAULT_PUBLIC_HORIZON_URL = 'https://horizon.stellar.org';
 /** Default Horizon testnet URL used by {@link StellarRouteClient.confirmSwap}. */
 export const DEFAULT_TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
 const CLASSIC_EXECUTION_MODE = 'classic_path_payment';

@@ -39,10 +39,10 @@ export function StaleQuoteBanner({
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-bold text-amber-500">
-              Quote Expired
+              Quote may be stale
             </span>
             <span className="text-xs text-amber-500/80 font-medium">
-              Market prices have shifted. Refresh to get the latest quote.
+              Market prices may have changed. Refresh for the latest quote before swapping.
             </span>
           </div>
         </div>

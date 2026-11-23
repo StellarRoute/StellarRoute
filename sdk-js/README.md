@@ -143,3 +143,10 @@ Generated docs are published in `docs/sdk-js/api/`.
 ## Error handling
 
 For integration guidance on retry semantics, SDK error helper usage, and user-facing error patterns, see `docs/api/integrator-error-guide.md`.
+
+Rate-limited responses (`429`) include `Retry-After` and an `ErrorResponse.details.retry_after_ms` field for client backoff.
+
+## Constants
+
+- `DEFAULT_PUBLIC_HORIZON_URL` - `https://horizon.stellar.org` (public Horizon default)
+- `DEFAULT_TESTNET_HORIZON_URL` - `https://horizon-testnet.stellar.org` (testnet helper/default for confirm flows)

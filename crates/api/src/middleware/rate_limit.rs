@@ -423,12 +423,18 @@ where
             if info.denied {
                 debug!("Rate limit denied: key={}", key);
                 let retry_after = info.reset.saturating_sub(unix_now());
+                let retry_after_ms = retry_after.saturating_mul(1000);
                 let mut response = (
                     StatusCode::TOO_MANY_REQUESTS,
-                    Json(ErrorResponse::new(
-                        ApiErrorCode::RateLimitExceeded,
-                        "Too many requests. Please try again later.".to_string(),
-                    )),
+                    Json(
+                        ErrorResponse::new(
+                            ApiErrorCode::RateLimitExceeded,
+                            "Too many requests. Please try again later.".to_string(),
+                        )
+                        .with_details(serde_json::json!({
+                            "retry_after_ms": retry_after_ms,
+                        })),
+                    ),
                 )
                     .into_response();
 

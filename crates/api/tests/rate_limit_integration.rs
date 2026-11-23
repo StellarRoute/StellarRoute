@@ -280,6 +280,13 @@ async fn rate_limit_returns_429_after_limit_exceeded() {
         json["message"].as_str().is_some(),
         "message must be present"
     );
+    let retry_after_ms = json["details"]["retry_after_ms"]
+        .as_u64()
+        .expect("retry_after_ms must be present in 429 details");
+    assert!(
+        (1_000..=60_000).contains(&retry_after_ms),
+        "retry_after_ms should reflect the remaining window"
+    );
 }
 
 #[tokio::test]

@@ -8,6 +8,7 @@ import { useWalletOnboarding } from '@/hooks/useWalletOnboarding';
 import { WalletConnectionOnboarding } from '@/components/modals/WalletConnectionOnboarding';
 import { AccountSwitcher } from './account-switcher';
 import type { SupportedWallet, WalletNetwork } from '@/lib/wallet/types';
+import { mapWalletError } from '@/lib/wallet/error-mapper';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -210,11 +211,23 @@ export function WalletButton() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {error && (
-        <p className="absolute top-full right-0 mt-2 max-w-xs text-xs text-destructive">
-          {error.message}
-        </p>
-      )}
+      {error && (() => {
+        const mapped = mapWalletError(error, walletId);
+        return (
+          <div
+            className="absolute top-full right-0 mt-2 max-w-xs rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs shadow-sm"
+            role="alert"
+            data-testid="wallet-error-banner"
+          >
+            <p className="font-medium text-destructive">
+              {mapped?.headline ?? 'Wallet error'}
+            </p>
+            <p className="mt-0.5 text-muted-foreground">
+              {mapped?.recovery ?? error.message}
+            </p>
+          </div>
+        );
+      })()}
     </div>
   );
 }

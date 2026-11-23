@@ -35,7 +35,7 @@ export function useTradeActivity({ address, initialData }: UseTradeActivityProps
     setIsLoading(true);
     setError(null);
 
-    client.getSwapActivity({ limit: 100 })
+    client.getSwapActivity({ limit: 500 })
       .then((res) => {
         if (!active) return;
         

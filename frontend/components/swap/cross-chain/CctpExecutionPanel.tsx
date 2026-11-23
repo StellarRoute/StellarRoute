@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { CctpJourneyVisual } from './CctpJourneyVisual';
 import { CctpTransferReceipt } from './CctpTransferReceipt';
+import { QuoteCountdownTimer } from '@/components/swap/QuoteCountdownTimer';
 
 interface CctpExecutionPanelProps {
   stage: CctpSagaStage;
@@ -26,6 +27,8 @@ interface CctpExecutionPanelProps {
   nextActionNotice?: string | null;
   onPrimary: () => void;
   onReset?: () => void;
+  /** Called when the user clicks Refresh Quote on the TTL countdown. Defaults to onReset. */
+  onRefreshQuote?: () => void;
   /** Immediate reset after successful transfer (skips abandon confirm). */
   onCompleteDone?: () => void;
   /** Re-open the completion receipt dialog. */
@@ -64,6 +67,7 @@ export function CctpExecutionPanel({
   nextActionNotice = null,
   onPrimary,
   onReset,
+  onRefreshQuote,
   onCompleteDone,
   onViewReceipt,
   recipient,
@@ -174,10 +178,15 @@ export function CctpExecutionPanel({
               {formatCctpFinalityLabel(quote.finality)}
             </dd>
           </div>
-          <div className="rounded-lg border border-border/30 bg-muted/20 p-2">
-            <dt className="text-muted-foreground">Quote expires</dt>
-            <dd className="font-medium">
-              {new Date(quote.expires_at * 1000).toLocaleTimeString()}
+          <div className="col-span-2 rounded-lg border border-border/30 bg-muted/20 p-2">
+            <dt className="mb-1 text-muted-foreground">Quote validity</dt>
+            <dd>
+              <QuoteCountdownTimer
+                expiresAtMs={quote.expires_at * 1000}
+                ttlSeconds={300}
+                onRefresh={onRefreshQuote ?? onReset ?? (() => {})}
+                isLoading={false}
+              />
             </dd>
           </div>
         </dl>

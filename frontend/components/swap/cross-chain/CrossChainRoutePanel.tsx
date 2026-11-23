@@ -4,6 +4,7 @@ import { CctpStepRail, cctpActiveStepFromSaga, cctpCompletedStepsFromSaga } from
 import { formatChainPairLabel } from '@/lib/cross-chain/format';
 import type { ChainDisplayId, CrossChainProtocol } from '@/lib/cross-chain/types';
 import type { CctpQuoteResponse } from '@/lib/cctp/types';
+import { useQuoteCountdown } from '@/hooks/useQuoteCountdown';
 import { cn } from '@/lib/utils';
 import { ArrowRight } from 'lucide-react';
 
@@ -31,6 +32,11 @@ export function CrossChainRoutePanel({
   className,
 }: CrossChainRoutePanelProps) {
   const pairLabel = formatChainPairLabel(sourceChainId, destChainId);
+  // Live countdown for the CCTP quote TTL (300 s default per AGENTS.md).
+  const { remainingSeconds, isExpired } = useQuoteCountdown(
+    quote ? quote.expires_at * 1000 : undefined,
+    300_000,
+  );
 
   if (uncatalogued) {
     return (
@@ -132,7 +138,7 @@ export function CrossChainRoutePanel({
               <dt className="text-muted-foreground">Fees &amp; finality</dt>
               <dd className="font-medium text-muted-foreground">
                 {quote
-                  ? `${quote.finality === 'fast' ? 'Fast' : 'Standard'} · quote until ${new Date(quote.expires_at * 1000).toLocaleTimeString()}`
+                  ? `${quote.finality === 'fast' ? 'Fast' : 'Standard'} · ${isExpired ? 'quote expired' : `${remainingSeconds}s remaining`}`
                   : executable
                     ? 'Request a quote for fee estimate'
                     : 'Estimate unavailable — corridor not live'}

@@ -225,4 +225,47 @@ describe('AiPage (#1455, #1456)', () => {
     expect(payoutRequestUrls).toHaveLength(0);
     expect(fetchSpy.mock.calls.some(([url]) => String(url) === '/api/v1/agent/intents/validate')).toBe(true);
   });
+
+  it('confirming a convert intent navigates to /swap with from, to, and amount', async () => {
+    process.env.NEXT_PUBLIC_AI_AGENT = 'true';
+    mockPush.mockClear();
+
+    render(<AiPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-chat-input')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('agent-chat-input'), {
+      target: { value: 'swap 10 XLM to USDC' },
+    });
+    fireEvent.click(screen.getByTestId('agent-chat-submit'));
+
+    const confirmBtn = await screen.findByTestId('confirm-btn');
+    fireEvent.click(confirmBtn);
+
+    expect(mockPush).toHaveBeenCalledWith('/swap?from=XLM&to=USDC&amount=10');
+  });
+
+  it('confirming a non-convert intent does not navigate to /swap', async () => {
+    process.env.NEXT_PUBLIC_AI_AGENT = 'true';
+    mockPush.mockClear();
+
+    render(<AiPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-chat-input')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('agent-chat-input'), {
+      target: { value: 'send 5 USDC to GABC123' },
+    });
+    fireEvent.click(screen.getByTestId('agent-chat-submit'));
+
+    const confirmBtn = await screen.findByTestId('confirm-btn');
+    fireEvent.click(confirmBtn);
+
+    expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('/swap'));
+  });
+
 });

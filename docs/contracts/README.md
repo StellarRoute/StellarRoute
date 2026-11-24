@@ -6,3 +6,4 @@ This section collects Soroban contract documentation for StellarRoute. It serves
 - `router-interface.md` — public router contract interface and event schema.
 - `gas-benchmarks.md` — gas and resource consumption benchmarks for contract functions.
 - `gas-optimization-usage.md` — best practices for contract gas optimization and WASM size.
+- `pool-not-supported-rename-plan.md` — rename plan for `ContractError::PoolNotSupported` → `PoolNotRegistered` (documentation only; no code change).

@@ -19,14 +19,47 @@ const PRESETS = [
   { label: 'Aggressive', value: 1 },
 ];
 
+const LAST_PRESET_STORAGE_KEY = 'stellar_route_last_slippage_preset';
+
+function readLastPreset(): number | null {
+  try {
+    const stored = window.localStorage.getItem(LAST_PRESET_STORAGE_KEY);
+    const parsed = stored === null ? NaN : Number.parseFloat(stored);
+    return PRESETS.some((preset) => preset.value === parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastPreset(value: number) {
+  try {
+    window.localStorage.setItem(LAST_PRESET_STORAGE_KEY, String(value));
+  } catch {
+    // quota exceeded or private browsing — silently ignore
+  }
+}
+
 export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
   const { t } = useSwapI18n();
   const [customValue, setCustomValue] = useState(
     PRESETS.some((preset) => preset.value === value) ? '' : String(value)
   );
   const lastEmittedValue = useRef<number | null>(null);
+  const appliedRememberedPreset = useRef(false);
   const isLow = value < 0.1;
   const isHigh = value > 5;
+
+  useEffect(() => {
+    if (appliedRememberedPreset.current) return;
+    appliedRememberedPreset.current = true;
+    const remembered = readLastPreset();
+    if (remembered !== null && remembered !== value) {
+      lastEmittedValue.current = remembered;
+      onChange(remembered);
+    }
+    // Only ever run once, on mount, to apply the remembered preset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (lastEmittedValue.current === value) {
@@ -76,6 +109,7 @@ export function SlippageSettings({ value, onChange }: SlippageSettingsProps) {
             onClick={() => {
               setCustomValue('');
               lastEmittedValue.current = preset.value;
+              writeLastPreset(preset.value);
               onChange(preset.value);
             }}
             className="h-10 flex-1 font-bold"

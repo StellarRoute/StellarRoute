@@ -253,7 +253,10 @@ export type SwapTranslationKey =
   | "orderbook.depth.memoryStable"
   | "orderbook.depth.uiJitterZero"
   | "orderbook.depth.cost.canvas"
-  | "orderbook.depth.cost.svg";
+  | "orderbook.depth.cost.svg"
+  | "orderbook.depth.chartAriaLabel"
+  | "orderbook.depth.bidsAriaLabel"
+  | "orderbook.depth.asksAriaLabel";
 
 type SwapTranslations = Record<SwapTranslationKey, string>;
 
@@ -520,6 +523,10 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "orderbook.depth.uiJitterZero": "0% (Null Drops)",
     "orderbook.depth.cost.canvas": "~0.05ms [O(N)]",
     "orderbook.depth.cost.svg": "~0.22ms [DOM]",
+    "orderbook.depth.chartAriaLabel":
+      "Market depth chart from {minPrice} to {maxPrice}. Bid depth {bidTotal} units, ask depth {askTotal} units.",
+    "orderbook.depth.bidsAriaLabel": "Cumulative bid depth: {bidTotal} units",
+    "orderbook.depth.asksAriaLabel": "Cumulative ask depth: {askTotal} units",
   },
     "es-ES": {
     "swap.card.title": "Intercambiar",
@@ -770,6 +777,10 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "orderbook.depth.uiJitterZero": "0% (sin pérdidas)",
     "orderbook.depth.cost.canvas": "~0.05ms [O(N)]",
     "orderbook.depth.cost.svg": "~0.22ms [DOM]",
+    "orderbook.depth.chartAriaLabel":
+      "Gráfico de profundidad de mercado de {minPrice} a {maxPrice}. Profundidad de oferta {bidTotal} unidades, profundidad de demanda {askTotal} unidades.",
+    "orderbook.depth.bidsAriaLabel": "Profundidad acumulada de ofertas: {bidTotal} unidades",
+    "orderbook.depth.asksAriaLabel": "Profundidad acumulada de demandas: {askTotal} unidades",
   },
   "zh-CN": {
     "swap.card.title": "兑换",
@@ -1018,6 +1029,10 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "orderbook.depth.uiJitterZero": "0% (无丢帧)",
     "orderbook.depth.cost.canvas": "~0.05ms [O(N)]",
     "orderbook.depth.cost.svg": "~0.22ms [DOM]",
+    "orderbook.depth.chartAriaLabel":
+      "市场深度图，价格区间 {minPrice} 至 {maxPrice}。买单深度 {bidTotal} 单位，卖单深度 {askTotal} 单位。",
+    "orderbook.depth.bidsAriaLabel": "累计买单深度：{bidTotal} 单位",
+    "orderbook.depth.asksAriaLabel": "累计卖单深度：{askTotal} 单位",
   },
 };
 

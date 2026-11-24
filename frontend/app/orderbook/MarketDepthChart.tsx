@@ -59,7 +59,7 @@ export function MarketDepthChart({
   }, [initialBids, initialAsks, densityToggle, mounted]);
 
   // --- Process & Cumulative Liquidity Accumulation Loops ---
-  const { processedBids, processedAsks, maxTotal, minPrice, maxPrice } =
+  const { processedBids, processedAsks, maxTotal, minPrice, maxPrice, bidTotal: totalBidDepth, askTotal: totalAskDepth } =
     useMemo(() => {
       let bidTotal = 0;
       const rawBids = [...activeData.bids].sort((a, b) => b.price - a.price);
@@ -86,6 +86,8 @@ export function MarketDepthChart({
         maxTotal,
         minPrice: Math.min(...allPrices, 1.22),
         maxPrice: Math.max(...allPrices, 1.27),
+        bidTotal,
+        askTotal,
       };
     }, [activeData]);
 
@@ -161,6 +163,17 @@ export function MarketDepthChart({
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           className="w-full h-full overflow-visible"
+          role="img"
+          aria-label={t('orderbook.depth.chartAriaLabel', {
+            minPrice: minPrice.toFixed(4),
+            maxPrice: maxPrice.toFixed(4),
+            bidTotal: totalBidDepth.toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            }),
+            askTotal: totalAskDepth.toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            }),
+          })}
         >
           {/* Bids Fill Area */}
           {bidPointsSvgStr && (
@@ -169,7 +182,15 @@ export function MarketDepthChart({
               fill="rgba(16, 185, 129, 0.12)"
               stroke="#10b981"
               strokeWidth="0.5"
-            />
+            >
+              <title>
+                {t('orderbook.depth.bidsAriaLabel', {
+                  bidTotal: totalBidDepth.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  }),
+                })}
+              </title>
+            </polygon>
           )}
           {/* Asks Fill Area */}
           {askPointsSvgStr && (
@@ -178,7 +199,15 @@ export function MarketDepthChart({
               fill="rgba(239, 68, 68, 0.12)"
               stroke="#ef4444"
               strokeWidth="0.5"
-            />
+            >
+              <title>
+                {t('orderbook.depth.asksAriaLabel', {
+                  askTotal: totalAskDepth.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  }),
+                })}
+              </title>
+            </polygon>
           )}
         </svg>
 

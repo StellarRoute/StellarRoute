@@ -28,6 +28,10 @@ export type { CardActivityListProps } from './CardActivityList';
 export { CardTargetSpendCalculator } from './CardTargetSpendCalculator';
 export type { CardTargetSpendCalculatorProps } from './CardTargetSpendCalculator';
 
+export { CardCategoryBreakdown } from './CardCategoryBreakdown';
+export type { CardCategoryBreakdownProps } from './CardCategoryBreakdown';
+
+
 export { CardFreezeButton } from './CardFreezeButton';
 export type { CardFreezeButtonProps } from './CardFreezeButton';
 

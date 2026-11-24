@@ -1,6 +1,22 @@
 //! Card payment routes
 //!
 //! These routes are only registered when CARD_ENABLED=true
+//!
+//! Card program routes — additive, flag-gated preview surfaces (CARD-38).
+//!
+//! These endpoints are intentionally minimal and fail-closed:
+//! - When `CARD_ENABLED` is unset or anything other than `"true"`, every
+//!   handler returns `404 not_found` (`card disabled`). StellarRoute never
+//!   holds API keys or card PANs; no PAN, card number, CVV/CVC, or expiry
+//!   field exists on any request or response schema here.
+//! - When `CARD_ENABLED=true`, handlers return static, non-sensitive shapes
+//!   so SDK and frontend integrators can build against a stable contract
+//!   without touching the live swap/quote path.
+//!
+//! Nothing in this module touches:
+//! - classic one-hop SDEX prepare → sign → submit (`routes::swap`),
+//! - quote selection / ranking (`routes::quote`),
+//! - CORS allowlists, `CCTP_ENABLED` default, or existing OpenAPI field names.
 
 use axum::{routing::post, Router};
 use serde_json::json;

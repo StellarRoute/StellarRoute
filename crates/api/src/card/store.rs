@@ -28,6 +28,7 @@ pub struct ApplicationRecord {
     pub status: String,
 }
 
+// `rate` is an `f64`, so this record cannot be `Eq` (only `PartialEq`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuthorizationRecord {
     pub authorization_id: String,

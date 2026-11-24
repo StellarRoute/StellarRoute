@@ -3,12 +3,20 @@ import { useState, useMemo, useEffect } from 'react';
 import { TradeRecord } from '../types/trade';
 import { useStellarRouteClient } from './useStellarRouteClient';
 
+export interface TradeActivityFilters {
+  pair?: string;
+  status?: string;
+  dateFrom?: string | Date;
+  dateTo?: string | Date;
+}
+
 interface UseTradeActivityProps {
   address?: string;
   initialData?: TradeRecord[];
+  filters?: TradeActivityFilters;
 }
 
-export function useTradeActivity({ address, initialData }: UseTradeActivityProps) {
+export function useTradeActivity({ address, initialData, filters }: UseTradeActivityProps) {
   const client = useStellarRouteClient();
   const [data, setData] = useState<TradeRecord[]>(initialData ?? []);
   const [page, setPage] = useState(1);
@@ -66,10 +74,68 @@ export function useTradeActivity({ address, initialData }: UseTradeActivityProps
     };
   }, [address, client, useLiveData, hasInitialData, initialData]);
 
+  // Reset page to 1 whenever filters change
+  useEffect(() => {
+    setPage(1);
+  }, [filters?.pair, filters?.status, filters?.dateFrom, filters?.dateTo]);
+
   const itemsPerPage = 10;
 
+  const filteredData = useMemo(() => {
+    if (!filters) return data;
+    const { pair, status, dateFrom, dateTo } = filters;
+
+    return data.filter((item) => {
+      // Filter by pair / asset
+      if (pair && pair.trim() !== '' && pair.toUpperCase() !== 'ALL') {
+        const query = pair.toUpperCase().trim();
+        const assetStr = (item.asset || '').toUpperCase();
+        if (!assetStr.includes(query)) {
+          return false;
+        }
+      }
+
+      // Filter by status / action
+      if (status && status.trim() !== '' && status.toUpperCase() !== 'ALL') {
+        const queryStatus = status.toUpperCase().trim();
+        const itemAction = (item.action || '').toUpperCase();
+        if (itemAction !== queryStatus && !itemAction.includes(queryStatus)) {
+          return false;
+        }
+      }
+
+      // Filter by dateFrom
+      if (dateFrom) {
+        const fromDate = typeof dateFrom === 'string' ? new Date(dateFrom) : dateFrom;
+        if (!isNaN(fromDate.getTime())) {
+          // Normalize start of the day
+          const start = new Date(fromDate);
+          start.setHours(0, 0, 0, 0);
+          if (item.timestamp.getTime() < start.getTime()) {
+            return false;
+          }
+        }
+      }
+
+      // Filter by dateTo
+      if (dateTo) {
+        const toDate = typeof dateTo === 'string' ? new Date(dateTo) : dateTo;
+        if (!isNaN(toDate.getTime())) {
+          // Normalize end of the day
+          const end = new Date(toDate);
+          end.setHours(23, 59, 59, 999);
+          if (item.timestamp.getTime() > end.getTime()) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    });
+  }, [data, filters]);
+
   const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => {
+    return [...filteredData].sort((a, b) => {
       const aValue = a[sortField];
       const bValue = b[sortField];
 
@@ -88,14 +154,14 @@ export function useTradeActivity({ address, initialData }: UseTradeActivityProps
       if (aStr > bStr) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [data, sortField, sortDirection]);
+  }, [filteredData, sortField, sortDirection]);
 
   const paginatedData = useMemo(() => {
     const startIndex = (page - 1) * itemsPerPage;
     return sortedData.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedData, page]);
 
-  const totalPages = Math.ceil(data.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
 
   const handleSort = (field: keyof TradeRecord) => {
     if (field === sortField) {
@@ -115,7 +181,7 @@ export function useTradeActivity({ address, initialData }: UseTradeActivityProps
     sortField,
     sortDirection,
     isLoading,
-    isEmpty: data.length === 0 && !isLoading,
+    isEmpty: filteredData.length === 0 && !isLoading,
     error,
   };
 }

@@ -51,6 +51,14 @@ lazy_static! {
     )
     .expect("Can't create OFFERS_INDEXED counter");
 
+    /// Total number of SDEX poll cycles that hit `SDEX_MAX_PAGES_PER_POLL` while
+    /// Horizon was still returning full pages.
+    pub static ref SDEX_PAGE_CAP_HIT_TOTAL: IntCounter = register_int_counter!(
+        "stellarroute_indexer_sdex_page_cap_hit_total",
+        "Total number of SDEX poll cycles that hit SDEX_MAX_PAGES_PER_POLL while Horizon still had full pages"
+    )
+    .expect("Can't create SDEX_PAGE_CAP_HIT_TOTAL counter");
+
     /// Total number of SSE stream disconnects.
     pub static ref SSE_DISCONNECTS: IntCounterVec = register_int_counter_vec!(
         "stellarroute_indexer_sse_disconnects_total",
@@ -132,6 +140,12 @@ pub fn update_lag(source: &str, lag_ledgers: i64) {
 /// Record offers indexed.
 pub fn record_offers_indexed(source: &str, count: u64) {
     OFFERS_INDEXED.with_label_values(&[source]).inc_by(count);
+}
+
+/// Record that an SDEX poll cycle hit `SDEX_MAX_PAGES_PER_POLL` while Horizon
+/// was still returning full pages.
+pub fn record_sdex_page_cap_hit() {
+    SDEX_PAGE_CAP_HIT_TOTAL.inc();
 }
 
 /// Record an SSE disconnect.

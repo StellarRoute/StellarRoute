@@ -72,6 +72,7 @@ pub struct EndpointConfig {
     pub cctp_status: RateLimitConfig,
     pub cctp_mutate: RateLimitConfig,
     pub cctp_reattest: RateLimitConfig,
+    pub agent: RateLimitConfig,
     pub default: RateLimitConfig,
     /// Optional overrides for specific tenant IDs (e.g. from API Keys)
     pub tenant_overrides: HashMap<String, RateLimitConfig>,
@@ -136,6 +137,13 @@ impl Default for EndpointConfig {
                     .unwrap_or(5),
                 window,
             },
+            agent: RateLimitConfig {
+                max_requests: std::env::var("RATE_LIMIT_AGENT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(30),
+                window,
+            },
             default: RateLimitConfig {
                 max_requests: 120, // Lowered from 200
                 window,
@@ -170,6 +178,8 @@ impl EndpointConfig {
             } else {
                 &self.cctp_mutate
             }
+        } else if path.starts_with("/api/v1/agent") {
+            &self.agent
         } else {
             &self.default
         }

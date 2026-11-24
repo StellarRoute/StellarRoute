@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::{header::AUTHORIZATION, request::Parts, HeaderMap};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use crate::{error::ApiError, state::AppState};
@@ -27,7 +28,7 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
             ApiError::Unauthorized("Missing admin authorization header".to_string())
         })?;
 
-        if token != *expected_token {
+        if !admin_token_matches(&token, expected_token) {
             return Err(ApiError::Unauthorized(
                 "Invalid admin credentials".to_string(),
             ));
@@ -35,6 +36,24 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
 
         Ok(AdminAuth)
     }
+}
+
+/// Compare a provided admin token with the configured one in constant time.
+///
+/// Both sides are hashed with SHA-256 first so the comparison always runs over
+/// 32 bytes and neither the content nor the length of the secret leaks through
+/// timing. An empty provided token never matches.
+pub(crate) fn admin_token_matches(provided: &str, expected: &str) -> bool {
+    if provided.is_empty() {
+        return false;
+    }
+    let provided = Sha256::digest(provided.as_bytes());
+    let expected = Sha256::digest(expected.as_bytes());
+    provided
+        .iter()
+        .zip(expected.iter())
+        .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+        == 0
 }
 
 pub(crate) fn extract_admin_token(headers: &HeaderMap) -> Option<String> {
@@ -85,6 +104,28 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn admin_token_matches_correct_token() {
+        assert!(admin_token_matches("s3cret-token", "s3cret-token"));
+    }
+
+    #[test]
+    fn admin_token_matches_rejects_wrong_token_of_same_length() {
+        assert!(!admin_token_matches("s3cret-tokeX", "s3cret-token"));
+    }
+
+    #[test]
+    fn admin_token_matches_rejects_different_length() {
+        assert!(!admin_token_matches("s3cret", "s3cret-token"));
+        assert!(!admin_token_matches("s3cret-token-longer", "s3cret-token"));
+    }
+
+    #[test]
+    fn admin_token_matches_rejects_empty() {
+        assert!(!admin_token_matches("", "s3cret-token"));
+        assert!(!admin_token_matches("", ""));
+    }
 
     fn reset_env() {
         std::env::remove_var("STELLARROUTE_ENV");

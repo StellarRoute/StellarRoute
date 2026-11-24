@@ -156,5 +156,7 @@ If you suspect the admin token has been compromised:
 - **401 Unauthorized:** Check that `ADMIN_AUTH_TOKEN` is set on the API instance and that you are using the correct value in `x-admin-token`.
 - **State not syncing:** Ensure Redis is reachable and all API instances have a connection to the same Redis cluster.
 - **Immediate effect not seen:** Propagation delay is up to 5 seconds. If longer, check API instance connectivity.
-- **`401 Unauthorized`:** Confirm `x-admin-token` (or `Authorization: Bearer`) matches the server's `ADMIN_AUTH_TOKEN` exactly. In production this now applies to `GET` as well as `POST`.
-- **API won't start in production:** If logs show a refusal to boot citing `ADMIN_AUTH_TOKEN`, set that variable — production requires it unconditionally (see Authentication section above).
+
+## Incident Response
+
+For overall incident triage, severity matrix, Horizon outage, and indexer lag procedures, refer to the [Live Trading Outage Runbook](runbooks/live-trading-outage.md).

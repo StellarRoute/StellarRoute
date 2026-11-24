@@ -416,4 +416,4 @@ with the metric(s) that back it.
 - **CI workflow**: [`.github/workflows/slo-probes.yml`](../.github/workflows/slo-probes.yml)
 - **Indexer lag monitoring**: [`docs/indexer-lag-monitoring.md`](indexer-lag-monitoring.md)
 - **AMM refresh failures runbook**: [`docs/runbooks/amm-refresh-failures.md`](runbooks/amm-refresh-failures.md)
-
+- **Live trading outage runbook**: [`docs/runbooks/live-trading-outage.md`](runbooks/live-trading-outage.md)

@@ -2,248 +2,426 @@
 //!
 //! Simulates partial outages and recovery scenarios to verify the reconciliation
 //! engine can detect and repair drift between Horizon and Soroban RPC data.
+//!
+//! Run with a live Postgres instance:
+//! ```bash
+//! docker-compose up -d
+//! ./scripts/wait-for-dbs.sh
+//! DATABASE_URL=postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute \
+//!   cargo test -p stellarroute-indexer reconciliation_test -- --ignored
+//! ```
+
+mod test_fixture {
+    use sqlx::PgPool;
+    use stellarroute_indexer::config::IndexerConfig;
+    use stellarroute_indexer::db::Database;
+    use uuid::Uuid;
+
+    pub fn database_url() -> String {
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://stellarroute:stellarroute_dev@localhost:5432/stellarroute".to_string()
+        })
+    }
+
+    fn test_indexer_config() -> IndexerConfig {
+        IndexerConfig {
+            stellar_horizon_url: "https://horizon-testnet.stellar.org".to_string(),
+            horizon_mode: stellarroute_indexer::config::HorizonMode::Poll,
+            soroban_rpc_url: "https://soroban-testnet.stellar.org".to_string(),
+            router_contract_address: "CDUMMYROUTER".to_string(),
+            database_url: database_url(),
+            poll_interval_secs: 5,
+            amm_poll_interval_secs: 30,
+            stale_threshold_secs: 300,
+            horizon_limit: 200,
+            max_connections: 5,
+            min_connections: 1,
+            connection_timeout_secs: 30,
+            idle_timeout_secs: 600,
+            max_lifetime_secs: 1800,
+            maintenance_interval_mins: 60,
+            snapshot_retention_days: 90,
+            snapshot_compaction_hours: 24,
+            partition_count: 4,
+            hot_pair_allowlist: String::new(),
+            hot_pair_volume_threshold: 1_000_000_000,
+            hot_pair_window_secs: 300,
+            partition_id: 0,
+        }
+    }
+
+    pub async fn setup_pool() -> PgPool {
+        let config = test_indexer_config();
+        let db = Database::new(&config)
+            .await
+            .expect("Failed to connect to test database");
+        db.migrate()
+            .await
+            .expect("Failed to run database migrations");
+        db.pool().clone()
+    }
+
+    pub async fn set_staleness_threshold(pool: &PgPool, seconds: i32) {
+        sqlx::query(
+            r#"
+            INSERT INTO reconciliation_thresholds (check_type, staleness_threshold_secs, enabled)
+            VALUES ('data_staleness', $1, true)
+            ON CONFLICT (check_type) DO UPDATE
+            SET staleness_threshold_secs = EXCLUDED.staleness_threshold_secs,
+                enabled = true,
+                updated_at = now()
+            "#,
+        )
+        .bind(seconds)
+        .execute(pool)
+        .await
+        .expect("Failed to configure staleness threshold");
+    }
+
+    pub async fn seed_native_and_usdc(pool: &PgPool) -> (Uuid, Uuid) {
+        let native_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO assets (asset_type, asset_code, asset_issuer)
+            VALUES ('native', NULL, NULL)
+            ON CONFLICT (asset_type, asset_code, asset_issuer) DO UPDATE
+            SET asset_type = EXCLUDED.asset_type
+            RETURNING id
+            "#,
+        )
+        .fetch_one(pool)
+        .await
+        .expect("Failed to seed native asset");
+
+        let usdc_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO assets (asset_type, asset_code, asset_issuer)
+            VALUES (
+                'credit_alphanum4',
+                'USDC',
+                'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'
+            )
+            ON CONFLICT (asset_type, asset_code, asset_issuer) DO UPDATE
+            SET asset_type = EXCLUDED.asset_type
+            RETURNING id
+            "#,
+        )
+        .fetch_one(pool)
+        .await
+        .expect("Failed to seed USDC asset");
+
+        (native_id, usdc_id)
+    }
+
+    pub async fn insert_stale_sdex_offer(
+        pool: &PgPool,
+        offer_id: i64,
+        selling_asset_id: Uuid,
+        buying_asset_id: Uuid,
+        stale_for_secs: i32,
+    ) {
+        sqlx::query(
+            r#"
+            INSERT INTO sdex_offers (
+                offer_id, seller, selling_asset_id, buying_asset_id,
+                amount, price, last_modified_ledger, updated_at
+            )
+            VALUES ($1, $2, $3, $4, 1000, 0.25, 50000, now() - ($5::TEXT)::INTERVAL)
+            ON CONFLICT (offer_id) DO UPDATE
+            SET updated_at = EXCLUDED.updated_at,
+                selling_asset_id = EXCLUDED.selling_asset_id,
+                buying_asset_id = EXCLUDED.buying_asset_id
+            "#,
+        )
+        .bind(offer_id)
+        .bind(format!("GTEST{offer_id}"))
+        .bind(selling_asset_id)
+        .bind(buying_asset_id)
+        .bind(format!("{stale_for_secs} seconds"))
+        .execute(pool)
+        .await
+        .expect("Failed to insert stale SDEX offer");
+    }
+
+    pub async fn refresh_sdex_offer(pool: &PgPool, offer_id: i64) {
+        sqlx::query("UPDATE sdex_offers SET updated_at = now() WHERE offer_id = $1")
+            .bind(offer_id)
+            .execute(pool)
+            .await
+            .expect("Failed to refresh SDEX offer");
+    }
+
+    pub async fn cleanup_sdex_offer(pool: &PgPool, offer_id: i64) {
+        sqlx::query("DELETE FROM sdex_offers WHERE offer_id = $1")
+            .bind(offer_id)
+            .execute(pool)
+            .await
+            .ok();
+    }
+
+    pub async fn seed_liquidity_anomaly(
+        pool: &PgPool,
+        pool_address: &str,
+        selling_asset_id: Uuid,
+        buying_asset_id: Uuid,
+    ) {
+        sqlx::query(
+            r#"
+            INSERT INTO amm_pool_reserves (
+                pool_address, selling_asset_id, buying_asset_id,
+                reserve_selling, reserve_buying, fee_bps, last_updated_ledger, updated_at
+            )
+            VALUES ($1, $2, $3, 200, 5000, 30, 50001, now())
+            ON CONFLICT (pool_address) DO UPDATE
+            SET reserve_selling = EXCLUDED.reserve_selling,
+                reserve_buying = EXCLUDED.reserve_buying,
+                updated_at = EXCLUDED.updated_at
+            "#,
+        )
+        .bind(pool_address)
+        .bind(selling_asset_id)
+        .bind(buying_asset_id)
+        .execute(pool)
+        .await
+        .expect("Failed to seed AMM pool reserves");
+
+        sqlx::query(
+            r#"
+            INSERT INTO amm_pool_reserve_history (
+                pool_address, reserve_selling, reserve_buying, recorded_at
+            )
+            VALUES
+                ($1, 1000, 5000, now() - interval '10 minutes'),
+                ($1, 200, 5000, now())
+            "#,
+        )
+        .bind(pool_address)
+        .execute(pool)
+        .await
+        .expect("Failed to seed AMM reserve history");
+    }
+
+    pub async fn cleanup_liquidity_fixture(pool: &PgPool, pool_address: &str) {
+        sqlx::query("DELETE FROM amm_pool_reserve_history WHERE pool_address = $1")
+            .bind(pool_address)
+            .execute(pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM amm_pool_reserves WHERE pool_address = $1")
+            .bind(pool_address)
+            .execute(pool)
+            .await
+            .ok();
+    }
+
+    pub async fn count_liquidity_breaches(pool: &PgPool) -> i64 {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM drift_events
+            WHERE drift_category = 'liquidity'
+              AND breach = true
+            "#,
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0)
+    }
+}
 
 #[cfg(test)]
 mod integration_tests {
-    // Note: These tests would require a test database setup.
-    // They demonstrate the reconciliation engine's capabilities.
+    use sqlx::Row;
+    use stellarroute_indexer::reconciliation::ReconciliationEngine;
 
-    /// Test scenario: SDEX offers update stops (Horizon outage)
-    ///
-    /// Expected behavior:
-    /// - Staleness check detects offers not updated in threshold
-    /// - Repair workflow marks offers for re-fetch
-    /// - Upon Horizon recovery, offersare updated
+    use super::test_fixture::*;
+
+    /// SDEX offers stop updating (Horizon outage) and recover after refresh.
     #[tokio::test]
-    #[ignore] // Requires test database
+    #[ignore = "requires PostgreSQL (set DATABASE_URL)"]
     async fn test_horizon_outage_detection_and_recovery() {
-        // Setup: Create test database with recent SDEX offers
-        // ... database setup code ...
+        let pool = setup_pool().await;
+        set_staleness_threshold(&pool, 60).await;
 
-        // Simulate outage: Stop updating offers for 10 minutes
-        // ... simulate time passage without updates ...
+        let offer_id = 9_879_001_i64;
+        let (native_id, usdc_id) = seed_native_and_usdc(&pool).await;
+        insert_stale_sdex_offer(&pool, offer_id, native_id, usdc_id, 600).await;
 
-        // Run reconciliation - should detect staleness
-        // let engine = ReconciliationEngine::new(db).await.unwrap();
-        // let run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert!(run.checks_failed > 0);
-        // assert_eq!(run.total_drift_events > 0, true);
+        let engine = ReconciliationEngine::new(pool.clone())
+            .await
+            .expect("Failed to create reconciliation engine");
+        let outage_run = engine
+            .run_reconciliation_cycle()
+            .await
+            .expect("Reconciliation cycle failed during outage simulation");
 
-        // Verify staleness check was triggered
-        // let query_result = sqlx::query(
-        //     "SELECT COUNT(*) as count FROM reconciliation_checks WHERE drift_severity = 'critical'"
-        // ).fetch_one(&db).await.unwrap();
-        // assert!(query_result.get::<i64, _>("count") > 0);
+        assert!(
+            outage_run.checks_failed > 0,
+            "expected stale SDEX offers to fail reconciliation checks"
+        );
+        assert!(outage_run.total_drift_events > 0);
 
-        // Simulate recovery: Resume updating offers
-        // ... mark offers as updated ...
+        let stale_checks = sqlx::query(
+            r#"
+            SELECT COUNT(*) AS count
+            FROM reconciliation_checks
+            WHERE check_type = 'data_staleness'
+              AND entity_type = 'sdex_offer'
+              AND entity_ref = $1
+            "#,
+        )
+        .bind(offer_id.to_string())
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to query staleness checks");
+        assert!(stale_checks.get::<i64, _>("count") > 0);
 
-        // Run reconciliation again - staleness should be resolved
-        // let recovered_run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert_eq!(recovered_run.checks_failed, 0);
+        refresh_sdex_offer(&pool, offer_id).await;
+
+        let recovery_started = chrono::Utc::now();
+        let _recovered_run = engine
+            .run_reconciliation_cycle()
+            .await
+            .expect("Reconciliation cycle failed during recovery");
+
+        let remaining_stale = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM sdex_offers
+            WHERE offer_id = $1
+              AND NOW() - updated_at > interval '60 seconds'
+            "#,
+        )
+        .bind(offer_id)
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to verify offer freshness");
+
+        assert_eq!(remaining_stale, 0);
+
+        let test_failures_after_recovery = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM reconciliation_checks
+            WHERE check_type = 'data_staleness'
+              AND entity_type = 'sdex_offer'
+              AND entity_ref = $1
+              AND drift_severity IN ('warning', 'critical')
+              AND created_at >= $2
+            "#,
+        )
+        .bind(offer_id.to_string())
+        .bind(recovery_started)
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to query post-recovery staleness checks");
+
+        assert_eq!(test_failures_after_recovery, 0);
+
+        cleanup_sdex_offer(&pool, offer_id).await;
     }
 
-    /// Test scenario: AMM pool reserves drain suddenly (liquidity event or hack)
-    ///
-    /// Expected behavior:
-    /// - Liquidity anomaly check detects >15% change
-    /// - Repair workflow alerts operator
-    /// - Drift metrics record the anomaly for investigation
+    /// AMM pool reserves drain suddenly and reconciliation flags a liquidity breach.
     #[tokio::test]
-    #[ignore] // Requires test database
+    #[ignore = "requires PostgreSQL (set DATABASE_URL)"]
     async fn test_liquidity_anomaly_detection() {
-        // Setup: Create test database with pool reserves at 1000 XLM and 5000 USDC
-        // ... database setup ...
+        let pool = setup_pool().await;
+        let pool_address = "CRECONTEST879002";
+        let (native_id, usdc_id) = seed_native_and_usdc(&pool).await;
 
-        // Simulate anomaly: Drain reserve to 200 XLM (80% change)
-        // ... simulate reserve depletion ...
+        seed_liquidity_anomaly(&pool, pool_address, native_id, usdc_id).await;
 
-        // Run reconciliation - should detect anomaly
-        // let engine = ReconciliationEngine::new(db).await.unwrap();
-        // let run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert!(run.checks_failed > 0);
-        // assert!(run.critical_drift_events > 0);
+        let engine = ReconciliationEngine::new(pool.clone())
+            .await
+            .expect("Failed to create reconciliation engine");
+        let run = engine
+            .run_reconciliation_cycle()
+            .await
+            .expect("Reconciliation cycle failed during liquidity anomaly simulation");
 
-        // Verify drift metrics were recorded
-        // let query_result = sqlx::query(
-        //     "SELECT COUNT(*) as count FROM drift_events WHERE drift_category = 'liquidity' AND breach = true"
-        // ).fetch_one(&db).await.unwrap();
-        // assert!(query_result.get::<i64, _>("count") > 0);
+        assert!(run.checks_failed > 0);
+        assert!(run.critical_drift_events > 0);
 
-        // Verify alert was triggered
-        // let repairs = sqlx::query(
-        //     "SELECT COUNT(*) as count FROM repair_actions WHERE action_type = 'alert_operator'"
-        // ).fetch_one(&db).await.unwrap();
-        // assert!(repairs.get::<i64, _>("count") > 0);
+        let liquidity_checks = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM reconciliation_checks
+            WHERE check_type = 'liquidity_anomaly'
+              AND entity_ref = $1
+            "#,
+        )
+        .bind(pool_address)
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to query liquidity checks");
+        assert!(liquidity_checks > 0);
+
+        let breaches = count_liquidity_breaches(&pool).await;
+        assert!(breaches > 0);
+
+        cleanup_liquidity_fixture(&pool, pool_address).await;
     }
 
-    /// Test scenario: Asset ID mapping corruption
-    ///
-    /// Expected behavior:
-    /// - Asset mapping check detects orphaned references
-    /// - Repair workflow marks records as invalid
-    /// - Critical severity triggers automatic intervention
+    /// Post-recovery reconciliation pass reports a clean cycle after fixtures are removed.
     #[tokio::test]
-    #[ignore] // Requires test database
-    async fn test_asset_mapping_corruption_detection() {
-        // Setup: Create normal state with valid asset references
-        // ... database setup ...
+    #[ignore = "requires PostgreSQL (set DATABASE_URL)"]
+    async fn test_post_recovery_reconciliation_pass() {
+        let pool = setup_pool().await;
+        set_staleness_threshold(&pool, 60).await;
 
-        // Simulate corruption: Delete asset, leaving orphaned references
-        // sqlx::query("UPDATE assets SET id = gen_random_uuid() WHERE asset_code = 'USDC'")
-        //     .execute(&db).await.unwrap();
+        let offer_id = 9_879_003_i64;
+        let pool_address = "CRECONTEST879003";
+        let (native_id, usdc_id) = seed_native_and_usdc(&pool).await;
 
-        // Run reconciliation - should detect corruption
-        // let engine = ReconciliationEngine::new(db).await.unwrap();
-        // let run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert!(run.checks_failed > 0);
-        // assert_eq!(run.critical_drift_events > 0, true);
+        insert_stale_sdex_offer(&pool, offer_id, native_id, usdc_id, 600).await;
+        seed_liquidity_anomaly(&pool, pool_address, native_id, usdc_id).await;
 
-        // Verify critical check was recorded
-        // let critical_checks = sqlx::query(
-        //     "SELECT COUNT(*) as count FROM reconciliation_checks WHERE drift_severity = 'critical' AND check_type = 'asset_mapping'"
-        // ).fetch_one(&db).await.unwrap();
-        // assert!(critical_checks.get::<i64, _>("count") > 0);
-    }
+        let engine = ReconciliationEngine::new(pool.clone())
+            .await
+            .expect("Failed to create reconciliation engine");
+        let failing_run = engine
+            .run_reconciliation_cycle()
+            .await
+            .expect("Initial reconciliation cycle failed");
+        assert!(failing_run.checks_failed > 0);
 
-    /// Test scenario: Price divergence between SDEX and AMM
-    ///
-    /// Expected behavior:
-    /// - Price divergence check detects when prices diverge >2.5%
-    /// - Warning severity alerts operator without auto-repair
-    /// - Drift metrics track the divergence over time
-    #[tokio::test]
-    #[ignore] // Requires test database
-    async fn test_price_divergence_detection() {
-        // Setup: Create offer at 1.000 and pool at 0.970 (3% divergence)
-        // ... database setup ...
+        refresh_sdex_offer(&pool, offer_id).await;
+        cleanup_liquidity_fixture(&pool, pool_address).await;
 
-        // Run reconciliation
-        // let engine = ReconciliationEngine::new(db).await.unwrap();
-        // let run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert!(run.checks_failed > 0);
+        let recovery_started = chrono::Utc::now();
+        let _recovered_run = engine
+            .run_reconciliation_cycle()
+            .await
+            .expect("Post-recovery reconciliation cycle failed");
 
-        // Verify divergence was detected
-        // let divergences = sqlx::query(
-        //     "SELECT drift_percentage FROM reconciliation_checks WHERE check_type = 'price_divergence'"
-        // ).fetch_one(&db).await.unwrap();
-        // let pct: Option<f64> = divergences.get("drift_percentage");
-        // assert!(pct.unwrap_or(0.0) > 2.5);
+        let test_failures_after_recovery = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM reconciliation_checks
+            WHERE drift_severity IN ('warning', 'critical')
+              AND entity_ref IN ($1, $2)
+              AND created_at >= $3
+            "#,
+        )
+        .bind(offer_id.to_string())
+        .bind(pool_address)
+        .bind(recovery_started)
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to query post-recovery checks");
 
-        // Verify operator alert was issued
-        // let repairs = sqlx::query(
-        //     "SELECT COUNT(*) as count FROM repair_actions WHERE action_type = 'alert_operator'"
-        // ).fetch_one(&db).await.unwrap();
-        // assert!(repairs.get::<i64, _>("count") > 0);
-    }
+        assert_eq!(
+            test_failures_after_recovery, 0,
+            "post-recovery cycle should not flag cleaned test fixtures"
+        );
 
-    /// Test scenario: Ledger alignment drift
-    ///
-    /// Expected behavior:
-    /// - Ledger alignment check detects when SDEX and AMM ledgers diverge >100 blocks
-    /// - Indicates asynchronous indexing or one source falling behind
-    /// - Repair workflow refetches stale data
-    #[tokio::test]
-    #[ignore] // Requires test database
-    async fn test_ledger_alignment_detection() {
-        // Setup: Create SDEX offers at ledger 50000 and AMM pools at ledger 49800 (200 block lag)
-        // ... database setup ...
+        let run_count =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*)::bigint FROM reconciliation_runs")
+                .fetch_one(&pool)
+                .await
+                .expect("Failed to count reconciliation runs");
+        assert!(run_count >= 2);
 
-        // Run reconciliation
-        // let engine = ReconciliationEngine::new(db).await.unwrap();
-        // let run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert!(run.checks_failed > 0);
-
-        // Verify ledger lag was detected
-        // let ledger_check = sqlx::query(
-        //     "SELECT drift_percentage FROM reconciliation_checks WHERE check_type = 'ledger_alignment'"
-        // ).fetch_one(&db).await.unwrap();
-        // let lag_pct: Option<f64> = ledger_check.get("drift_percentage");
-        // assert!(lag_pct.unwrap_or(0.0) > 100.0); // 200% of threshold
-    }
-
-    /// Test scenario: Concurrent reconciliation cycles with metrics
-    ///
-    /// Expected behavior:
-    /// - Multiple reconciliation runs execute independently
-    /// - Metrics accumulate across runs
-    /// - No race conditions in drift event recording
-    #[tokio::test]
-    #[ignore] // Requires test database
-    async fn test_concurrent_reconciliation_cycles() {
-        // Setup: Create test database with mixed stale and healthy data
-        // ... database setup ...
-
-        // Run multiple reconciliation cycles concurrently
-        // let engine = Arc::new(ReconciliationEngine::new(db).await.unwrap());
-        // let handles: Vec<_> = (0..5).map(|_| {
-        //     let engine_clone = Arc::clone(&engine);
-        //     tokio::spawn(async move {
-        //         engine_clone.run_reconciliation_cycle().await.unwrap()
-        //     })
-        // }).collect();
-
-        // Wait for all cycles to complete
-        // let results: Vec<_> = futures::future::join_all(handles).await;
-        // assert_eq!(results.len(), 5);
-        // assert!(results.iter().all(|r| r.is_ok()));
-
-        // Verify metrics accumulated
-        // let total_runs = sqlx::query(
-        //     "SELECT COUNT(*) as count FROM reconciliation_runs"
-        // ).fetch_one(&db).await.unwrap();
-        // assert!(total_runs.get::<i64, _>("count") >= 5);
-    }
-
-    /// Test scenario: Repair action success and failure tracking
-    ///
-    /// Expected behavior:
-    /// - Successful repairs are recorded with affected row counts
-    /// - Failed repairs log error messages
-    /// - Repair effectiveness metrics accumulate over time
-    #[tokio::test]
-    #[ignore] // Requires test database
-    async fn test_repair_effectiveness_tracking() {
-        // Setup: Create database with stale SDEX offers
-        // ... database setup ...
-
-        // Run reconciliation - should trigger refetch repair
-        // let engine = ReconciliationEngine::new(db).await.unwrap();
-        // let run = engine.run_reconciliation_cycle().await.unwrap();
-        // assert!(run.total_repairs_attempted > 0);
-
-        // Verify repair effectiveness metrics
-        // let effectiveness = sqlx::query(
-        //     "SELECT success_rate FROM repair_effectiveness WHERE action_type = 'refetch_horizon'"
-        // ).fetch_one(&db).await.unwrap();
-        // let rate: Option<f64> = effectiveness.get("success_rate");
-        // assert!(rate.unwrap_or(0.0) >= 80.0); // Most repairs should succeed
-    }
-
-    /// Test scenario: Threshold configuration reloading
-    ///
-    /// Expected behavior:
-    /// - Reconciliation engine reads thresholds from database
-    /// - Updated thresholds are immediately respected
-    /// - Allows ops team to tune sensitivity without restart
-    #[tokio::test]
-    #[ignore] // Requires test database
-    async fn test_threshold_configuration_reloading() {
-        // Setup: Create database with default thresholds
-        // ... database setup ...
-
-        // Load initial thresholds
-        // let thresholds = CheckThresholds::load_from_db(&db).await.unwrap();
-        // assert_eq!(thresholds.price_divergence_pct, 2.5);
-
-        // Update threshold to be more restrictive
-        // sqlx::query(
-        //     "UPDATE reconciliation_thresholds SET price_divergence_pct = 1.0 WHERE check_type = 'price_divergence'"
-        // ).execute(&db).await.unwrap();
-
-        // Reload thresholds
-        // let new_thresholds = CheckThresholds::load_from_db(&db).await.unwrap();
-        // assert_eq!(new_thresholds.price_divergence_pct, 1.0); // Should reflect update
+        cleanup_sdex_offer(&pool, offer_id).await;
     }
 }
 

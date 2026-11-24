@@ -88,6 +88,10 @@ pub(crate) const MIGRATIONS: &[(&str, &str)] = &[
         "0016_notify_liquidity_update.sql",
         include_str!("../../migrations/0016_notify_liquidity_update.sql"),
     ),
+    (
+        "0017_reconciliation.sql",
+        include_str!("../../migrations/0017_reconciliation.sql"),
+    ),
 ];
 
 const EMBEDDED_MIGRATIONS: &[(&str, &str)] = MIGRATIONS;
@@ -519,7 +523,7 @@ mod tests {
 
     #[test]
     fn embedded_migrations_default_to_transactional() {
-        assert_eq!(EMBEDDED_MIGRATIONS.len(), 16);
+        assert_eq!(EMBEDDED_MIGRATIONS.len(), 17);
         for (name, sql) in EMBEDDED_MIGRATIONS {
             assert!(
                 !is_non_transactional_migration(sql),

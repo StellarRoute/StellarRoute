@@ -1,16 +1,15 @@
-//! Card program (stablecoin debit) — additive, default-off.
+//! Card module for StellarRoute API.
 //!
+//! Contains card ledger logic for tracking hold, capture, and release operations,
+//! and card store infrastructure for authorizations and USDC holds.
 //! Every route in this module is gated by `CARD_ENABLED`. When the flag is
-//! unset or false the routes answer `404`, exactly like an unknown path, so
-//! nothing changes for live users of `/swap`, `/offramp`, or
-//! `/cross-chain-swap`. StellarRoute never holds keys or card PANs here: the
-//! user signs the partner payment in their own wallet and the partner owns the
-//! card credentials.
+//! unset or false the routes answer `404`.
 
 pub mod application;
 pub mod auth_state;
 pub mod errors;
 pub mod health;
+pub mod ledger;
 pub mod limits;
 pub mod mcc;
 pub mod store;
@@ -37,6 +36,7 @@ use store::{CardStore, InMemoryCardStore, PartnerEventRecord, StoreError};
 pub use auth_state::{
     apply_event, transition, AuthorizationEvent, AuthorizationState, TransitionError,
 };
+pub use ledger::{CardLedger, LedgerError};
 
 /// Master card feature flag. Defaults to off.
 pub const CARD_ENABLED_ENV: &str = "CARD_ENABLED";

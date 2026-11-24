@@ -129,12 +129,14 @@ pub async fn get_quote(
     let consumer_id = extract_consumer_id(&headers);
 
     let start_time = std::time::Instant::now();
+    let pair = format!("{base}:{quote}");
 
     let span = info_span!(
         "quote_pipeline",
         request_id = %request_id,
         %base,
         %quote,
+        %pair,
         cache_hit = false,
         error_class = tracing::field::Empty,
         latency_ms = tracing::field::Empty,
@@ -156,6 +158,7 @@ pub async fn get_quote(
                 let latency_ms = start_time.elapsed().as_millis() as u64;
 
                 let span = tracing::Span::current();
+                span.record("cache_hit", cache_hit);
                 span.record("error_class", error_class);
                 span.record("latency_ms", latency_ms);
 
@@ -247,6 +250,7 @@ pub async fn get_quote(
                 let latency_ms = start_time.elapsed().as_millis() as u64;
 
                 let span = tracing::Span::current();
+                span.record("cache_hit", false);
                 span.record("error_class", error_class);
                 span.record("latency_ms", latency_ms);
 
@@ -946,6 +950,7 @@ impl SourceTraceContext {
     name = "find_best_price",
     skip(state, base_id, quote_id),
     fields(
+        pair = tracing::field::Empty,
         candidates_count = tracing::field::Empty,
         stale_count = tracing::field::Empty,
         fresh_count = tracing::field::Empty,
@@ -960,6 +965,9 @@ async fn find_best_price(
     quote_id: uuid::Uuid,
     amount: f64,
 ) -> Result<FindBestPriceResult> {
+    let pair = format!("{}:{}", base.to_canonical(), quote.to_canonical());
+    tracing::Span::current().record("pair", &pair);
+
     // Initialize budget tracker for per-stage timing enforcement
     let mut budget_tracker = BudgetTracker::new(BudgetConfig::realtime());
 

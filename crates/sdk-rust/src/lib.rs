@@ -31,7 +31,7 @@ pub mod types;
 pub use client::{Client, ClientBuilder, StellarRouteClient};
 pub use error::{ApiErrorCode, RateLimitInfo, Result, SdkError};
 pub use types::{
-    AgentHealth, ApiV2Info, AssetInfo, BatchQuoteRequest, BatchQuoteResponse, BridgeVenueMeta,
+    AgentHealth, ApiV2Info, AssetInfo, AssetMetadataResponse, BatchQuoteRequest, BatchQuoteResponse, BridgeVenueMeta,
     CanonicalizeAssetResponse, CardApplicationDraft, CardApplicationValidation, CardAuthorization,
     CardAuthorizationsResponse, CardHealth, CctpDirection, CctpFeeQuote, CctpFinality,
     CctpPrepareBurnResponse, CctpPrepareMintResponse, CctpQuoteRequest, CctpQuoteResponse,

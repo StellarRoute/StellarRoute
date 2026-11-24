@@ -878,6 +878,31 @@ pub struct CctpReattestResponse {
     pub retryable: bool,
 }
 
+// ── Asset metadata ────────────────────────────────────────────────────────────
+
+/// Response from `GET /api/v1/assets/{code}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetMetadataResponse {
+    /// Asset code, e.g. `XLM` or `USDC`.
+    pub code: String,
+    /// Issuing account G-address. Absent for the native asset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    /// Number of decimal places the asset is denominated in.
+    pub decimals: i16,
+    /// Stellar asset type, e.g. `native` or `credit_alphanum4`.
+    pub asset_type: String,
+    /// Human-readable name, when the issuer publishes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Icon URL, when the issuer publishes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+    /// Home domain of the issuer, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
 // ── Internal error response ───────────────────────────────────────────────────
 
 /// Wire format of the API error body — used internally by the client.

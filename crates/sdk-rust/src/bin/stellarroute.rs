@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::num::NonZeroUsize;
 use stellarroute_sdk::{
-    HealthResponse, OrderbookLevel, OrderbookResponse, PairsResponse, QuoteRequest, QuoteResponse,
-    QuoteType, RoutesRequest, RoutesResponse, SdkError, StellarRouteClient,
+    BatchQuoteRequest, BatchQuoteResponse, HealthResponse, OrderbookLevel, OrderbookResponse,
+    PairsResponse, QuoteRequest, QuoteRequestItem, QuoteResponse, QuoteType, RoutesRequest,
+    RoutesResponse, SdkError, StellarRouteClient,
 };
 
 const EXIT_SUCCESS: i32 = 0;
@@ -147,6 +148,32 @@ enum Commands {
             help = "Maximum acceptable slippage in basis points (e.g. 50 = 0.50%)"
         )]
         slippage_bps: Option<u16>,
+    },
+    #[command(
+        name = "batch-quote",
+        about = "Get price quotes for several trading pairs in one request",
+        long_about = "Fetch quotes for multiple pairs in a single call to POST /api/v1/batch/quote.\n\nEach PAIR is written BASE/QUOTE, where each side is native, CODE, or\nCODE:ISSUER — for example:\n\n  stellarroute batch-quote native/USDC XLM/EURC --amount 100\n\nThis command is read-only: it never prepares, signs, or submits a swap."
+    )]
+    BatchQuote {
+        #[arg(
+            value_parser = parse_pair,
+            required = true,
+            help = "One or more pairs written BASE/QUOTE (e.g. native/USDC)"
+        )]
+        pairs: Vec<String>,
+        #[arg(
+            long,
+            value_parser = PositiveAmountParser,
+            help = "Trade amount applied to every pair; omit for an indicative 1-unit price"
+        )]
+        amount: Option<String>,
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = QuoteTypeArg::Sell,
+            help = "Direction applied to every pair: sell or buy the base asset (default: sell)"
+        )]
+        quote_type: QuoteTypeArg,
     },
     #[command(
         about = "Check agent preview health",
@@ -300,8 +327,118 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
         )
         .await
         .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
+        Commands::BatchQuote {
+            pairs,
+            amount,
+            quote_type,
+        } => render_batch_quote(&client, &pairs, amount.as_deref(), quote_type, cli.output)
+            .await
+            .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::AgentHealth => render_agent_health(&cli.api_url, cli.output).await,
         Commands::CardHealth => render_card_health(&cli.api_url, cli.output).await,
+    }
+}
+
+
+async fn render_batch_quote(
+    client: &StellarRouteClient,
+    pairs: &[String],
+    amount: Option<&str>,
+    quote_type: QuoteTypeArg,
+    output: OutputFormat,
+) -> Result<String, SdkError> {
+    let quote_type: QuoteType = quote_type.into();
+    let quotes = pairs
+        .iter()
+        .map(|pair| {
+            let (base, quote) = split_pair(pair);
+            QuoteRequestItem {
+                base,
+                quote,
+                amount: amount.map(String::from),
+                slippage_bps: None,
+                quote_type: Some(quote_type),
+            }
+        })
+        .collect::<Vec<_>>();
+    let response = client.batch_quote(BatchQuoteRequest { quotes }).await?;
+    format_batch_quote(&response, output)
+}
+
+fn format_batch_quote(
+    response: &BatchQuoteResponse,
+    output: OutputFormat,
+) -> Result<String, SdkError> {
+    match output {
+        OutputFormat::Human => {
+            let mut lines = vec![format!(
+                "total quotes: {} (ok {}, failed {})",
+                response.total, response.items_succeeded, response.items_failed
+            )];
+            for item in &response.results {
+                if let Some(quote) = &item.quote {
+                    lines.push(format!(
+                        "{} / {} | amount: {} | type: {} | price: {} | total: {} | steps: {}",
+                        quote.base_asset.display_name(),
+                        quote.quote_asset.display_name(),
+                        quote.amount,
+                        quote.quote_type,
+                        quote.price,
+                        quote.total,
+                        quote.path.len()
+                    ));
+                } else if let Some(error) = &item.error {
+                    lines.push(format!(
+                        "item {} error: {} ({})",
+                        item.index, error.message, error.code
+                    ));
+                }
+            }
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Table => {
+            let rows = response
+                .results
+                .iter()
+                .map(|item| {
+                    if let Some(quote) = &item.quote {
+                        vec![
+                            quote.base_asset.display_name(),
+                            quote.quote_asset.display_name(),
+                            quote.amount.clone(),
+                            quote.quote_type.clone(),
+                            quote.price.clone(),
+                            quote.total.clone(),
+                            quote.path.len().to_string(),
+                        ]
+                    } else {
+                        let message = item
+                            .error
+                            .as_ref()
+                            .map(|error| error.message.clone())
+                            .unwrap_or_else(|| item.status.clone());
+                        vec![
+                            format!("item {}", item.index),
+                            "error".to_string(),
+                            message,
+                            String::new(),
+                            String::new(),
+                            String::new(),
+                            String::new(),
+                        ]
+                    }
+                })
+                .collect::<Vec<_>>();
+            let table = format_table(
+                &["base", "quote", "amount", "quote_type", "price", "total", "steps"],
+                rows,
+            );
+            Ok(format!(
+                "total quotes: {} (ok {}, failed {})\n\n{}",
+                response.total, response.items_succeeded, response.items_failed, table
+            ))
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(response).map_err(Into::into),
     }
 }
 
@@ -1074,6 +1211,29 @@ fn exit_code_for_sdk_error(error: &SdkError) -> i32 {
         | SdkError::Deserialization(_)
         | SdkError::RateLimited { .. } => EXIT_RUNTIME_ERROR,
     }
+}
+
+
+fn split_pair(pair: &str) -> (String, String) {
+    match pair.split_once('/') {
+        Some((base, quote)) => (base.to_string(), quote.to_string()),
+        None => (pair.to_string(), String::new()),
+    }
+}
+
+/// Validates a `BASE/QUOTE` pair argument, applying [`parse_asset`] to each half.
+fn parse_pair(value: &str) -> Result<String, String> {
+    let (base, quote) = value.split_once('/').ok_or_else(|| {
+        format!("invalid pair '{value}'; expected BASE/QUOTE (e.g. native/USDC)")
+    })?;
+    if quote.contains('/') {
+        return Err(format!(
+            "invalid pair '{value}'; expected exactly one '/' separator"
+        ));
+    }
+    let base = parse_asset(base)?;
+    let quote = parse_asset(quote)?;
+    Ok(format!("{base}/{quote}"))
 }
 
 fn parse_asset(value: &str) -> Result<String, String> {
@@ -1943,4 +2103,48 @@ step | from   | to   | price     | source
             "expected 'price-history' in help output"
         );
     }
+
+    #[test]
+    fn parses_batch_quote_command_with_multiple_pairs() {
+        let cli = Cli::try_parse_from([
+            "stellarroute",
+            "batch-quote",
+            "native/USDC",
+            "native/EURC",
+            "--amount",
+            "10.5",
+            "--quote-type",
+            "buy",
+        ])
+        .expect("command should parse");
+
+        match cli.command {
+            Commands::BatchQuote {
+                pairs,
+                amount,
+                quote_type,
+            } => {
+                assert_eq!(pairs, vec!["native/USDC", "native/EURC"]);
+                assert_eq!(amount.as_deref(), Some("10.5"));
+                assert!(matches!(quote_type, QuoteTypeArg::Buy));
+            }
+            other => panic!("expected BatchQuote, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn batch_quote_requires_at_least_one_pair() {
+        let error = Cli::try_parse_from(["stellarroute", "batch-quote"])
+            .expect_err("at least one pair is required");
+        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn batch_quote_rejects_a_pair_without_a_separator() {
+        let error = Cli::try_parse_from(["stellarroute", "batch-quote", "nativeUSDC"])
+            .expect_err("pair must contain a separator");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(error.to_string().contains("BASE/QUOTE"));
+    }
+
 }

@@ -26,7 +26,7 @@ use reqwest::{header, Url};
 use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
-        AgentHealth, BatchQuoteRequest, BatchQuoteResponse, CardApplicationDraft,
+        AgentHealth, AssetMetadataResponse, BatchQuoteRequest, BatchQuoteResponse, CardApplicationDraft,
         CardApplicationValidation, CardAuthorization, CardAuthorizationsResponse, CardHealth,
         CctpPrepareBurnResponse, CctpPrepareMintResponse, CctpQuoteRequest, CctpQuoteResponse,
         CctpReattestResponse, CctpSubmitBurnRequest, CctpSubmitBurnResponse, CctpSubmitMintRequest,
@@ -204,6 +204,29 @@ impl StellarRouteClient {
     pub async fn price_history(&self, base: &str, quote: &str) -> Result<PriceHistoryResponse> {
         self.get(&format!("api/v1/price-history/{base}/{quote}"))
             .await
+    }
+
+
+    /// `GET /api/v1/assets/{code}` — fetch metadata for a single asset.
+    ///
+    /// `issuer` disambiguates a code issued by more than one account; pass
+    /// `None` for the native asset or when the code is unambiguous.
+    pub async fn asset_metadata(
+        &self,
+        code: &str,
+        issuer: Option<&str>,
+    ) -> Result<AssetMetadataResponse> {
+        let url = self.url(&format!("api/v1/assets/{code}"))?;
+        let issuer = issuer.map(String::from);
+
+        self.execute_with_retry(|| {
+            let mut req = self.http.get(url.clone());
+            if let Some(ref issuer) = issuer {
+                req = req.query(&[("issuer", issuer.as_str())]);
+            }
+            req
+        })
+        .await
     }
 
     /// `GET /api/v1/quote/{base}/{quote}` — get best price quote.

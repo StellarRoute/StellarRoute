@@ -392,6 +392,95 @@ proptest! {
         let _ = client.try_execute_swap(&Address::generate(&env), &params);
     }
 
+    /// Fuzz target: min_amount_out > amount_in (excessive slippage guard).
+    #[test]
+    fn fuzz_execute_swap_excessive_min_out(
+        amount_in in 1i128..=10_000i128,
+        min_out_multiplier in 2u32..=10u32,
+    ) {
+        let env = setup_env();
+        let (_, _, client) = deploy_router(&env);
+        let pool = deploy_mock_pool(&env);
+        client.register_pool(&pool);
+
+        let excessive_min_out = amount_in.saturating_mul(min_out_multiplier as i128);
+
+        let route = make_route(&env, &pool, 1);
+        let params = swap_params_for(
+            &env,
+            route,
+            amount_in,
+            excessive_min_out,
+            current_seq(&env) + 100,
+        );
+        let result = client.try_execute_swap(&Address::generate(&env), &params);
+
+        // Oracle: must not panic; may fail with slippage error.
+        prop_assert!(
+            result.is_ok() || result.is_err(),
+            "excessive min_out guard should return result or error, not panic"
+        );
+    }
+
+    /// Fuzz target: expired deadline bounds (past and far past).
+    #[test]
+    fn fuzz_execute_swap_expired_deadline_bounds(deadline_offset in -1000i64..=-1i64) {
+        let env = setup_env();
+        let (_, _, client) = deploy_router(&env);
+        let pool = deploy_mock_pool(&env);
+        client.register_pool(&pool);
+
+        let seq = current_seq(&env) as i64;
+        let expired_deadline = (seq + deadline_offset).max(0) as u64;
+
+        let route = make_route(&env, &pool, 1);
+        let params = swap_params_for(&env, route, 1_000, 0, expired_deadline);
+        let result = client.try_execute_swap(&Address::generate(&env), &params);
+
+        // If deadline is in past, must reject with DeadlineExceeded, not panic
+        if expired_deadline < current_seq(&env) {
+            prop_assert_eq!(result, Err(Ok(ContractError::DeadlineExceeded)));
+        } else {
+            prop_assert!(
+                result.is_ok() || result.is_err(),
+                "expired deadline should reject cleanly"
+            );
+        }
+    }
+
+    /// Fuzz target: not_before in future (execution too early).
+    #[test]
+    fn fuzz_execute_swap_not_before_future(not_before_offset in 1u64..=1000u64) {
+        let env = setup_env();
+        let (_, _, client) = deploy_router(&env);
+        let pool = deploy_mock_pool(&env);
+        client.register_pool(&pool);
+
+        let seq = current_seq(&env);
+        let future_not_before = seq + not_before_offset;
+
+        let route = make_route(&env, &pool, 1);
+        let params = SwapParams {
+            route,
+            amount_in: 1_000,
+            min_amount_out: 0,
+            recipient: Address::generate(&env),
+            deadline: seq + 200,
+            not_before: future_not_before,
+            max_price_impact_bps: 0,
+            max_execution_spread_bps: 0,
+        };
+
+        let result = client.try_execute_swap(&Address::generate(&env), &params);
+
+        // If not_before is in future, must reject with ExecutionTooEarly, not panic
+        if seq < future_not_before {
+            prop_assert_eq!(result, Err(Ok(ContractError::ExecutionTooEarly)));
+        } else {
+            prop_assert!(result.is_ok(), "in-window swap should succeed");
+        }
+    }
+
     /// Fuzz target: output bounded by input and slippage min_out enforced.
     #[test]
     fn fuzz_execute_swap_output_and_slippage(

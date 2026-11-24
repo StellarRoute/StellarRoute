@@ -472,9 +472,10 @@ mod unit_tests {
             successful_repairs: 0,
             failed_repairs: 0,
             duration_ms: 50,
+            dry_run: true,
         };
 
-        // Dry-run specific assertion: no repairs were attempted
+        assert!(run.dry_run, "dry_run flag should be set");
         assert_eq!(
             run.total_repairs_attempted, 0,
             "Dry-run should not attempt repairs"
@@ -483,11 +484,30 @@ mod unit_tests {
             run.successful_repairs, 0,
             "Dry-run should have zero successful repairs"
         );
-
-        // But drift detection still occurs
         assert!(
             run.total_drift_events > 0,
             "Dry-run should still detect drift events"
         );
+    }
+
+    #[test]
+    fn test_reconciliation_run_live_mode_flag() {
+        let run = ReconciliationRun {
+            id: Uuid::new_v4(),
+            started_at: Utc::now(),
+            completed_at: Utc::now(),
+            checks_executed: 5,
+            checks_passed: 5,
+            checks_failed: 0,
+            total_drift_events: 0,
+            critical_drift_events: 0,
+            total_repairs_attempted: 0,
+            successful_repairs: 0,
+            failed_repairs: 0,
+            duration_ms: 100,
+            dry_run: false,
+        };
+
+        assert!(!run.dry_run, "live mode should have dry_run=false");
     }
 }

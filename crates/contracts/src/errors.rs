@@ -78,4 +78,6 @@ pub enum ContractError {
     InvalidFeeConfig = 100,
     /// An unexpired commitment already exists for this `(sender, commitment_hash)` key.
     CommitmentAlreadyExists = 101,
+    /// Pool address is already registered on the router.
+    PoolAlreadyRegistered = 102,
 }

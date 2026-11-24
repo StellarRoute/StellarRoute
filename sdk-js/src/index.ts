@@ -27,6 +27,7 @@ export {
   StellarRouteApiError,
   isStellarRouteApiError,
   parseApiErrorBody,
+  DEFAULT_PUBLIC_HORIZON_URL,
   DEFAULT_TESTNET_HORIZON_URL,
 } from './client.js';
 

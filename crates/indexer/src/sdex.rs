@@ -174,6 +174,10 @@ impl SdexIndexer {
     /// Start polling mode indexing
     async fn start_polling(&self) -> Result<()> {
         info!("Starting SDEX offer indexing (polling mode)");
+        match self.fetch_latest_paging_token().await {
+            Ok(cursor) => info!(cursor = %cursor, "SDEX cursor on restart"),
+            Err(e) => info!(error = %e, "SDEX cursor on restart unavailable"),
+        }
 
         loop {
             match self.index_offers().await {
@@ -234,6 +238,7 @@ impl SdexIndexer {
         info!("Starting SDEX offer indexing (streaming mode)");
 
         let mut cursor = self.fetch_latest_paging_token().await.ok();
+        info!(cursor = ?cursor, "SDEX cursor on restart");
         let mut error_count = 0;
 
         loop {

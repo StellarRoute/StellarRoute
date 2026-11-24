@@ -105,6 +105,34 @@ describe('OrderbookPage with highlighting', () => {
     expect(screen.getByText('Loading markets')).toBeInTheDocument();
   });
 
+  it('displays orderbook skeleton rows while orderbook fetch is in flight', () => {
+    vi.mocked(useApiHooks.usePairs).mockReturnValue({
+      data: mockPairs,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
+      data: null,
+      loading: true,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(
+      <TradingPairProvider>
+        <OrderbookPage />
+      </TradingPairProvider>
+    );
+
+    expect(screen.getByTestId('orderbook-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('bids-skeleton-rows')).toBeInTheDocument();
+    expect(screen.getByTestId('asks-skeleton-rows')).toBeInTheDocument();
+    const skeletonRows = screen.getAllByTestId('orderbook-skeleton-row');
+    expect(skeletonRows.length).toBeGreaterThan(0);
+  });
+
   it('displays error state correctly', () => {
     vi.mocked(useApiHooks.usePairs).mockReturnValue({
       data: null,

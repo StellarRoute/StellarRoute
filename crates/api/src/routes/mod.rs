@@ -1,6 +1,7 @@
 //! API routes
 
 pub mod activity;
+pub mod agent;
 pub mod admin;
 pub mod admin_cache;
 pub mod agent;

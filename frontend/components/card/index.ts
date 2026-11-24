@@ -1,11 +1,13 @@
 /**
  * Card Components Module
- * 
+ *
  * CARD-19: CardFace - Virtual card display component
  * CARD-20: ViewFullDetailsButton - Navigate to issuer partner for full details
  * CARD-21: CardConfirm - Transaction confirmation view (in app/card/)
+ * CARD-51: CardExportButton - Client-side CSV export of card activity
  * CARD-52: CardTopUpPreferencesModal - Local threshold and top-up preferences
- * 
+ * CARD-55: CardNetworkStatusBanner - Offline indicator that pauses card actions
+ *
  * All components follow additive-only constraint:
  * - No changes to existing swap/quote/offramp functionality
  * - No modification of frozen routes or API contracts
@@ -19,7 +21,7 @@ export {
 } from './ViewFullDetailsButton';
 export { CardDepositReceiptModal } from './CardDepositReceiptModal';
 export type { CardDepositReceiptModalProps } from './CardDepositReceiptModal';
-d
+
 export { CardActivityList } from './CardActivityList';
 export type { CardActivityListProps } from './CardActivityList';
 
@@ -39,4 +41,8 @@ export type { CardFreezeButtonProps } from './CardFreezeButton';
 export { CardTopUpPreferencesModal } from './CardTopUpPreferencesModal';
 export type { CardTopUpPreferencesModalProps } from './CardTopUpPreferencesModal';
 
+export { CardNetworkStatusBanner } from './CardNetworkStatusBanner';
+export type { CardNetworkStatusBannerProps } from './CardNetworkStatusBanner';
 
+export { CardExportButton } from './CardExportButton';
+export type { CardExportButtonProps } from './CardExportButton';

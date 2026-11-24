@@ -200,10 +200,108 @@ async fn run_startup_credential_checks(
     Ok(())
 }
 
+async fn run_cli_migration_command(
+    action: stellarroute_api::db_migrations::CliMigrationAction,
+) -> Result<(), String> {
+    let database_url = std::env::var("DATABASE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| {
+            std::env::var("TEST_DATABASE_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+        })
+        .ok_or_else(|| "Missing required environment variable(s): DATABASE_URL".to_string())?;
+
+    let connection_timeout_secs: u64 = std::env::var("DB_CONNECTION_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_secs(connection_timeout_secs))
+        .connect(&database_url)
+        .await
+        .map_err(|e| format!("Failed to connect to database for API migrations: {}", e))?;
+
+    let outcome = match action {
+        stellarroute_api::db_migrations::CliMigrationAction::Migrate { bootstrap_existing } => {
+            if bootstrap_existing {
+                let boot =
+                    stellarroute_api::db_migrations::bootstrap_existing_api_migrations(&pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                info!(
+                    recorded = boot.recorded.len(),
+                    already_recorded = boot.already_recorded,
+                    "Bootstrapped existing API schema into migration ledger"
+                );
+            }
+            stellarroute_api::db_migrations::run_api_migrations(&pool)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+        stellarroute_api::db_migrations::CliMigrationAction::BootstrapOnly => {
+            let boot = stellarroute_api::db_migrations::bootstrap_existing_api_migrations(&pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            info!(
+                recorded = boot.recorded.len(),
+                already_recorded = boot.already_recorded,
+                "Completed bootstrap-only API migration ledger sync"
+            );
+            Ok(())
+        }
+        stellarroute_api::db_migrations::CliMigrationAction::BootstrapThrough {
+            through_name,
+            run_remaining,
+        } => {
+            let boot =
+                stellarroute_api::db_migrations::bootstrap_through_migration(&pool, &through_name)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            info!(
+                through = %through_name,
+                recorded = boot.recorded.len(),
+                already_recorded = boot.already_recorded,
+                "Completed bootstrap-through API migration ledger sync"
+            );
+            if run_remaining {
+                stellarroute_api::db_migrations::run_api_migrations(&pool)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            } else {
+                Ok(())
+            }
+        }
+    };
+
+    pool.close().await;
+    outcome
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize structured logging (reads RUST_LOG and LOG_FORMAT env vars)
     telemetry::init();
+
+    match stellarroute_api::db_migrations::parse_cli_migration_action(std::env::args().skip(1)) {
+        Ok(Some(action)) => {
+            if let Err(message) = run_cli_migration_command(action).await {
+                error!("{}", message);
+                std::process::exit(1);
+            }
+            return;
+        }
+        Ok(None) => {}
+        Err(message) => {
+            error!("{}", message);
+            std::process::exit(2);
+        }
+    }
 
     info!("Starting StellarRoute API Server");
 
@@ -326,6 +424,28 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    if stellarroute_api::db_migrations::is_auto_migrate_enabled() {
+        info!("API_AUTO_MIGRATE is enabled; running pending API migrations before server start");
+        let mig_pool = match PgPoolOptions::new()
+            .max_connections(2)
+            .acquire_timeout(Duration::from_secs(connection_timeout_secs))
+            .connect(&database_url)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Failed to connect API migration pool: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = stellarroute_api::db_migrations::run_api_migrations(&mig_pool).await {
+            error!("Startup API migrations failed: {}", e);
+            mig_pool.close().await;
+            std::process::exit(1);
+        }
+        mig_pool.close().await;
+    }
 
     // Create server configuration
     // Resolve bind host/port — respects PaaS PORT convention.

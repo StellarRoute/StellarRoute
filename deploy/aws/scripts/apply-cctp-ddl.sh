@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Apply every crates/api/migrations/*cctp*.sql file in sorted order.
-# Idempotent. Run from repo root on the staging host (Compose stack up).
+# Bootstrap any pre-existing tables into `_api_schema_migrations` and apply all
+# pending `crates/api/migrations/*.sql` files via the API migration runner.
+# Idempotent. Run from repo root on the staging host.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -19,21 +20,12 @@ if [[ -z "${POSTGRES_USER}" || -z "${POSTGRES_DB}" ]]; then
   exit 1
 fi
 
-shopt -s nullglob
-migrations=("${ROOT}"/crates/api/migrations/*cctp*.sql)
-if [[ ${#migrations[@]} -eq 0 ]]; then
-  echo "No CCTP SQL migrations found under crates/api/migrations" >&2
-  exit 1
-fi
-
-IFS=$'\n' sorted=($(printf '%s\n' "${migrations[@]}" | sort))
-unset IFS
-
-echo "Applying ${#sorted[@]} CCTP DDL files..."
 COMPOSE=(docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod)
-for mig in "${sorted[@]}"; do
-  "${COMPOSE[@]}" exec -T postgres \
-    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
-    < "${mig}"
-  echo " - $(basename "${mig}") ready"
-done
+
+echo "Ensuring postgres service is running before API migrations..."
+"${COMPOSE[@]}" up -d postgres
+
+echo "Running API migration runner (migrate --bootstrap)..."
+"${COMPOSE[@]}" build api
+"${COMPOSE[@]}" run --rm --no-deps api migrate --bootstrap
+echo " - API migrations up to date"

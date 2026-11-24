@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS swap_submit_audit_log (
 
     -- Retention
     retained_until  TIMESTAMPTZ NOT NULL
-                    GENERATED ALWAYS AS (logged_at + INTERVAL '30 days') STORED
+                    GENERATED ALWAYS AS ((logged_at AT TIME ZONE 'UTC' + INTERVAL '30 days') AT TIME ZONE 'UTC') STORED
 );
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
@@ -73,10 +73,9 @@ CREATE INDEX IF NOT EXISTS idx_swap_submit_audit_tx_hash
 CREATE INDEX IF NOT EXISTS idx_swap_submit_audit_logged_at
     ON swap_submit_audit_log(logged_at DESC);
 
--- Retention pruning (partial index — only rows eligible for deletion)
+-- Retention pruning range index
 CREATE INDEX IF NOT EXISTS idx_swap_submit_audit_retention
-    ON swap_submit_audit_log(retained_until)
-    WHERE retained_until <= NOW();
+    ON swap_submit_audit_log(retained_until);
 
 -- Outcome-based filtering (e.g. "show me all failed submits in the last hour")
 CREATE INDEX IF NOT EXISTS idx_swap_submit_audit_outcome_time

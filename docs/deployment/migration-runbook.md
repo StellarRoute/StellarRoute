@@ -120,18 +120,22 @@ release so rollback can revert to the previous code without schema changes.
 ### Pre-deploy
 
 1. Open a maintenance window announcement (even though the service stays up).
-2. Verify the migration set: `sqlx migrate info --source crates/api/migrations`.
-3. Run migrations against a staging database that mirrors production size.
+2. Verify every file under `crates/api/migrations/` is registered in `API_MIGRATIONS` (`cargo test -p stellarroute-api --lib db_migrations::tests`).
+3. Run migrations against a staging database that mirrors production size:
+   - Fresh environments: `stellarroute-api migrate` (or `stellarroute-api --migrate-only`).
+   - Existing staging environments whose tables were previously created by hand without a ledger: `stellarroute-api migrate --bootstrap` (or `--bootstrap-only` / `--bootstrap-through <filename.sql>`) to populate `_api_schema_migrations` without re-running DDL.
+   - Note: normal `stellarroute-api` HTTP server startup does **not** run migrations unless `API_AUTO_MIGRATE=true` is explicitly set.
+   - Migrations that use `CREATE INDEX CONCURRENTLY` must start with `-- stellarroute:no-transaction` so the runner executes them outside `BEGIN ... COMMIT` while still holding the session-level `pg_advisory_lock`.
 4. Confirm query plans for any new indexes (`EXPLAIN ANALYZE`).
 5. Confirm backward compatibility: deploy the migration, then run the
    *previous* production container against the migrated schema for 5 minutes.
 
 ### Deploy
 
-1. **Schema first** — run migrations from a job or init container:
+1. **Schema first** — run migrations from a job or one-shot container (indexer first, then API):
    ```bash
-   sqlx migrate run --source crates/api/migrations
-   sqlx migrate run --source crates/indexer/migrations
+   stellarroute-indexer --migrate-only
+   stellarroute-api migrate --bootstrap
    ```
 2. **Pause auto-scaling** to prevent pod churn during the schema flip.
 3. **Canary** — roll out the new code to 5% of traffic.
@@ -175,7 +179,7 @@ Every migration PR must include:
 ```yaml
 # Suggested CI step (excerpt)
 - name: Run API migrations
-  run: sqlx migrate run --source crates/api/migrations
+  run: cargo run -p stellarroute-api --bin stellarroute-api -- migrate
   env:
     DATABASE_URL: postgres://postgres:postgres@localhost/stellarroute_test
 

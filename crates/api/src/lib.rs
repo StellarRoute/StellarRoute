@@ -12,6 +12,7 @@ pub mod card;
 pub mod cctp;
 pub mod compression;
 pub mod consistency_guard;
+pub mod db_migrations;
 pub mod dependency_health;
 pub mod docs;
 pub mod env_profile;

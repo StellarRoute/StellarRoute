@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateCardFees,
   checkCardFeeAvailability,
+  declineInsufficient,
   CARD_FLAT_FEE_USDC,
   CARD_SPREAD_BPS,
+  CARD_SPREAD_BASIS_POINTS,
 } from './fees';
 
 describe('card fees', () => {
@@ -34,5 +36,21 @@ describe('card fees', () => {
       netUsdc: 9.45,
       fiatMerchantAmount: 18.9,
     });
+  });
+});
+
+describe('CARD-11 quote fee schedule', () => {
+  it('uses a 25 bps spread when only a quote amount is provided', () => {
+    expect(CARD_SPREAD_BASIS_POINTS).toBe(25);
+    const result = calculateCardFees(100);
+    expect(result.gross_usdc).toBeCloseTo(100.25);
+    expect(result.fee_usdc).toBeCloseTo(2.250625);
+    expect(result.net_usdc).toBeCloseTo(97.999375);
+    expect(result.fiat_merchant_amount).toBeCloseTo(97.999375);
+  });
+
+  it('declines when available USDC is below the grossed-up quote', () => {
+    expect(declineInsufficient(200, 100)).toBeNull();
+    expect(declineInsufficient(50, 100)).toMatch(/Insufficient USDC/);
   });
 });

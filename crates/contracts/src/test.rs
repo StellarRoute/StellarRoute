@@ -1893,7 +1893,6 @@ fn test_authorized_governance_upgrade_proposal_succeeds() {
     assert_eq!(ver.wasm_hash, new_hash);
 }
 
-
 // ─── Token Allowlist Tests ────────────────────────────────────────────────────
 
 use super::types::{TokenCategory, TokenInfo};
@@ -2574,4 +2573,181 @@ fn test_burn_recipient_tracking() {
     client.distribute_fees(&Asset::Native);
 
     assert_eq!(client.get_total_fees_burned(&Asset::Native), 2970);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Commit-Reveal Sender Isolation & Duplicate Protection Tests (#1656) ──────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn make_mev_config_for_commit_tests() -> crate::types::MevConfig {
+    crate::types::MevConfig {
+        max_price_impact_bps: 500,
+        max_execution_spread_bps: 100,
+        rate_limit_window_ledgers: 100,
+        rate_limit_max_swaps: 5,
+        commitment_required_above: 100_000,
+    }
+}
+
+fn compute_test_commitment_hash(
+    env: &Env,
+    amount_in: i128,
+    min_amount_out: i128,
+    deadline: u64,
+    salt: &BytesN<32>,
+) -> BytesN<32> {
+    let mut payload = soroban_sdk::Bytes::new(env);
+    payload.append(&soroban_sdk::Bytes::from_slice(
+        env,
+        &amount_in.to_be_bytes(),
+    ));
+    payload.append(&soroban_sdk::Bytes::from_slice(
+        env,
+        &min_amount_out.to_be_bytes(),
+    ));
+    payload.append(&soroban_sdk::Bytes::from_slice(
+        env,
+        &deadline.to_be_bytes(),
+    ));
+    let salt_bytes: soroban_sdk::Bytes = salt.clone().into();
+    payload.append(&salt_bytes);
+    env.crypto().sha256(&payload).into()
+}
+
+#[test]
+fn test_commit_swap_second_address_same_hash_cannot_block_original_sender() {
+    let env = setup_env();
+    let (_, _, client) = deploy_router(&env);
+    let pool = deploy_mock_pool(&env);
+    client.register_pool(&pool);
+    client.configure_mev(&make_mev_config_for_commit_tests());
+
+    let alice = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let bystander = Address::generate(&env);
+
+    let amount_in: i128 = 150_000;
+    let min_out: i128 = 0;
+    let deadline = current_seq(&env) + 200;
+    let salt = BytesN::from_array(&env, &[0xAB; 32]);
+    let commitment_hash = compute_test_commitment_hash(&env, amount_in, min_out, deadline, &salt);
+
+    // Alice submits her commitment.
+    client.commit_swap(&alice, &commitment_hash, &amount_in);
+
+    // Attacker observes Alice's commitment_hash on-ledger and submits the exact
+    // same hash with a dust deposit_amount from their own address.
+    client.commit_swap(&attacker, &commitment_hash, &1);
+
+    // A bystander who never committed cannot reveal Alice's commitment.
+    let bystander_params = swap_params_for(
+        &env,
+        make_route(&env, &pool, 1),
+        amount_in,
+        min_out,
+        deadline,
+    );
+    assert_eq!(
+        client.try_reveal_and_execute(&bystander, &bystander_params, &salt),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+
+    // Alice's commitment remains intact under (alice, commitment_hash) and
+    // reveals + executes cleanly without InvalidReveal griefing.
+    let alice_params = swap_params_for(
+        &env,
+        make_route(&env, &pool, 1),
+        amount_in,
+        min_out,
+        deadline,
+    );
+    let result = client.reveal_and_execute(&alice, &alice_params, &salt);
+    assert_eq!(result.amount_in, amount_in);
+    assert!(result.amount_out > 0);
+
+    // Replaying Alice's already-consumed commitment fails with CommitmentNotFound.
+    assert_eq!(
+        client.try_reveal_and_execute(&alice, &alice_params, &salt),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+}
+
+#[test]
+fn test_commit_swap_recommit_unexpired_fails_with_commitment_already_exists() {
+    let env = setup_env();
+    env.ledger().with_mut(|li| li.sequence_number = 500);
+
+    let (_, _, client) = deploy_router(&env);
+    let pool = deploy_mock_pool(&env);
+    client.register_pool(&pool);
+    client.configure_mev(&make_mev_config_for_commit_tests()); // window = 100 ledgers -> expires_at = 600
+
+    let alice = Address::generate(&env);
+    let amount_in: i128 = 100_000;
+    let min_out: i128 = 0;
+    let deadline: u64 = 1_000;
+    let salt = BytesN::from_array(&env, &[0xCD; 32]);
+    let commitment_hash = compute_test_commitment_hash(&env, amount_in, min_out, deadline, &salt);
+
+    client.commit_swap(&alice, &commitment_hash, &amount_in);
+
+    // Re-committing at the same ledger fails with CommitmentAlreadyExists.
+    assert_eq!(
+        client.try_commit_swap(&alice, &commitment_hash, &amount_in),
+        Err(Ok(ContractError::CommitmentAlreadyExists))
+    );
+
+    // Re-committing right at the expiry boundary (sequence == expires_at == 600)
+    // is still unexpired and must also fail with CommitmentAlreadyExists.
+    env.ledger().with_mut(|li| li.sequence_number = 600);
+    assert_eq!(
+        client.try_commit_swap(&alice, &commitment_hash, &amount_in),
+        Err(Ok(ContractError::CommitmentAlreadyExists))
+    );
+
+    // Alice can still reveal at the boundary ledger (600 <= expires_at).
+    let params = swap_params_for(
+        &env,
+        make_route(&env, &pool, 1),
+        amount_in,
+        min_out,
+        deadline,
+    );
+    let result = client.reveal_and_execute(&alice, &params, &salt);
+    assert_eq!(result.amount_in, amount_in);
+
+    // Once consumed, Alice can commit the same hash again if desired.
+    assert!(client
+        .try_commit_swap(&alice, &commitment_hash, &amount_in)
+        .is_ok());
+}
+
+#[test]
+fn test_commit_swap_allows_recommit_after_expiry_and_preserves_error_codes() {
+    let env = setup_env();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+
+    let (_, _, client) = deploy_router(&env);
+    client.configure_mev(&make_mev_config_for_commit_tests()); // window = 100 -> expires_at = 200
+
+    let alice = Address::generate(&env);
+    let hash = BytesN::from_array(&env, &[0xEF; 32]);
+    client.commit_swap(&alice, &hash, &100_000);
+
+    // Advance past expiry (201 > 200) and verify re-commit succeeds.
+    env.ledger().with_mut(|li| li.sequence_number = 201);
+    assert!(client.try_commit_swap(&alice, &hash, &100_000).is_ok());
+
+    // Verify existing error numbers remain completely unchanged and new variant is appended.
+    assert_eq!(ContractError::NotInitialized as u32, 1);
+    assert_eq!(ContractError::PoolNotSupported as u32, 30);
+    assert_eq!(ContractError::InvalidAmount as u32, 40);
+    assert_eq!(ContractError::Overflow as u32, 41);
+    assert_eq!(ContractError::CommitmentRequired as u32, 90);
+    assert_eq!(ContractError::CommitmentNotFound as u32, 91);
+    assert_eq!(ContractError::CommitmentExpired as u32, 92);
+    assert_eq!(ContractError::InvalidReveal as u32, 93);
+    assert_eq!(ContractError::RateLimitExceeded as u32, 94);
+    assert_eq!(ContractError::InvalidFeeConfig as u32, 100);
+    assert_eq!(ContractError::CommitmentAlreadyExists as u32, 101);
 }

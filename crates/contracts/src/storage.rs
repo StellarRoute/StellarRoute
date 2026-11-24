@@ -28,7 +28,15 @@ pub enum StorageKey {
     MevConfig,
     // ── Temporary (auto-expiring) ──────────────────────────────────────
     PendingUpgrade,
-    Commitment(BytesN<32>),
+    /// Commit-reveal entry scoped to `(sender, commitment_hash)` so another
+    /// caller cannot overwrite or grief an active commitment.
+    ///
+    /// Upgrade note: commitments live in Soroban Temporary storage with TTL
+    /// `mev_config.rate_limit_window_ledgers` and hold no custodied tokens.
+    /// Across a WASM upgrade from legacy `Commitment(BytesN<32>)`, any
+    /// in-flight legacy temporary entry expires automatically within one
+    /// commitment window; callers simply re-commit under the new key.
+    Commitment(Address, BytesN<32>),
     AccountSwapCount(Address),
     AccountSwapWindowStart(Address),
     Whitelisted(Address),
@@ -411,21 +419,27 @@ pub fn set_mev_config(e: &Env, config: &MevConfig) {
 
 // --- Commitment storage (Temporary) ---
 
-pub fn get_commitment(e: &Env, hash: &BytesN<32>) -> Option<CommitmentData> {
-    let key = StorageKey::Commitment(hash.clone());
+pub fn get_commitment(e: &Env, sender: &Address, hash: &BytesN<32>) -> Option<CommitmentData> {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
     e.storage().temporary().get(&key)
 }
 
-pub fn set_commitment(e: &Env, hash: &BytesN<32>, data: &CommitmentData, ttl_ledgers: u32) {
-    let key = StorageKey::Commitment(hash.clone());
+pub fn set_commitment(
+    e: &Env,
+    sender: &Address,
+    hash: &BytesN<32>,
+    data: &CommitmentData,
+    ttl_ledgers: u32,
+) {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
     e.storage().temporary().set(&key, data);
     e.storage()
         .temporary()
         .extend_ttl(&key, ttl_ledgers, ttl_ledgers);
 }
 
-pub fn remove_commitment(e: &Env, hash: &BytesN<32>) {
-    let key = StorageKey::Commitment(hash.clone());
+pub fn remove_commitment(e: &Env, sender: &Address, hash: &BytesN<32>) {
+    let key = StorageKey::Commitment(sender.clone(), hash.clone());
     e.storage().temporary().remove(&key);
 }
 

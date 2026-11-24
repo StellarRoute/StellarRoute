@@ -76,4 +76,6 @@ pub enum ContractError {
     // ── Fee Distribution ─────────────────────────────────────────────────
     /// Fee configuration is invalid (e.g., shares don't sum to 10000 bps or too many recipients).
     InvalidFeeConfig = 100,
+    /// An unexpired commitment already exists for this `(sender, commitment_hash)` key.
+    CommitmentAlreadyExists = 101,
 }

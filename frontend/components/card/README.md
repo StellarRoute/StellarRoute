@@ -125,6 +125,41 @@ import { CardConfirm } from '@/app/card';
 
 ---
 
+### CardBalanceAlert (CARD-45)
+**Location**: `components/card/CardBalanceAlert.tsx`
+
+Non-intrusive low balance warning rendered below `CardFace` on the card page. When available USDC is strictly below the alert threshold (default 25.00 USDC, user-configurable via CARD-52 preferences), it shows a bridge top-up call to action so the cardholder funds the card before a point-of-sale decline.
+
+**Usage**:
+```tsx
+import { CardBalanceAlert, cardBalanceAlertDismissKey } from '@/components/card';
+
+<CardBalanceAlert
+  availableUsdc={18.4}
+  thresholdUsdc={25}
+  recommendedUsdc={50}
+  dismissKey={cardBalanceAlertDismissKey(address, 25)}
+  onTopUp={(amount) => openTopUpModal(amount)}
+/>
+```
+
+**Props**:
+- `availableUsdc` (number | null): Available USDC; nothing renders while unknown
+- `thresholdUsdc` (number, optional): Warn strictly below this (default 25.00)
+- `recommendedUsdc` (number, optional): Amount handed to `onTopUp` (default 50.00)
+- `dismissKey` (string, optional): Session-scope key (address + threshold) for dismissal
+- `onTopUp` (function, optional): Receives the recommended amount; opens the top-up flow
+- `onDismiss` (function, optional): Called when the banner is dismissed
+
+**Features**:
+- Boundary rule: renders at 24.99 USDC, not at 25.00 USDC
+- "Top Up Now" pre-fills the card top-up modal with the recommended amount
+- Dismissal is sessionStorage-only — it never survives a reload and never hits localStorage
+- Amber status banner (`role="status"`, `aria-live="polite"`), not a hard block
+- No backend calls, no signing; StellarRoute holds no keys or card PANs
+
+---
+
 ## Design Principles
 
 ### Additive-Only Constraint

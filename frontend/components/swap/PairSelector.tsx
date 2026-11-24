@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ArrowDown } from "lucide-react";
 import { useOptionalSettings } from '@/components/providers/settings-provider';
 import { formatAmount, getUserLocale } from '@/lib/formatting';
+import { useRecentPairs, type RecentPair } from '@/hooks/useRecentPairs';
 
 interface PairSelectorProps {
   payAmount: string;
@@ -12,6 +13,8 @@ interface PairSelectorProps {
   receiveAmount: string;
   payBalance?: number;
   receiveBalance?: number;
+  /** Called when the user selects a recent pair from the history list. */
+  onRecentPairSelect?: (pair: RecentPair) => void;
 }
 
 export function PairSelector({ 
@@ -19,16 +22,43 @@ export function PairSelector({
   onPayAmountChange, 
   receiveAmount,
   payBalance = 1000,
-  receiveBalance = 0
+  receiveBalance = 0,
+  onRecentPairSelect,
 }: PairSelectorProps) {
   const settings = useOptionalSettings();
   const locale = settings?.settings.locale ?? getUserLocale();
+  const { recentPairs } = useRecentPairs();
 
   const formattedPayBalance = formatAmount(payBalance, locale, 2);
   const formattedReceiveBalance = formatAmount(receiveBalance, locale, 2);
 
   return (
     <div className="space-y-1 relative overflow-x-hidden">
+      {recentPairs.length > 0 && (
+        <nav aria-label="Recent pairs" className="mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+            Recent
+          </p>
+          <ul
+            className="flex flex-wrap gap-1.5"
+            data-testid="recent-pairs-list"
+          >
+            {recentPairs.map((pair) => (
+              <li key={`${pair.baseAsset}|${pair.quoteAsset}`}>
+                <button
+                  type="button"
+                  onClick={() => onRecentPairSelect?.(pair)}
+                  className="inline-flex h-7 items-center rounded-full border border-border/60 bg-muted/50 px-3 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 transition-colors"
+                  aria-label={`Select recent pair ${pair.base}/${pair.quote}`}
+                >
+                  {pair.base}/{pair.quote}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
       <div className="bg-muted/50 rounded-xl p-4 border border-border/50 transition-colors focus-within:border-primary/50">
         <div className="text-sm font-medium text-muted-foreground mb-2">You Pay</div>
         <div className="flex items-center justify-between gap-4 max-[359px]:flex-col">

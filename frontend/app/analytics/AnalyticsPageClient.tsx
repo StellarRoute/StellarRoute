@@ -1,6 +1,7 @@
 "use client";
 
 import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
+import { AnalyticsSkeleton } from "@/components/analytics/AnalyticsSkeleton";
 import { ViewState } from "@/components/shared/ViewState";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 
@@ -22,7 +23,12 @@ import { PairSparklineCard } from "./PairSparklineCard";
  *   the swap surface.
  */
 export function AnalyticsPageClient() {
-  const { enabled: analyticsEnabled } = useFeatureFlag("analytics");
+  const { enabled: analyticsEnabled, loading: flagLoading } = useFeatureFlag("analytics");
+
+  // Show skeleton while the feature flag is resolving on the client.
+  if (flagLoading) {
+    return <AnalyticsSkeleton />;
+  }
 
   if (!analyticsEnabled) {
     return (

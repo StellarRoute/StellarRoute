@@ -48,19 +48,26 @@ export function PriceImpactIndicator({
   };
 
   const data = getImpactData(impact);
+  const displayValue = impact > 0 ? `${impact.toFixed(2)}%` : '< 0.01%';
+  const descriptionId = `price-impact-desc-${impact.toFixed(4).replace('.', '-')}`;
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={cn("flex items-center gap-1.5 cursor-help transition-opacity hover:opacity-80", data.color, className)}>
+          <div
+            className={cn("flex items-center gap-1.5 cursor-help transition-opacity hover:opacity-80", data.color, className)}
+            aria-describedby={descriptionId}
+            role="status"
+            aria-label={`Price impact: ${displayValue} — ${data.label}`}
+          >
             <span className="font-bold tabular-nums">
-              {impact > 0 ? `${impact.toFixed(2)}%` : '< 0.01%'}
+              {displayValue}
             </span>
-            {showIcon && data.icon}
+            {showIcon && <span aria-hidden="true">{data.icon}</span>}
           </div>
         </TooltipTrigger>
-        <TooltipContent className="max-w-[240px] p-3 text-xs leading-relaxed">
+        <TooltipContent className="max-w-[240px] p-3 text-xs leading-relaxed" id={descriptionId}>
           <p className="font-bold mb-1">Price Impact ({data.label})</p>
           <p className="text-muted-foreground">
             {data.description}

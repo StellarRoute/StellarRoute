@@ -112,6 +112,17 @@ export const Pending: Story = () => (
 );
 Pending.storyName = 'Pending — Processing';
 
+/** Submitted — signed and submitted to the network, before confirmation. */
+export const Submitted: Story = () => (
+  <OpenDrawer
+    transaction={buildTransaction({
+      status: 'submitted',
+      hash: MOCK_HASH,
+    })}
+  />
+);
+Submitted.storyName = 'Submitted — Awaiting Network';
+
 /** Confirmed — settled on-chain with a copyable hash and explorer links. */
 export const Confirmed: Story = () => (
   <OpenDrawer

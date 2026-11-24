@@ -167,3 +167,63 @@ fn openapi_error_taxonomy_matches_docs_and_sdk_js() {
         );
     }
 }
+
+#[tokio::test]
+async fn static_openapi_yaml_documents_swap_prepare_network_passphrase() {
+    let openapi_yaml = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/api/openapi.yaml"
+    ));
+
+    assert!(
+        openapi_yaml.contains("/api/v1/swap/prepare:"),
+        "docs/api/openapi.yaml must document POST /api/v1/swap/prepare"
+    );
+    assert!(
+        openapi_yaml.contains("/api/v1/swap/submit:"),
+        "docs/api/openapi.yaml must document POST /api/v1/swap/submit"
+    );
+    assert!(
+        openapi_yaml.contains("SwapPrepareResponse:"),
+        "docs/api/openapi.yaml must define SwapPrepareResponse schema"
+    );
+
+    let prepare_section = openapi_yaml
+        .split("SwapPrepareResponse:")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    SwapPrepareEnvelopeResponse:").next())
+        .expect("SwapPrepareResponse block must precede SwapPrepareEnvelopeResponse");
+
+    assert!(
+        prepare_section.contains("network_passphrase"),
+        "SwapPrepareResponse in docs/api/openapi.yaml must document network_passphrase"
+    );
+    assert!(
+        prepare_section.contains("required: [quote_id, xdr_envelope, expected_output, expires_at, execution_mode, network_passphrase]"),
+        "SwapPrepareResponse in docs/api/openapi.yaml must mark network_passphrase required"
+    );
+
+    // Cross-check parity with runtime /api-docs/openapi.json required fields
+    let router = setup_router().await;
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/api-docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("request failed");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let runtime_spec: Value = serde_json::from_slice(&body).unwrap();
+    let runtime_req = runtime_spec["components"]["schemas"]["SwapPrepareResponse"]["required"]
+        .as_array()
+        .expect("runtime SwapPrepareResponse.required must be an array");
+    assert!(
+        runtime_req.iter().any(|f| f == "network_passphrase"),
+        "runtime SwapPrepareResponse must require network_passphrase"
+    );
+}

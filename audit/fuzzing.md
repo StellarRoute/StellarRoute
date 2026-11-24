@@ -25,6 +25,11 @@ Default case count is 64 per property (suitable for CI).
 
 Raise the case count and run only the fuzz module:
 
+<!-- NOTE: PROPTEST_CASES applies to EACH property test separately, not to the whole
+     run. Total runtime is roughly (cases x number of fuzz_ properties), so adding
+     new targets makes the same value take longer. If a run is cut short, no result
+     is recorded, so pick a count that fits your time window. -->
+
 ```bash
 # Linux / macOS / Git Bash
 PROPTEST_CASES=500000 cargo test -p stellarroute-contracts fuzz_ -- --nocapture

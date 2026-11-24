@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { SupportedWallet, AvailableWallet, WalletNetwork } from '@/lib/wallet/types';
+import { mapWalletError } from '@/lib/wallet/error-mapper';
 import { WALLET_INSTALL_URLS, WALLET_LABELS } from '@/lib/wallet';
 import {
   getAllowedNetworks,
@@ -225,8 +226,11 @@ export function WalletConnectionOnboarding({
       if (dismissedRef.current || connectAttemptRef.current !== attempt) {
         return;
       }
-      const errorMessage =
-        err instanceof Error ? err.message : 'Connection failed. Please try again.';
+      const errorMessage = (() => {
+        const mapped = mapWalletError(err, wallet.id);
+        if (mapped) return `${mapped.headline} — ${mapped.recovery}`;
+        return err instanceof Error ? err.message : 'Connection failed. Please try again.';
+      })();
       setConnectionError(errorMessage);
       setStep('error');
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TradeActivityTable } from '@/components/shared/TradeActivityTable';
 import { ViewState } from '@/components/shared/ViewState';
@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { useStellarRouteClient } from '@/hooks/useStellarRouteClient';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import type { TradeRecord } from '@/types/trade';
+
+/** How many events to request per fetch page. */
+const HISTORY_PAGE_SIZE = 500;
 
 /** Serialises trade records to a RFC 4180-compliant CSV string. */
 export function recordsToCsv(records: TradeRecord[]): string {
@@ -54,18 +57,20 @@ function EmptyHistoryIllustration() {
 /**
  * Client shell for /history.
  *
- * Owns the single fetch for the page so the empty state can carry an
- * illustration: `TradeActivityTable` renders its own bare "No trade activity
- * found." text when it fetches for itself, and it is outside this issue's
- * scope. Passing `initialData` hands it the already-fetched rows, so the table
- * does no second request and keeps its own sorting and pagination over the
- * full result set.
+ * Owns the fetch for the page so the empty state can carry an illustration.
+ * Passes `initialData` to `TradeActivityTable`, which paginates 10 rows at a
+ * time client-side. A "Load more" button re-fetches with an increased limit
+ * when the previous response was full (indicating the API has more records).
  */
 export function HistoryPageClient({ address }: { address?: string }) {
   const client = useStellarRouteClient();
   const [records, setRecords] = useState<TradeRecord[] | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const { enabled: csvEnabled } = useFeatureFlag('history_csv_export');
+  const [fetchLimit, setFetchLimit] = useState(HISTORY_PAGE_SIZE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  /** True when the last response was exactly `fetchLimit` rows — there may be more. */
+  const [mayHaveMore, setMayHaveMore] = useState(false);
 
   const handleExportCsv = useCallback(() => {
     if (!records || records.length === 0) return;
@@ -73,23 +78,25 @@ export function HistoryPageClient({ address }: { address?: string }) {
     triggerCsvDownload(csv, `stellarroute-history-${Date.now()}.csv`);
   }, [records]);
 
-  useEffect(() => {
-    if (!address) {
-      setRecords([]);
-      return;
-    }
+  const fetchRecords = useCallback(
+    (limit: number, append: boolean) => {
+      if (!address) {
+        setRecords([]);
+        return () => {};
+      }
 
-    let active = true;
-    setRecords(null);
-    setError(null);
+      let active = true;
+      if (!append) {
+        setRecords(null);
+        setError(null);
+      }
 
-    client
-      .getSwapActivity({ limit: 100 })
-      .then((res) => {
-        if (!active) return;
-        // Same shape the table's own hook produces, so rendering is unchanged.
-        setRecords(
-          res.swaps
+      client
+        .getSwapActivity({ limit })
+        .then((res) => {
+          if (!active) return;
+
+          const mapped: TradeRecord[] = res.swaps
             .filter(
               (swap) => swap.sender.toLowerCase() === address.toLowerCase()
             )
@@ -102,19 +109,38 @@ export function HistoryPageClient({ address }: { address?: string }) {
               action: 'SWAP',
               amount: swap.amount_in,
               asset: `${swap.source_asset || 'Unknown'} → ${swap.destination_asset || 'Unknown'}`,
-            }))
-        );
-      })
-      .catch((err: unknown) => {
-        if (!active) return;
-        setError(err instanceof Error ? err : new Error(String(err)));
-        setRecords([]);
-      });
+            }));
 
-    return () => {
-      active = false;
-    };
-  }, [address, client]);
+          setRecords(mapped);
+          // If we got exactly `limit` rows the API may have more beyond this window.
+          setMayHaveMore(res.swaps.length >= limit);
+          setIsLoadingMore(false);
+        })
+        .catch((err: unknown) => {
+          if (!active) return;
+          setError(err instanceof Error ? err : new Error(String(err)));
+          if (!append) setRecords([]);
+          setIsLoadingMore(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [address, client],
+  );
+
+  useEffect(() => {
+    const cleanup = fetchRecords(fetchLimit, false);
+    return cleanup;
+  }, [address, fetchLimit, fetchRecords]);
+
+  const handleLoadMore = () => {
+    const nextLimit = fetchLimit + HISTORY_PAGE_SIZE;
+    setFetchLimit(nextLimit);
+    setIsLoadingMore(true);
+  };
 
   const isLoading = records === null;
   const isEmpty = useMemo(
@@ -161,7 +187,7 @@ export function HistoryPageClient({ address }: { address?: string }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {csvEnabled && (
         <div className="flex justify-end">
           <Button
@@ -175,6 +201,19 @@ export function HistoryPageClient({ address }: { address?: string }) {
         </div>
       )}
       <TradeActivityTable address={address} initialData={records} />
+      {mayHaveMore && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            data-testid="history-load-more"
+          >
+            {isLoadingMore ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

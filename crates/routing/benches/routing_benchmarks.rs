@@ -1,4 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use stellarroute_routing::{
     pathfinder::{LiquidityEdge, Pathfinder, PathfinderConfig},
     AmmQuoteCalculator, RoutingPolicy,
@@ -184,11 +186,106 @@ fn bench_pathfinding_fixture(c: &mut Criterion) {
     });
 }
 
+fn build_dense_synthetic_graph(asset_count: usize, edge_count: usize) -> Vec<LiquidityEdge> {
+    let mut rng = ChaCha8Rng::seed_from_u64(0x57E1_1A20_1648);
+    let mut assets = Vec::with_capacity(asset_count);
+    assets.push("XLM".to_string());
+    assets.push("USDC".to_string());
+    assets.push("EURC".to_string());
+    assets.push("BTC".to_string());
+    for idx in 4..asset_count {
+        assets.push(format!("ASSET_{idx:03}"));
+    }
+
+    let fee_tiers = [0_u32, 10, 25, 30, 100];
+    let mut edges = Vec::with_capacity(edge_count);
+
+    // Connect XLM and USDC hubs broadly so 2..4-hop simple paths fan out densely,
+    // mirroring real Stellar liquidity concentrated around XLM/USDC bridges.
+    let hub_span = (asset_count - 4).min(120);
+    for (offset, mid) in assets[4..4 + hub_span].iter().enumerate() {
+        for hub in ["XLM", "USDC", "EURC", "BTC"] {
+            if edges.len() + 2 > edge_count {
+                break;
+            }
+            let price = rng.gen_range(0.05..15.0);
+            let fee_bps = fee_tiers[offset % fee_tiers.len()];
+            edges.push(LiquidityEdge {
+                from: hub.to_string(),
+                to: mid.clone(),
+                venue_type: if offset % 2 == 0 { "amm" } else { "sdex" }.to_string(),
+                venue_ref: format!("hub_out_{}", edges.len()),
+                liquidity: rng.gen_range(100_000_000..10_000_000_000),
+                price,
+                fee_bps,
+                ..Default::default()
+            });
+            edges.push(LiquidityEdge {
+                from: mid.clone(),
+                to: hub.to_string(),
+                venue_type: if offset % 2 == 0 { "amm" } else { "sdex" }.to_string(),
+                venue_ref: format!("hub_in_{}", edges.len()),
+                liquidity: rng.gen_range(100_000_000..10_000_000_000),
+                price: 1.0 / price,
+                fee_bps,
+                ..Default::default()
+            });
+        }
+    }
+
+    while edges.len() < edge_count {
+        let from_idx = rng.gen_range(0..asset_count);
+        let mut to_idx = rng.gen_range(0..asset_count - 1);
+        if to_idx >= from_idx {
+            to_idx += 1;
+        }
+        let venue_type = if rng.gen_bool(0.5) { "amm" } else { "sdex" };
+        let fee_bps = fee_tiers[rng.gen_range(0..fee_tiers.len())];
+        edges.push(LiquidityEdge {
+            from: assets[from_idx].clone(),
+            to: assets[to_idx].clone(),
+            venue_type: venue_type.to_string(),
+            venue_ref: format!("dense_venue_{}", edges.len()),
+            liquidity: rng.gen_range(100_000_000..10_000_000_000),
+            price: rng.gen_range(0.05..20.0),
+            fee_bps,
+            ..Default::default()
+        });
+    }
+
+    edges
+}
+
+fn bench_pathfinding_dense_graph(c: &mut Criterion) {
+    let edges = build_dense_synthetic_graph(200, 2_000);
+    let config = PathfinderConfig {
+        min_liquidity_threshold: 100_000,
+    };
+    let pathfinder = Pathfinder::new(config);
+    let routing_policy = RoutingPolicy::default();
+
+    c.bench_function("pathfind_dense_200_assets_2000_edges", |b| {
+        b.iter(|| {
+            let paths = pathfinder
+                .find_paths(
+                    "XLM",
+                    "BTC",
+                    black_box(&edges),
+                    black_box(100_000_000),
+                    &routing_policy,
+                )
+                .expect("dense graph should have routes");
+            black_box(paths);
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_pathfinding_2hop,
     bench_pathfinding_4hop,
     bench_pathfinding_fixture,
+    bench_pathfinding_dense_graph,
     bench_amm_quote,
     bench_amm_quote_large_trade
 );

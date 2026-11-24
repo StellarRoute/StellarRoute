@@ -1,100 +1,48 @@
-import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import RouteVisualizationDemo from './page';
 
-describe('RouteVisualizationDemo Page', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  it('renders without network or wallet dependencies', () => {
+describe('RouteVisualizationDemo Sandbox (#1298)', () => {
+  it('renders the sandbox heading and demo badge', () => {
     render(<RouteVisualizationDemo />);
-
     expect(
-      screen.getByRole('heading', { name: 'Route Visualization Demo', level: 1 })
+      screen.getByText(/Route Visualization Sandbox/i)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Interactive demo of the multi-hop trade route visualization component')
-    ).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Single Hop' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Multi-Hop' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Complex Route' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Split Route' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'States' })).toBeInTheDocument();
+    expect(screen.getByText(/Demo Only/i)).toBeInTheDocument();
   });
 
-  it('renders single hop route tab by default', () => {
+  it('renders all tab navigation triggers', () => {
     render(<RouteVisualizationDemo />);
-
     expect(
-      screen.getByRole('heading', { name: 'Single Hop Route', level: 2 })
+      screen.getByRole('tab', { name: /Path Scenarios/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Direct swap from XLM to USDC via SDEX orderbook')
+      screen.getByRole('tab', { name: /Split Routing/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: /Edge States/i })
     ).toBeInTheDocument();
   });
 
-  it('allows switching between tabs to inspect different route topologies', async () => {
-    const user = userEvent.setup();
+  it('switches route presets when clicked', () => {
     render(<RouteVisualizationDemo />);
+    const singleHopBtn = screen.getByTestId('preset-single-hop');
+    fireEvent.click(singleHopBtn);
+    expect(screen.getByText(/Hops: 1/i)).toBeInTheDocument();
 
-    // Multi-Hop tab
-    await user.click(screen.getByRole('tab', { name: 'Multi-Hop' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Multi-Hop Route', level: 2 })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('XLM → USDC (SDEX) → BTC (AMM Pool)')
-    ).toBeInTheDocument();
-
-    // Complex Route tab
-    await user.click(screen.getByRole('tab', { name: 'Complex Route' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Complex 3-Hop Route', level: 2 })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('XLM → USDC (SDEX) → EURC (AMM) → BTC (SDEX)')
-    ).toBeInTheDocument();
-
-    // Split Route tab
-    await user.click(screen.getByRole('tab', { name: 'Split Route' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Split Route', level: 2 })
-    ).toBeInTheDocument();
+    const complexBtn = screen.getByTestId('preset-complex');
+    fireEvent.click(complexBtn);
+    expect(screen.getByText(/Hops: 3/i)).toBeInTheDocument();
   });
 
-  it('renders and toggles interactive states on the states tab', async () => {
-    const user = userEvent.setup();
+  it('resets sandbox to default multi-hop route on reset button click', () => {
     render(<RouteVisualizationDemo />);
+    const singleHopBtn = screen.getByTestId('preset-single-hop');
+    fireEvent.click(singleHopBtn);
+    expect(screen.getByText(/Hops: 1/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: 'States' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Component States', level: 2 })
-    ).toBeInTheDocument();
-    expect(screen.getByText('Loading State')).toBeInTheDocument();
-    expect(screen.getByText('Error State')).toBeInTheDocument();
-    expect(screen.getByText('No Route Found')).toBeInTheDocument();
-    expect(screen.getAllByText('No route found').length).toBeGreaterThanOrEqual(1);
-
-    // Toggle error button
-    const toggleErrorBtn = screen.getByRole('button', { name: 'Toggle Error' });
-    expect(screen.queryByText('Failed to fetch route data')).not.toBeInTheDocument();
-
-    await user.click(toggleErrorBtn);
-    expect(screen.getByText('Failed to fetch route data')).toBeInTheDocument();
-
-    await user.click(toggleErrorBtn);
-    expect(screen.queryByText('Failed to fetch route data')).not.toBeInTheDocument();
-
-    // Simulate loading button
-    const simulateLoadingBtn = screen.getByRole('button', { name: 'Simulate Loading' });
-    await user.click(simulateLoadingBtn);
+    const resetBtn = screen.getByTestId('reset-sandbox-btn');
+    fireEvent.click(resetBtn);
+    expect(screen.getByText(/Hops: 2/i)).toBeInTheDocument();
   });
 });

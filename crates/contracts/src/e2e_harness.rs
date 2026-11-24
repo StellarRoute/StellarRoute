@@ -94,6 +94,47 @@ mod mock_pool_fail {
     }
 }
 
+mod mock_sep41_pool {
+    use super::super::types::Asset;
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
+
+    /// Pool backed by real SEP-41 Soroban token balances; transfers `out` to the router.
+    #[contract]
+    pub struct MockSep41Pool;
+
+    #[contractimpl]
+    impl MockSep41Pool {
+        pub fn init(e: Env, router: Address) {
+            e.storage()
+                .instance()
+                .set(&symbol_short!("router"), &router);
+        }
+
+        pub fn adapter_quote(_e: Env, _in: Asset, _out: Asset, amount_in: i128) -> i128 {
+            amount_in * 99 / 100
+        }
+
+        pub fn swap(e: Env, _in: Asset, out_asset: Asset, amount_in: i128, min_out: i128) -> i128 {
+            let out = amount_in * 99 / 100;
+            assert!(out >= min_out, "mock_sep41_pool: slippage");
+            let router: Address = e
+                .storage()
+                .instance()
+                .get(&symbol_short!("router"))
+                .expect("router set");
+            if let Asset::Soroban(token_out) = out_asset {
+                let client = soroban_sdk::token::Client::new(&e, &token_out);
+                client.transfer(&e.current_contract_address(), &router, &out);
+            }
+            out
+        }
+
+        pub fn get_rsrvs(_e: Env) -> (i128, i128) {
+            (0, 0)
+        }
+    }
+}
+
 // ── Harness helpers ───────────────────────────────────────────────────────────
 
 pub fn deploy_pool_99(env: &Env) -> Address {
@@ -797,6 +838,7 @@ fn default_mev_config() -> MevConfig {
         rate_limit_window_ledgers: 100,
         rate_limit_max_swaps: 3,
         commitment_required_above: 100_000,
+        min_reveal_delay_ledgers: 2,
     }
 }
 
@@ -897,7 +939,7 @@ fn e2e_mev_whitelisted_exempt_from_rate_limit() {
     }
 }
 
-/// Commit-reveal: valid commitment + correct reveal executes the swap.
+/// Commit-reveal: valid commitment + reveal after min_reveal_delay_ledgers executes the swap.
 #[test]
 fn e2e_mev_commit_reveal_full_flow() {
     let env = setup();
@@ -906,25 +948,14 @@ fn e2e_mev_commit_reveal_full_flow() {
     client.register_pool(&pool);
     client.configure_mev(&default_mev_config());
 
+    env.ledger().with_mut(|l| l.sequence_number = 100);
+
     let sender = Address::generate(&env);
     let amount_in: i128 = 100_000;
     let min_out: i128 = 0;
     let deadline = seq(&env) + 200;
     let salt = BytesN::from_array(&env, &[7u8; 32]);
 
-    // Build the same hash the contract will verify
-    let mut payload = Bytes::new(&env);
-    payload.append(&Bytes::from_slice(&env, &amount_in.to_be_bytes()));
-    payload.append(&Bytes::from_slice(&env, &min_out.to_be_bytes()));
-    payload.append(&Bytes::from_slice(&env, &deadline.to_be_bytes()));
-    let salt_bytes: soroban_sdk::Bytes = salt.clone().into();
-    payload.append(&salt_bytes);
-    let commitment_hash: BytesN<32> = env.crypto().sha256(&payload).into();
-
-    // Step 1: commit
-    client.commit_swap(&sender, &commitment_hash, &amount_in);
-
-    // Step 2: reveal + execute
     let route = multi_pool_route(&env, &[pool]);
     let params = SwapParams {
         route,
@@ -936,6 +967,14 @@ fn e2e_mev_commit_reveal_full_flow() {
         max_price_impact_bps: 0,
         max_execution_spread_bps: 0,
     };
+
+    let commitment_hash = client.compute_commitment_hash(&sender, &params, &salt);
+
+    // Step 1: commit
+    client.commit_swap(&sender, &commitment_hash, &Asset::Native, &amount_in);
+
+    // Step 2: advance past min_reveal_delay_ledgers (2) and reveal + execute
+    env.ledger().with_mut(|l| l.sequence_number = 102);
 
     let result = client.reveal_and_execute(&sender, &params, &salt);
     assert_eq!(result.amount_in, amount_in);
@@ -951,6 +990,8 @@ fn e2e_mev_commit_reveal_wrong_salt_rejected() {
     client.register_pool(&pool);
     client.configure_mev(&default_mev_config());
 
+    env.ledger().with_mut(|l| l.sequence_number = 100);
+
     let sender = Address::generate(&env);
     let amount_in: i128 = 100_000;
     let min_out: i128 = 0;
@@ -958,17 +999,6 @@ fn e2e_mev_commit_reveal_wrong_salt_rejected() {
     let correct_salt = BytesN::from_array(&env, &[7u8; 32]);
     let wrong_salt = BytesN::from_array(&env, &[9u8; 32]);
 
-    // Commit with correct salt
-    let mut payload = Bytes::new(&env);
-    payload.append(&Bytes::from_slice(&env, &amount_in.to_be_bytes()));
-    payload.append(&Bytes::from_slice(&env, &min_out.to_be_bytes()));
-    payload.append(&Bytes::from_slice(&env, &deadline.to_be_bytes()));
-    let salt_bytes: soroban_sdk::Bytes = correct_salt.into();
-    payload.append(&salt_bytes);
-    let commitment_hash: BytesN<32> = env.crypto().sha256(&payload).into();
-    client.commit_swap(&sender, &commitment_hash, &amount_in);
-
-    // Reveal with wrong salt → CommitmentNotFound (hash mismatch)
     let route = multi_pool_route(&env, &[pool]);
     let params = SwapParams {
         route,
@@ -980,8 +1010,396 @@ fn e2e_mev_commit_reveal_wrong_salt_rejected() {
         max_price_impact_bps: 0,
         max_execution_spread_bps: 0,
     };
+
+    let commitment_hash = client.compute_commitment_hash(&sender, &params, &correct_salt);
+    client.commit_swap(&sender, &commitment_hash, &Asset::Native, &amount_in);
+
+    env.ledger().with_mut(|l| l.sequence_number = 102);
+
+    // Reveal with wrong salt → CommitmentNotFound (hash mismatch)
     let result = client.try_reveal_and_execute(&sender, &params, &wrong_salt);
     assert_eq!(result, Err(Ok(ContractError::CommitmentNotFound)));
+}
+
+/// Canonical commitment hash matches manual `SHA-256(XDR(sender) || XDR(params) || XDR(salt))`.
+#[test]
+fn e2e_mev_commit_hash_matches_canonical_xdr_preimage() {
+    use soroban_sdk::xdr::ToXdr;
+
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    let pool = deploy_pool_99(&env);
+    client.register_pool(&pool);
+
+    let sender = Address::generate(&env);
+    let params = SwapParams {
+        route: multi_pool_route(&env, &[pool]),
+        amount_in: 125_000,
+        min_amount_out: 120_000,
+        recipient: Address::generate(&env),
+        deadline: 500,
+        not_before: 105,
+        max_price_impact_bps: 250,
+        max_execution_spread_bps: 75,
+    };
+    let salt = BytesN::from_array(&env, &[0x42; 32]);
+
+    let mut manual_preimage = Bytes::new(&env);
+    manual_preimage.append(&sender.clone().to_xdr(&env));
+    manual_preimage.append(&params.clone().to_xdr(&env));
+    manual_preimage.append(&salt.clone().to_xdr(&env));
+    let expected_hash: BytesN<32> = env.crypto().sha256(&manual_preimage).into();
+
+    assert_eq!(
+        client.compute_commitment_hash(&sender, &params, &salt),
+        expected_hash
+    );
+}
+
+/// Reveal with a different route (e.g. swapped pool) must fail.
+#[test]
+fn e2e_mev_reveal_with_different_route_rejected() {
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    let pool_a = deploy_pool_99(&env);
+    let pool_b = deploy_pool_98(&env);
+    client.register_pool(&pool_a);
+    client.register_pool(&pool_b);
+    client.configure_mev(&default_mev_config());
+
+    env.ledger().with_mut(|l| l.sequence_number = 100);
+
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let salt = BytesN::from_array(&env, &[3u8; 32]);
+    let committed_params = SwapParams {
+        route: multi_pool_route(&env, &[pool_a]),
+        amount_in: 100_000,
+        min_amount_out: 0,
+        recipient: recipient.clone(),
+        deadline: 300,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
+    };
+
+    let commitment_hash = client.compute_commitment_hash(&sender, &committed_params, &salt);
+    client.commit_swap(
+        &sender,
+        &commitment_hash,
+        &Asset::Native,
+        &committed_params.amount_in,
+    );
+
+    env.ledger().with_mut(|l| l.sequence_number = 102);
+
+    let mut tampered_route_params = committed_params.clone();
+    tampered_route_params.route = multi_pool_route(&env, &[pool_b]);
+
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &tampered_route_params, &salt),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+}
+
+/// Reveal with a different recipient or guard field must fail.
+#[test]
+fn e2e_mev_reveal_with_different_recipient_or_guards_rejected() {
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    let pool = deploy_pool_99(&env);
+    client.register_pool(&pool);
+    client.configure_mev(&default_mev_config());
+
+    env.ledger().with_mut(|l| l.sequence_number = 100);
+
+    let sender = Address::generate(&env);
+    let salt = BytesN::from_array(&env, &[5u8; 32]);
+    let committed_params = SwapParams {
+        route: multi_pool_route(&env, &[pool]),
+        amount_in: 100_000,
+        min_amount_out: 90_000,
+        recipient: Address::generate(&env),
+        deadline: 300,
+        not_before: 101,
+        max_price_impact_bps: 100,
+        max_execution_spread_bps: 50,
+    };
+
+    let commitment_hash = client.compute_commitment_hash(&sender, &committed_params, &salt);
+    client.commit_swap(
+        &sender,
+        &commitment_hash,
+        &Asset::Native,
+        &committed_params.amount_in,
+    );
+
+    env.ledger().with_mut(|l| l.sequence_number = 102);
+
+    // Different recipient
+    let mut wrong_recipient = committed_params.clone();
+    wrong_recipient.recipient = Address::generate(&env);
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &wrong_recipient, &salt),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+
+    // Different not_before
+    let mut wrong_not_before = committed_params.clone();
+    wrong_not_before.not_before = 100;
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &wrong_not_before, &salt),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+
+    // Different max_price_impact_bps
+    let mut wrong_impact = committed_params.clone();
+    wrong_impact.max_price_impact_bps = 200;
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &wrong_impact, &salt),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+}
+
+/// Reveal in the commit ledger or before `min_reveal_delay_ledgers` must fail with `ExecutionTooEarly`.
+#[test]
+fn e2e_mev_reveal_in_commit_ledger_and_before_delay_rejected() {
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    let pool = deploy_pool_99(&env);
+    client.register_pool(&pool);
+    client.configure_mev(&default_mev_config()); // min_reveal_delay_ledgers = 2
+
+    env.ledger().with_mut(|l| l.sequence_number = 100);
+
+    let sender = Address::generate(&env);
+    let salt = BytesN::from_array(&env, &[11u8; 32]);
+    let params = SwapParams {
+        route: multi_pool_route(&env, &[pool]),
+        amount_in: 100_000,
+        min_amount_out: 0,
+        recipient: Address::generate(&env),
+        deadline: 300,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
+    };
+    let commitment_hash = client.compute_commitment_hash(&sender, &params, &salt);
+    client.commit_swap(&sender, &commitment_hash, &Asset::Native, &params.amount_in);
+
+    // Same ledger (100) → ExecutionTooEarly
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &params, &salt),
+        Err(Ok(ContractError::ExecutionTooEarly))
+    );
+
+    // Ledger 101 (< 100 + 2) → ExecutionTooEarly
+    env.ledger().with_mut(|l| l.sequence_number = 101);
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &params, &salt),
+        Err(Ok(ContractError::ExecutionTooEarly))
+    );
+
+    // Ledger 102 (== 100 + 2) → succeeds
+    env.ledger().with_mut(|l| l.sequence_number = 102);
+    let res = client.reveal_and_execute(&sender, &params, &salt);
+    assert_eq!(res.amount_in, 100_000);
+}
+
+/// End-to-end SEP-41 token escrow: commit_swap transfers tokens into the router,
+/// reveal_and_execute consumes the escrowed balance without charging sender twice,
+/// and mismatched deposit amount/asset is rejected.
+#[test]
+fn e2e_mev_escrow_transfers_soroban_tokens_and_funds_reveal() {
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    client.configure_mev(&default_mev_config());
+
+    let token_admin = Address::generate(&env);
+    let sac_in = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let sac_out = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_in_addr = sac_in.address();
+    let token_out_addr = sac_out.address();
+
+    let token_in_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_in_addr);
+    let token_out_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_out_addr);
+    let token_in = soroban_sdk::token::Client::new(&env, &token_in_addr);
+    let token_out = soroban_sdk::token::Client::new(&env, &token_out_addr);
+
+    let pool = env.register_contract(None, mock_sep41_pool::MockSep41Pool);
+    mock_sep41_pool::MockSep41PoolClient::new(&env, &pool).init(&client.address);
+    client.register_pool(&pool);
+
+    // Fund pool with output tokens and sender with exact deposit_amount of input tokens.
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let deposit_amount: i128 = 200_000;
+    token_in_admin.mint(&sender, &deposit_amount);
+    token_out_admin.mint(&pool, &1_000_000);
+
+    let mut hops = Vec::new(&env);
+    hops.push_back(RouteHop {
+        source: Asset::Soroban(token_in_addr.clone()),
+        destination: Asset::Soroban(token_out_addr.clone()),
+        pool: pool.clone(),
+        pool_type: PoolType::AmmConstProd,
+    });
+    let params = SwapParams {
+        route: Route {
+            hops,
+            estimated_output: 0,
+            min_output: 0,
+            expires_at: 500,
+        },
+        amount_in: deposit_amount,
+        min_amount_out: 190_000,
+        recipient: recipient.clone(),
+        deadline: 500,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
+    };
+
+    env.ledger().with_mut(|l| l.sequence_number = 50);
+    let salt = BytesN::from_array(&env, &[0xAB; 32]);
+    let commitment_hash = client.compute_commitment_hash(&sender, &params, &salt);
+
+    // Commit transfers deposit_amount from sender into router escrow.
+    client.commit_swap(
+        &sender,
+        &commitment_hash,
+        &Asset::Soroban(token_in_addr.clone()),
+        &deposit_amount,
+    );
+    assert_eq!(token_in.balance(&sender), 0);
+    assert_eq!(token_in.balance(&client.address), deposit_amount);
+
+    // Duplicate commitment with same (sender, hash) must fail without double-escrowing.
+    assert_eq!(
+        client.try_commit_swap(
+            &sender,
+            &commitment_hash,
+            &Asset::Soroban(token_in_addr.clone()),
+            &deposit_amount,
+        ),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+
+    // Advance past min_reveal_delay_ledgers; sender has 0 remaining token_in, proving
+    // reveal_and_execute pulls solely from router escrow!
+    env.ledger().with_mut(|l| l.sequence_number = 52);
+    let swap_res = client.reveal_and_execute(&sender, &params, &salt);
+
+    // Pool returns 99% = 198_000; 0.30% protocol fee = 594; recipient gets 197_406.
+    assert_eq!(swap_res.amount_out, 197_406);
+    assert_eq!(token_in.balance(&sender), 0);
+    assert_eq!(token_in.balance(&client.address), 0);
+    assert_eq!(token_in.balance(&pool), deposit_amount);
+    assert_eq!(token_out.balance(&recipient), 197_406);
+}
+
+/// Deposit mismatch (escrowed amount != params.amount_in) must fail on reveal with InvalidReveal,
+/// and expired commitments can be reclaimed via `reclaim_commitment` (even when paused).
+#[test]
+fn e2e_mev_escrow_mismatch_rejected_and_expired_commitment_reclaimable() {
+    let env = setup();
+    env.ledger().with_mut(|l| {
+        l.sequence_number = 100;
+        l.min_persistent_entry_ttl = 5_000_000;
+        l.max_entry_ttl = 10_000_000;
+    });
+    let (admin, client) = deploy_router(&env);
+    client.configure_mev(&default_mev_config()); // window = 100 ledgers -> expires_at = 200
+
+    let token_admin = Address::generate(&env);
+    let sac_in = env.register_stellar_asset_contract_v2(token_admin);
+    let token_in_addr = sac_in.address();
+    let token_in_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_in_addr);
+    let token_in = soroban_sdk::token::Client::new(&env, &token_in_addr);
+
+    let pool = deploy_pool_99(&env);
+    client.register_pool(&pool);
+
+    let sender = Address::generate(&env);
+    token_in_admin.mint(&sender, &500_000);
+
+    let mut hops = Vec::new(&env);
+    hops.push_back(RouteHop {
+        source: Asset::Soroban(token_in_addr.clone()),
+        destination: Asset::Native,
+        pool,
+        pool_type: PoolType::AmmConstProd,
+    });
+    let params = SwapParams {
+        route: Route {
+            hops,
+            estimated_output: 0,
+            min_output: 0,
+            expires_at: 500,
+        },
+        amount_in: 150_000,
+        min_amount_out: 0,
+        recipient: Address::generate(&env),
+        deadline: 500,
+        not_before: 0,
+        max_price_impact_bps: 0,
+        max_execution_spread_bps: 0,
+    };
+
+    let salt = BytesN::from_array(&env, &[0xCD; 32]);
+    let commitment_hash = client.compute_commitment_hash(&sender, &params, &salt);
+
+    // Escrow 250_000 while params.amount_in is 150_000
+    client.commit_swap(
+        &sender,
+        &commitment_hash,
+        &Asset::Soroban(token_in_addr.clone()),
+        &250_000,
+    );
+    assert_eq!(token_in.balance(&sender), 250_000);
+    assert_eq!(token_in.balance(&client.address), 250_000);
+
+    // Reclaim before expiry (at ledger 102 <= 200) must fail with ExecutionTooEarly
+    env.ledger().with_mut(|l| l.sequence_number = 102);
+    assert_eq!(
+        client.try_reclaim_commitment(&sender, &commitment_hash),
+        Err(Ok(ContractError::ExecutionTooEarly))
+    );
+
+    // Reveal with mismatched deposit_amount != params.amount_in must fail with InvalidReveal
+    // and roll back removal so the deposit remains safely escrowed!
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &params, &salt),
+        Err(Ok(ContractError::InvalidReveal))
+    );
+    assert_eq!(token_in.balance(&client.address), 250_000);
+
+    // Advance past expires_at (200 -> 250); reveal now fails with CommitmentExpired
+    env.ledger().with_mut(|l| l.sequence_number = 250);
+    assert_eq!(
+        client.try_reveal_and_execute(&sender, &params, &salt),
+        Err(Ok(ContractError::CommitmentExpired))
+    );
+
+    // Another user cannot reclaim sender's commitment
+    let attacker = Address::generate(&env);
+    assert_eq!(
+        client.try_reclaim_commitment(&attacker, &commitment_hash),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
+
+    // Pause router: sender can STILL reclaim their expired deposit
+    client.pause(&admin);
+    let refunded = client.reclaim_commitment(&sender, &commitment_hash);
+    assert_eq!(refunded, 250_000);
+    assert_eq!(token_in.balance(&sender), 500_000);
+    assert_eq!(token_in.balance(&client.address), 0);
+
+    // Reclaiming a second time fails with CommitmentNotFound
+    assert_eq!(
+        client.try_reclaim_commitment(&sender, &commitment_hash),
+        Err(Ok(ContractError::CommitmentNotFound))
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1263,7 +1681,34 @@ fn valid_mev() -> MevConfig {
         rate_limit_window_ledgers: 100,
         rate_limit_max_swaps: 3,
         commitment_required_above: 100_000,
+        min_reveal_delay_ledgers: 2,
     }
+}
+
+/// min_reveal_delay_ledgers == 0 must be rejected.
+#[test]
+fn val_configure_mev_zero_reveal_delay_rejected() {
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    let mut cfg = valid_mev();
+    cfg.min_reveal_delay_ledgers = 0;
+    assert_eq!(
+        client.try_configure_mev(&cfg),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+}
+
+/// min_reveal_delay_ledgers > rate_limit_window_ledgers must be rejected.
+#[test]
+fn val_configure_mev_reveal_delay_above_window_rejected() {
+    let env = setup();
+    let (_, client) = deploy_router(&env);
+    let mut cfg = valid_mev();
+    cfg.min_reveal_delay_ledgers = cfg.rate_limit_window_ledgers + 1;
+    assert_eq!(
+        client.try_configure_mev(&cfg),
+        Err(Ok(ContractError::InvalidAmount))
+    );
 }
 
 /// commitment_required_above <= 0 must be rejected.
@@ -1394,7 +1839,8 @@ fn val_commit_swap_zero_hash_rejected() {
     client.configure_mev(&valid_mev());
 
     let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
-    let result = client.try_commit_swap(&Address::generate(&env), &zero_hash, &1_000);
+    let result =
+        client.try_commit_swap(&Address::generate(&env), &zero_hash, &Asset::Native, &1_000);
     assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
 }
 
@@ -1406,7 +1852,7 @@ fn val_commit_swap_zero_deposit_rejected() {
     client.configure_mev(&valid_mev());
 
     let hash = BytesN::from_array(&env, &[1u8; 32]);
-    let result = client.try_commit_swap(&Address::generate(&env), &hash, &0);
+    let result = client.try_commit_swap(&Address::generate(&env), &hash, &Asset::Native, &0);
     assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
 }
 
@@ -1418,7 +1864,7 @@ fn val_commit_swap_negative_deposit_rejected() {
     client.configure_mev(&valid_mev());
 
     let hash = BytesN::from_array(&env, &[1u8; 32]);
-    let result = client.try_commit_swap(&Address::generate(&env), &hash, &-1);
+    let result = client.try_commit_swap(&Address::generate(&env), &hash, &Asset::Native, &-1);
     assert_eq!(result, Err(Ok(ContractError::InvalidAmount)));
 }
 

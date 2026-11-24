@@ -55,7 +55,7 @@ interface WalletContextValue {
   dismissSyncMismatch: () => void;
 }
 
-const WalletContext = createContext<WalletContextValue | undefined>(undefined);
+export const WalletContext = createContext<WalletContextValue | undefined>(undefined);
 
 const AUTO_RECONNECT_PREFERENCE_KEY = 'stellarroute.wallet.autoReconnect';
 const LAST_WALLET_ID_KEY = 'stellarroute.wallet.lastWalletId';
@@ -91,6 +91,7 @@ function createFailedCapabilities(message?: string): Capabilities {
 interface WalletProviderProps {
   children: ReactNode;
   defaultNetwork?: string;
+  initialState?: Partial<WalletContextValue>;
 }
 
 export function WalletProvider({
@@ -489,8 +490,10 @@ export function WalletProvider({
     dismissSyncMismatch,
   };
 
+  const providedValue = initialState ? { ...value, ...initialState } : value;
+
   return (
-    <WalletContext.Provider value={value}>
+    <WalletContext.Provider value={providedValue}>
       {children}
     </WalletContext.Provider>
   );

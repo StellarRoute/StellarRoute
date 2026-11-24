@@ -2,7 +2,6 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::load_test::{percentile, LoadTestMetrics};

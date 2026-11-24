@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
@@ -287,6 +288,7 @@ impl ReconciliationJob {
 }
 
 /// Sample of a cached quote for reconciliation
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct CachedQuoteSample {
     _key: String,

@@ -384,6 +384,7 @@ fn timestamp_from_orderbook(orderbook: &OrderbookResponse) -> Option<DateTime<Ut
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::OrderbookSummary;
 
     use crate::models::OrderbookSummary;
 

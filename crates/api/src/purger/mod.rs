@@ -9,7 +9,7 @@
 pub mod config;
 
 use sqlx::PgPool;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 pub use config::PurgerConfig;

@@ -23,6 +23,13 @@ Use the global `--output` flag:
 
 Invalid output values are rejected with an explicit validation error that lists accepted values.
 
+## Color output
+
+`--output table` bolds the header row using ANSI codes. Disable this with the
+global `--no-color` flag, or by setting the `NO_COLOR` environment variable
+(see [no-color.org](https://no-color.org/)); either one disables color.
+`human` and `json` output are never colored.
+
 ## Exit codes
 
 The CLI uses stable exit codes for scripting:

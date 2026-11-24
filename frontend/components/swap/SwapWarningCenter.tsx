@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { X, AlertCircle, Clock } from 'lucide-react';
+import { readJson } from '@/lib/storage/safe-json';
 import { cn } from '@/lib/utils';
 
 export interface SwapWarning {
@@ -24,21 +25,42 @@ interface SwapWarningCenterProps {
 const STORAGE_KEY = 'stellarroute_swap_warnings';
 const MAX_WARNINGS = 20;
 
+export function isSwapWarning(v: unknown): v is SwapWarning {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const candidate = v as Record<string, unknown>;
+  if (typeof candidate.id !== 'string' || candidate.id.length === 0) return false;
+  if (candidate.type !== 'error' && candidate.type !== 'warning') return false;
+  if (typeof candidate.title !== 'string') return false;
+  if (typeof candidate.message !== 'string') return false;
+  if (
+    typeof candidate.timestamp !== 'number' ||
+    !Number.isFinite(candidate.timestamp)
+  ) {
+    return false;
+  }
+  if (candidate.code !== undefined && typeof candidate.code !== 'string') {
+    return false;
+  }
+  if (
+    candidate.dismissible !== undefined &&
+    typeof candidate.dismissible !== 'boolean'
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function isSwapWarningArray(v: unknown): v is SwapWarning[] {
+  return Array.isArray(v) && v.every(isSwapWarning);
+}
+
 function loadWarnings(): SwapWarning[] {
   if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as SwapWarning[];
-      // Keep only warnings from last 24 hours
-      const oneDayMs = 24 * 60 * 60 * 1000;
-      const cutoff = Date.now() - oneDayMs;
-      return parsed.filter((w) => w.timestamp > cutoff).slice(0, MAX_WARNINGS);
-    }
-  } catch (e) {
-    console.error('Failed to load swap warnings', e);
-  }
-  return [];
+  const parsed = readJson(STORAGE_KEY, isSwapWarningArray, []);
+  // Keep only warnings from last 24 hours
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - oneDayMs;
+  return parsed.filter((w) => w.timestamp > cutoff).slice(0, MAX_WARNINGS);
 }
 
 function saveWarnings(warnings: SwapWarning[]): void {

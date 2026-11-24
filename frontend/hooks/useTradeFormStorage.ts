@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QuoteType } from "@/types";
+import { readJson } from "@/lib/storage/safe-json";
 import { STAGING_DEMO_ISSUER } from "@/lib/trading-pairs";
 
 export const STORAGE_KEY = "stellar-route-trade-form";
@@ -30,52 +31,68 @@ export interface TradeFormSnapshot {
   savedAt: number;
 }
 
-function parseSnapshot(raw: string | null): TradeFormSnapshot | null {
-  if (!raw) return null;
+type StoredTradeFormSnapshot = Omit<TradeFormSnapshot, "side" | "savedAt"> & {
+  side?: QuoteType;
+  savedAt?: number;
+};
 
-  try {
-    const parsed = JSON.parse(raw) as Partial<TradeFormSnapshot> | null;
-    if (!parsed || typeof parsed !== "object") return null;
-
-    const amount =
-      typeof parsed.amount === "string" ? parsed.amount : DEFAULT_AMOUNT;
-    const slippage =
-      typeof parsed.slippage === "number" && Number.isFinite(parsed.slippage)
-        ? parsed.slippage
-        : DEFAULT_SLIPPAGE;
-    const deadline =
-      typeof parsed.deadline === "number" && Number.isFinite(parsed.deadline)
-        ? parsed.deadline
-        : DEFAULT_DEADLINE;
-    const fromToken =
-      typeof parsed.fromToken === "string" && parsed.fromToken.length > 0
-        ? parsed.fromToken
-        : DEFAULT_FROM_TOKEN;
-    const toToken =
-      typeof parsed.toToken === "string" && parsed.toToken.length > 0
-        ? parsed.toToken
-        : DEFAULT_TO_TOKEN;
-    const side =
-      parsed.side === "sell" || parsed.side === "buy"
-        ? parsed.side
-        : DEFAULT_SIDE;
-    const savedAt =
-      typeof parsed.savedAt === "number" && Number.isFinite(parsed.savedAt)
-        ? parsed.savedAt
-        : Date.now();
-
-    return {
-      amount,
-      slippage,
-      deadline,
-      fromToken,
-      toToken,
-      side,
-      savedAt,
-    };
-  } catch {
-    return null;
+export function isTradeFormSnapshot(
+  v: unknown,
+): v is StoredTradeFormSnapshot {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const candidate = v as Record<string, unknown>;
+  if (typeof candidate.amount !== "string") return false;
+  if (
+    typeof candidate.slippage !== "number" ||
+    !Number.isFinite(candidate.slippage)
+  ) {
+    return false;
   }
+  if (
+    typeof candidate.deadline !== "number" ||
+    !Number.isFinite(candidate.deadline)
+  ) {
+    return false;
+  }
+  if (
+    typeof candidate.fromToken !== "string" ||
+    candidate.fromToken.length === 0
+  ) {
+    return false;
+  }
+  if (typeof candidate.toToken !== "string" || candidate.toToken.length === 0) {
+    return false;
+  }
+  if (
+    candidate.side !== undefined &&
+    candidate.side !== "sell" &&
+    candidate.side !== "buy"
+  ) {
+    return false;
+  }
+  if (
+    candidate.savedAt !== undefined &&
+    (typeof candidate.savedAt !== "number" ||
+      !Number.isFinite(candidate.savedAt))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function loadSnapshot(): TradeFormSnapshot | null {
+  const parsed = readJson(STORAGE_KEY, isTradeFormSnapshot, null);
+  if (!parsed) return null;
+
+  return {
+    amount: parsed.amount,
+    slippage: parsed.slippage,
+    deadline: parsed.deadline,
+    fromToken: parsed.fromToken,
+    toToken: parsed.toToken,
+    side: parsed.side ?? DEFAULT_SIDE,
+    savedAt: parsed.savedAt ?? Date.now(),
+  };
 }
 
 function saveSnapshot(snapshot: TradeFormSnapshot) {
@@ -173,7 +190,7 @@ export function useTradeFormStorage(): UseTradeFormStorageResult {
   });
 
   useEffect(() => {
-    const snapshot = parseSnapshot(localStorage.getItem(STORAGE_KEY));
+    const snapshot = loadSnapshot();
     queueMicrotask(() => {
       if (isRecoverableSnapshot(snapshot)) {
         setPendingRecovery(snapshot);

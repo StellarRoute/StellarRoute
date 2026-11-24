@@ -110,6 +110,67 @@ async fn pairs_returns_typed_list() {
     assert_eq!(resp.pairs[0].offer_count, 42);
 }
 
+#[tokio::test]
+async fn pairs_sends_get_with_no_query_parameters() {
+    let server = mock_server().await;
+    // `pairs()` takes no arguments, so the request must carry no query
+    // string at all; a mock matching only the bare path (and failing to
+    // match if any query_param is appended) pins this down.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .and(wiremock::matchers::query_param_is_missing("limit"))
+        .and(wiremock::matchers::query_param_is_missing("cursor"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [],
+            "total": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server).pairs().await.unwrap();
+    assert_eq!(resp.total, 0);
+}
+
+#[tokio::test]
+async fn pairs_deserializes_mixed_asset_types_and_last_updated() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [
+                {
+                    "base": "XLM",
+                    "counter": "USDC",
+                    "base_asset": "native",
+                    "counter_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    "offer_count": 7,
+                    "last_updated": "2026-03-25T11:59:00Z"
+                },
+                {
+                    "base": "USDC",
+                    "counter": "LONGASSETCODE12",
+                    "base_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    "counter_asset": "LONGASSETCODE12:GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBW7",
+                    "offer_count": 0,
+                    "last_updated": null
+                }
+            ],
+            "total": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server).pairs().await.unwrap();
+
+    assert_eq!(resp.total, 2);
+    assert_eq!(resp.pairs.len(), 2);
+    assert_eq!(resp.pairs[0].base_asset, "native");
+    assert!(resp.pairs[0].last_updated.is_some());
+    assert_eq!(resp.pairs[1].counter, "LONGASSETCODE12");
+    assert_eq!(resp.pairs[1].offer_count, 0);
+    assert!(resp.pairs[1].last_updated.is_none());
+}
+
 // ── Orderbook ─────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -954,7 +1015,7 @@ async fn pairs_server_error_maps_to_internal_error() {
     Mock::given(method("GET"))
         .and(path("/api/v1/pairs"))
         .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
-            "error": "service_unavailable",
+            "error": "internal_error",
             "message": "Pairs service maintenance"
         })))
         .mount(&server)

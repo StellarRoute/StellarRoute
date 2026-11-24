@@ -318,4 +318,69 @@ describe('CCTP SDK contract', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({});
   });
+it('retries CCTP call after network error while preserving access and idempotency headers', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('transient network reset'))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            v: 2,
+            data: {
+              transfer_id: TRANSFER_ID,
+              status: 'burn_submitted',
+              tx_hash: VALID_EVM_TX_HASH,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new StellarRouteClient({
+      baseUrl: 'http://api.test',
+      retries: 1,
+    });
+    const result = await client.cctpSubmitBurn(
+      TRANSFER_ID,
+      { tx_hash: VALID_EVM_TX_HASH },
+      { accessToken: 'token-secret-1', idempotencyKey: 'idem-burn-1' },
+    );
+
+    expect(result.transfer_id).toBe(TRANSFER_ID);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstHeaders = (fetchMock.mock.calls[0][1] as RequestInit)
+      .headers as Record<string, string>;
+    const retryHeaders = (fetchMock.mock.calls[1][1] as RequestInit)
+      .headers as Record<string, string>;
+
+    expect(firstHeaders).toMatchObject({
+      'x-cctp-transfer-access': 'token-secret-1',
+      'idempotency-key': 'idem-burn-1',
+    });
+    expect(retryHeaders).toMatchObject({
+      'x-cctp-transfer-access': 'token-secret-1',
+      'idempotency-key': 'idem-burn-1',
+    });
+  });
+
+  it('does not retry CCTP POST on 5xx when idempotencyKey is omitted', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(envelopeError('internal_error', 'transient 503', 503));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new StellarRouteClient({
+      baseUrl: 'http://api.test',
+      retries: 2,
+    });
+    await expect(
+      client.cctpQuote(sampleQuoteRequest, { accessToken: 'token-a' }),
+    ).rejects.toSatisfy(
+      (err: unknown) => isStellarRouteApiError(err) && err.status === 503,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

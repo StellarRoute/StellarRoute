@@ -26,6 +26,11 @@ path = "src/bin/cctp-live-readiness-probe.rs"
 name = "cctp-evm-signer"
 path = "src/bin/cctp-evm-signer.rs"
 
+[[bin]]
+name = "audit-export"
+path = "src/bin/audit_export.rs"
+
+
 [dependencies]
 # Workspace dependencies
 tokio.workspace = true

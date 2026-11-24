@@ -201,7 +201,7 @@ describe('injected EVM adapter', () => {
     expect(
       adapter.getExecutionSupport({
         sourceChain: 'evm',
-        destinationChain: 'stellar',
+        destinationChain: 'solana',
       }).code
     ).toBe('chain_signing_available');
   });

@@ -7,6 +7,21 @@
 
 #[cfg(test)]
 mod tests {
+    fn read_file(relative_path: &str) -> String {
+        if let Ok(content) = std::fs::read_to_string(relative_path) {
+            return content;
+        }
+        let manifest_relative = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative_path);
+        std::fs::read_to_string(&manifest_relative).unwrap_or_else(|_| {
+            panic!(
+                "could not read {relative_path} directly or at {:?}",
+                manifest_relative
+            )
+        })
+    }
+
     fn runbook() -> String {
         std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),

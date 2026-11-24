@@ -138,6 +138,27 @@ Additional runnable quickstart files are in `sdk-js/examples/`:
 
 See the [price history example](./examples/quickstart-price-history.ts) for a read-only 24-hour history query.
 
+### Confirm a swap on Horizon
+
+`confirmSwap` needs a Horizon base URL. Set it on the client (pubnet vs testnet) or pass `horizonUrl` per call:
+
+```ts
+import { StellarRouteClient } from '@stellarroute/sdk-js';
+
+const client = new StellarRouteClient({
+  baseUrl: 'https://api.stellarroute.io',
+  stellarNetwork: 'public', // polls https://horizon.stellar.org by default
+});
+
+const result = await client.confirmSwap('your-tx-hash', {
+  timeoutMs: 120_000,
+  pollIntervalMs: 3_000,
+});
+console.log(result.successful, result.ledger);
+```
+
+See [swap-submit.ts](./examples/swap-submit.ts) for an explicit `horizonUrl` override.
+
 ## API docs
 
 Generate TypeDoc API docs:

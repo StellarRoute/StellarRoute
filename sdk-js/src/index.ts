@@ -30,7 +30,7 @@ export {
   DEFAULT_TESTNET_HORIZON_URL,
 } from './client.js';
 
-export type { StellarRouteClientOptions } from './client.js';
+export type { StellarRouteClientOptions, StellarSdkNetwork } from './client.js';
 
 export type {
   ApiError,

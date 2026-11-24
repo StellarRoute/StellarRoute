@@ -68,6 +68,9 @@ export const DEFAULT_PUBLIC_HORIZON_URL = 'https://horizon.stellar.org';
 /** Stellar network a client talks to. */
 export type StellarNetwork = 'testnet' | 'public';
 
+/** Alias used by callers that configure Horizon via `stellarNetwork`. */
+export type StellarSdkNetwork = StellarNetwork;
+
 const HORIZON_URL_BY_NETWORK: Record<StellarNetwork, string> = {
   testnet: DEFAULT_TESTNET_HORIZON_URL,
   public: DEFAULT_PUBLIC_HORIZON_URL,
@@ -262,6 +265,10 @@ export interface StellarRouteClientOptions {
    */
   network?: StellarNetwork;
   /**
+   * Same as {@link network}. Accepted so either option name selects Horizon.
+   */
+  stellarNetwork?: StellarSdkNetwork;
+  /**
    * Default Horizon URL for {@link StellarRouteClient.confirmSwap}. Takes
    * precedence over `network`.
    */
@@ -304,20 +311,26 @@ export class StellarRouteClient {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.retries = options.retries ?? DEFAULT_RETRIES;
     this.extraHeaders = options.headers ?? {};
+    const configuredNetwork = options.network ?? options.stellarNetwork;
     this.horizonUrl =
       options.horizonUrl ??
-      (options.network ? HORIZON_URL_BY_NETWORK[options.network] : undefined);
+      (configuredNetwork ? HORIZON_URL_BY_NETWORK[configuredNetwork] : undefined);
   }
 
   /**
    * Horizon URL for {@link confirmSwap}: the call's `horizonUrl`, then the
-   * client's `horizonUrl` / `network`, then the network of the last
-   * {@link executeSwap}. Throws instead of guessing when none is known.
+   * client's `horizonUrl` / `network` / `stellarNetwork`, then
+   * `networkPassphrase`, then the network of the last {@link executeSwap}.
+   * Throws instead of guessing when none is known.
    */
-  private resolveHorizonUrl(override?: string): string {
+  private resolveHorizonUrl(override?: string, networkPassphrase?: string): string {
+    const passphraseNetwork = networkPassphrase
+      ? NETWORK_BY_PASSPHRASE[networkPassphrase.trim()]
+      : undefined;
     const url =
       override ??
       this.horizonUrl ??
+      (passphraseNetwork ? HORIZON_URL_BY_NETWORK[passphraseNetwork] : undefined) ??
       (this.lastSwapNetwork ? HORIZON_URL_BY_NETWORK[this.lastSwapNetwork] : undefined);
     if (!url) {
       throw new StellarRouteApiError(
@@ -608,15 +621,16 @@ export class StellarRouteClient {
    * Confirm a submitted swap on Horizon (`GET /transactions/{tx_hash}`).
    *
    * Horizon is chosen from `options.horizonUrl`, then the client's
-   * `horizonUrl` / `network`, then the network of the last
-   * {@link executeSwap}; with none of these it throws `validation_error`
-   * rather than silently polling testnet. Aborting `options.signal` also
-   * interrupts the wait between polls.
+   * `horizonUrl` / `network` / `stellarNetwork`, then `networkPassphrase`,
+   * then the network of the last {@link executeSwap}; with none of these it
+   * throws `validation_error` rather than silently polling testnet. Aborting
+   * `options.signal` also interrupts the wait between polls.
    */
   async confirmSwap(
     txHash: string,
     options?: {
       horizonUrl?: string;
+      networkPassphrase?: string;
       timeoutMs?: number;
       pollIntervalMs?: number;
       signal?: AbortSignal;
@@ -624,7 +638,10 @@ export class StellarRouteClient {
     },
   ): Promise<SwapConfirmResult> {
     const expected = options?.expectedTxHash ?? txHash;
-    const horizonUrl = this.resolveHorizonUrl(options?.horizonUrl);
+    const horizonUrl = this.resolveHorizonUrl(
+      options?.horizonUrl,
+      options?.networkPassphrase,
+    );
     const signal = options?.signal;
     const abortError = () =>
       new StellarRouteApiError(0, 'network_error', 'confirmSwap aborted');

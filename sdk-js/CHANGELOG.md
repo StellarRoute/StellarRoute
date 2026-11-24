@@ -17,6 +17,7 @@ listed under a **Breaking** heading below.
 
 ### Added
 
+- `StellarRouteClientOptions.horizonUrl` and `stellarNetwork` for default `confirmSwap` Horizon polling; `DEFAULT_PUBLIC_HORIZON_URL` export.
 - Chain-aware asset foundation (`ChainAsset`, `canonicalizeAssetId`, `looksLikeCaip`).
 - Classic live-swap methods: `prepareSwap`, `submitSwap`, `confirmSwap`, and
   `executeSwap` with required `signTransaction`.

@@ -15,7 +15,11 @@ The full integration path is three calls — price the trade, pick a route, exec
 ```ts
 import { StellarRouteClient, isStellarRouteApiError } from '@stellarroute/sdk-js';
 
-const client = new StellarRouteClient('https://api.stellarroute.io');
+// `network` picks the Horizon instance confirmSwap polls ('testnet' or 'public').
+const client = new StellarRouteClient({
+  baseUrl: 'https://api.stellarroute.io',
+  network: 'testnet',
+});
 
 // 1. Quote — what will this trade cost?
 const quote = await client.getQuote('native', 'USDC:GDUKMGUGDZQK6YH...', 100, 'sell');
@@ -50,6 +54,10 @@ try {
   });
 
   console.log(`tx_hash=${result.tx_hash}`);
+
+  // 4. Confirm on Horizon for the client's network (pass `horizonUrl` to override).
+  const confirmed = await client.confirmSwap(result.tx_hash);
+  console.log(`successful=${confirmed.successful}`);
 } catch (err) {
   if (isStellarRouteApiError(err) && err.code === 'network_mismatch') {
     // Wallet is on the wrong network — switch and refresh the quote.

@@ -21,9 +21,21 @@ listed under a **Breaking** heading below.
   `unsupported_execution_mode`, and `unsupported_route`.
 - Explicit ambiguous-submit retries that reuse the same `{ quote_id, signed_xdr }`
   without re-prepare/re-sign.
+- `StellarRouteClientOptions.network` (`'testnet' | 'public'`) and
+  `StellarRouteClientOptions.horizonUrl` set the Horizon instance `confirmSwap`
+  polls by default; `DEFAULT_PUBLIC_HORIZON_URL` constant.
+
+### Fixed
+
+- `confirmSwap` can be cancelled during the wait between polls: aborting
+  `options.signal` now rejects right away instead of after `pollIntervalMs`.
 
 ### Breaking
 
+- `confirmSwap` no longer silently defaults to testnet Horizon. It uses
+  `options.horizonUrl`, then the client's `horizonUrl` / `network`, then the network
+  of the last `executeSwap`, and otherwise throws `validation_error`
+  (`details.status: 'missing_horizon_url'`).
 - `ExecuteSwapParams.signTransaction` is required.
 - `ExecuteSwapParams.networkPassphrase` is required (string or async callback);
   prepare vs integrator mismatch throws typed `network_mismatch` before sign/submit.

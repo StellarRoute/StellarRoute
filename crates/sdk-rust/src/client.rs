@@ -28,9 +28,13 @@ use crate::{
     types::{
         AgentHealth, BatchQuoteRequest, BatchQuoteResponse, CardApplicationDraft,
         CardApplicationValidation, CardAuthorization, CardAuthorizationsResponse, CardHealth,
-        ErrorResponse, HealthResponse, OrderbookResponse, PairsResponse, QuoteRequest,
-        QuoteResponse, RoutesRequest, RoutesResponse, SwapPrepareRequest, SwapPrepareResponse,
-        SwapSubmitRequest, SwapSubmitResponse, ValidateIntentRequest, ValidateIntentResponse,
+        CctpPrepareBurnResponse, CctpPrepareMintResponse, CctpQuoteRequest, CctpQuoteResponse,
+        CctpReattestResponse, CctpSubmitBurnRequest, CctpSubmitBurnResponse, CctpSubmitMintRequest,
+        CctpSubmitMintResponse, CctpTransferStatusResponse, ErrorResponse, HealthResponse,
+        OrderbookResponse, PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest,
+        RoutesResponse, SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest,
+        SwapSubmitResponse, ValidateIntentRequest, ValidateIntentResponse, CCTP_IDEMPOTENCY_HEADER,
+        CCTP_TRANSFER_ACCESS_HEADER,
     },
 };
 
@@ -273,12 +277,13 @@ impl StellarRouteClient {
 
     /// `POST /api/v1/batch/quote` — fetch multiple price quotes in a single request.
     ///
-    /// Returns [`SdkError::Api`] with [`ApiErrorCode::ValidationError`] if any
-    /// request item is malformed or the batch is too large.
+    /// Batch-level failures (empty batch, too many items, malformed body)
+    /// return [`SdkError::Api`] with [`ApiErrorCode::ValidationError`].
+    /// Per-item failures do not fail the call: check each
+    /// [`BatchQuoteItemResult::status`](crate::types::BatchQuoteItemResult)
+    /// in [`BatchQuoteResponse::results`].
     pub async fn batch_quote(&self, request: BatchQuoteRequest) -> Result<BatchQuoteResponse> {
-        let url = self.url("api/v1/batch/quote")?;
-        self.execute_with_retry(|| self.http.post(url.clone()).json(&request))
-            .await
+        self.post_unwrapped("api/v1/batch/quote", &request).await
     }
 
     /// `POST /api/v1/swap/prepare` — build an unsigned swap transaction.
@@ -418,6 +423,159 @@ impl StellarRouteClient {
     pub async fn validate_intent(&self, request: ValidateIntentRequest) -> Result<ValidateIntentResponse> {
         self.post_unwrapped("api/v1/agent/intents/validate", &request)
             .await
+    }
+
+    // ── CCTP bridge (v2, additive, flag-gated) ──────────────────────────────────
+    // Fail-closed behind `CCTP_ENABLED`: handlers return `503 cctp_not_enabled`
+    // until explicitly enabled on the server. Unchanged by this SDK.
+
+    /// `POST /api/v2/bridge/cctp/quote` — CCTP fee quote.
+    ///
+    /// Pass `idempotency_key` to safely retry an identical quote request; the
+    /// server returns the cached response for a byte-identical replay.
+    pub async fn cctp_quote(
+        &self,
+        request: CctpQuoteRequest,
+        idempotency_key: Option<&str>,
+    ) -> Result<CctpQuoteResponse> {
+        let url = self.url("api/v2/bridge/cctp/quote")?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                let req = self.http.post(url.clone()).json(&request);
+                match idempotency_key {
+                    Some(key) => req.header(CCTP_IDEMPOTENCY_HEADER, key),
+                    None => req,
+                }
+            })
+            .await?;
+        unwrap_api_data(wire)
+    }
+
+    /// `GET /api/v2/bridge/cctp/{transfer_id}` — saga status.
+    ///
+    /// `access_token` is the one-time bearer token from
+    /// [`CctpQuoteResponse::access_token`].
+    pub async fn cctp_get_transfer(
+        &self,
+        transfer_id: &str,
+        access_token: &str,
+    ) -> Result<CctpTransferStatusResponse> {
+        let url = self.url(&format!(
+            "api/v2/bridge/cctp/{}",
+            encode_path_segment(transfer_id)
+        ))?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                self.http
+                    .get(url.clone())
+                    .header(CCTP_TRANSFER_ACCESS_HEADER, access_token)
+            })
+            .await?;
+        unwrap_api_data(wire)
+    }
+
+    /// `POST /api/v2/bridge/cctp/{transfer_id}/prepare-burn` — wallet burn payload.
+    pub async fn cctp_prepare_burn(
+        &self,
+        transfer_id: &str,
+        access_token: &str,
+    ) -> Result<CctpPrepareBurnResponse> {
+        let url = self.url(&format!(
+            "api/v2/bridge/cctp/{}/prepare-burn",
+            encode_path_segment(transfer_id)
+        ))?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                self.http
+                    .post(url.clone())
+                    .header(CCTP_TRANSFER_ACCESS_HEADER, access_token)
+            })
+            .await?;
+        unwrap_api_data(wire)
+    }
+
+    /// `POST /api/v2/bridge/cctp/{transfer_id}/submit-burn` — record the source tx hash.
+    pub async fn cctp_submit_burn(
+        &self,
+        transfer_id: &str,
+        access_token: &str,
+        request: CctpSubmitBurnRequest,
+    ) -> Result<CctpSubmitBurnResponse> {
+        let url = self.url(&format!(
+            "api/v2/bridge/cctp/{}/submit-burn",
+            encode_path_segment(transfer_id)
+        ))?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                self.http
+                    .post(url.clone())
+                    .header(CCTP_TRANSFER_ACCESS_HEADER, access_token)
+                    .json(&request)
+            })
+            .await?;
+        unwrap_api_data(wire)
+    }
+
+    /// `POST /api/v2/bridge/cctp/{transfer_id}/prepare-mint` — wallet mint payload.
+    pub async fn cctp_prepare_mint(
+        &self,
+        transfer_id: &str,
+        access_token: &str,
+    ) -> Result<CctpPrepareMintResponse> {
+        let url = self.url(&format!(
+            "api/v2/bridge/cctp/{}/prepare-mint",
+            encode_path_segment(transfer_id)
+        ))?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                self.http
+                    .post(url.clone())
+                    .header(CCTP_TRANSFER_ACCESS_HEADER, access_token)
+            })
+            .await?;
+        unwrap_api_data(wire)
+    }
+
+    /// `POST /api/v2/bridge/cctp/{transfer_id}/submit-mint` — record the destination tx hash.
+    pub async fn cctp_submit_mint(
+        &self,
+        transfer_id: &str,
+        access_token: &str,
+        request: CctpSubmitMintRequest,
+    ) -> Result<CctpSubmitMintResponse> {
+        let url = self.url(&format!(
+            "api/v2/bridge/cctp/{}/submit-mint",
+            encode_path_segment(transfer_id)
+        ))?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                self.http
+                    .post(url.clone())
+                    .header(CCTP_TRANSFER_ACCESS_HEADER, access_token)
+                    .json(&request)
+            })
+            .await?;
+        unwrap_api_data(wire)
+    }
+
+    /// `POST /api/v2/bridge/cctp/{transfer_id}/reattest` — re-poll attestation.
+    pub async fn cctp_reattest(
+        &self,
+        transfer_id: &str,
+        access_token: &str,
+    ) -> Result<CctpReattestResponse> {
+        let url = self.url(&format!(
+            "api/v2/bridge/cctp/{}/reattest",
+            encode_path_segment(transfer_id)
+        ))?;
+        let wire: serde_json::Value = self
+            .execute_with_retry(|| {
+                self.http
+                    .post(url.clone())
+                    .header(CCTP_TRANSFER_ACCESS_HEADER, access_token)
+            })
+            .await?;
+        unwrap_api_data(wire)
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

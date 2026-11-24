@@ -760,6 +760,70 @@ describe('prepareSwap', () => {
     expect(spy.mock.calls[0]?.[0]).toContain('/api/v1/swap/prepare');
     expect(result).toEqual(classicPrepare);
   });
+
+  it('sends the Idempotency-Key header when options.idempotencyKey is set', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StellarRouteClient({ retries: 0 }).prepareSwap(
+      {
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        slippage_bps: 50,
+      },
+      { idempotencyKey: 'idem-prepare-1' },
+    );
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({
+      'idempotency-key': 'idem-prepare-1',
+    });
+  });
+
+  it('omits the Idempotency-Key header when no idempotencyKey is given', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StellarRouteClient({ retries: 0 }).prepareSwap({
+      route: sampleSimulateRequest.route,
+      amount: '100',
+      sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      slippage_bps: 50,
+    });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).not.toHaveProperty('idempotency-key');
+  });
+
+  it('still honors an abort signal via options.signal', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = new StellarRouteClient({ retries: 0 }).prepareSwap(
+      {
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      },
+      { signal: controller.signal },
+    );
+
+    controller.abort();
+
+    await expect(promise).rejects.toBeTruthy();
+  });
 });
 
 describe('submitSwap', () => {
@@ -1175,6 +1239,55 @@ describe('confirmSwap', () => {
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(isStellarRouteApiError(err)).toBe(true);
     expect((err as StellarRouteApiError).message).toBe('confirmSwap aborted');
+  });
+
+  it('rejects immediately when the signal is already aborted before polling starts', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const controller = new AbortController();
+    controller.abort();
+
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx456', {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+        signal: controller.signal,
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('network_error');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('forwards the signal to the in-flight Horizon fetch so an abort cancels it', async () => {
+    const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    const promise = new StellarRouteClient({ retries: 0 }).confirmSwap(
+      'tx456',
+      {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        pollIntervalMs: 1,
+        timeoutMs: 60_000,
+        signal: controller.signal,
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+
+    controller.abort();
+
+    await expect(promise).rejects.toBeTruthy();
   });
 });
 

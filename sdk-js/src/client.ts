@@ -25,6 +25,7 @@ import type {
   SimulateRouteRequest,
   SimulateRouteResponse,
   PreparedSwapResponse,
+  PrepareSwapOptions,
   SwapConfirmResult,
   SwapPrepareRequest,
   SwapSubmitRequest,
@@ -53,6 +54,7 @@ import {
   isQuoteExpired,
   CCTP_TRANSFER_ACCESS_HEADER,
   CCTP_IDEMPOTENCY_HEADER,
+  IDEMPOTENCY_KEY_HEADER,
 } from './types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -576,15 +578,25 @@ export class StellarRouteClient {
 
   /**
    * `POST /api/v1/swap/prepare` — build an unsigned classic PathPaymentStrictSend.
+   *
+   * Pass `options.idempotencyKey` to send an `Idempotency-Key` header, so a
+   * retried prepare call (e.g. after a network timeout) can be resent safely
+   * with the same key.
    */
   async prepareSwap(
     params: SwapPrepareRequest,
-    signal?: AbortSignal,
+    options?: PrepareSwapOptions,
   ): Promise<PreparedSwapResponse> {
+    const extraHeaders: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      extraHeaders[IDEMPOTENCY_KEY_HEADER] = options.idempotencyKey;
+    }
     const body = await this.request<unknown>('/api/v1/swap/prepare', {
-      signal,
+      signal: options?.signal,
       method: 'POST',
       body: params,
+      extraHeaders:
+        Object.keys(extraHeaders).length > 0 ? extraHeaders : undefined,
     });
     const prepared = unwrapApiData<PreparedSwapResponse>(body);
     if (!prepared?.xdr_envelope || typeof prepared.xdr_envelope !== 'string') {
@@ -623,8 +635,11 @@ export class StellarRouteClient {
    * Horizon is chosen from `options.horizonUrl`, then the client's
    * `horizonUrl` / `network` / `stellarNetwork`, then `networkPassphrase`,
    * then the network of the last {@link executeSwap}; with none of these it
-   * throws `validation_error` rather than silently polling testnet. Aborting
-   * `options.signal` also interrupts the wait between polls.
+   * throws `validation_error` rather than silently polling testnet.
+   *
+   * Aborting `options.signal` rejects immediately, including during the wait
+   * between polls, and the same signal is forwarded to the in-flight Horizon
+   * `fetch`.
    */
   async confirmSwap(
     txHash: string,
@@ -739,7 +754,7 @@ export class StellarRouteClient {
         min_output: params.min_output,
         slippage_bps: params.slippage_bps,
       },
-      signal,
+      { signal },
     );
 
     if (prepareResponse.execution_mode !== CLASSIC_EXECUTION_MODE) {

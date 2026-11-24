@@ -31,11 +31,15 @@ listed under a **Breaking** heading below.
 - `StellarRouteClientOptions.network` (`'testnet' | 'public'`) and
   `StellarRouteClientOptions.horizonUrl` set the Horizon instance `confirmSwap`
   polls by default; `DEFAULT_PUBLIC_HORIZON_URL` constant.
+- `prepareSwap`'s `options.idempotencyKey` sends an `Idempotency-Key` header
+  (`IDEMPOTENCY_KEY_HEADER`), so a retried prepare call can be resent safely
+  with the same key.
 
 ### Fixed
 
 - `confirmSwap` can be cancelled during the wait between polls: aborting
   `options.signal` now rejects right away instead of after `pollIntervalMs`.
+  The same signal is forwarded to the in-flight Horizon `fetch`.
 
 ### Breaking
 
@@ -49,6 +53,9 @@ listed under a **Breaking** heading below.
 - `ExecuteSwapResult` includes `quote_id`, `execution_mode`, `tx_hash`, `status`,
   and optional `min_output`.
 - Non-`classic_path_payment` prepare responses fail closed before signing.
+- `prepareSwap`'s second parameter changed from a bare `signal?: AbortSignal`
+  to `options?: PrepareSwapOptions` (`{ signal?, idempotencyKey? }`). Update
+  call sites that pass a signal positionally to `prepareSwap(params, { signal })`.
 
 ## [0.1.0] — Initial release
 

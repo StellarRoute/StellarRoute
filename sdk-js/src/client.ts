@@ -24,6 +24,7 @@ import type {
   RouteResponse,
   SimulateRouteRequest,
   SimulateRouteResponse,
+  StellarSdkNetwork,
   PreparedSwapResponse,
   SwapConfirmResult,
   SwapPrepareRequest,
@@ -58,6 +59,12 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRIES = 2;
 /** Default Horizon testnet URL used by {@link StellarRouteClient.confirmSwap}. */
 export const DEFAULT_TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+/** Default Horizon public-network (mainnet) URL used by {@link StellarRouteClient.confirmSwap}. */
+export const DEFAULT_PUBLIC_HORIZON_URL = 'https://horizon.stellar.org';
+/** Stellar testnet network passphrase, used to derive a Horizon URL when none is configured. */
+export const TESTNET_NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
+/** Stellar public (mainnet) network passphrase, used to derive a Horizon URL when none is configured. */
+export const PUBLIC_NETWORK_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
 const CLASSIC_EXECUTION_MODE = 'classic_path_payment';
 
 /**
@@ -232,6 +239,17 @@ export interface StellarRouteClientOptions {
    * Additional headers sent with every request.
    */
   headers?: Record<string, string>;
+  /**
+   * Stellar network used to pick {@link StellarRouteClient.confirmSwap}'s
+   * default Horizon URL. Ignored when `horizonUrl` is also set.
+   */
+  network?: StellarSdkNetwork;
+  /**
+   * Default Horizon base URL for {@link StellarRouteClient.confirmSwap}.
+   * Takes precedence over `network`. A per-call `confirmSwap(txHash, {
+   * horizonUrl })` always takes precedence over both.
+   */
+  horizonUrl?: string;
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -257,6 +275,8 @@ export class StellarRouteClient {
   private readonly timeoutMs: number;
   private readonly retries: number;
   private readonly extraHeaders: Record<string, string>;
+  private readonly network?: StellarSdkNetwork;
+  private readonly horizonUrl?: string;
 
   constructor(options: StellarRouteClientOptions | string = {}) {
     // Accept a plain string for backward compatibility.
@@ -267,6 +287,8 @@ export class StellarRouteClient {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.retries = options.retries ?? DEFAULT_RETRIES;
     this.extraHeaders = options.headers ?? {};
+    this.network = options.network;
+    this.horizonUrl = options.horizonUrl?.replace(/\/$/, '');
   }
 
   // ── Public API methods ──────────────────────────────────────────────────────
@@ -550,12 +572,68 @@ export class StellarRouteClient {
   }
 
   /**
+   * Resolves the Horizon base URL for {@link confirmSwap}, in order:
+   * 1. `options.horizonUrl` (explicit per-call override).
+   * 2. The client's `horizonUrl` constructor option.
+   * 3. The client's `network` constructor option (`'testnet'` or `'public'`).
+   * 4. `options.networkPassphrase`, matched against the well-known testnet
+   *    / public passphrases.
+   *
+   * Throws a configuration error instead of silently defaulting to testnet
+   * when none of the above resolve.
+   */
+  private resolveHorizonUrl(options?: {
+    horizonUrl?: string;
+    networkPassphrase?: string;
+  }): string {
+    if (options?.horizonUrl) return options.horizonUrl;
+    if (this.horizonUrl) return this.horizonUrl;
+    if (this.network === 'public') return DEFAULT_PUBLIC_HORIZON_URL;
+    if (this.network === 'testnet') return DEFAULT_TESTNET_HORIZON_URL;
+
+    if (options?.networkPassphrase) {
+      if (options.networkPassphrase === PUBLIC_NETWORK_PASSPHRASE) {
+        return DEFAULT_PUBLIC_HORIZON_URL;
+      }
+      if (options.networkPassphrase === TESTNET_NETWORK_PASSPHRASE) {
+        return DEFAULT_TESTNET_HORIZON_URL;
+      }
+      throw new StellarRouteApiError(
+        0,
+        'network_error',
+        `Unrecognized networkPassphrase "${options.networkPassphrase}"; pass options.horizonUrl explicitly, or configure the client with { network } or { horizonUrl }`,
+        { status: 'horizon_url_not_configured' },
+      );
+    }
+
+    throw new StellarRouteApiError(
+      0,
+      'network_error',
+      'confirmSwap has no Horizon URL to poll: pass options.horizonUrl, ' +
+        'options.networkPassphrase, or configure the client with { network } ' +
+        'or { horizonUrl } — refusing to silently default to testnet',
+      { status: 'horizon_url_not_configured' },
+    );
+  }
+
+  /**
    * Confirm a submitted swap on Horizon (`GET /transactions/{tx_hash}`).
+   *
+   * Horizon URL resolution (first match wins): `options.horizonUrl` →
+   * the client's `horizonUrl`/`network` constructor option →
+   * `options.networkPassphrase` (matched against the well-known testnet /
+   * public passphrases, e.g. the same value passed to
+   * {@link executeSwap}'s `networkPassphrase`). Throws a configuration
+   * error if none resolve, rather than silently polling testnet.
+   *
+   * Abortable: pass `options.signal` to cancel early, including during the
+   * wait between polls.
    */
   async confirmSwap(
     txHash: string,
     options?: {
       horizonUrl?: string;
+      networkPassphrase?: string;
       timeoutMs?: number;
       pollIntervalMs?: number;
       signal?: AbortSignal;
@@ -563,10 +641,7 @@ export class StellarRouteClient {
     },
   ): Promise<SwapConfirmResult> {
     const expected = options?.expectedTxHash ?? txHash;
-    const horizonUrl = (options?.horizonUrl ?? DEFAULT_TESTNET_HORIZON_URL).replace(
-      /\/$/,
-      '',
-    );
+    const horizonUrl = this.resolveHorizonUrl(options).replace(/\/$/, '');
     const timeoutMs = options?.timeoutMs ?? 60_000;
     const pollIntervalMs = options?.pollIntervalMs ?? 2_000;
     const url = `${horizonUrl}/transactions/${encodeURIComponent(expected)}`;
@@ -589,13 +664,13 @@ export class StellarRouteClient {
           const message = err instanceof Error ? err.message : 'Network error';
           throw new StellarRouteApiError(0, 'network_error', message);
         }
-        await sleep(pollIntervalMs);
+        await abortableSleep(pollIntervalMs, options?.signal);
         continue;
       }
 
       if (response.status === 404) {
         if (Date.now() + pollIntervalMs > deadline) break;
-        await sleep(pollIntervalMs);
+        await abortableSleep(pollIntervalMs, options?.signal);
         continue;
       }
 
@@ -1112,6 +1187,27 @@ function cctpAccessHeaders(
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Like {@link sleep}, but resolves immediately if `signal` is already
+ * aborted or fires an `abort` event before `ms` elapses — so a caller
+ * polling in a loop can react within one event-loop tick instead of
+ * waiting out the full interval.
+ */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 /** Exponential back-off: 500 ms, 1 s, 2 s, … */
 const backoffMs = (attempt: number): number => 500 * Math.pow(2, attempt);

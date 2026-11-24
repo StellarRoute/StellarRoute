@@ -11,6 +11,7 @@ import type {
   Orderbook,
   PairsResponse,
   PriceQuote,
+  StellarSdkNetwork,
 } from './types.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -1017,6 +1018,143 @@ describe('confirmSwap', () => {
     expect((err as StellarRouteApiError).details).toMatchObject({
       status: 'confirm_timeout',
     });
+  });
+
+  it('polls public Horizon by default when the client is configured for the public network', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+
+    await new StellarRouteClient({ retries: 0, network: 'public' }).confirmSwap(
+      'tx456',
+      { pollIntervalMs: 1, timeoutMs: 1_000 },
+    );
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('accepts the exported StellarSdkNetwork type for the network option', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+    const network: StellarSdkNetwork = 'testnet';
+
+    await new StellarRouteClient({ retries: 0, network }).confirmSwap('tx456', {
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon-testnet.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('polls a client-level horizonUrl when no per-call override is given', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+
+    await new StellarRouteClient({
+      retries: 0,
+      horizonUrl: 'https://custom-horizon.example.com',
+    }).confirmSwap('tx456', { pollIntervalMs: 1, timeoutMs: 1_000 });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://custom-horizon.example.com/transactions/tx456',
+    );
+  });
+
+  it('derives the Horizon URL from options.networkPassphrase when nothing else is configured', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+
+    await new StellarRouteClient({ retries: 0 }).confirmSwap('tx456', {
+      networkPassphrase: 'Public Global Stellar Network ; September 2015',
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('an explicit options.horizonUrl still wins over client config and networkPassphrase', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+
+    await new StellarRouteClient({ retries: 0, network: 'public' }).confirmSwap(
+      'tx456',
+      {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        networkPassphrase: 'Public Global Stellar Network ; September 2015',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+      },
+    );
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon-testnet.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('throws a configuration error instead of silently defaulting to testnet', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx456', { pollIntervalMs: 1, timeoutMs: 1_000 })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('network_error');
+    expect((err as StellarRouteApiError).details).toMatchObject({
+      status: 'horizon_url_not_configured',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('throws a configuration error for an unrecognized networkPassphrase', async () => {
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx456', {
+        networkPassphrase: 'Some Custom Network ; 2026',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).details).toMatchObject({
+      status: 'horizon_url_not_configured',
+    });
+  });
+
+  it('rejects promptly when aborted during the sleep between polls', async () => {
+    const controller = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
+
+    const promise = new StellarRouteClient({ retries: 0 }).confirmSwap('tx456', {
+      horizonUrl: 'https://horizon-testnet.stellar.org',
+      pollIntervalMs: 60_000,
+      timeoutMs: 120_000,
+      signal: controller.signal,
+    });
+
+    // Give the first poll (404 -> sleep) a tick to start, then abort well
+    // before the 60s poll interval would otherwise elapse.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const abortedAt = Date.now();
+    controller.abort();
+
+    const err = await promise.catch((e: unknown) => e);
+    const elapsed = Date.now() - abortedAt;
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).message).toBe('confirmSwap aborted');
+    expect(elapsed).toBeLessThan(1_000);
   });
 });
 

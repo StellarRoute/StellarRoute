@@ -28,6 +28,9 @@ export {
   isStellarRouteApiError,
   parseApiErrorBody,
   DEFAULT_TESTNET_HORIZON_URL,
+  DEFAULT_PUBLIC_HORIZON_URL,
+  TESTNET_NETWORK_PASSPHRASE,
+  PUBLIC_NETWORK_PASSPHRASE,
 } from './client.js';
 
 export type { StellarRouteClientOptions } from './client.js';
@@ -77,6 +80,7 @@ export type {
   SimulateRouteResponse,
   SimulationHop,
   SimulationSlippageOverride,
+  StellarSdkNetwork,
   SwapConfirmResult,
   SwapExecutionMode,
   SwapPrepareRequest,

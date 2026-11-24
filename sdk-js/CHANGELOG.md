@@ -21,6 +21,17 @@ listed under a **Breaking** heading below.
   `unsupported_execution_mode`, and `unsupported_route`.
 - Explicit ambiguous-submit retries that reuse the same `{ quote_id, signed_xdr }`
   without re-prepare/re-sign.
+- `StellarRouteClientOptions.network` (`StellarSdkNetwork`, i.e. `'testnet' | 'public'`)
+  and `.horizonUrl` pick `confirmSwap`'s default Horizon URL, so a mainnet-configured
+  client polls `horizon.stellar.org` instead of always defaulting to testnet.
+  `confirmSwap`'s new `options.networkPassphrase` is a further fallback, matched
+  against the well-known testnet/public passphrases; if nothing resolves,
+  `confirmSwap` throws a configuration error rather than silently picking testnet.
+  An explicit `options.horizonUrl` still wins over all of the above.
+- `confirmSwap`'s wait between polls now honors `options.signal`, so aborting
+  during that wait rejects promptly instead of waiting out the full interval.
+- New exports: `StellarSdkNetwork` type, `DEFAULT_PUBLIC_HORIZON_URL`,
+  `TESTNET_NETWORK_PASSPHRASE`, `PUBLIC_NETWORK_PASSPHRASE`.
 
 ### Breaking
 

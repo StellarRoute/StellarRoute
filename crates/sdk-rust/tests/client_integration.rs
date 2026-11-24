@@ -63,6 +63,39 @@ async fn health_returns_healthy_response() {
 }
 
 #[tokio::test]
+async fn health_deserializes_the_servers_actual_envelope_shape() {
+    // The live API wraps `/health` in the same `{ v, timestamp, request_id,
+    // data }` envelope every other endpoint uses (see
+    // `crates/api/src/routes/health.rs`'s `ApiResponse::new(body, ..)`),
+    // even though the OpenAPI schema documents a flat `HealthResponse` body.
+    // The client must accept both shapes.
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "v": 1,
+            "timestamp": 1_700_000_000_000i64,
+            "request_id": "req-1",
+            "data": {
+                "status": "healthy",
+                "timestamp": "2026-03-25T12:00:00Z",
+                "version": "0.1.0",
+                "components": { "database": "healthy", "redis": "healthy" }
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server).health().await.unwrap();
+    assert!(resp.is_healthy());
+    assert_eq!(resp.version, "0.1.0");
+    assert_eq!(
+        resp.components.get("database").map(String::as_str),
+        Some("healthy")
+    );
+}
+
+#[tokio::test]
 async fn health_unhealthy_still_deserializes() {
     let server = mock_server().await;
     Mock::given(method("GET"))
@@ -954,7 +987,7 @@ async fn pairs_server_error_maps_to_internal_error() {
     Mock::given(method("GET"))
         .and(path("/api/v1/pairs"))
         .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
-            "error": "service_unavailable",
+            "error": "internal_error",
             "message": "Pairs service maintenance"
         })))
         .mount(&server)

@@ -245,3 +245,17 @@ export function parseSubscriptionPrompt(
     maxCount: maxCount && maxCount > 0 ? maxCount : undefined,
   };
 }
+
+export interface SubscriptionCopyParams {
+  amount: string;
+  asset: string;
+  cadence: SubscriptionCadence;
+  recipient: string;
+  maxCount: number;
+}
+
+/** One-line schedule preview: amount, cadence, payee, and payment cap. */
+export function getSubscriptionCopy(params: SubscriptionCopyParams): string {
+  const { amount, asset, cadence, recipient, maxCount } = params;
+  return `${amount} ${asset} ${cadence} to ${recipient} for up to ${maxCount} payments. Each payment needs your confirmation.`;
+}

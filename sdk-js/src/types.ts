@@ -164,6 +164,9 @@ export interface CctpCallOptions {
 export const CCTP_TRANSFER_ACCESS_HEADER = 'x-cctp-transfer-access';
 export const CCTP_IDEMPOTENCY_HEADER = 'idempotency-key';
 
+/** Generic `Idempotency-Key` request header name, e.g. for `prepareSwap`. */
+export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
+
 export interface CctpTransferStatusResponse {
   transfer_id: string;
   corridor_id: string;
@@ -875,6 +878,17 @@ export interface SwapPrepareRequest {
   min_output?: string;
   /** Slippage tolerance in basis points (default: 50). */
   slippage_bps?: number;
+}
+
+/** Optional cancellation/idempotency controls for {@link StellarRouteClient.prepareSwap}. */
+export interface PrepareSwapOptions {
+  /** Aborts the request (and any in-flight retries) when triggered. */
+  signal?: AbortSignal;
+  /**
+   * Sent as the `Idempotency-Key` request header, so a retried prepare call
+   * (e.g. after a network timeout) is safe to resend with the same key.
+   */
+  idempotencyKey?: string;
 }
 
 /**

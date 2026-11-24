@@ -63,6 +63,7 @@ export type {
   PairsResponse,
   PathStep,
   PreparedSwapResponse,
+  PrepareSwapOptions,
   PriceHistoryPoint,
   PriceHistoryResponse,
   PriceHistoryWindow,
@@ -115,6 +116,7 @@ export {
   stellarAssetToCanonical,
   CCTP_PROVIDER_ID,
   CCTP_TESTNET_CORRIDOR_ID,
+  IDEMPOTENCY_KEY_HEADER,
 } from './types.js';
 
 export * from './websocket.js';

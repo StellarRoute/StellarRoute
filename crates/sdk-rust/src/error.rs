@@ -182,6 +182,18 @@ impl SdkError {
         )
     }
 
+    /// Returns `true` if the API reported an unexpected server-side failure
+    /// (`internal_error`, typically HTTP 500).
+    pub fn is_internal_error(&self) -> bool {
+        matches!(
+            self,
+            Self::Api {
+                code: ApiErrorCode::InternalError,
+                ..
+            }
+        )
+    }
+
     /// Returns `true` if the request contained invalid parameters.
     pub fn is_validation_error(&self) -> bool {
         matches!(

@@ -25,6 +25,7 @@ import type {
   SimulateRouteRequest,
   SimulateRouteResponse,
   PreparedSwapResponse,
+  PrepareSwapOptions,
   SwapConfirmResult,
   SwapPrepareRequest,
   SwapSubmitRequest,
@@ -49,6 +50,7 @@ import {
   isQuoteExpired,
   CCTP_TRANSFER_ACCESS_HEADER,
   CCTP_IDEMPOTENCY_HEADER,
+  IDEMPOTENCY_KEY_HEADER,
 } from './types.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -505,17 +507,26 @@ export class StellarRouteClient {
 
   /**
    * `POST /api/v1/swap/prepare` — build an unsigned classic PathPaymentStrictSend.
+   *
+   * Pass `options.idempotencyKey` to send an `Idempotency-Key` header, so a
+   * retried prepare call (e.g. after a network timeout) can be resent safely
+   * with the same key.
    */
   async prepareSwap(
     params: SwapPrepareRequest,
-    signal?: AbortSignal,
+    options?: PrepareSwapOptions,
   ): Promise<PreparedSwapResponse> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers[IDEMPOTENCY_KEY_HEADER] = options.idempotencyKey;
+    }
     const body = await this.request<unknown>(
       '/api/v1/swap/prepare',
-      signal,
+      options?.signal,
       this.retries,
       'POST',
       params,
+      headers,
     );
     const prepared = unwrapApiData<PreparedSwapResponse>(body);
     if (!prepared?.xdr_envelope || typeof prepared.xdr_envelope !== 'string') {
@@ -551,6 +562,23 @@ export class StellarRouteClient {
 
   /**
    * Confirm a submitted swap on Horizon (`GET /transactions/{tx_hash}`).
+   *
+   * Polls Horizon every `pollIntervalMs` until the transaction is found, a
+   * terminal failure is observed, or `timeoutMs` elapses.
+   *
+   * Abortable: pass `options.signal` to cancel early. It is checked at the
+   * start of every poll iteration (so a pending wait between polls is cut
+   * short promptly) and is also forwarded to the in-flight `fetch` call, so
+   * an in-progress HTTP request to Horizon is aborted too — not just the
+   * poll loop. An abort before or during a poll rejects the returned promise
+   * with a `network_error` {@link StellarRouteApiError}.
+   *
+   * @param txHash  Transaction hash to confirm.
+   * @param options.horizonUrl     Horizon base URL (default: testnet Horizon).
+   * @param options.timeoutMs      Maximum time to poll before giving up (default: 60000).
+   * @param options.pollIntervalMs Delay between polls (default: 2000).
+   * @param options.signal         Aborts polling and the in-flight request when triggered.
+   * @param options.expectedTxHash Hash to look up on Horizon if different from `txHash`.
    */
   async confirmSwap(
     txHash: string,
@@ -660,7 +688,7 @@ export class StellarRouteClient {
         min_output: params.min_output,
         slippage_bps: params.slippage_bps,
       },
-      signal,
+      { signal },
     );
 
     if (prepareResponse.execution_mode !== CLASSIC_EXECUTION_MODE) {

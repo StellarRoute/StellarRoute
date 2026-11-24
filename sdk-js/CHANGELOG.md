@@ -21,6 +21,12 @@ listed under a **Breaking** heading below.
   `unsupported_execution_mode`, and `unsupported_route`.
 - Explicit ambiguous-submit retries that reuse the same `{ quote_id, signed_xdr }`
   without re-prepare/re-sign.
+- `prepareSwap`'s `options.idempotencyKey` sends an `Idempotency-Key` header
+  (`IDEMPOTENCY_KEY_HEADER`), so a retried prepare call can be resent safely
+  with the same key.
+- `confirmSwap`'s `options.signal` is now documented: it is checked between
+  polls and forwarded to the in-flight Horizon `fetch`, so aborting cancels
+  both a pending wait and an in-progress request.
 
 ### Breaking
 
@@ -30,6 +36,9 @@ listed under a **Breaking** heading below.
 - `ExecuteSwapResult` includes `quote_id`, `execution_mode`, `tx_hash`, `status`,
   and optional `min_output`.
 - Non-`classic_path_payment` prepare responses fail closed before signing.
+- `prepareSwap`'s second parameter changed from a bare `signal?: AbortSignal`
+  to `options?: PrepareSwapOptions` (`{ signal?, idempotencyKey? }`). Update
+  call sites that pass a signal positionally to `prepareSwap(params, { signal })`.
 
 ## [0.1.0] — Initial release
 

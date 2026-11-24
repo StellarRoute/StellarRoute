@@ -9,7 +9,8 @@
 
 use std::time::Duration;
 use stellarroute_sdk::{
-    ApiErrorCode, ClientBuilder, QuoteRequest, QuoteType, RoutesRequest, SdkError,
+    ApiErrorCode, BatchQuoteRequest, ClientBuilder, QuoteRequest, QuoteRequestItem, QuoteType,
+    RoutesRequest, SdkError,
 };
 use wiremock::{
     matchers::{method, path, query_param},
@@ -108,6 +109,113 @@ async fn pairs_returns_typed_list() {
     assert_eq!(resp.total, 1);
     assert_eq!(resp.pairs[0].base, "XLM");
     assert_eq!(resp.pairs[0].offer_count, 42);
+}
+
+// ── Batch quote ───────────────────────────────────────────────────────────────
+
+fn sample_quote_json(quote: &str, price: &str) -> serde_json::Value {
+    serde_json::json!({
+        "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+        "quote_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": quote,
+            "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        },
+        "amount": "1.0000000",
+        "price": price,
+        "total": price,
+        "quote_type": "sell",
+        "path": [],
+        "timestamp": 1_740_312_000,
+    })
+}
+
+#[tokio::test]
+async fn batch_quote_unwraps_envelope_and_deserializes_per_item_results() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/batch/quote"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": {
+                "results": [
+                    {
+                        "index": 0,
+                        "status": "ok",
+                        "quote": sample_quote_json("USDC", "0.1050000"),
+                    },
+                    {
+                        "index": 1,
+                        "status": "error",
+                        "error": { "code": "no_route", "message": "No route found" },
+                    }
+                ],
+                "items_succeeded": 1,
+                "items_failed": 1,
+                "total": 2,
+                "snapshot_timestamp": 1_740_312_000_000i64,
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let request = BatchQuoteRequest {
+        quotes: vec![
+            QuoteRequestItem {
+                base: "native".to_string(),
+                quote: "USDC".to_string(),
+                amount: None,
+                slippage_bps: None,
+                quote_type: None,
+            },
+            QuoteRequestItem {
+                base: "native".to_string(),
+                quote: "NOROUTE".to_string(),
+                amount: None,
+                slippage_bps: None,
+                quote_type: None,
+            },
+        ],
+    };
+
+    let resp = client(&server).batch_quote(request).await.unwrap();
+
+    assert_eq!(resp.total, 2);
+    assert_eq!(resp.items_succeeded, 1);
+    assert_eq!(resp.items_failed, 1);
+    assert_eq!(resp.results.len(), 2);
+
+    assert_eq!(resp.results[0].index, 0);
+    assert_eq!(resp.results[0].status, "ok");
+    assert_eq!(resp.results[0].quote.as_ref().unwrap().price, "0.1050000");
+    assert!(resp.results[0].error.is_none());
+
+    assert_eq!(resp.results[1].index, 1);
+    assert_eq!(resp.results[1].status, "error");
+    assert!(resp.results[1].quote.is_none());
+    let err = resp.results[1].error.as_ref().unwrap();
+    assert_eq!(err.code, "no_route");
+    assert_eq!(err.message, "No route found");
+}
+
+#[tokio::test]
+async fn batch_quote_validation_error_maps_to_typed_error() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/batch/quote"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "validation_error",
+            "message": "Batch request must contain at least 1 item"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .batch_quote(BatchQuoteRequest { quotes: vec![] })
+        .await
+        .unwrap_err();
+
+    assert!(err.is_validation_error());
+    assert_eq!(err.status_code(), Some(400));
 }
 
 // ── Orderbook ─────────────────────────────────────────────────────────────────
@@ -954,7 +1062,7 @@ async fn pairs_server_error_maps_to_internal_error() {
     Mock::given(method("GET"))
         .and(path("/api/v1/pairs"))
         .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
-            "error": "service_unavailable",
+            "error": "internal_error",
             "message": "Pairs service maintenance"
         })))
         .mount(&server)

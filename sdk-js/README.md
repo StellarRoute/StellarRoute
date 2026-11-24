@@ -129,6 +129,36 @@ if (result.exclusion_diagnostics) {
 }
 ```
 
+### Confirm a swap on Horizon
+
+`confirmSwap` polls Horizon for a submitted transaction. It needs to know which
+Horizon to poll — configure this once on the client with the `network` option
+(a `StellarSdkNetwork`, i.e. `'testnet' | 'public'`), or set `horizonUrl`
+directly for a custom Horizon instance:
+
+```ts
+import { StellarRouteClient } from '@stellarroute/sdk-js';
+import type { StellarSdkNetwork } from '@stellarroute/sdk-js';
+
+const network: StellarSdkNetwork = 'public';
+const client = new StellarRouteClient({ baseUrl: 'https://api.stellarroute.io', network });
+
+const controller = new AbortController();
+const result = await client.confirmSwap(txHash, {
+  pollIntervalMs: 2_000,
+  timeoutMs: 60_000,
+  signal: controller.signal, // cancels promptly, including mid-sleep between polls
+});
+console.log(result.successful, result.horizon_url);
+```
+
+Resolution order for the Horizon URL (first match wins): a per-call
+`options.horizonUrl` override, then the client's `network`/`horizonUrl`
+constructor option, then `options.networkPassphrase` (matched against the
+well-known testnet/public passphrases — handy if you only have the passphrase
+you passed to `executeSwap`). If none of those resolve, `confirmSwap` throws a
+clear configuration error instead of silently defaulting to testnet.
+
 Additional runnable quickstart files are in `sdk-js/examples/`:
 
 - [Health check](./examples/quickstart-health.ts)

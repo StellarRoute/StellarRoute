@@ -174,9 +174,13 @@ impl StellarRouteClient {
 
     /// `GET /health` — probe service and dependency health.
     ///
+    /// Deserializes per the OpenAPI-documented flat [`HealthResponse`] schema,
+    /// while also tolerating a `{ data: HealthResponse }` envelope (the same
+    /// envelope every other endpoint uses) if the server sends one.
+    ///
     /// Returns [`SdkError::Api`] with status 503 when any dependency is down.
     pub async fn health(&self) -> Result<HealthResponse> {
-        self.get("health").await
+        self.get_unwrapped("health").await
     }
 
     /// `GET /api/v1/pairs` — list active trading pairs.

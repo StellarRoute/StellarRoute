@@ -32,6 +32,14 @@ export interface ChainAsset {
 export type ChainNamespace = 'stellar' | 'eip155' | 'solana' | 'bip122' | 'tron';
 
 /**
+ * Stellar network identifier, used to pick sensible defaults (e.g. the
+ * `StellarRouteClientOptions.network` option's default Horizon URL for
+ * `confirmSwap`). Matches the two networks the StellarRoute API and
+ * Stellar JS SDK distinguish.
+ */
+export type StellarSdkNetwork = 'testnet' | 'public';
+
+/**
  * Bridge / cross-chain venue metadata (abstraction only — no settlement).
  */
 export interface BridgeVenueMeta {

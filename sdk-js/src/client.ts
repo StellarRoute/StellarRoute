@@ -24,6 +24,7 @@ import type {
   RouteResponse,
   SimulateRouteRequest,
   SimulateRouteResponse,
+  StellarSdkNetwork,
   PreparedSwapResponse,
   PrepareSwapOptions,
   SwapConfirmResult,
@@ -78,9 +79,14 @@ const HORIZON_URL_BY_NETWORK: Record<StellarNetwork, string> = {
   public: DEFAULT_PUBLIC_HORIZON_URL,
 };
 
+/** Stellar testnet network passphrase used to derive a Horizon URL. */
+export const TESTNET_NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
+/** Stellar public network passphrase used to derive a Horizon URL. */
+export const PUBLIC_NETWORK_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
+
 const NETWORK_BY_PASSPHRASE: Record<string, StellarNetwork> = {
-  'Test SDF Network ; September 2015': 'testnet',
-  'Public Global Stellar Network ; September 2015': 'public',
+  [TESTNET_NETWORK_PASSPHRASE]: 'testnet',
+  [PUBLIC_NETWORK_PASSPHRASE]: 'public',
 };
 const CLASSIC_EXECUTION_MODE = 'classic_path_payment';
 
@@ -326,9 +332,23 @@ export class StellarRouteClient {
    * Throws instead of guessing when none is known.
    */
   private resolveHorizonUrl(override?: string, networkPassphrase?: string): string {
-    const passphraseNetwork = networkPassphrase
-      ? NETWORK_BY_PASSPHRASE[networkPassphrase.trim()]
+    const trimmedPassphrase = networkPassphrase?.trim();
+    const passphraseNetwork = trimmedPassphrase
+      ? NETWORK_BY_PASSPHRASE[trimmedPassphrase]
       : undefined;
+    if (
+      trimmedPassphrase &&
+      !passphraseNetwork &&
+      !override &&
+      !this.horizonUrl
+    ) {
+      throw new StellarRouteApiError(
+        400,
+        'validation_error',
+        `Unrecognized networkPassphrase "${trimmedPassphrase}"; pass options.horizonUrl explicitly, or configure the client with { network } or { horizonUrl }`,
+        { status: 'horizon_url_not_configured' },
+      );
+    }
     const url =
       override ??
       this.horizonUrl ??

@@ -31,7 +31,8 @@ listed under a **Breaking** heading below.
 - `StellarRouteClientOptions.network` (`'testnet' | 'public'`) and
   `StellarRouteClientOptions.horizonUrl` set the Horizon instance `confirmSwap`
   polls by default; `DEFAULT_PUBLIC_HORIZON_URL` constant.
-- `prepareSwap`'s `options.idempotencyKey` sends an `Idempotency-Key` header
+- `prepareSwap`'s `options.idempotencyKey`
+- Exported `TESTNET_NETWORK_PASSPHRASE` and `PUBLIC_NETWORK_PASSPHRASE` for `confirmSwap` passphrase matching. sends an `Idempotency-Key` header
   (`IDEMPOTENCY_KEY_HEADER`), so a retried prepare call can be resent safely
   with the same key.
 

@@ -46,3 +46,6 @@ export type { CardNetworkStatusBannerProps } from './CardNetworkStatusBanner';
 
 export { CardExportButton } from './CardExportButton';
 export type { CardExportButtonProps } from './CardExportButton';
+
+export { CardFxMatrixModal } from './CardFxMatrixModal';
+export type { CardFxMatrixModalProps } from './CardFxMatrixModal';

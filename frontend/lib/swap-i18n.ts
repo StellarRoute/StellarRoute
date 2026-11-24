@@ -132,6 +132,7 @@ export type SwapTranslationKey =
   | "settings.theme.light"
   | "settings.theme.dark"
   | "settings.theme.system"
+  | "settings.theme.applied"
   | "settings.accentColor.label"
   | "settings.accentColor.description"
   | "settings.accentColor.custom"
@@ -392,6 +393,7 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "settings.theme.light": "Light",
     "settings.theme.dark": "Dark",
     "settings.theme.system": "System",
+    "settings.theme.applied": "Theme applied",
     "settings.accentColor.label": "Accent Color",
     "settings.accentColor.description": "Applied to buttons, links, and other primary actions.",
     "settings.accentColor.custom": "Custom color:",
@@ -640,6 +642,7 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "settings.theme.light": "Light",
     "settings.theme.dark": "Dark",
     "settings.theme.system": "System",
+    "settings.theme.applied": "Theme applied",
     "settings.accentColor.label": "Accent Color",
     "settings.accentColor.description": "Applied to buttons, links, and other primary actions.",
     "settings.accentColor.custom": "Custom color:",
@@ -892,6 +895,7 @@ const SWAP_TRANSLATIONS_BASE: Record<
     "settings.theme.light": "浅色",
     "settings.theme.dark": "深色",
     "settings.theme.system": "跟随系统",
+    "settings.theme.applied": "主题已应用",
     "settings.accentColor.label": "强调色",
     "settings.accentColor.description": "应用于按钮、链接和其他主要操作。",
     "settings.accentColor.custom": "自定义颜色：",

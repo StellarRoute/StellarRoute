@@ -11,7 +11,10 @@ export type FlagName =
   | "real_xdr"
   | "analytics"
   | "ai_agent"
-  | "card";
+  | "card"
+  | "history_csv_export"
+  | "settings_theme_preview"
+  | "corridor_keyboard_nav";
 
 export type FlagMap = Partial<Record<FlagName, boolean>>;
 
@@ -51,7 +54,13 @@ function readEnvFlag(flag: FlagName): boolean | undefined {
                   ? process.env.NEXT_PUBLIC_FLAG_AI_AGENT
                   : flag === 'card'
                     ? (process.env.NEXT_PUBLIC_FLAG_CARD ?? process.env.NEXT_PUBLIC_CARD_ENABLED)
-                    : process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
+                    : flag === 'history_csv_export'
+                      ? process.env.NEXT_PUBLIC_FLAG_HISTORY_CSV_EXPORT
+                      : flag === 'settings_theme_preview'
+                        ? process.env.NEXT_PUBLIC_FLAG_SETTINGS_THEME_PREVIEW
+                        : flag === 'corridor_keyboard_nav'
+                          ? process.env.NEXT_PUBLIC_FLAG_CORRIDOR_KEYBOARD_NAV
+                          : process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
   if (val === undefined) return undefined;
   return val === 'true' || val === '1';
 }

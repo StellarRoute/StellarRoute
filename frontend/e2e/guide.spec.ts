@@ -110,4 +110,17 @@ test.describe("/guide", () => {
     expect(prepareRequests, "/guide must not call /swap/prepare").toHaveLength(0);
     expect(submitRequests, "/guide must not call /swap/submit").toHaveLength(0);
   });
+
+  test("renders cleanly on a mobile viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/guide");
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: GUIDE_HEADING })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /connect your wallet/i })
+    ).toBeVisible();
+  });
+
 });

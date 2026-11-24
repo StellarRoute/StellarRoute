@@ -14,6 +14,7 @@ import RouteDisplay from './RoutePanelAsync';
 import { MobileRouteBottomSheet } from './MobileRouteBottomSheet';
 import { BatchSwapPreview, type BatchSwapLeg } from './BatchSwapPreview';
 import { SwapButton, SwapButtonState } from './SwapButton';
+import { StaleQuoteBanner } from './StaleQuoteBanner';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { HighImpactConfirmModal } from './HighImpactConfirmModal';
 import { TransactionConfirmationModal } from './TransactionConfirmationModal';
@@ -22,6 +23,7 @@ import { QuoteRefreshLiveRegion } from './QuoteRefreshLiveRegion';
 import { SessionRecoveryModal } from './SessionRecoveryModal';
 import { useSwapState } from '@/hooks/useSwapState';
 import { useOptimisticSwap } from '@/hooks/useOptimisticSwap';
+import { useStaleQuote } from '@/hooks/useStaleQuote';
 import type { PreSubmitSnapshot } from '@/types/transaction';
 import { useOptionalTradingPair } from '@/contexts/TradingPairContext';
 import { useExpertSettings } from '@/hooks/useExpertSettings';
@@ -192,6 +194,14 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
   const [selectedRoute, setSelectedRoute] = useState<AlternativeRoute | null>(
     null
   );
+
+  // Stale-quote detection: disabled when expired OR price impact changed >0.5%
+  const staleQuote = useStaleQuote({
+    expiresAtMs: quote.data?.expires_at,
+    currentPriceImpact: quote.priceImpact,
+    isStale: quote.isStale,
+    lastQuotedAtMs: quote.lastQuotedAtMs,
+  });
 
   // Fetch ranked routes from /api/v1/routes
   const routesState = useRoutes(
@@ -1566,6 +1576,15 @@ export function SwapCard({ storyFixture, showRoutePicker = false }: SwapCardProp
               .map((w) => `${w.title}: ${w.message}`)
               .join('. ')}
           </div>
+
+          {/* Stale Quote Banner */}
+          {staleQuote.isQuoteStale && (
+            <StaleQuoteBanner
+              isStale={staleQuote.isQuoteStale}
+              onRefresh={quote.refresh}
+              isLoading={displayQuoteLoading}
+            />
+          )}
 
           {/* Action Button */}
           <div className="pt-2">

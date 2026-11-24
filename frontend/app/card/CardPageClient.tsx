@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight } from 'lucide-react';
 
 import { CardFxFreshnessBadge } from '@/components/card/CardFxFreshnessBadge';
 import {
@@ -15,17 +14,7 @@ import {
   CardBalanceAlert,
   cardBalanceAlertDismissKey,
 } from '@/components/card/CardBalanceAlert';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { CardTopUpModal } from '@/components/card/CardTopUpModal';
 import {
   DEFAULT_CARD_ALERT_THRESHOLD_USDC,
   DEFAULT_CARD_TOP_UP_USDC,
@@ -411,100 +400,5 @@ export function CardPageClient() {
         onConfirm={handleConfirmTopUp}
       />
     </main>
-  );
-}
-
-/**
- * CARD-45's 1-click bridge top-up trigger. CARD-41's CardTopUpModal is not
- * vendored in this tree yet, so the funding entry point lives here: the
- * amount field arrives pre-filled from the alert (default 50.00 USDC) and
- * the bridge CTA carries the amount to the existing cross-chain funding
- * page. Nothing is signed or executed on this page.
- */
-function CardTopUpModal({
-  open,
-  amount,
-  error,
-  onAmountChange,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean;
-  amount: string;
-  error: string | null;
-  onAmountChange: (raw: string) => void;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-}) {
-  const parsed = parseUsdcAmount(amount);
-  const bridgeHref = parsed
-    ? `/cross-chain-swap?amount=${encodeURIComponent(String(parsed))}&destination=card`
-    : '/cross-chain-swap?destination=card';
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex w-[min(100%,90vw)] max-h-[min(90dvh,90vh)] flex-col gap-0 overflow-hidden p-0 rounded-2xl border-border/40 bg-background/95 backdrop-blur-xl sm:max-w-[480px] sm:rounded-[28px]"
-        data-testid="card-top-up-modal"
-      >
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5 sm:p-7">
-          <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="font-display text-2xl font-bold tracking-tight">
-              Bridge top-up
-            </DialogTitle>
-            <DialogDescription className="text-pretty text-muted-foreground">
-              Fund your card from another chain. The amount below was chosen
-              to clear the low-balance alert; edit it if you want to top up
-              more, then continue in the bridge flow.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2 rounded-xl border border-border/30 bg-background/50 p-4">
-            <Label htmlFor="card-top-up-amount" className="text-sm font-semibold">
-              Top-up amount (USDC)
-            </Label>
-            <Input
-              id="card-top-up-amount"
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? 'card-top-up-amount-error' : undefined}
-              onChange={(event) => onAmountChange(event.target.value)}
-              data-testid="card-top-up-amount-input"
-            />
-            {error && (
-              <p
-                id="card-top-up-amount-error"
-                role="alert"
-                className="text-xs font-medium text-destructive"
-                data-testid="card-top-up-amount-error"
-              >
-                {error}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter className="shrink-0 flex-col gap-2 border-t border-border/20 bg-muted/10 p-4 sm:flex-col sm:p-6">
-          <Button
-            type="button"
-            className="min-h-11 w-full font-semibold"
-            onClick={onConfirm}
-            data-testid="card-top-up-confirm"
-          >
-            Confirm top-up amount
-          </Button>
-          <a
-            href={bridgeHref}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100"
-            data-testid="card-top-up-bridge-link"
-          >
-            Continue to bridge
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </a>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

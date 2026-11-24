@@ -1,0 +1,252 @@
+[
+  {
+    "number": 1691,
+    "title": "[card] CARD-57 Card deck keyboard shortcut to freeze/unfreeze",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1691"
+  },
+  {
+    "number": 1692,
+    "title": "[card] CARD-58 Print-friendly card activity statement layout",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1692"
+  },
+  {
+    "number": 1693,
+    "title": "[card] CARD-59 Card activity full-text search across merchant memo",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1693"
+  },
+  {
+    "number": 1694,
+    "title": "[card] CARD-60 Aria-live announcements for card balance changes",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1694"
+  },
+  {
+    "number": 1695,
+    "title": "[card] CARD-61 Remember last selected fiat currency in localStorage",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1695"
+  },
+  {
+    "number": 1696,
+    "title": "[card] CARD-62 Card top-up amount presets (25/50/100 USDC)",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1696"
+  },
+  {
+    "number": 1697,
+    "title": "[card] CARD-63 Deep link /card?highlight=activity opens feed scrolled",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1697"
+  },
+  {
+    "number": 1698,
+    "title": "[card] CARD-64 Card partner misconfiguration inline help panel",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1698"
+  },
+  {
+    "number": 1699,
+    "title": "[card] CARD-65 CARD-65 capstone: card preview E2E smoke in CI",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1699"
+  },
+  {
+    "number": 1700,
+    "title": "[live-path] LIVE-01 Staging health probe includes indexer freshness header",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1700"
+  },
+  {
+    "number": 1701,
+    "title": "[live-path] LIVE-02 Quote endpoint exposes `data_quality` enum in OpenAPI only (doc + types)",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1701"
+  },
+  {
+    "number": 1702,
+    "title": "[live-path] LIVE-03 Redis cache miss metric for quote path",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1702"
+  },
+  {
+    "number": 1703,
+    "title": "[live-path] LIVE-04 Frontend swap shows graceful stale quote banner copy",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1703"
+  },
+  {
+    "number": 1704,
+    "title": "[live-path] LIVE-05 sdk-js: export `DEFAULT_PUBLIC_HORIZON_URL` in package docs",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1704"
+  },
+  {
+    "number": 1705,
+    "title": "[live-path] LIVE-06 CLI `stellarroute health --json` exits non-zero on degraded",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1705"
+  },
+  {
+    "number": 1706,
+    "title": "[live-path] LIVE-07 Indexer logs SDEX cursor on restart",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1706"
+  },
+  {
+    "number": 1707,
+    "title": "[live-path] LIVE-08 Rate limit 429 body includes `retry_after_ms`",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1707"
+  },
+  {
+    "number": 1708,
+    "title": "[live-path] LIVE-09 OpenAPI documents swap `network_passphrase` on prepare",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1708"
+  },
+  {
+    "number": 1709,
+    "title": "[live-path] LIVE-10 Playwright: swap happy path mock records tx hash",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1709"
+  },
+  {
+    "number": 1710,
+    "title": "[live-path] LIVE-11 Rust SDK health method matches OpenAPI",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1710"
+  },
+  {
+    "number": 1711,
+    "title": "[live-path] LIVE-12 Contracts: document `PoolNotSupported` rename plan",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1711"
+  },
+  {
+    "number": 1712,
+    "title": "[live-path] LIVE-13 Frontend wallet error mapper for Freighter reject",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1712"
+  },
+  {
+    "number": 1713,
+    "title": "[live-path] LIVE-14 CCTP quote TTL shown in cross-chain UI",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1713"
+  },
+  {
+    "number": 1714,
+    "title": "[live-path] LIVE-15 Swap history page paginates beyond 50 rows client-side",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1714"
+  },
+  {
+    "number": 1715,
+    "title": "[sdk] W12-SDK-01 Rust SDK batch quote method",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1715"
+  },
+  {
+    "number": 1716,
+    "title": "[sdk] W12-SDK-02 JS SDK StellarSdkNetwork exported in README",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1716"
+  },
+  {
+    "number": 1717,
+    "title": "[sdk] W12-SDK-03 JS SDK abortable confirmSwap documented",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1717"
+  },
+  {
+    "number": 1718,
+    "title": "[sdk] W12-SDK-04 Rust SDK CCTP types mirror OpenAPI",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1718"
+  },
+  {
+    "number": 1719,
+    "title": "[sdk] W12-SDK-05 sdk-js prepareSwap sends idempotency header option",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1719"
+  },
+  {
+    "number": 1720,
+    "title": "[sdk] W12-SDK-06 CLI quote table output color off flag",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1720"
+  },
+  {
+    "number": 1721,
+    "title": "[sdk] W12-SDK-07 CLI orderbook JSON pretty print",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1721"
+  },
+  {
+    "number": 1722,
+    "title": "[sdk] W12-SDK-08 sdk-rust integration test for pairs endpoint",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1722"
+  },
+  {
+    "number": 1723,
+    "title": "[sdk] W12-SDK-09 sdk-js example for batch orderbook",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1723"
+  },
+  {
+    "number": 1724,
+    "title": "[sdk] W12-SDK-10 sdk-js type guard tests for card preview",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1724"
+  },
+  {
+    "number": 1725,
+    "title": "[frontend] W12-FE-01 Swap slippage preset chips remember last choice",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1725"
+  },
+  {
+    "number": 1726,
+    "title": "[frontend] W12-FE-02 Orderbook depth chart aria labels",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1726"
+  },
+  {
+    "number": 1727,
+    "title": "[frontend] W12-FE-03 Offramp institution search debounce",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1727"
+  },
+  {
+    "number": 1728,
+    "title": "[frontend] W12-FE-04 Cross-chain corridor selector keyboard nav",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1728"
+  },
+  {
+    "number": 1729,
+    "title": "[frontend] W12-FE-05 Settings theme preview before apply",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1729"
+  },
+  {
+    "number": 1730,
+    "title": "[frontend] W12-FE-06 History CSV export button behind flag",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1730"
+  },
+  {
+    "number": 1731,
+    "title": "[frontend] W12-FE-07 Wallet modal focus trap on open",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1731"
+  },
+  {
+    "number": 1732,
+    "title": "[frontend] W12-FE-08 Analytics page skeleton loading",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1732"
+  },
+  {
+    "number": 1733,
+    "title": "[frontend] W12-FE-09 Pair selector recent pairs LRU",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1733"
+  },
+  {
+    "number": 1734,
+    "title": "[frontend] W12-FE-10 Price impact tooltip accessible description",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1734"
+  },
+  {
+    "number": 1735,
+    "title": "[frontend] W12-FE-11 Guide page table of contents skip link",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1735"
+  },
+  {
+    "number": 1736,
+    "title": "[frontend] W12-FE-12 Header network badge testnet/mainnet",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1736"
+  },
+  {
+    "number": 1737,
+    "title": "[frontend] W12-FE-13 Swap amount input scientific notation guard",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1737"
+  },
+  {
+    "number": 1738,
+    "title": "[frontend] W12-FE-14 Footer links open in new tab security attrs",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1738"
+  },
+  {
+    "number": 1739,
+    "title": "[frontend] W12-FE-15 404 page link back to /swap",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1739"
+  },
+  {
+    "number": 1740,
+    "title": "[frontend] W12-FE-16 Loading spinner reduced-motion fallback",
+    "url": "https://github.com/StellarRoute/StellarRoute/issues/1740"
+  }
+]

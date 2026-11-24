@@ -17,7 +17,7 @@ import {
   type AiSubscription,
 } from "./subscription";
 
-export default function AiPage() {
+function SubscriptionReminder() {
   const [dueSubscription, setDueSubscription] =
     useState<AiSubscription | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -95,7 +95,7 @@ function isAiAgentEnabled(): boolean {
   return process.env.NEXT_PUBLIC_AI_AGENT === 'true' || process.env.NEXT_PUBLIC_AI_AGENT === '1';
 }
 
-export default function AiPage() {
+function AiAgentPage() {
   const [enabled, setEnabled] = React.useState<boolean>(false);
   const [mounted, setMounted] = React.useState<boolean>(false);
 
@@ -144,5 +144,14 @@ export default function AiPage() {
         <AgentChat />
       </div>
     </div>
+  );
+}
+
+export default function AiPage() {
+  return (
+    <>
+      <SubscriptionReminder />
+      <AiAgentPage />
+    </>
   );
 }

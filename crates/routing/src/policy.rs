@@ -2,6 +2,7 @@
 //!
 //! Provides `RoutingPolicy` for controlling route discovery behaviour:
 //! - **max_hops**: caps the depth of multi-hop paths (default: 4).
+//! - **max_candidate_paths**: bounds candidate path enumeration (default: 256).
 //! - **venue_allowlist / venue_denylist**
 //! - **asset_denylist**: excludes routes containing specific assets
 //!
@@ -14,6 +15,9 @@ use std::collections::{HashMap, HashSet};
 /// Default slippage tolerance in basis points (0.50%).
 pub const DEFAULT_SLIPPAGE_BPS: u32 = 50;
 
+/// Default upper bound on candidate paths retained during pathfinding.
+pub const DEFAULT_MAX_CANDIDATE_PATHS: usize = 256;
+
 /// Diagnostic information for excluded routes
 #[derive(Clone, Debug)]
 pub struct RouteDiagnostic {
@@ -25,6 +29,10 @@ pub struct RouteDiagnostic {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RoutingPolicy {
     pub max_hops: usize,
+
+    /// Upper bound on candidate paths retained during pathfinding.
+    #[serde(default = "default_max_candidate_paths")]
+    pub max_candidate_paths: usize,
 
     pub venue_allowlist: Vec<String>,
     pub venue_denylist: Vec<String>,
@@ -55,10 +63,15 @@ fn default_slippage_bps() -> u32 {
     DEFAULT_SLIPPAGE_BPS
 }
 
+fn default_max_candidate_paths() -> usize {
+    DEFAULT_MAX_CANDIDATE_PATHS
+}
+
 impl Default for RoutingPolicy {
     fn default() -> Self {
         Self {
             max_hops: 4,
+            max_candidate_paths: DEFAULT_MAX_CANDIDATE_PATHS,
             venue_allowlist: Vec::new(),
             venue_denylist: Vec::new(),
             asset_denylist: Vec::new(),
@@ -81,6 +94,11 @@ impl RoutingPolicy {
 
     pub fn with_max_hops(mut self, max_hops: usize) -> Self {
         self.max_hops = max_hops;
+        self
+    }
+
+    pub fn with_max_candidate_paths(mut self, max_candidate_paths: usize) -> Self {
+        self.max_candidate_paths = max_candidate_paths;
         self
     }
 
@@ -213,6 +231,11 @@ impl RoutingPolicy {
             .and_then(|v| v.parse().ok())
             .unwrap_or(4);
 
+        let max_candidate_paths: usize = std::env::var("ROUTING_MAX_CANDIDATE_PATHS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MAX_CANDIDATE_PATHS);
+
         let venue_allowlist =
             parse_comma_list(&std::env::var("ROUTING_VENUE_ALLOWLIST").unwrap_or_default());
 
@@ -224,6 +247,7 @@ impl RoutingPolicy {
 
         Self {
             max_hops,
+            max_candidate_paths,
             venue_allowlist,
             venue_denylist,
             asset_denylist,
@@ -237,6 +261,10 @@ impl RoutingPolicy {
     pub fn validate(&self) -> std::result::Result<(), String> {
         if self.max_hops == 0 {
             return Err("max_hops must be at least 1".to_string());
+        }
+
+        if self.max_candidate_paths == 0 {
+            return Err("max_candidate_paths must be at least 1".to_string());
         }
 
         if !self.venue_allowlist.is_empty() && !self.venue_denylist.is_empty() {
@@ -307,5 +335,32 @@ mod tests {
 
         assert_eq!(policy.slippage_bps_for_venue(Some("pool-a")), 125);
         assert_eq!(policy.slippage_bps_for_venue(Some("pool-b")), 150);
+    }
+
+    #[test]
+    fn max_candidate_paths_defaults_and_validates() {
+        let policy = RoutingPolicy::default();
+        assert_eq!(policy.max_candidate_paths, DEFAULT_MAX_CANDIDATE_PATHS);
+        assert!(policy.validate().is_ok());
+
+        let capped = RoutingPolicy::default().with_max_candidate_paths(32);
+        assert_eq!(capped.max_candidate_paths, 32);
+        assert!(capped.validate().is_ok());
+
+        let zero_cap = RoutingPolicy::default().with_max_candidate_paths(0);
+        assert!(zero_cap.validate().is_err());
+    }
+
+    #[test]
+    fn serde_missing_max_candidate_paths_uses_default() {
+        let legacy_json = r#"{
+            "max_hops": 4,
+            "venue_allowlist": [],
+            "venue_denylist": [],
+            "asset_denylist": []
+        }"#;
+        let parsed: RoutingPolicy =
+            serde_json::from_str(legacy_json).expect("legacy policy JSON should deserialize");
+        assert_eq!(parsed.max_candidate_paths, DEFAULT_MAX_CANDIDATE_PATHS);
     }
 }

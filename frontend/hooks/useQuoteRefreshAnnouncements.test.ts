@@ -17,7 +17,7 @@ describe('useQuoteRefreshAnnouncements', () => {
           error: null,
           isRecovering: false,
           hasPendingRetry: false,
-          lastQuotedAtMs: null,
+          lastQuotedAtMs: null as number | null,
           requestKey: 'native|USDC|100|sell',
           rateSummary: '1 XLM = 0.12 USDC',
           t,

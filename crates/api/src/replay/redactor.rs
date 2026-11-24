@@ -128,6 +128,7 @@ mod tests {
                     }
                 ]
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 
@@ -155,6 +156,7 @@ mod tests {
                 "quote_asset": { "asset_type": "native" },
                 "price": "1.0000000"
             }),
+            decision_graph: DecisionGraphSnapshot::default(),
         }
     }
 

@@ -129,6 +129,36 @@ if (result.exclusion_diagnostics) {
 }
 ```
 
+### Confirm a swap on Horizon
+
+`confirmSwap` polls Horizon for a submitted transaction. It needs to know which
+Horizon to poll — configure this once on the client with the `network` option
+(a `StellarSdkNetwork`, i.e. `'testnet' | 'public'`), or set `horizonUrl`
+directly for a custom Horizon instance:
+
+```ts
+import { StellarRouteClient } from '@stellarroute/sdk-js';
+import type { StellarSdkNetwork } from '@stellarroute/sdk-js';
+
+const network: StellarSdkNetwork = 'public';
+const client = new StellarRouteClient({ baseUrl: 'https://api.stellarroute.io', network });
+
+const controller = new AbortController();
+const result = await client.confirmSwap(txHash, {
+  pollIntervalMs: 2_000,
+  timeoutMs: 60_000,
+  signal: controller.signal, // cancels promptly, including mid-sleep between polls
+});
+console.log(result.successful, result.horizon_url);
+```
+
+Resolution order for the Horizon URL (first match wins): a per-call
+`options.horizonUrl` override, then the client's `network`/`horizonUrl`
+constructor option, then `options.networkPassphrase` (matched against the
+well-known testnet/public passphrases — handy if you only have the passphrase
+you passed to `executeSwap`). If none of those resolve, `confirmSwap` throws a
+clear configuration error instead of silently defaulting to testnet.
+
 Additional runnable quickstart files are in `sdk-js/examples/`:
 
 - [Health check](./examples/quickstart-health.ts)
@@ -137,6 +167,27 @@ Additional runnable quickstart files are in `sdk-js/examples/`:
 - [Batch quote](./examples/quickstart-batch-quote.ts) — multiple price quotes in one request (read-only)
 
 See the [price history example](./examples/quickstart-price-history.ts) for a read-only 24-hour history query.
+
+### Confirm a swap on Horizon
+
+`confirmSwap` needs a Horizon base URL. Set it on the client (pubnet vs testnet) or pass `horizonUrl` per call:
+
+```ts
+import { StellarRouteClient } from '@stellarroute/sdk-js';
+
+const client = new StellarRouteClient({
+  baseUrl: 'https://api.stellarroute.io',
+  stellarNetwork: 'public', // polls https://horizon.stellar.org by default
+});
+
+const result = await client.confirmSwap('your-tx-hash', {
+  timeoutMs: 120_000,
+  pollIntervalMs: 3_000,
+});
+console.log(result.successful, result.ledger);
+```
+
+See [swap-submit.ts](./examples/swap-submit.ts) for an explicit `horizonUrl` override.
 
 ## API docs
 
@@ -151,3 +202,10 @@ Generated docs are published in `docs/sdk-js/api/`.
 ## Error handling
 
 For integration guidance on retry semantics, SDK error helper usage, and user-facing error patterns, see `docs/api/integrator-error-guide.md`.
+
+Rate-limited responses (`429`) include `Retry-After` and an `ErrorResponse.details.retry_after_ms` field for client backoff.
+
+## Constants
+
+- `DEFAULT_PUBLIC_HORIZON_URL` - `https://horizon.stellar.org` (public Horizon default)
+- `DEFAULT_TESTNET_HORIZON_URL` - `https://horizon-testnet.stellar.org` (testnet helper/default for confirm flows)

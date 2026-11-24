@@ -202,6 +202,10 @@ pub struct AppState {
     pub cctp_runtime: crate::cctp::readiness::CctpRuntime,
     /// Production CCTP HTTP context (PG store, service, idempotency) when bootstrap succeeds.
     pub cctp: Option<Arc<crate::cctp::bootstrap::CctpHttpContext>>,
+    /// Card configuration (fail-closed feature flag)
+    pub card_config: crate::card::CardConfig,
+    /// Agent configuration (fail-closed feature flag)
+    pub agent_config: crate::agent::AgentConfig,
 }
 
 impl AppState {
@@ -293,6 +297,8 @@ impl AppState {
             swap_price_source: None,
             cctp_runtime: crate::cctp::readiness::CctpRuntime::production_defaults(),
             cctp: None,
+            card_config: crate::card::CardConfig::default(),
+            agent_config: crate::agent::AgentConfig::default(),
         }
     }
 
@@ -453,6 +459,7 @@ impl AppState {
             swap_price_source: None,
             cctp_runtime: crate::cctp::readiness::CctpRuntime::production_defaults(),
             cctp: None,
+            card_config: crate::card::CardConfig::default(),
         };
 
         // Start cache prewarm job if configured via env `PREWARM_PAIRS`.

@@ -72,6 +72,7 @@ pub struct EndpointConfig {
     pub cctp_status: RateLimitConfig,
     pub cctp_mutate: RateLimitConfig,
     pub cctp_reattest: RateLimitConfig,
+    pub agent: RateLimitConfig,
     pub default: RateLimitConfig,
     /// Optional overrides for specific tenant IDs (e.g. from API Keys)
     pub tenant_overrides: HashMap<String, RateLimitConfig>,
@@ -136,6 +137,13 @@ impl Default for EndpointConfig {
                     .unwrap_or(5),
                 window,
             },
+            agent: RateLimitConfig {
+                max_requests: std::env::var("RATE_LIMIT_AGENT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(30),
+                window,
+            },
             default: RateLimitConfig {
                 max_requests: 120, // Lowered from 200
                 window,
@@ -170,6 +178,8 @@ impl EndpointConfig {
             } else {
                 &self.cctp_mutate
             }
+        } else if path.starts_with("/api/v1/agent") {
+            &self.agent
         } else {
             &self.default
         }
@@ -423,12 +433,18 @@ where
             if info.denied {
                 debug!("Rate limit denied: key={}", key);
                 let retry_after = info.reset.saturating_sub(unix_now());
+                let retry_after_ms = retry_after.saturating_mul(1000);
                 let mut response = (
                     StatusCode::TOO_MANY_REQUESTS,
-                    Json(ErrorResponse::new(
-                        ApiErrorCode::RateLimitExceeded,
-                        "Too many requests. Please try again later.".to_string(),
-                    )),
+                    Json(
+                        ErrorResponse::new(
+                            ApiErrorCode::RateLimitExceeded,
+                            "Too many requests. Please try again later.".to_string(),
+                        )
+                        .with_details(serde_json::json!({
+                            "retry_after_ms": retry_after_ms,
+                        })),
+                    ),
                 )
                     .into_response();
 

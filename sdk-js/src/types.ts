@@ -32,6 +32,14 @@ export interface ChainAsset {
 export type ChainNamespace = 'stellar' | 'eip155' | 'solana' | 'bip122' | 'tron';
 
 /**
+ * Stellar network identifier, used to pick sensible defaults (e.g. the
+ * `StellarRouteClientOptions.network` option's default Horizon URL for
+ * `confirmSwap`). Matches the two networks the StellarRoute API and
+ * Stellar JS SDK distinguish.
+ */
+export type StellarSdkNetwork = 'testnet' | 'public';
+
+/**
  * Bridge / cross-chain venue metadata (abstraction only — no settlement).
  */
 export interface BridgeVenueMeta {
@@ -163,6 +171,9 @@ export interface CctpCallOptions {
 
 export const CCTP_TRANSFER_ACCESS_HEADER = 'x-cctp-transfer-access';
 export const CCTP_IDEMPOTENCY_HEADER = 'idempotency-key';
+
+/** Generic `Idempotency-Key` request header name, e.g. for `prepareSwap`. */
+export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 
 export interface CctpTransferStatusResponse {
   transfer_id: string;
@@ -877,6 +888,17 @@ export interface SwapPrepareRequest {
   slippage_bps?: number;
 }
 
+/** Optional cancellation/idempotency controls for {@link StellarRouteClient.prepareSwap}. */
+export interface PrepareSwapOptions {
+  /** Aborts the request (and any in-flight retries) when triggered. */
+  signal?: AbortSignal;
+  /**
+   * Sent as the `Idempotency-Key` request header, so a retried prepare call
+   * (e.g. after a network timeout) is safe to resend with the same key.
+   */
+  idempotencyKey?: string;
+}
+
 /**
  * Response payload from `POST /api/v1/swap/prepare` (inner `data` field).
  */
@@ -1203,4 +1225,68 @@ export interface ValidateAgentIntentResponse {
   amount: string;
   /** Intent type. */
   type: string;
+}
+
+// ── Card program preview type guards ──────────────────────────────────────────
+// Narrow `unknown` API/webhook payloads before rendering a card preview UI.
+
+/** Type guard for {@link CardHealth}. */
+export function isCardHealth(value: unknown): value is CardHealth {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as CardHealth).enabled === 'boolean'
+  );
+}
+
+/** Type guard for {@link CardApplicationValidation}. */
+export function isCardApplicationValidation(
+  value: unknown,
+): value is CardApplicationValidation {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as CardApplicationValidation).valid === 'boolean' &&
+    typeof (value as CardApplicationValidation).applicant_ref === 'string'
+  );
+}
+
+/**
+ * Type guard for a single {@link CardAuthorization}.
+ *
+ * Only `id` and `status` are required; the remaining fields are optional on
+ * the interface, so they are checked only when present.
+ */
+export function isCardAuthorization(
+  value: unknown,
+): value is CardAuthorization {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as CardAuthorization;
+  if (typeof v.id !== 'string' || typeof v.status !== 'string') return false;
+  if (v.decline_code !== undefined && typeof v.decline_code !== 'string') {
+    return false;
+  }
+  if (v.amount !== undefined && typeof v.amount !== 'string') return false;
+  if (v.currency !== undefined && typeof v.currency !== 'string') {
+    return false;
+  }
+  if (v.created_at !== undefined && typeof v.created_at !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+/** Type guard for {@link CardAuthorizationsResponse}. */
+export function isCardAuthorizationsResponse(
+  value: unknown,
+): value is CardAuthorizationsResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as CardAuthorizationsResponse).authorizations) &&
+    (value as CardAuthorizationsResponse).authorizations.every(
+      isCardAuthorization,
+    ) &&
+    typeof (value as CardAuthorizationsResponse).total === 'number'
+  );
 }

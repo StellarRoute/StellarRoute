@@ -5,6 +5,7 @@ import {
   isStellarRouteApiError,
   parseApiErrorBody,
 } from './client.js';
+import type { StellarSdkNetwork } from './client.js';
 import type {
   BatchOrderbookResponse,
   HealthStatus,
@@ -760,6 +761,70 @@ describe('prepareSwap', () => {
     expect(spy.mock.calls[0]?.[0]).toContain('/api/v1/swap/prepare');
     expect(result).toEqual(classicPrepare);
   });
+
+  it('sends the Idempotency-Key header when options.idempotencyKey is set', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StellarRouteClient({ retries: 0 }).prepareSwap(
+      {
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        slippage_bps: 50,
+      },
+      { idempotencyKey: 'idem-prepare-1' },
+    );
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({
+      'idempotency-key': 'idem-prepare-1',
+    });
+  });
+
+  it('omits the Idempotency-Key header when no idempotencyKey is given', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok(enveloped(classicPrepare)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StellarRouteClient({ retries: 0 }).prepareSwap({
+      route: sampleSimulateRequest.route,
+      amount: '100',
+      sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      slippage_bps: 50,
+    });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).not.toHaveProperty('idempotency-key');
+  });
+
+  it('still honors an abort signal via options.signal', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = new StellarRouteClient({ retries: 0 }).prepareSwap(
+      {
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      },
+      { signal: controller.signal },
+    );
+
+    controller.abort();
+
+    await expect(promise).rejects.toBeTruthy();
+  });
 });
 
 describe('submitSwap', () => {
@@ -1001,6 +1066,60 @@ describe('confirmSwap', () => {
     });
   });
 
+  it('uses pubnet Horizon when stellarNetwork is public and horizonUrl is omitted', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        ok({
+          hash: 'tx789',
+          successful: true,
+          ledger: 99,
+        }),
+      );
+
+    const result = await new StellarRouteClient({
+      retries: 0,
+      stellarNetwork: 'public',
+    }).confirmSwap('tx789', { pollIntervalMs: 1, timeoutMs: 500 });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://horizon.stellar.org/transactions/tx789',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(result.horizon_url).toBe(
+      'https://horizon.stellar.org/transactions/tx789',
+    );
+  });
+
+  it('rejects promptly when aborted during poll sleep', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
+
+    const controller = new AbortController();
+    const client = new StellarRouteClient({
+      retries: 0,
+      stellarNetwork: 'testnet',
+    });
+    const pending = client.confirmSwap('slow-tx', {
+      pollIntervalMs: 5_000,
+      timeoutMs: 30_000,
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    const err = await pending.catch((e: unknown) => e);
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).message).toBe('confirmSwap aborted');
+  });
+
+  it('throws when Horizon config is missing', async () => {
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx', { pollIntervalMs: 1, timeoutMs: 1 })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('validation_error');
+  });
+
   it('throws when Horizon never returns the transaction', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
 
@@ -1103,6 +1222,75 @@ describe('confirmSwap', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+
+  it('accepts the exported StellarSdkNetwork type for the network option', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+    const network: StellarSdkNetwork = 'testnet';
+
+    await new StellarRouteClient({ retries: 0, network }).confirmSwap('tx456', {
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon-testnet.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('derives the Horizon URL from options.networkPassphrase when nothing else is configured', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+
+    await new StellarRouteClient({ retries: 0 }).confirmSwap('tx456', {
+      networkPassphrase: 'Public Global Stellar Network ; September 2015',
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('an explicit options.horizonUrl still wins over client config and networkPassphrase', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      ok({ hash: 'tx456', successful: true, ledger: 1 }),
+    );
+
+    await new StellarRouteClient({ retries: 0, network: 'public' }).confirmSwap(
+      'tx456',
+      {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        networkPassphrase: 'Public Global Stellar Network ; September 2015',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+      },
+    );
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://horizon-testnet.stellar.org/transactions/tx456',
+    );
+  });
+
+  it('throws a configuration error for an unrecognized networkPassphrase', async () => {
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx456', {
+        networkPassphrase: 'Some Custom Network ; 2026',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('validation_error');
+    expect((err as StellarRouteApiError).details).toMatchObject({
+      status: 'horizon_url_not_configured',
+    });
+  });
+
   it('rejects promptly when aborted during the wait between polls', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({}, 404));
     const controller = new AbortController();
@@ -1121,6 +1309,55 @@ describe('confirmSwap', () => {
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(isStellarRouteApiError(err)).toBe(true);
     expect((err as StellarRouteApiError).message).toBe('confirmSwap aborted');
+  });
+
+  it('rejects immediately when the signal is already aborted before polling starts', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const controller = new AbortController();
+    controller.abort();
+
+    const err = await new StellarRouteClient({ retries: 0 })
+      .confirmSwap('tx456', {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        pollIntervalMs: 1,
+        timeoutMs: 1_000,
+        signal: controller.signal,
+      })
+      .catch((e: unknown) => e);
+
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('network_error');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('forwards the signal to the in-flight Horizon fetch so an abort cancels it', async () => {
+    const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    const promise = new StellarRouteClient({ retries: 0 }).confirmSwap(
+      'tx456',
+      {
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        pollIntervalMs: 1,
+        timeoutMs: 60_000,
+        signal: controller.signal,
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+
+    controller.abort();
+
+    await expect(promise).rejects.toBeTruthy();
   });
 });
 
@@ -1165,5 +1402,183 @@ describe('StellarRouteClient constructor', () => {
     }).getHealth();
     const init = spy.mock.calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)['X-Api-Key']).toBe('test-key');
+  });
+});
+
+// ── Retry, AbortSignal, and POST idempotency guards (#1659) ──────────────────
+
+describe('request retry, abort, and idempotency guards', () => {
+  it('aborts immediately without calling fetch when caller signal is already aborted', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    const controller = new AbortController();
+    controller.abort();
+
+    const addSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const err = await new StellarRouteClient({ retries: 2 })
+      .getHealth(controller.signal)
+      .catch((e: unknown) => e);
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('aborted');
+    expect((err as StellarRouteApiError).isAborted()).toBe(true);
+    expect((err as StellarRouteApiError).isNetworkError()).toBe(false);
+  });
+
+  it('stops after the current attempt with no retry when caller aborts mid-flight', async () => {
+    const controller = new AbortController();
+    const activeListeners = new Set<EventListenerOrEventListenerObject>();
+    const origAdd = controller.signal.addEventListener.bind(controller.signal);
+    const origRemove = controller.signal.removeEventListener.bind(controller.signal);
+    vi.spyOn(controller.signal, 'addEventListener').mockImplementation(
+      (type, listener, options) => {
+        if (type === 'abort') activeListeners.add(listener);
+        return origAdd(type, listener, options);
+      },
+    );
+    vi.spyOn(controller.signal, 'removeEventListener').mockImplementation(
+      (type, listener, options) => {
+        if (type === 'abort') activeListeners.delete(listener);
+        return origRemove(type, listener, options);
+      },
+    );
+
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        }),
+    );
+
+    const pending = new StellarRouteClient({
+      retries: 2,
+      timeoutMs: 10_000,
+    }).getHealth(controller.signal);
+
+    // Trigger caller abort while first attempt is in flight.
+    controller.abort();
+
+    const err = await pending.catch((e: unknown) => e);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('aborted');
+    expect((err as StellarRouteApiError).isAborted()).toBe(true);
+    expect(activeListeners.size).toBe(0);
+  });
+
+  it('aborts during retry backoff without issuing another attempt or leaking listeners', async () => {
+    const controller = new AbortController();
+    const activeListeners = new Set<EventListenerOrEventListenerObject>();
+    const origAdd = controller.signal.addEventListener.bind(controller.signal);
+    const origRemove = controller.signal.removeEventListener.bind(controller.signal);
+    vi.spyOn(controller.signal, 'addEventListener').mockImplementation(
+      (type, listener, options) => {
+        if (type === 'abort') activeListeners.add(listener);
+        return origAdd(type, listener, options);
+      },
+    );
+    vi.spyOn(controller.signal, 'removeEventListener').mockImplementation(
+      (type, listener, options) => {
+        if (type === 'abort') activeListeners.delete(listener);
+        return origRemove(type, listener, options);
+      },
+    );
+
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(apiError('overloaded', 'Service overloaded', 503));
+
+    const pending = new StellarRouteClient({ retries: 2 }).getHealth(
+      controller.signal,
+    );
+
+    // Wait briefly so attempt 1 settles into backoff sleep, then abort.
+    await new Promise((r) => setTimeout(r, 25));
+    controller.abort();
+
+    const err = await pending.catch((e: unknown) => e);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(isStellarRouteApiError(err)).toBe(true);
+    expect((err as StellarRouteApiError).code).toBe('aborted');
+    expect(activeListeners.size).toBe(0);
+  });
+
+  it('leaves zero abort listeners on caller signal after retries settle', async () => {
+    const controller = new AbortController();
+    const activeListeners = new Set<EventListenerOrEventListenerObject>();
+    const origAdd = controller.signal.addEventListener.bind(controller.signal);
+    const origRemove = controller.signal.removeEventListener.bind(controller.signal);
+    vi.spyOn(controller.signal, 'addEventListener').mockImplementation(
+      (type, listener, options) => {
+        if (type === 'abort') activeListeners.add(listener);
+        return origAdd(type, listener, options);
+      },
+    );
+    vi.spyOn(controller.signal, 'removeEventListener').mockImplementation(
+      (type, listener, options) => {
+        if (type === 'abort') activeListeners.delete(listener);
+        return origRemove(type, listener, options);
+      },
+    );
+
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('network blip'))
+      .mockResolvedValueOnce(ok(sampleHealth));
+
+    const result = await new StellarRouteClient({ retries: 2 }).getHealth(
+      controller.signal,
+    );
+    expect(result.status).toBe('healthy');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(activeListeners.size).toBe(0);
+  });
+
+  it('does not retry a non-idempotent POST without an idempotency key on 5xx or network error', async () => {
+    const spy5xx = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(apiErrorEnveloped('internal_error', 'boom', 500));
+
+    const err5xx = await new StellarRouteClient({ retries: 2 })
+      .prepareSwap({
+        route: sampleSimulateRequest.route,
+        amount: '100',
+        sender: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+      })
+      .catch((e: unknown) => e);
+
+    expect(spy5xx).toHaveBeenCalledTimes(1);
+    expect(isStellarRouteApiError(err5xx)).toBe(true);
+    expect((err5xx as StellarRouteApiError).status).toBe(500);
+
+    spy5xx.mockRestore();
+
+    const spyNet = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new TypeError('socket hang up'));
+
+    const errNet = await new StellarRouteClient({ retries: 2 })
+      .submitSwap({ quote_id: 'q123', signed_xdr: 'signed_xdr' })
+      .catch((e: unknown) => e);
+
+    expect(spyNet).toHaveBeenCalledTimes(1);
+    expect(isStellarRouteApiError(errNet)).toBe(true);
+    expect((errNet as StellarRouteApiError).code).toBe('network_error');
+  });
+
+  it('still retries read-only POST methods marked idempotent on 503', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(apiError('overloaded', 'busy', 503))
+      .mockResolvedValueOnce(ok(sampleSimulateResponse));
+
+    const res = await new StellarRouteClient({ retries: 1 }).simulateRoute(
+      sampleSimulateRequest,
+    );
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(res.quote.price).toBe('0.99');
   });
 });

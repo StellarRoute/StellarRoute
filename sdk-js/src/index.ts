@@ -27,10 +27,13 @@ export {
   StellarRouteApiError,
   isStellarRouteApiError,
   parseApiErrorBody,
+  DEFAULT_PUBLIC_HORIZON_URL,
   DEFAULT_TESTNET_HORIZON_URL,
+  TESTNET_NETWORK_PASSPHRASE,
+  PUBLIC_NETWORK_PASSPHRASE,
 } from './client.js';
 
-export type { StellarRouteClientOptions } from './client.js';
+export type { StellarRouteClientOptions, StellarSdkNetwork } from './client.js';
 
 export type {
   ApiError,
@@ -66,6 +69,7 @@ export type {
   PairsResponse,
   PathStep,
   PreparedSwapResponse,
+  PrepareSwapOptions,
   PriceHistoryPoint,
   PriceHistoryResponse,
   PriceHistoryWindow,
@@ -116,10 +120,15 @@ export {
   isQuoteStale,
   isQuoteExpired,
   getTimeUntilExpiry,
+  isCardHealth,
+  isCardApplicationValidation,
+  isCardAuthorization,
+  isCardAuthorizationsResponse,
   pathStepToSimulationHop,
   stellarAssetToCanonical,
   CCTP_PROVIDER_ID,
   CCTP_TESTNET_CORRIDOR_ID,
+  IDEMPOTENCY_KEY_HEADER,
 } from './types.js';
 
 export * from './websocket.js';

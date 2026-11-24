@@ -98,6 +98,7 @@ impl std::fmt::Display for CacheKey {
 ///   - pair → affected route cache keys
 ///   - pair → child pairs (pairs that depend on this pair)
 ///   - pair → parent pairs (pairs that contain this pair as intermediate)
+#[derive(Clone, Default)]
 pub struct PairInvalidationGraph {
     /// Maps pair → set of quote cache keys
     pair_to_quotes: Arc<DashMap<Pair, HashSet<String>>>,
@@ -138,7 +139,7 @@ impl PairInvalidationGraph {
             .or_default()
             .insert(key);
     }
-
+ 
     /// Register a route cache key for a pair
     pub fn register_route(&self, pair: &Pair, cache_key: impl Into<String>) {
         let key = cache_key.into();

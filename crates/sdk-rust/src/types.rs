@@ -80,6 +80,9 @@ pub struct ApiV2Info {
     #[serde(default)]
     pub bridge_settlement_executable: bool,
     pub supported_chain_namespaces: Vec<String>,
+    /// Advertised CCTP corridors (empty until backend health gates execution).
+    #[serde(default)]
+    pub supported_corridors: Vec<SupportedCorridor>,
 }
 
 /// Response from `POST /api/v2/assets/canonicalize` (`data` payload).
@@ -242,10 +245,38 @@ pub struct QuoteResponse {
 /// Response from `POST /api/v1/batch/quote`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchQuoteResponse {
-    /// Array of quotes in the same order as requested.
-    pub quotes: Vec<QuoteResponse>,
-    /// Total number of quotes successfully fetched.
+    /// Results in the same order as the request items.
+    pub results: Vec<BatchQuoteItemResult>,
+    /// Number of items that succeeded.
+    pub items_succeeded: usize,
+    /// Number of items that failed (per-item errors, not a batch-level failure).
+    pub items_failed: usize,
+    /// Total items in the batch.
     pub total: usize,
+    /// Unix timestamp (ms) of the shared market snapshot used for all items.
+    pub snapshot_timestamp: i64,
+}
+
+/// Result for a single item in a [`BatchQuoteResponse`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchQuoteItemResult {
+    /// Zero-based index of this item in the original request.
+    pub index: usize,
+    /// The quote, present when `status == "ok"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<QuoteResponse>,
+    /// Per-item error, present when `status == "error"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<BatchItemError>,
+    /// `"ok"` or `"error"`.
+    pub status: String,
+}
+
+/// Machine-readable per-item batch error.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchItemError {
+    pub code: String,
+    pub message: String,
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
@@ -610,6 +641,266 @@ pub struct ValidateIntentResponse {
     pub amount: String,
     /// Intent type.
     pub r#type: String,
+}
+
+// ── CCTP bridge (v2, additive, flag-gated) ─────────────────────────────────────
+// Mirrors `crates/api/src/models/v2_cctp.rs` and `docs/api/cctp-v2-contract.md`.
+// Execution is fail-closed behind `CCTP_ENABLED` (backend returns
+// `503 cctp_not_enabled` until explicitly enabled) — unchanged by this SDK.
+
+/// Provider identifier for Circle CCTP v2.
+pub const CCTP_PROVIDER_ID: &str = "circle-cctp";
+
+/// Documented testnet corridor id (metadata only; not executable by default).
+pub const CCTP_TESTNET_CORRIDOR_ID: &str = "circle-cctp:usdc:stellar-testnet:ethereum-sepolia";
+
+/// Header carrying the one-time transfer-mutation bearer token from
+/// [`CctpQuoteResponse::access_token`].
+pub const CCTP_TRANSFER_ACCESS_HEADER: &str = "x-cctp-transfer-access";
+
+/// Header for idempotent replay of `POST /api/v2/bridge/cctp/quote`.
+pub const CCTP_IDEMPOTENCY_HEADER: &str = "idempotency-key";
+
+/// Bridge transfer direction for the Stellar <-> EVM corridor.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CctpDirection {
+    StellarToEvm,
+    EvmToStellar,
+}
+
+/// CCTP finality mode (`standard` = 2000, `fast` = 1000).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CctpFinality {
+    Standard,
+    Fast,
+}
+
+/// Saga lifecycle for a CCTP transfer (distinct from HTTP error codes).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CctpTransferStatus {
+    Created,
+    BurnPrepared,
+    BurnSubmitted,
+    AwaitingAttestation,
+    AttestationReady,
+    MintPrepared,
+    MintSubmitted,
+    Completed,
+    AttestationFailed,
+    MintFailedRetryable,
+    Cancelled,
+    ProviderKilled,
+}
+
+/// Advertised corridor capability (empty by default until backend health gates execution).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SupportedCorridor {
+    pub corridor_id: String,
+    pub provider: String,
+    pub direction: CctpDirection,
+    pub source_chain_id: String,
+    pub destination_chain_id: String,
+    pub source_asset: ChainAsset,
+    pub destination_asset: ChainAsset,
+    /// Always `false` until bridge settlement exists.
+    pub executable: bool,
+}
+
+/// Runtime fee quote fields — no invented fixed fees.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpFeeQuote {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fee: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination_fee: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_fee: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_asset: Option<ChainAsset>,
+}
+
+/// Prepared wallet payload returned by prepare-burn / prepare-mint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PreparedWalletPayload {
+    StellarXdr {
+        network_passphrase: String,
+        xdr_envelope: String,
+        /// Optional signing account (G) — set for trustline ChangeTrust payloads.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+    },
+    EvmTransaction {
+        chain_id: String,
+        to: String,
+        data: String,
+        value: String,
+    },
+}
+
+/// Typed status/error details on transfer polling responses.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpStatusDetails {
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retryable: Option<bool>,
+}
+
+/// `POST /api/v2/bridge/cctp/quote` request body.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpQuoteRequest {
+    pub corridor_id: String,
+    pub provider: String,
+    pub direction: CctpDirection,
+    pub source_chain_id: String,
+    pub destination_chain_id: String,
+    pub source_asset: ChainAsset,
+    pub destination_asset: ChainAsset,
+    /// Decimal string amount (never a float).
+    pub amount: String,
+    /// Destination recipient: EVM `0x` address for `stellar_to_evm`, or Stellar
+    /// G/M strkey for `evm_to_stellar`.
+    pub recipient: String,
+    /// Optional source sender: Stellar G-address when burning from Stellar,
+    /// EVM address when burning from EVM.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// Stellar G-address fee-payer/submitter for `evm_to_stellar` mint
+    /// preparation (distinct from `recipient`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mint_submitter: Option<String>,
+    pub finality: CctpFinality,
+}
+
+/// `POST /api/v2/bridge/cctp/quote` success response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpQuoteResponse {
+    pub transfer_id: String,
+    pub corridor_id: String,
+    pub provider: String,
+    pub direction: CctpDirection,
+    pub source_amount: String,
+    pub destination_amount: String,
+    pub fee_quote: CctpFeeQuote,
+    pub expires_at: i64,
+    pub finality: CctpFinality,
+    /// One-time bearer capability for transfer mutations/status (returned
+    /// only at quote creation). Send as [`CCTP_TRANSFER_ACCESS_HEADER`] on
+    /// later calls.
+    pub access_token: String,
+}
+
+/// `GET /api/v2/bridge/cctp/{transfer_id}` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpTransferStatusResponse {
+    pub transfer_id: String,
+    pub corridor_id: String,
+    pub provider: String,
+    pub direction: CctpDirection,
+    pub status: CctpTransferStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_tx_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination_tx_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_reference_id: Option<String>,
+    pub retryable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<CctpStatusDetails>,
+    /// Unix seconds (UTC) until re-attest may be requested again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reattest_cooldown_until: Option<i64>,
+}
+
+/// `POST /api/v2/bridge/cctp/{transfer_id}/prepare-burn` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpPrepareBurnResponse {
+    pub transfer_id: String,
+    pub status: CctpTransferStatus,
+    pub payload: PreparedWalletPayload,
+    pub expires_at: i64,
+    /// When true, the wallet must submit an approval tx before requesting a
+    /// new burn payload.
+    #[serde(default)]
+    pub approval_required: bool,
+}
+
+/// Burn submit accepts only an on-chain tx hash acknowledgement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpSubmitBurnRequest {
+    pub tx_hash: String,
+}
+
+/// `POST /api/v2/bridge/cctp/{transfer_id}/submit-burn` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpSubmitBurnResponse {
+    pub transfer_id: String,
+    pub status: CctpTransferStatus,
+    pub source_tx_hash: String,
+}
+
+/// `POST /api/v2/bridge/cctp/{transfer_id}/prepare-mint` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpPrepareMintResponse {
+    pub transfer_id: String,
+    pub status: CctpTransferStatus,
+    pub payload: PreparedWalletPayload,
+    pub expires_at: i64,
+    /// True when the wallet must submit a USDC `ChangeTrust` before
+    /// `mint_and_forward`.
+    #[serde(default)]
+    pub trustline_required: bool,
+}
+
+/// Mint submit accepts only an on-chain tx hash acknowledgement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpSubmitMintRequest {
+    pub tx_hash: String,
+}
+
+/// `POST /api/v2/bridge/cctp/{transfer_id}/submit-mint` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpSubmitMintResponse {
+    pub transfer_id: String,
+    pub status: CctpTransferStatus,
+    pub destination_tx_hash: String,
+}
+
+/// `POST /api/v2/bridge/cctp/{transfer_id}/reattest` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CctpReattestResponse {
+    pub transfer_id: String,
+    pub status: CctpTransferStatus,
+    pub retryable: bool,
+}
+
+// ── Asset metadata ────────────────────────────────────────────────────────────
+
+/// Response from `GET /api/v1/assets/{code}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetMetadataResponse {
+    /// Asset code, e.g. `XLM` or `USDC`.
+    pub code: String,
+    /// Issuing account G-address. Absent for the native asset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    /// Number of decimal places the asset is denominated in.
+    pub decimals: i16,
+    /// Stellar asset type, e.g. `native` or `credit_alphanum4`.
+    pub asset_type: String,
+    /// Human-readable name, when the issuer publishes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Icon URL, when the issuer publishes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+    /// Home domain of the issuer, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 // ── Internal error response ───────────────────────────────────────────────────

@@ -242,6 +242,7 @@ const EXPECTED_DEFAULTS: Record<FlagName, boolean> = {
   advanced_slippage: false,
   analytics: false,
   ai_agent: false,
+  card: false,
 };
 
 describe("defaultFlagValue — exhaustive FlagName contract", () => {
@@ -258,9 +259,11 @@ describe("defaultFlagValue — exhaustive FlagName contract", () => {
     delete process.env.NEXT_PUBLIC_FEATURE_ANALYTICS;
     delete process.env.NEXT_PUBLIC_AI_AGENT;
     delete process.env.NEXT_PUBLIC_FLAG_ADVANCED_SLIPPAGE;
+    delete process.env.NEXT_PUBLIC_FLAG_CARD;
+    delete process.env.NEXT_PUBLIC_CARD_ENABLED;
     // Clear any window overrides left by other tests.
     if (typeof window !== "undefined") {
-      delete (window as Record<string, unknown>).__STELLAR_ROUTE_FLAGS__;
+      delete (window as unknown as Record<string, unknown>).__STELLAR_ROUTE_FLAGS__;
     }
   });
 

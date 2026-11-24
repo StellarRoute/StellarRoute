@@ -14,14 +14,11 @@ import { useBrowserNotifications } from './useBrowserNotifications';
 const STORAGE_KEY = 'stellarroute.settings.browserNotifications';
 
 function installNotificationMock(permission: NotificationPermission = 'granted') {
-  const mock = vi.fn();
-  Object.defineProperty(mock, 'permission', {
-    value: permission,
-    configurable: true,
-    writable: true,
+  const mock = Object.assign(vi.fn(), {
+    permission,
+    requestPermission: vi.fn().mockResolvedValue(permission),
   });
-  mock.requestPermission = vi.fn().mockResolvedValue(permission);
-  (window as Record<string, unknown>).Notification = mock;
+  (window as unknown as Record<string, unknown>).Notification = mock;
   return mock;
 }
 
@@ -30,7 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (window as Record<string, unknown>).Notification;
+  delete (window as unknown as Record<string, unknown>).Notification;
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -72,7 +69,7 @@ describe('Property 7: Preference persistence round-trip', () => {
         expect(result.current.browserNotifications).toBe(false);
 
         unmount();
-        delete (window as Record<string, unknown>).Notification;
+        delete (window as unknown as Record<string, unknown>).Notification;
         localStorage.clear();
       }),
       { numRuns: 20 }, // fewer runs since each involves async React rendering
@@ -97,7 +94,7 @@ describe('Property 7: Preference persistence round-trip', () => {
         expect(result.current.browserNotifications).toBe(value);
 
         unmount();
-        delete (window as Record<string, unknown>).Notification;
+        delete (window as unknown as Record<string, unknown>).Notification;
         localStorage.clear();
       }),
       { numRuns: 20 },

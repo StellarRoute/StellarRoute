@@ -14,6 +14,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, instrument, warn};
 
+/// Result of a cache lookup distinguishing miss from backend failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheLookupResult {
+    Hit,
+    Miss,
+    Unavailable,
+}
+
 pub use invalidation::{CacheInvalidationManager, LiquidityUpdateEvent};
 
 pub use adaptive_ttl::{
@@ -209,6 +217,30 @@ impl CacheManager {
         }
     }
 
+    /// Returns true when a cache write failed due to Redis unavailability.
+    pub async fn set_json_checked(
+        &mut self,
+        key: &str,
+        json: &str,
+        ttl: Duration,
+    ) -> Result<bool, RedisError> {
+        match self
+            .client
+            .set_ex::<_, _, ()>(key, json, ttl.as_secs())
+            .await
+        {
+            Ok(()) => {
+                debug!("Cached raw JSON key: {} with TTL: {:?}", key, ttl);
+                Ok(true)
+            }
+            Err(e) if is_unavailable_error(&e) => {
+                warn!("Redis unavailable during cache store for {}: {}", key, e);
+                Ok(false)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Set a cached value with TTL
     #[instrument(skip(self, value), fields(cache.ttl_ms = ttl.as_millis() as u64))]
     pub async fn set<T: Serialize>(
@@ -377,6 +409,13 @@ impl CacheManager {
             }
         }
     }
+}
+
+fn is_unavailable_error(err: &RedisError) -> bool {
+    matches!(
+        err.kind(),
+        redis::ErrorKind::IoError | redis::ErrorKind::ExtensionError
+    )
 }
 
 /// SingleFlight manager to prevent cache stampedes

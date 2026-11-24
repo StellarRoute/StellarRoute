@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 use stellarroute_sdk::{
-    ApiErrorCode, ClientBuilder, DryRunHop, QuoteRequest, QuoteType, RoutesRequest, SdkError,
-    SimulateRouteRequest,
+    ApiErrorCode, BatchQuoteRequest, ClientBuilder, DryRunHop, QuoteRequest, QuoteRequestItem,
+    QuoteType, RoutesRequest, SdkError, SimulateRouteRequest,
 };
 use wiremock::{
     matchers::{method, path, query_param},
@@ -50,6 +50,39 @@ async fn health_returns_healthy_response() {
             "timestamp": "2026-03-25T12:00:00Z",
             "version": "0.1.0",
             "components": { "database": "healthy", "redis": "healthy" }
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server).health().await.unwrap();
+    assert!(resp.is_healthy());
+    assert_eq!(resp.version, "0.1.0");
+    assert_eq!(
+        resp.components.get("database").map(String::as_str),
+        Some("healthy")
+    );
+}
+
+#[tokio::test]
+async fn health_deserializes_the_servers_actual_envelope_shape() {
+    // The live API wraps `/health` in the same `{ v, timestamp, request_id,
+    // data }` envelope every other endpoint uses (see
+    // `crates/api/src/routes/health.rs`'s `ApiResponse::new(body, ..)`),
+    // even though the OpenAPI schema documents a flat `HealthResponse` body.
+    // The client must accept both shapes.
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "v": 1,
+            "timestamp": 1_700_000_000_000i64,
+            "request_id": "req-1",
+            "data": {
+                "status": "healthy",
+                "timestamp": "2026-03-25T12:00:00Z",
+                "version": "0.1.0",
+                "components": { "database": "healthy", "redis": "healthy" }
+            }
         })))
         .mount(&server)
         .await;
@@ -109,6 +142,174 @@ async fn pairs_returns_typed_list() {
     assert_eq!(resp.total, 1);
     assert_eq!(resp.pairs[0].base, "XLM");
     assert_eq!(resp.pairs[0].offer_count, 42);
+}
+
+#[tokio::test]
+async fn pairs_sends_get_with_no_query_parameters() {
+    let server = mock_server().await;
+    // `pairs()` takes no arguments, so the request must carry no query
+    // string at all; a mock matching only the bare path (and failing to
+    // match if any query_param is appended) pins this down.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .and(wiremock::matchers::query_param_is_missing("limit"))
+        .and(wiremock::matchers::query_param_is_missing("cursor"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [],
+            "total": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server).pairs().await.unwrap();
+    assert_eq!(resp.total, 0);
+}
+
+#[tokio::test]
+async fn pairs_deserializes_mixed_asset_types_and_last_updated() {
+    let server = mock_server().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/pairs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pairs": [
+                {
+                    "base": "XLM",
+                    "counter": "USDC",
+                    "base_asset": "native",
+                    "counter_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    "offer_count": 7,
+                    "last_updated": "2026-03-25T11:59:00Z"
+                },
+                {
+                    "base": "USDC",
+                    "counter": "LONGASSETCODE12",
+                    "base_asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    "counter_asset": "LONGASSETCODE12:GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBW7",
+                    "offer_count": 0,
+                    "last_updated": null
+                }
+            ],
+            "total": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client(&server).pairs().await.unwrap();
+
+    assert_eq!(resp.total, 2);
+    assert_eq!(resp.pairs.len(), 2);
+    assert_eq!(resp.pairs[0].base_asset, "native");
+    assert!(resp.pairs[0].last_updated.is_some());
+    assert_eq!(resp.pairs[1].counter, "LONGASSETCODE12");
+    assert_eq!(resp.pairs[1].offer_count, 0);
+    assert!(resp.pairs[1].last_updated.is_none());
+}
+
+// ── Batch quote ───────────────────────────────────────────────────────────────
+
+fn sample_quote_json(quote: &str, price: &str) -> serde_json::Value {
+    serde_json::json!({
+        "base_asset": { "asset_type": "native", "asset_code": null, "asset_issuer": null },
+        "quote_asset": {
+            "asset_type": "credit_alphanum4",
+            "asset_code": quote,
+            "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        },
+        "amount": "1.0000000",
+        "price": price,
+        "total": price,
+        "quote_type": "sell",
+        "path": [],
+        "timestamp": 1_740_312_000,
+    })
+}
+
+#[tokio::test]
+async fn batch_quote_unwraps_envelope_and_deserializes_per_item_results() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/batch/quote"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": {
+                "results": [
+                    {
+                        "index": 0,
+                        "status": "ok",
+                        "quote": sample_quote_json("USDC", "0.1050000"),
+                    },
+                    {
+                        "index": 1,
+                        "status": "error",
+                        "error": { "code": "no_route", "message": "No route found" },
+                    }
+                ],
+                "items_succeeded": 1,
+                "items_failed": 1,
+                "total": 2,
+                "snapshot_timestamp": 1_740_312_000_000i64,
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let request = BatchQuoteRequest {
+        quotes: vec![
+            QuoteRequestItem {
+                base: "native".to_string(),
+                quote: "USDC".to_string(),
+                amount: None,
+                slippage_bps: None,
+                quote_type: None,
+            },
+            QuoteRequestItem {
+                base: "native".to_string(),
+                quote: "NOROUTE".to_string(),
+                amount: None,
+                slippage_bps: None,
+                quote_type: None,
+            },
+        ],
+    };
+
+    let resp = client(&server).batch_quote(request).await.unwrap();
+
+    assert_eq!(resp.total, 2);
+    assert_eq!(resp.items_succeeded, 1);
+    assert_eq!(resp.items_failed, 1);
+    assert_eq!(resp.results.len(), 2);
+
+    assert_eq!(resp.results[0].index, 0);
+    assert_eq!(resp.results[0].status, "ok");
+    assert_eq!(resp.results[0].quote.as_ref().unwrap().price, "0.1050000");
+    assert!(resp.results[0].error.is_none());
+
+    assert_eq!(resp.results[1].index, 1);
+    assert_eq!(resp.results[1].status, "error");
+    assert!(resp.results[1].quote.is_none());
+    let err = resp.results[1].error.as_ref().unwrap();
+    assert_eq!(err.code, "no_route");
+    assert_eq!(err.message, "No route found");
+}
+
+#[tokio::test]
+async fn batch_quote_validation_error_maps_to_typed_error() {
+    let server = mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/batch/quote"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "validation_error",
+            "message": "Batch request must contain at least 1 item"
+        })))
+        .mount(&server)
+        .await;
+
+    let err = client(&server)
+        .batch_quote(BatchQuoteRequest { quotes: vec![] })
+        .await
+        .unwrap_err();
+
+    assert!(err.is_validation_error());
+    assert_eq!(err.status_code(), Some(400));
 }
 
 // ── Orderbook ─────────────────────────────────────────────────────────────────
@@ -955,7 +1156,7 @@ async fn pairs_server_error_maps_to_internal_error() {
     Mock::given(method("GET"))
         .and(path("/api/v1/pairs"))
         .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
-            "error": "service_unavailable",
+            "error": "internal_error",
             "message": "Pairs service maintenance"
         })))
         .mount(&server)

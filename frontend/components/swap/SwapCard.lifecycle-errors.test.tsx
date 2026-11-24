@@ -127,7 +127,7 @@ vi.mock('@/hooks/useApi', async (importOriginal) => {
 
 vi.mock('@/components/providers/wallet-provider', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require('react');
+  const React = require('react') as typeof import('react');
   return {
     WalletProvider: ({ children }: { children: React.ReactNode }) => (
       <>{children}</>
@@ -297,7 +297,7 @@ describe('SwapCard flag-loading fail-closed', () => {
         });
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -354,7 +354,7 @@ describe('SwapCard lifecycle → curated API errors (real_xdr)', () => {
         });
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
   });
 
   afterEach(() => {

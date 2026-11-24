@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse};
+use crate::models::{AssetInfo, OrderbookLevel, OrderbookResponse, OrderbookSummary};
 
 const DEFAULT_COOLDOWN_SECONDS: u64 = 300;
 const DEFAULT_RETRY_DELAY_MS: u64 = 2000;
@@ -384,6 +384,7 @@ fn timestamp_from_orderbook(orderbook: &OrderbookResponse) -> Option<DateTime<Ut
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::OrderbookSummary;
 
     use crate::models::OrderbookSummary;
 

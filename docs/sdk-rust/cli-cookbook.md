@@ -21,9 +21,11 @@ cargo run -p stellarroute-sdk --bin stellarroute --
 |---|---|---|
 | `--api-url <URL>` | `http://127.0.0.1:3000` | Base URL for the StellarRoute API |
 | `--output <human\|table\|json>` | `human` | Output format |
+| `--no-color` | off | Disable ANSI color in `table` output |
 
 `STELLARROUTE_API_URL` is an alternative environment variable that sets the API
-base URL, equivalent to `--api-url`.
+base URL, equivalent to `--api-url`. The `NO_COLOR` environment variable is
+equivalent to passing `--no-color`.
 
 ## health
 

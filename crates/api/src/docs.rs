@@ -1,6 +1,25 @@
 //! OpenAPI documentation
 
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme};
+use utoipa::Modify;
 use utoipa::OpenApi;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "admin_token",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("x-admin-token"))),
+            );
+            components.add_security_scheme(
+                "admin_bearer",
+                SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer)),
+            );
+        }
+    }
+}
 
 use crate::models::{
     AssetInfo, AssetMetadataBulkResponse, AssetMetadataResponse, BatchItemError,
@@ -31,6 +50,7 @@ use crate::models::{
         crate::routes::quote::get_route,
         crate::routes::route_graph_version::get_route_graph_version,
         crate::routes::admin::flush_cache,
+        crate::routes::admin_cache::flush_cache,
         crate::routes::quote::get_batch_quotes,
         crate::routes::integrator_webhooks::upsert_quote_expiration_webhook,
         crate::routes::kill_switch::get_kill_switch,
@@ -54,6 +74,7 @@ use crate::models::{
         crate::routes::agent::agent_intents_validate,
     ),
     components(schemas(
+        crate::routes::admin_cache::CacheFlushRequest,
         HealthResponse,
         DependenciesHealthResponse,
         CacheMetricsResponse,
@@ -165,5 +186,6 @@ use crate::models::{
             name = "MIT",
         ),
     ),
+    modifiers(&SecurityAddon)
 )]
 pub struct ApiDoc;

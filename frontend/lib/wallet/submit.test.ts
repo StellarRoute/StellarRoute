@@ -51,7 +51,7 @@ describe('submitToHorizon', () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () => ({ hash: 'abc123', ledger: 42 }),
-    } as Response);
+    } as unknown as Response);
 
     const result = await submitToHorizon('signed_xdr', 'testnet');
     expect(result.hash).toBe('abc123');
@@ -65,7 +65,7 @@ describe('submitToHorizon', () => {
       json: async () => ({
         extras: { result_codes: { transaction: 'tx_bad_auth' } },
       }),
-    } as Response);
+    } as unknown as Response);
 
     await expect(submitToHorizon('bad_xdr', 'testnet')).rejects.toThrow(
       'Transaction failed: tx_bad_auth'
@@ -138,7 +138,7 @@ describe('submitToHorizon', () => {
       ok: false,
       status: 503,
       json: async () => { throw new Error('not json'); },
-    } as Response);
+    } as unknown as Response);
 
     await expect(submitToHorizon('xdr', 'testnet')).rejects.toThrow('HTTP 503');
   });

@@ -10,19 +10,16 @@ import { useBrowserNotifications } from './useBrowserNotifications';
 function installNotificationMock(
   permission: NotificationPermission = 'default',
 ) {
-  const mock = vi.fn();
-  Object.defineProperty(mock, 'permission', {
-    value: permission,
-    configurable: true,
-    writable: true,
+  const mock = Object.assign(vi.fn(), {
+    permission,
+    requestPermission: vi.fn().mockResolvedValue(permission),
   });
-  mock.requestPermission = vi.fn().mockResolvedValue(permission);
-  (window as Record<string, unknown>).Notification = mock;
+  (window as unknown as Record<string, unknown>).Notification = mock;
   return mock;
 }
 
 function removeNotificationMock() {
-  delete (window as Record<string, unknown>).Notification;
+  delete (window as unknown as Record<string, unknown>).Notification;
 }
 
 // ---------------------------------------------------------------------------

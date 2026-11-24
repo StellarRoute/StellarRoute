@@ -1,5 +1,6 @@
 export type AgentTelemetryEventName =
   | 'agent_intent_parsed'
+  | 'agent_validation_failed'
   | 'agent_confirm'
   | 'agent_cancel';
 

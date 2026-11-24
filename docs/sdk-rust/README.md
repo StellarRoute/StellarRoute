@@ -194,6 +194,83 @@ Notes:
 - `prepare_swap` surfaces `ApiErrorCode::NoRoute` when the path went stale between
   `routes` and `prepare`, and `ApiErrorCode::ValidationError` for a malformed request.
 
+### Batch quotes
+
+```rust
+use stellarroute_sdk::{BatchQuoteRequest, QuoteRequestItem};
+
+let resp = client
+    .batch_quote(BatchQuoteRequest {
+        quotes: vec![QuoteRequestItem {
+            base: "native".to_string(),
+            quote: "USDC".to_string(),
+            amount: None,
+            slippage_bps: None,
+            quote_type: None,
+        }],
+    })
+    .await?;
+
+for item in &resp.results {
+    match &item.quote {
+        Some(quote) => println!("item {}: price {}", item.index, quote.price),
+        None => println!("item {} failed: {:?}", item.index, item.error),
+    }
+}
+```
+
+`batch_quote` only fails the whole call for batch-level problems (empty batch, too
+many items, malformed body) — those map to `ApiErrorCode::ValidationError`. Per-item
+failures (e.g. one pair has no route) are reported in `BatchQuoteResponse::results`
+alongside successful items, so check each result's `status`/`quote`/`error` rather
+than relying on the call failing.
+
+### CCTP bridge (preview, disabled by default)
+
+Mirrors the `/api/v2/bridge/cctp/*` contract documented in
+[`docs/api/cctp-v2-contract.md`](../api/cctp-v2-contract.md). Execution is
+fail-closed behind `CCTP_ENABLED` on the server — these methods exist so the
+SDK's types match the wire contract, not to change that default.
+
+```rust
+use stellarroute_sdk::{CctpDirection, CctpFinality, CctpQuoteRequest, CCTP_TESTNET_CORRIDOR_ID};
+
+// `source_asset`/`destination_asset` are the documented testnet corridor's
+// `ChainAsset` values — see `docs/api/cctp-v2-contract.md`.
+let quote = client
+    .cctp_quote(
+        CctpQuoteRequest {
+            corridor_id: CCTP_TESTNET_CORRIDOR_ID.to_string(),
+            provider: "circle-cctp".to_string(),
+            direction: CctpDirection::StellarToEvm,
+            source_chain_id: "stellar:testnet".to_string(),
+            destination_chain_id: "eip155:11155111".to_string(),
+            source_asset: stellar_testnet_usdc(),
+            destination_asset: sepolia_usdc(),
+            amount: "100".to_string(),
+            recipient: "0x...".to_string(),
+            sender: None,
+            mint_submitter: None,
+            finality: CctpFinality::Standard,
+        },
+        Some("idem-key-1"), // optional Idempotency-Key for safe retries
+    )
+    .await?;
+
+// Subsequent calls need the one-time access token from the quote.
+let status = client
+    .cctp_get_transfer(&quote.transfer_id, &quote.access_token)
+    .await?;
+```
+
+- The second `cctp_quote` argument is an optional `Idempotency-Key`; a byte-identical
+  replay with the same key returns the cached response.
+- `cctp_get_transfer`, `cctp_prepare_burn`, `cctp_submit_burn`, `cctp_prepare_mint`,
+  `cctp_submit_mint`, and `cctp_reattest` all require the `access_token` returned by
+  `cctp_quote`, sent as the `x-cctp-transfer-access` header.
+- Until the server enables CCTP, every call returns `SdkError::Api` with HTTP 503
+  (`cctp_not_enabled`).
+
 ## Error handling patterns
 
 The SDK returns `stellarroute_sdk::Result<T>` and `stellarroute_sdk::SdkError`.

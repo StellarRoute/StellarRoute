@@ -125,6 +125,126 @@ import { CardConfirm } from '@/app/card';
 
 ---
 
+### CardBalanceAlert (CARD-45)
+**Location**: `components/card/CardBalanceAlert.tsx`
+
+Non-intrusive low balance warning rendered below `CardFace` on the card page. When available USDC is strictly below the alert threshold (default 25.00 USDC, user-configurable via CARD-52 preferences), it shows a bridge top-up call to action so the cardholder funds the card before a point-of-sale decline.
+
+**Usage**:
+```tsx
+import { CardBalanceAlert, cardBalanceAlertDismissKey } from '@/components/card';
+
+<CardBalanceAlert
+  availableUsdc={18.4}
+  thresholdUsdc={25}
+  recommendedUsdc={50}
+  dismissKey={cardBalanceAlertDismissKey(address, 25)}
+  onTopUp={(amount) => openTopUpModal(amount)}
+/>
+```
+
+**Props**:
+- `availableUsdc` (number | null): Available USDC; nothing renders while unknown
+- `thresholdUsdc` (number, optional): Warn strictly below this (default 25.00)
+- `recommendedUsdc` (number, optional): Amount handed to `onTopUp` (default 50.00)
+- `dismissKey` (string, optional): Session-scope key (address + threshold) for dismissal
+- `onTopUp` (function, optional): Receives the recommended amount; opens the top-up flow
+- `onDismiss` (function, optional): Called when the banner is dismissed
+
+**Features**:
+- Boundary rule: renders at 24.99 USDC, not at 25.00 USDC
+- "Top Up Now" pre-fills the card top-up modal with the recommended amount
+- Dismissal is sessionStorage-only — it never survives a reload and never hits localStorage
+- Amber status banner (`role="status"`, `aria-live="polite"`), not a hard block
+- No backend calls, no signing; StellarRoute holds no keys or card PANs
+
+---
+
+### CardTopUpModal (CARD-41, extended by CARD-47)
+**Location**: `components/card/CardTopUpModal.tsx`
+
+The bridge top-up modal. Funds the card from an EVM chain, and lets the cardholder choose which Circle CCTP source network the USDC comes from instead of being locked to one default chain.
+
+**Usage**:
+```tsx
+import { CardTopUpModal } from '@/components/card';
+
+<CardTopUpModal
+  open={topUpOpen}
+  amount={topUpAmount}
+  error={topUpError}
+  onAmountChange={setTopUpAmount}
+  onOpenChange={setTopUpOpen}
+  onConfirm={handleConfirmTopUp}
+  onSourceNetworkChange={(network) => setSourceDomain(network.circleDomain)}
+/>
+```
+
+**Props**:
+- `open` (boolean): Dialog visibility, owned by the page
+- `amount` (string): Raw amount-field text
+- `error` (string | null): Amount validation error owned by the page
+- `onAmountChange` (function): Receives raw field input
+- `onOpenChange` (function): Dialog close handler
+- `onConfirm` (function): Validated hand-off back to the page
+- `sourceAddress` (string, optional): EVM address to read balances for; falls back to a passive read of the connected EVM session
+- `networks` (readonly CardCctpSourceNetwork[], optional): Override the selectable catalogue
+- `evmAdapterId` (string, optional): Adapter that receives the network-switch request (default `evm-injected`)
+- `onSourceNetworkChange` (function, optional): Hands the chosen network — including `circleDomain`, the CCTP source domain a burn is initiated against — to the bridge flow that runs `useCctpSaga`
+- `className` (string, optional): Additional CSS classes
+
+**Features**:
+- Picking a network calls `wallet_switchEthereumChain` through the existing EVM adapter (with the standard 4902 add-chain fallback)
+- A declined switch reverts the selector to the previously active chain and says so
+- Source USDC balance and gas re-query on every switch, straight from the connected provider (`eth_call balanceOf`, `eth_getBalance`, `eth_gasPrice`)
+- Reads verify `eth_chainId` first, so a result can never be displayed against the wrong chain
+- Bridge href is unchanged while the default network is selected; a non-default choice adds `source_chain` / `source_domain`
+- Nothing is signed or submitted on this page; StellarRoute holds no keys and no card PANs
+
+---
+
+### CardNetworkSelect (CARD-47)
+**Location**: `components/card/CardNetworkSelect.tsx`
+
+The CCTP source-network dropdown used inside `CardTopUpModal`. Presentational and fully controlled — it dispatches the chosen network and never touches a wallet.
+
+**Usage**:
+```tsx
+import { CardNetworkSelect, CARD_CCTP_SOURCE_NETWORKS } from '@/components/card';
+
+<CardNetworkSelect
+  value={selectedId}
+  onNetworkChange={(network) => switchWallet(network)}
+  switching={isSwitching}
+/>
+```
+
+**Props**:
+- `value` (string): Active source network id
+- `onNetworkChange` (function): Receives the whole `CardCctpSourceNetwork`
+- `networks` (readonly CardCctpSourceNetwork[], optional): Catalogue override
+- `switching` (boolean, optional): Locks the control and reports the in-flight switch
+- `disabled` (boolean, optional): Disable the control
+- `className` (string, optional): Additional CSS classes
+
+**Shipped catalogue** (`CARD_CCTP_SOURCE_NETWORKS`):
+
+| Network | CAIP-2 | CCTP domain | Executable today |
+| --- | --- | --- | --- |
+| Ethereum Sepolia | `eip155:11155111` | 0 | yes |
+| Base Sepolia | `eip155:84532` | 16 | no |
+| Arbitrum Sepolia | `eip155:421614` | 18 | no |
+
+Only Ethereum Sepolia can burn right now: `crates/api/src/cctp/config.rs` defines just `SEPOLIA_DOMAIN` (0) and `STELLAR_TESTNET_DOMAIN` (27), and `frontend/lib/cctp/caip-evm.ts` rejects non-Sepolia chain ids. Base and Arbitrum Sepolia are selectable so a cardholder's wallet lands on the right chain, and the UI states plainly that the corridor is not wired up instead of failing a quote.
+
+**Features**:
+- Native `<select>` for dependable keyboard and screen-reader behaviour
+- Shows the selected network's CCTP domain id
+- Options outside the `ChainDisplayId` union are labelled "corridor not enabled" with a `role="status"` notice
+- `cardCctpSourceNetworkForCaip2` maps a wallet-reported CAIP-2 id back to a listed network
+
+---
+
 ## Design Principles
 
 ### Additive-Only Constraint

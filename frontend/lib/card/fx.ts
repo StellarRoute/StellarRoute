@@ -141,3 +141,215 @@ export function getCardFxQuote(
   return quote;
 }
 
+// ── CARD-10: Indicative USDC → fiat quote ─────────────────────────────────
+//
+// The functions above (computeCardFxQuotes / CardFxSnapshot) produce rate
+// snapshots for the card spend flow. The `quote()` function below is a
+// standalone, additive utility that converts a USDC *amount* into an
+// indicative fiat *amount*. It uses its own dated fixture rate table so the
+// acceptance-criteria rates (e.g. EUR at 0.90) are stable and independent of
+// the drift-based snapshot rates above.
+
+/**
+ * FIAT currency codes supported by the standalone `quote()` function.
+ * Extends the card program's `FiatCurrencyCode` with JPY (required by
+ * CARD-10 acceptance criteria — "JPY rounding has no decimal part").
+ */
+export type FxQuoteCurrency = FiatCurrencyCode | 'JPY';
+
+export interface FxFixtureRate {
+  /** ISO 4217 currency code, e.g. "EUR", "JPY" */
+  currency: string;
+  /** Number of decimal places for the currency (JPY = 0, most = 2) */
+  decimals: number;
+  /** Fixture rate: how many fiat units per 1 USDC */
+  rate: number;
+}
+
+export interface FxQuoteInput {
+  /** USDC amount to convert */
+  usdc: number;
+  /** Target fiat currency code (ISO 4217) */
+  fiat: string;
+}
+
+export interface FxQuoteResult {
+  /** Fiat amount after applying the fixture rate and rounding */
+  fiatAmount: number;
+  /** The fixture rate used (fiat units per 1 USDC) */
+  rate: number;
+  /** Always true — this quote is indicative, not a live rate */
+  indicative: true;
+  /** The fiat currency code */
+  currency: string;
+}
+
+/** Date the fixture rates were set (ISO 8601). */
+export const FX_FIXTURE_DATE = '2026-10-29';
+
+/**
+ * Dated fixture rate table for the standalone `quote()` function: fiat units
+ * per 1 USDC. These are indicative placeholder rates, not live market rates.
+ *
+ * These rates are separate from `FIXTURE_BASE_RATES` above so that changes to
+ * the snapshot drift logic do not affect `quote()` results and vice-versa.
+ */
+export const FX_FIXTURE_RATES: readonly FxFixtureRate[] = [
+  { currency: 'USD', decimals: 2, rate: 1.0 },
+  { currency: 'EUR', decimals: 2, rate: 0.9 },
+  { currency: 'GBP', decimals: 2, rate: 0.78 },
+  { currency: 'JPY', decimals: 0, rate: 149.5 },
+  { currency: 'NGN', decimals: 2, rate: 1580.0 },
+];
+
+const quoteRateMap = new Map<string, FxFixtureRate>(
+  FX_FIXTURE_RATES.map((r) => [r.currency.toUpperCase(), r]),
+);
+
+/**
+ * Round a value to the given number of decimal places, half away from zero.
+ *
+ * Follows the same EPSILON mitigation pattern used in `fees.ts` to avoid
+ * floating-point representation errors.
+ */
+function roundHalfAwayFromZero(value: number, decimals: number): number {
+  const factor = Math.pow(10, decimals);
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+/**
+ * Get the number of decimal places for a currency in the quote fixture table.
+ * Defaults to 2 for currencies not in the table.
+ */
+export function getCurrencyDecimals(currency: string): number {
+  const entry = quoteRateMap.get(currency.toUpperCase());
+  return entry ? entry.decimals : 2;
+}
+
+/**
+ * Get the fixture rate (fiat per 1 USDC) from the quote rate table.
+ * Throws if the currency is not in the quote fixture table.
+ */
+export function getFixtureRate(currency: string): number {
+  const entry = quoteRateMap.get(currency.toUpperCase());
+  if (!entry) {
+    throw new Error(`No fixture FX rate for currency "${currency}".`);
+  }
+  return entry.rate;
+}
+
+/**
+ * Produce an indicative FX quote from USDC to a fiat currency.
+ *
+ * The result always includes `indicative: true` because rates come from a
+ * dated fixture table, not a live market feed. The fiat amount is rounded
+ * to the currency's standard decimal places, half away from zero.
+ *
+ * @throws if `usdc` is not a finite non-negative number
+ * @throws if `fiat` currency is not in the quote fixture table
+ *
+ * @example
+ * quote({ usdc: 10, fiat: 'EUR' })
+ * // → { fiatAmount: 9.00, rate: 0.9, indicative: true, currency: 'EUR' }
+ */
+export function quote({ usdc, fiat }: FxQuoteInput): FxQuoteResult {
+  if (!Number.isFinite(usdc) || usdc < 0) {
+    throw new Error('USDC amount must be a non-negative number.');
+  }
+
+  const entry = quoteRateMap.get(fiat.toUpperCase());
+  if (!entry) {
+    throw new Error(`No fixture FX rate for currency "${fiat}".`);
+  }
+
+  const fiatAmount = roundHalfAwayFromZero(usdc * entry.rate, entry.decimals);
+
+  return {
+    fiatAmount,
+    rate: entry.rate,
+    indicative: true,
+    currency: entry.currency,
+  };
+}
+
+export type CardFxMatrixCurrency = 'EUR' | 'GBP' | 'JPY' | 'CAD';
+
+export const CARD_FX_MATRIX_CURRENCIES: readonly CardFxMatrixCurrency[] = [
+  'EUR',
+  'GBP',
+  'JPY',
+  'CAD',
+];
+
+export const CARD_FX_MATRIX_FIXTURE_DATE = '2026-11-01';
+
+const MATRIX_FIXTURE_RATES: Record<CardFxMatrixCurrency, number> = {
+  EUR: FIXTURE_BASE_RATES.EUR,
+  GBP: FIXTURE_BASE_RATES.GBP,
+  JPY: 151.62,
+  CAD: 1.3874,
+};
+
+const MATRIX_RATE_DECIMALS: Record<CardFxMatrixCurrency, number> = {
+  EUR: 4,
+  GBP: 4,
+  JPY: 2,
+  CAD: 4,
+};
+
+const MATRIX_AMOUNT_DECIMALS: Record<CardFxMatrixCurrency, number> = {
+  EUR: 2,
+  GBP: 2,
+  JPY: 0,
+  CAD: 2,
+};
+
+const MATRIX_FLAGS: Record<CardFxMatrixCurrency, string> = {
+  EUR: '🇪🇺',
+  GBP: '🇬🇧',
+  JPY: '🇯🇵',
+  CAD: '🇨🇦',
+};
+
+export interface CardFxMatrixRow {
+  fiatCurrency: CardFxMatrixCurrency;
+  flag: string;
+  ratePerUsdc: string;
+  convertedAmount: string;
+}
+
+export interface CardFxMatrix {
+  usdcAmount: number;
+  fixtureDate: string;
+  indicative: true;
+  rows: CardFxMatrixRow[];
+}
+
+export interface IndicativeRatesMatrixInput {
+  usdcAmount: number;
+  targetCurrencies?: readonly CardFxMatrixCurrency[];
+}
+
+export function getIndicativeRatesMatrix({
+  usdcAmount,
+  targetCurrencies = CARD_FX_MATRIX_CURRENCIES,
+}: IndicativeRatesMatrixInput): CardFxMatrix {
+  const amount = Number.isFinite(usdcAmount) && usdcAmount > 0 ? usdcAmount : 0;
+
+  return {
+    usdcAmount: amount,
+    fixtureDate: CARD_FX_MATRIX_FIXTURE_DATE,
+    indicative: true,
+    rows: targetCurrencies.map((fiatCurrency) => {
+      const rate = MATRIX_FIXTURE_RATES[fiatCurrency];
+      return {
+        fiatCurrency,
+        flag: MATRIX_FLAGS[fiatCurrency],
+        ratePerUsdc: rate.toFixed(MATRIX_RATE_DECIMALS[fiatCurrency]),
+        convertedAmount: (amount * rate).toFixed(
+          MATRIX_AMOUNT_DECIMALS[fiatCurrency],
+        ),
+      };
+    }),
+  };
+}

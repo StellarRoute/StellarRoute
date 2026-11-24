@@ -208,7 +208,12 @@ const TRADE_PARAMS = {
   fromAsset: 'XLM',
   toAmount: '5',
   toAsset: 'USDC',
+  exchangeRate: '0.5',
+  priceImpact: '0.1',
   minReceived: '4.975 USDC',
+  networkFee: '0.00001 XLM',
+  routePath: [],
+  walletAddress: '',
 };
 
 const I18N_BASE_PROPS = {

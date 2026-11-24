@@ -64,6 +64,7 @@ describe('SessionRecoveryModal', () => {
       deadline: 45,
       fromToken: 'native',
       toToken: 'USDC:GQUOTE',
+      side: 'sell' as const,
       savedAt: Date.now(),
     };
 

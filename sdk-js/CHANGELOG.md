@@ -9,8 +9,15 @@ listed under a **Breaking** heading below.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve per-call headers (including `x-cctp-transfer-access` and `idempotency-key`) across network-error and HTTP-status retries in `StellarRouteClient`, and forward `idempotencyKey` across all CCTP mutation helpers.
+- Honor caller `AbortSignal` cancellation immediately with `StellarRouteApiError` (`code === "aborted"`) without retrying, check pre-aborted signals before `fetch`, and remove `abort` listeners on every settled attempt and backoff wait.
+- Gate automatic `POST` retries on `429` / `5xx` / network errors so non-idempotent `POST` calls only retry when an `Idempotency-Key` header is present (read-only batch/simulation/validation `POST` helpers remain retryable).
+
 ### Added
 
+- `StellarRouteClientOptions.horizonUrl` and `stellarNetwork` for default `confirmSwap` Horizon polling; `DEFAULT_PUBLIC_HORIZON_URL` export.
 - Chain-aware asset foundation (`ChainAsset`, `canonicalizeAssetId`, `looksLikeCaip`).
 - Classic live-swap methods: `prepareSwap`, `submitSwap`, `confirmSwap`, and
   `executeSwap` with required `signTransaction`.
@@ -24,11 +31,16 @@ listed under a **Breaking** heading below.
 - `StellarRouteClientOptions.network` (`'testnet' | 'public'`) and
   `StellarRouteClientOptions.horizonUrl` set the Horizon instance `confirmSwap`
   polls by default; `DEFAULT_PUBLIC_HORIZON_URL` constant.
+- `prepareSwap`'s `options.idempotencyKey`
+- Exported `TESTNET_NETWORK_PASSPHRASE` and `PUBLIC_NETWORK_PASSPHRASE` for `confirmSwap` passphrase matching. sends an `Idempotency-Key` header
+  (`IDEMPOTENCY_KEY_HEADER`), so a retried prepare call can be resent safely
+  with the same key.
 
 ### Fixed
 
 - `confirmSwap` can be cancelled during the wait between polls: aborting
   `options.signal` now rejects right away instead of after `pollIntervalMs`.
+  The same signal is forwarded to the in-flight Horizon `fetch`.
 
 ### Breaking
 
@@ -42,6 +54,9 @@ listed under a **Breaking** heading below.
 - `ExecuteSwapResult` includes `quote_id`, `execution_mode`, `tx_hash`, `status`,
   and optional `min_output`.
 - Non-`classic_path_payment` prepare responses fail closed before signing.
+- `prepareSwap`'s second parameter changed from a bare `signal?: AbortSignal`
+  to `options?: PrepareSwapOptions` (`{ signal?, idempotencyKey? }`). Update
+  call sites that pass a signal positionally to `prepareSwap(params, { signal })`.
 
 ## [0.1.0] — Initial release
 

@@ -53,7 +53,7 @@ const FROZEN_XDR = {
 function singleHopPath() {
   return [
     {
-      from_asset: { asset_type: 'native' as const, asset_code: null, asset_issuer: null },
+      from_asset: { asset_type: 'native' as const },
       to_asset: {
         asset_type: 'credit_alphanum4' as const,
         asset_code: 'USDC',
@@ -69,7 +69,7 @@ function singleHopPath() {
 function twoHopPath() {
   return [
     {
-      from_asset: { asset_type: 'native' as const, asset_code: null, asset_issuer: null },
+      from_asset: { asset_type: 'native' as const },
       to_asset: {
         asset_type: 'credit_alphanum4' as const,
         asset_code: 'yXLM',

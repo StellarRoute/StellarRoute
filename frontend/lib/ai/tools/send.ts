@@ -17,7 +17,6 @@ import {
   Networks,
   BASE_FEE,
   Memo,
-  MemoType,
 } from '@stellar/stellar-base';
 
 // ---------------------------------------------------------------------------
@@ -153,7 +152,7 @@ export function buildMemo(memo: MemoInput): Memo {
       if (memo.value.length > 28) {
         throw new SendPaymentError('invalid_memo', 'Text memo exceeds 28-byte limit');
       }
-      return new Memo(MemoType.memoText(), memo.value);
+      return Memo.text(memo.value);
 
     case 'id':
       if (typeof memo.value !== 'number' && typeof memo.value !== 'string') {
@@ -163,7 +162,7 @@ export function buildMemo(memo: MemoInput): Memo {
       if (isNaN(id) || id < 0 || id > 0xffffffff) {
         throw new SendPaymentError('invalid_memo', 'ID memo must be a 32-bit unsigned integer');
       }
-      return new Memo(MemoType.memoId(), id);
+      return Memo.id(String(id));
 
     case 'hash':
       if (typeof memo.value !== 'string') {
@@ -174,7 +173,7 @@ export function buildMemo(memo: MemoInput): Memo {
         throw new SendPaymentError('invalid_memo', 'Hash memo must be a 32-byte hex string (64 hex characters)');
       }
       const hashBuffer = Buffer.from(memo.value, 'hex');
-      return new Memo(MemoType.memoHash(), hashBuffer);
+      return Memo.hash(hashBuffer);
 
     case 'return':
       if (typeof memo.value !== 'string') {
@@ -185,7 +184,7 @@ export function buildMemo(memo: MemoInput): Memo {
         throw new SendPaymentError('invalid_memo', 'Return memo must be a 32-byte hex string (64 hex characters)');
       }
       const returnBuffer = Buffer.from(memo.value, 'hex');
-      return new Memo(MemoType.memoReturn(), returnBuffer);
+      return Memo.return(returnBuffer.toString('hex'));
 
     default:
       return Memo.none();

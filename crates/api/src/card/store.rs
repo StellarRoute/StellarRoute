@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 /// Authorization lifecycle states used by the recording path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthorizationState {
     Pending,
@@ -28,7 +28,7 @@ pub struct ApplicationRecord {
     pub status: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuthorizationRecord {
     pub authorization_id: String,
     pub state: AuthorizationState,
@@ -60,17 +60,19 @@ pub enum StoreError {
     AlreadyApproved,
     #[error("tx hash already used for another authorization")]
     TxAlreadyUsed,
-    /// Authorization record is not known.
+    #[error("authorization record was not found")]
     AuthorizationNotFound,
-    /// No active hold exists for this authorization.
+    #[error("no active hold exists for this authorization")]
     HoldNotFound,
-    /// Event amount exceeds the current hold or captured amount.
+    #[error("event amount exceeds the current hold or captured amount")]
     AmountExceedsAvailable,
-    /// Refund exceeded the amount already captured.
+    #[error("refund amount exceeds the amount already captured")]
     RefundExceedsCaptured,
-    /// Webhook fiat amount differs from the locked authorization value by more than one minor unit.
+    #[error(
+        "webhook fiat amount differs from the locked authorization by more than one minor unit"
+    )]
     FiatAmountMismatch,
-    /// Unsupported partner event type.
+    #[error("unsupported partner event type")]
     UnsupportedEventType,
 }
 
@@ -98,15 +100,7 @@ pub trait CardStore: Send + Sync {
         tx_hash: &str,
         amount_stroops: i64,
     ) -> Result<AuthorizationRecord, StoreError> {
-        self.approve_and_hold_with_fx(
-            authorization_id,
-            tx_hash,
-            amount_stroops,
-            0,
-            "",
-            0.0,
-            0,
-        )
+        self.approve_and_hold_with_fx(authorization_id, tx_hash, amount_stroops, 0, "", 0.0, 0)
     }
 
     fn approve_and_hold_with_fx(
@@ -120,11 +114,19 @@ pub trait CardStore: Send + Sync {
         rate_locked_at: i64,
     ) -> Result<AuthorizationRecord, StoreError>;
     /// Capture a cleared amount from the current hold.
-    fn capture_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError>;
+    fn capture_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError>;
     /// Release an existing hold while keeping the authorization record intact.
     fn reverse_hold(&self, authorization_id: &str) -> Result<AuthorizationRecord, StoreError>;
     /// Refund already captured funds back to available balance up to the captured amount.
-    fn refund_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError>;
+    fn refund_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError>;
     fn list_authorizations(&self) -> Vec<AuthorizationRecord>;
     fn authorization(&self, authorization_id: &str) -> Option<AuthorizationRecord>;
     /// Current held amount in stroops for an authorization (0 if none).
@@ -273,7 +275,11 @@ impl CardStore for InMemoryCardStore {
         Ok(record)
     }
 
-    fn capture_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError> {
+    fn capture_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError> {
         let mut inner = self.inner.lock();
         let mut record = inner
             .authorizations
@@ -281,7 +287,11 @@ impl CardStore for InMemoryCardStore {
             .cloned()
             .ok_or(StoreError::AuthorizationNotFound)?;
 
-        let current_held = inner.holds.get(authorization_id).copied().unwrap_or(record.amount_stroops);
+        let current_held = inner
+            .holds
+            .get(authorization_id)
+            .copied()
+            .unwrap_or(record.amount_stroops);
         if current_held < amount_stroops {
             return Err(StoreError::AmountExceedsAvailable);
         }
@@ -291,7 +301,9 @@ impl CardStore for InMemoryCardStore {
         record.spent_stroops = new_spent;
         record.state = AuthorizationState::Captured;
         inner.holds.insert(authorization_id.to_string(), new_held);
-        inner.authorizations.insert(authorization_id.to_string(), record.clone());
+        inner
+            .authorizations
+            .insert(authorization_id.to_string(), record.clone());
         Ok(record)
     }
 
@@ -303,7 +315,11 @@ impl CardStore for InMemoryCardStore {
             .cloned()
             .ok_or(StoreError::AuthorizationNotFound)?;
 
-        let held = inner.holds.get(authorization_id).copied().unwrap_or(record.amount_stroops);
+        let held = inner
+            .holds
+            .get(authorization_id)
+            .copied()
+            .unwrap_or(record.amount_stroops);
         if held == 0 {
             return Err(StoreError::HoldNotFound);
         }
@@ -312,11 +328,17 @@ impl CardStore for InMemoryCardStore {
         record.amount_stroops = 0;
         record.spent_stroops = 0;
         record.state = AuthorizationState::Reversed;
-        inner.authorizations.insert(authorization_id.to_string(), record.clone());
+        inner
+            .authorizations
+            .insert(authorization_id.to_string(), record.clone());
         Ok(record)
     }
 
-    fn refund_hold(&self, authorization_id: &str, amount_stroops: i64) -> Result<AuthorizationRecord, StoreError> {
+    fn refund_hold(
+        &self,
+        authorization_id: &str,
+        amount_stroops: i64,
+    ) -> Result<AuthorizationRecord, StoreError> {
         let mut inner = self.inner.lock();
         let mut record = inner
             .authorizations
@@ -329,15 +351,23 @@ impl CardStore for InMemoryCardStore {
         }
 
         record.spent_stroops -= amount_stroops;
-        let hold = inner.holds.get(authorization_id).copied().unwrap_or(record.amount_stroops);
-        inner.holds.insert(authorization_id.to_string(), hold + amount_stroops);
+        let hold = inner
+            .holds
+            .get(authorization_id)
+            .copied()
+            .unwrap_or(record.amount_stroops);
+        inner
+            .holds
+            .insert(authorization_id.to_string(), hold + amount_stroops);
         record.state = AuthorizationState::Refunded;
-        inner.authorizations.insert(authorization_id.to_string(), record.clone());
+        inner
+            .authorizations
+            .insert(authorization_id.to_string(), record.clone());
         Ok(record)
     }
 
     fn list_authorizations(&self) -> Vec<AuthorizationRecord> {
-        let mut inner = self.inner.lock();
+        let inner = self.inner.lock();
         let mut records: Vec<_> = inner.authorizations.values().cloned().collect();
         records.sort_by(|a, b| a.authorization_id.cmp(&b.authorization_id));
         records
@@ -436,6 +466,11 @@ mod tests {
             authorization_id: "auth-1".into(),
             state: AuthorizationState::Pending,
             amount_stroops: 50_000_000,
+            spent_stroops: 0,
+            fiat_amount: 0,
+            fiat_currency: String::new(),
+            rate: 0.0,
+            rate_locked_at: 0,
             tx_hash: "tx_hash_1".into(),
         };
         assert_eq!(store.get_authorization("auth-1"), None);
@@ -450,6 +485,11 @@ mod tests {
             authorization_id: "nonexistent".into(),
             state: AuthorizationState::Approved,
             amount_stroops: 100,
+            spent_stroops: 0,
+            fiat_amount: 0,
+            fiat_currency: String::new(),
+            rate: 0.0,
+            rate_locked_at: 0,
             tx_hash: "hash".into(),
         };
         assert_eq!(
@@ -465,6 +505,11 @@ mod tests {
             authorization_id: "auth-2".into(),
             state: AuthorizationState::Pending,
             amount_stroops: 1000,
+            spent_stroops: 0,
+            fiat_amount: 0,
+            fiat_currency: String::new(),
+            rate: 0.0,
+            rate_locked_at: 0,
             tx_hash: "tx-2".into(),
         };
         store.insert_authorization(auth.clone()).unwrap();

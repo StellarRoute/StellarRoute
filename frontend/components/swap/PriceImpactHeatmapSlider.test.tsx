@@ -39,6 +39,7 @@ describe('PriceImpactHeatmapSlider', () => {
     price,
     total: (parseFloat(amount) * parseFloat(price)).toString(),
     quote_type: 'sell',
+    path: [],
     price_impact: priceImpact,
     timestamp: Date.now(),
   });

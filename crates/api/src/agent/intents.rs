@@ -1,9 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -62,6 +57,7 @@ pub struct ValidateIntentResponse {
 )]
 pub async fn validate_intent(
     State(_state): State<Arc<AppState>>,
+    request_id: crate::middleware::RequestId,
     Json(body): Json<ValidateIntentRequest>,
 ) -> Result<impl IntoResponse> {
     // Check if agent is enabled
@@ -93,10 +89,13 @@ pub async fn validate_intent(
 
     Ok((
         StatusCode::OK,
-        Json(ApiResponse::success(ValidateIntentResponse {
-            amount: normalized_amount,
-            r#type: body.r#type,
-        })),
+        Json(ApiResponse::new(
+            ValidateIntentResponse {
+                amount: normalized_amount,
+                r#type: body.r#type,
+            },
+            request_id.to_string(),
+        )),
     ))
 }
 

@@ -6,7 +6,11 @@
  * CARD-21: CardConfirm - Transaction confirmation view (in app/card/)
  * CARD-51: CardExportButton - Client-side CSV export of card activity
  * CARD-52: CardTopUpPreferencesModal - Local threshold and top-up preferences
+<<<<<<< HEAD
  * CARD-55: CardNetworkStatusBanner - Offline indicator that pauses card actions
+=======
+ * CARD-56: CardNicknameEditor - Local card nickname personalization
+>>>>>>> refs/pr/1749
  *
  * All components follow additive-only constraint:
  * - No changes to existing swap/quote/offramp functionality
@@ -49,3 +53,6 @@ export type { CardExportButtonProps } from './CardExportButton';
 
 export { CardFxMatrixModal } from './CardFxMatrixModal';
 export type { CardFxMatrixModalProps } from './CardFxMatrixModal';
+
+export { CardNicknameEditor } from './CardNicknameEditor';
+export type { CardNicknameEditorProps } from './CardNicknameEditor';

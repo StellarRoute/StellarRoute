@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import OrderbookPage from './page';
 import { TradingPairProvider } from '@/contexts/TradingPairContext';
 import * as useApiHooks from '@/hooks/useApi';
+import type { Orderbook, TradingPair } from '@/types';
 
 // Mock the API hooks
 vi.mock('@/hooks/useApi', () => ({
@@ -12,22 +13,31 @@ vi.mock('@/hooks/useApi', () => ({
   useOrderbook: vi.fn(),
 }));
 
-const mockPairs = [
+const mockPairs: TradingPair[] = [
   {
     base_asset: 'native',
     counter_asset: 'USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
     base: 'XLM',
     counter: 'USDC',
+    offer_count: 0,
   },
   {
     base_asset: 'USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
     counter_asset: 'EURC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
     base: 'USDC',
     counter: 'EURC',
+    offer_count: 0,
   },
 ];
 
-const mockOrderbook = {
+const mockOrderbook: Orderbook = {
+  base_asset: { asset_type: 'native' },
+  quote_asset: {
+    asset_type: 'credit_alphanum4',
+    asset_code: 'USDC',
+    asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+  },
+  timestamp: Date.now(),
   bids: [
     { price: '0.1000', amount: '100', total: '10' },
     { price: '0.0999', amount: '200', total: '19.98' },
@@ -84,14 +94,14 @@ describe('OrderbookPage with highlighting', () => {
 
   it('displays loading state correctly', () => {
     vi.mocked(useApiHooks.usePairs).mockReturnValue({
-      data: null,
+      data: undefined,
       loading: true,
       error: null,
       refresh: vi.fn(),
     });
 
     vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
-      data: null,
+      data: undefined,
       loading: false,
       error: null,
       refresh: vi.fn(),
@@ -136,14 +146,14 @@ describe('OrderbookPage with highlighting', () => {
 
   it('displays error state correctly', () => {
     vi.mocked(useApiHooks.usePairs).mockReturnValue({
-      data: null,
+      data: undefined,
       loading: false,
       error: new Error('API Error'),
       refresh: vi.fn(),
     });
 
     vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
-      data: null,
+      data: undefined,
       loading: false,
       error: null,
       refresh: vi.fn(),
@@ -167,7 +177,7 @@ describe('OrderbookPage with highlighting', () => {
     });
 
     vi.mocked(useApiHooks.useOrderbook).mockReturnValue({
-      data: { bids: [], asks: [] },
+      data: { ...mockOrderbook, bids: [], asks: [] },
       loading: false,
       error: null,
       refresh: vi.fn(),

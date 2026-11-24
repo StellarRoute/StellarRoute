@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { StrictMode, createElement, type ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { useCctpSaga } from './useCctpSaga';
+import { useCctpSaga, type UseCctpSagaInput } from './useCctpSaga';
 import { fingerprintPreparedPayload } from '@/lib/cctp/payload-fingerprint';
 import { buildCctpSessionRecord } from '@/lib/cctp/session-vault';
 import { buildWalletRoleBindings } from '@/lib/cctp/wallet-role-binding';
@@ -11,7 +11,11 @@ const submitBurn = vi.fn();
 const prepareMint = vi.fn();
 const submitMint = vi.fn();
 const getTransfer = vi.fn();
-const executePreparedPayload = vi.fn();
+const executePreparedPayload = vi.fn<
+  (
+    input: { payload: { xdr_envelope?: string } },
+  ) => Promise<{ txHash?: string; submissionReady?: boolean }>
+>();
 const startPoll = vi.fn(() => ({ stop: vi.fn() }));
 
 vi.mock('@/lib/cctp/client', () => ({
@@ -37,12 +41,14 @@ vi.mock('@/lib/cctp/client', () => ({
 }));
 
 vi.mock('@/lib/cctp/wallet-execution', () => ({
-  executePreparedPayload: (...args: unknown[]) => executePreparedPayload(...args),
+  executePreparedPayload: (
+    input: Parameters<typeof executePreparedPayload>[0],
+  ) => executePreparedPayload(input),
   reconcileEvmTransactionHash: vi.fn(),
 }));
 
 vi.mock('@/lib/cctp/status-poll', () => ({
-  startCctpStatusPoll: (...args: unknown[]) => startPoll(...args),
+  startCctpStatusPoll: (..._args: unknown[]) => startPoll(),
 }));
 
 const evmApprovalPayload = {
@@ -81,7 +87,7 @@ const defaultBindings = buildWalletRoleBindings({
   mintSubmitter: STELLAR_G,
 })!;
 
-const baseInput = {
+const baseInput: UseCctpSagaInput = {
   sourceChainId: 'ethereum-sepolia' as const,
   destChainId: 'stellar' as const,
   amount: '10',
@@ -437,7 +443,7 @@ describe('useCctpSaga reconcile stability', () => {
   it('retries auto-reconcile after vault form inputs are restored', async () => {
     seedSession({ burnPrepareStep: 'approval_ready', fingerprint: 'fp-vault' });
 
-    const mismatchInput = {
+    const mismatchInput: UseCctpSagaInput = {
       ...baseInput,
       sourceChainId: 'stellar' as const,
       destChainId: 'stellar' as const,

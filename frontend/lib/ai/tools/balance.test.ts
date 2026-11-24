@@ -43,7 +43,9 @@ describe('read-only balance tool', () => {
     });
 
     expect(result.kind).toBe('connect_prompt');
-    expect(result.message).toMatch(/connect your wallet/i);
+    if (result.kind === 'connect_prompt') {
+      expect(result.message).toMatch(/connect your wallet/i);
+    }
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -79,7 +81,9 @@ describe('read-only balance tool', () => {
     );
     const quoteCalls = fetchSpy.mock.calls.filter(([url]) => String(url).includes('/api/v1/quote'));
     expect(quoteCalls).toHaveLength(0);
-    expect(result.summary).toContain('XLM: 42.5000000');
-    expect(result.summary).toContain('USDC: 250.1234567');
+    if (result.kind === 'balances') {
+      expect(result.summary).toContain('XLM: 42.5000000');
+      expect(result.summary).toContain('USDC: 250.1234567');
+    }
   });
 });

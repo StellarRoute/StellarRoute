@@ -27,16 +27,16 @@ const mockQuote: PriceQuote = {
   quote_type: 'sell',
   path: [
     {
-      from_asset: { asset_type: 'native' },
+      from_asset: { asset_type: 'native' as const },
       to_asset: {
-        asset_type: 'credit_alphanum4',
+        asset_type: 'credit_alphanum4' as const,
         asset_code: 'USDC',
         asset_issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4IHTZMAB5KYXOM5KBVG7GBJINW7JCXU',
       },
       price: '0.105',
       source: 'sdex',
     },
-  ],
+  ] satisfies PriceQuote['path'],
   timestamp: Date.now(),
 };
 
@@ -108,20 +108,20 @@ describe('diagnostics utilities', () => {
     });
 
     it('extracts AMM sources correctly', () => {
-      const quoteWithAmm = {
+      const quoteWithAmm: PriceQuote = {
         ...mockQuote,
         path: [
           {
-            from_asset: { asset_type: 'native' },
+            from_asset: { asset_type: 'native' as const },
             to_asset: {
-              asset_type: 'credit_alphanum4',
+              asset_type: 'credit_alphanum4' as const,
               asset_code: 'USDC',
               asset_issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4IHTZMAB5KYXOM5KBVG7GBJINW7JCXU',
             },
             price: '0.105',
             source: 'amm:abc123def456',
           },
-        ],
+        ] satisfies PriceQuote['path'],
       };
 
       const diag = collectQuoteDiagnostics(quoteWithAmm, 'req_amm_test');

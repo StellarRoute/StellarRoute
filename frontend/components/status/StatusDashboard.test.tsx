@@ -52,13 +52,13 @@ describe('StatusDashboard', () => {
   it('renders loading state initially', async () => {
     const { useHealth, useHealthDeps } = await import('@/hooks/useApi');
     vi.mocked(useHealth).mockReturnValueOnce({
-      data: null,
+      data: undefined,
       loading: true,
       error: null,
       refresh: mockRefreshHealth,
     });
     vi.mocked(useHealthDeps).mockReturnValueOnce({
-      data: null,
+      data: undefined,
       loading: true,
       error: null,
       refresh: mockRefreshDeps,
@@ -83,13 +83,13 @@ describe('StatusDashboard', () => {
   it('handles fetch errors gracefully', async () => {
     const { useHealth, useHealthDeps } = await import('@/hooks/useApi');
     vi.mocked(useHealth).mockReturnValueOnce({
-      data: null,
+      data: undefined,
       loading: false,
       error: new Error('Network error'),
       refresh: mockRefreshHealth,
     });
     vi.mocked(useHealthDeps).mockReturnValueOnce({
-      data: null,
+      data: undefined,
       loading: false,
       error: null,
       refresh: mockRefreshDeps,

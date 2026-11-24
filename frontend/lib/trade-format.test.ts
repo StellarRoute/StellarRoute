@@ -25,7 +25,7 @@ describe('trade-format utilities', () => {
   it('should format amount with max 7 decimal places and no trailing zeros', () => {
     fc.assert(
       // Switched to fc.double() to safely handle standard JavaScript numbers and the 1e14 max limit
-      fc.property(fc.double({ min: 0, max: 1e14, noNaN: true, noInfinity: true }), (amount) => {
+      fc.property(fc.double({ min: 0, max: 1e14, noNaN: true }), (amount) => {
         const formatted = formatTradeAmount(amount.toString());
         const parts = formatted.split('.');
         const decimalPart = parts[1] || "";

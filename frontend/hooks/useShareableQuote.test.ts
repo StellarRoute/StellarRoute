@@ -18,7 +18,7 @@ describe('useShareableQuote', () => {
     
     vi.mocked(useRouter).mockReturnValue({
       push: mockPush,
-    } as ReturnType<typeof useRouter>);
+    } as unknown as ReturnType<typeof useRouter>);
 
     vi.mocked(useSearchParams).mockReturnValue({
       get: (key: string) => mockSearchParams.get(key) || null,

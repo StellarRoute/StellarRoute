@@ -130,14 +130,21 @@ mod tests {
 
     fn test_app(enabled: bool) -> (axum::Router, Arc<InMemoryCardStore>) {
         let store = Arc::new(InMemoryCardStore::default());
-        let state = Arc::new(CardState {
-            config: CardConfig {
-                enabled,
-                network_passphrase: "Test SDF Network ; September 2015".into(),
-            },
-            store: store.clone(),
-        });
-        (crate::card::router_with_state(state), store)
+        let mut state = CardState::from_env();
+        state.config = CardConfig {
+            enabled,
+            network_passphrase: "Test SDF Network ; September 2015".into(),
+            ..CardConfig::default()
+        };
+        state.store = store.clone();
+        let state = Arc::new(state);
+        let app = axum::Router::new()
+            .route(
+                "/api/v1/card/applications/validate",
+                axum::routing::post(validate_application),
+            )
+            .with_state(state);
+        (app, store)
     }
 
     #[tokio::test]

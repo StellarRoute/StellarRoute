@@ -222,6 +222,46 @@ lazy_static! {
         &[]
     )
     .expect("Can't create HEALTH_SCORE_JOB_FAILURES counter");
+
+    /// Cache degraded mode gauge (1 = active, 0 = inactive).
+    pub static ref CACHE_DEGRADED_MODE: IntGaugeVec = register_int_gauge_vec!(
+        "stellarroute_cache_degraded_mode",
+        "Whether the API is operating with cache degraded (Redis unavailable): 1=active, 0=inactive",
+        &["type"]
+    )
+    .expect("Can't create CACHE_DEGRADED_MODE gauge");
+
+    /// Cache unavailable operations counter (Redis errors during get/set).
+    pub static ref CACHE_UNAVAILABLE_OPS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_cache_unavailable_ops_total",
+        "Total cache operations that failed due to Redis unavailability",
+        &["operation"]
+    )
+    .expect("Can't create CACHE_UNAVAILABLE_OPS counter");
+
+    /// Audit log export success counter (rows exported).
+    pub static ref AUDIT_EXPORT_ROWS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_audit_export_rows_total",
+        "Total audit log rows exported to object storage",
+        &[]
+    )
+    .expect("Can't create AUDIT_EXPORT_ROWS counter");
+
+    /// Audit log export failure counter.
+    pub static ref AUDIT_EXPORT_FAILURES: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_audit_export_failures_total",
+        "Total failed audit log export runs",
+        &[]
+    )
+    .expect("Can't create AUDIT_EXPORT_FAILURES counter");
+
+    /// Audit log export alert counter.
+    pub static ref AUDIT_EXPORT_ALERTS: IntCounterVec = register_int_counter_vec!(
+        "stellarroute_audit_export_alerts_total",
+        "Total audit log export alert conditions",
+        &["reason"]
+    )
+    .expect("Can't create AUDIT_EXPORT_ALERTS counter");
 }
 
 /// Record kill switch status

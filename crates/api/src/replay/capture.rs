@@ -164,6 +164,8 @@ mod tests {
                 stale_count: 0,
                 max_staleness_secs: 0,
             }),
+            midpoint: None,
+            spread_bps: None,
         }
     }
 

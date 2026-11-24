@@ -680,14 +680,24 @@ pub(crate) async fn get_quote_inner(
                 if let Ok(mut cache) = cache.try_lock() {
                     let jitter = crate::cache::JitteredTtl::default();
                     let jittered_ttl = jitter.apply(state.cache_policy.quote_ttl);
-                    let _ = cache
-                        .set_json(
+                    match cache
+                        .set_json_checked(
                             &quote_cache_key,
                             std::str::from_utf8(prepared.json_bytes())
                                 .expect("quote JSON serialization is valid UTF-8"),
                             jittered_ttl,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            crate::metrics::record_cache_unavailable("set");
+                            crate::metrics::record_cache_degraded_mode("quote", true);
+                        }
+                        Err(e) => {
+                            warn!("Failed to cache quote for {}/{}: {}", base, quote, e);
+                        }
+                    }
                 }
             }
 

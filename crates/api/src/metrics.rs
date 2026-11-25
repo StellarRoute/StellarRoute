@@ -306,6 +306,18 @@ pub fn record_cache_miss(cache_type: &str) {
     CACHE_MISSES.with_label_values(&[cache_type]).inc();
 }
 
+/// Record a cache operation failure due to Redis unavailability.
+pub fn record_cache_unavailable(operation: &str) {
+    CACHE_UNAVAILABLE_OPS.with_label_values(&[operation]).inc();
+}
+
+/// Set cache degraded mode gauge for a cache type.
+pub fn record_cache_degraded_mode(cache_type: &str, active: bool) {
+    CACHE_DEGRADED_MODE
+        .with_label_values(&[cache_type])
+        .set(if active { 1 } else { 0 });
+}
+
 /// Record a Redis infrastructure error (connection loss, timeout, etc.).
 pub fn record_redis_error(operation: &str) {
     REDIS_ERRORS.with_label_values(&[operation]).inc();
@@ -320,6 +332,23 @@ pub fn redis_error_total() -> u64 {
         + REDIS_ERRORS.with_label_values(&["delete"]).get()
         + REDIS_ERRORS.with_label_values(&["delete_by_pattern"]).get()
         + REDIS_ERRORS.with_label_values(&["health"]).get()
+}
+
+/// Record successful audit export rows.
+pub fn record_audit_export_success(rows: i64) {
+    if rows > 0 {
+        AUDIT_EXPORT_ROWS.with_label_values(&[]).inc_by(rows as u64);
+    }
+}
+
+/// Record a failed audit export run.
+pub fn record_audit_export_failure() {
+    AUDIT_EXPORT_FAILURES.with_label_values(&[]).inc();
+}
+
+/// Record an audit export alert condition.
+pub fn record_audit_export_alert(reason: &str) {
+    AUDIT_EXPORT_ALERTS.with_label_values(&[reason]).inc();
 }
 
 /// Record adaptive timeout metrics
@@ -889,4 +918,94 @@ pub fn record_cctp_direction_readiness(direction: &str, outcome: &str) {
 
 pub fn record_cctp_poll_lease(outcome: &str) {
     CCTP_POLL_LEASE_OUTCOMES.with_label_values(&[outcome]).inc();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_miss_increments_only_the_miss_counter() {
+        let hits_before = CACHE_HITS.with_label_values(&["quote-miss-test"]).get();
+        let misses_before = CACHE_MISSES.with_label_values(&["quote-miss-test"]).get();
+
+        record_cache_miss("quote-miss-test");
+
+        assert_eq!(
+            CACHE_MISSES.with_label_values(&["quote-miss-test"]).get(),
+            misses_before + 1,
+            "a quote cache miss must increment stellarroute_cache_misses_total"
+        );
+        assert_eq!(
+            CACHE_HITS.with_label_values(&["quote-miss-test"]).get(),
+            hits_before,
+            "a cache miss must never be recorded as a hit"
+        );
+    }
+
+    #[test]
+    fn cache_hit_increments_only_the_hit_counter() {
+        let hits_before = CACHE_HITS.with_label_values(&["quote-hit-test"]).get();
+        let misses_before = CACHE_MISSES.with_label_values(&["quote-hit-test"]).get();
+
+        record_cache_hit("quote-hit-test");
+
+        assert_eq!(
+            CACHE_HITS.with_label_values(&["quote-hit-test"]).get(),
+            hits_before + 1
+        );
+        assert_eq!(
+            CACHE_MISSES.with_label_values(&["quote-hit-test"]).get(),
+            misses_before
+        );
+    }
+
+    #[test]
+    fn quote_cache_hit_ratio_reflects_misses() {
+        let cache_type = "quote-ratio-test";
+        record_cache_hit(cache_type);
+        record_cache_miss(cache_type);
+        record_cache_miss(cache_type);
+        record_cache_miss(cache_type);
+
+        let ratio = get_cache_hit_ratio(cache_type);
+        assert!(
+            (ratio - 0.25).abs() < 1e-9,
+            "expected 1 hit out of 4 lookups = 0.25, got {ratio}"
+        );
+    }
+
+    #[test]
+    fn cache_miss_metric_is_exported_for_quote_type() {
+        record_cache_miss("quote-export-test");
+
+        let encoded = encode_metrics().expect("metrics must encode");
+        assert!(
+            encoded.contains("stellarroute_cache_misses_total"),
+            "cache miss metric family must be exported"
+        );
+        assert!(
+            encoded.contains(r#"type="quote-export-test""#),
+            "quote cache miss must be labelled by cache type"
+        );
+    }
+
+    #[test]
+    fn cache_unavailable_and_degraded_helpers_update_metrics() {
+        let ops_before = CACHE_UNAVAILABLE_OPS.with_label_values(&["get"]).get();
+        record_cache_unavailable("get");
+        assert_eq!(
+            CACHE_UNAVAILABLE_OPS.with_label_values(&["get"]).get(),
+            ops_before + 1
+        );
+
+        record_cache_degraded_mode("quote", true);
+        assert_eq!(CACHE_DEGRADED_MODE.with_label_values(&["quote"]).get(), 1);
+        record_cache_degraded_mode("quote", false);
+        assert_eq!(CACHE_DEGRADED_MODE.with_label_values(&["quote"]).get(), 0);
+
+        let encoded = encode_metrics().expect("metrics must encode");
+        assert!(encoded.contains("stellarroute_cache_unavailable_ops_total"));
+        assert!(encoded.contains("stellarroute_cache_degraded_mode"));
+    }
 }

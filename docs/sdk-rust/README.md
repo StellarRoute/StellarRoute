@@ -382,6 +382,7 @@ cargo run -p stellarroute-sdk --bin stellarroute -- \
 - `2` — CLI usage/validation error
 - `3` — invalid client configuration
 - `4` — runtime/API error
+- `5` — API reachable but reporting degraded health (`health`)
 
 ## Related documentation
 

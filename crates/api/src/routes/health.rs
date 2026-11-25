@@ -1,15 +1,61 @@
 //! Health check endpoint
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::State,
+    http::{HeaderName, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
 use std::{collections::HashMap, sync::Arc};
 use tracing::warn;
 
 use crate::{
     cache::CacheHealthStatus,
+    indexer_lag::{LagSnapshot, SyncStatus},
     middleware::RequestId,
     models::{ApiResponse, DependenciesHealthResponse, HealthResponse},
     state::AppState,
 };
+
+/// Response header carrying the aggregate indexer data freshness
+/// (`ok` | `warning` | `critical` | `unknown`).
+///
+/// Additive, read-only hint so staging/edge probes can gate on indexer
+/// freshness without parsing the JSON body.
+pub const INDEXER_FRESHNESS_HEADER: &str = "x-indexer-freshness";
+
+/// Severity ranking used to aggregate per-source freshness.
+///
+/// `critical` outranks `warning`, which outranks `unknown` (no measurement yet
+/// or Horizon unreachable), which outranks `ok`.
+fn freshness_severity(status: SyncStatus) -> u8 {
+    match status {
+        SyncStatus::Ok => 0,
+        SyncStatus::Unknown => 1,
+        SyncStatus::Warning => 2,
+        SyncStatus::Critical => 3,
+    }
+}
+
+/// Aggregate indexer freshness across all monitored sources — the worst
+/// (most degraded) status wins.  With no snapshots yet freshness is unknown.
+fn aggregate_indexer_freshness(snapshots: &[LagSnapshot]) -> SyncStatus {
+    snapshots
+        .iter()
+        .map(|snap| snap.status)
+        .max_by_key(|status| freshness_severity(*status))
+        .unwrap_or(SyncStatus::Unknown)
+}
+
+/// Attach the indexer-freshness probe header to a health response.
+fn apply_indexer_freshness_headers(response: &mut Response, snapshots: &[LagSnapshot]) {
+    let freshness = aggregate_indexer_freshness(snapshots);
+    if let Ok(value) = HeaderValue::from_str(freshness.as_str()) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static(INDEXER_FRESHNESS_HEADER), value);
+    }
+}
 
 /// Evaluate optional Redis cache health for component maps.
 ///
@@ -118,7 +164,9 @@ pub async fn health_check(
     };
 
     let envelope = ApiResponse::new(body, request_id.to_string());
-    (http_status, Json(envelope)).into_response()
+    let mut response = (http_status, Json(envelope)).into_response();
+    apply_indexer_freshness_headers(&mut response, &lag_snapshots);
+    response
 }
 
 /// Dependency readiness check for infrastructure and external providers.
@@ -220,5 +268,87 @@ pub async fn dependency_health(
     };
 
     let envelope = ApiResponse::new(body, request_id.to_string());
-    (http_status, Json(envelope)).into_response()
+    let mut response = (http_status, Json(envelope)).into_response();
+    apply_indexer_freshness_headers(&mut response, &lag_snapshots);
+    response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer_lag::LagThresholds;
+
+    fn snapshot(source: &str, last_indexed_ledger: u64, horizon_ledger: u64) -> LagSnapshot {
+        LagSnapshot::compute(
+            source,
+            last_indexed_ledger,
+            horizon_ledger,
+            &LagThresholds::default(),
+        )
+    }
+
+    #[test]
+    fn freshness_is_unknown_without_snapshots() {
+        assert_eq!(aggregate_indexer_freshness(&[]), SyncStatus::Unknown);
+    }
+
+    #[test]
+    fn freshness_is_ok_when_all_sources_are_ok() {
+        let snaps = vec![snapshot("sdex", 995, 1000), snapshot("amm", 992, 1000)];
+        assert_eq!(aggregate_indexer_freshness(&snaps), SyncStatus::Ok);
+    }
+
+    #[test]
+    fn freshness_takes_the_worst_status() {
+        let snaps = vec![snapshot("sdex", 995, 1000), snapshot("amm", 900, 1000)];
+        assert_eq!(aggregate_indexer_freshness(&snaps), SyncStatus::Critical);
+    }
+
+    #[test]
+    fn freshness_warning_outranks_ok_regardless_of_order() {
+        let warning_first = vec![snapshot("sdex", 990, 1000), snapshot("amm", 995, 1000)];
+        assert_eq!(
+            aggregate_indexer_freshness(&warning_first),
+            SyncStatus::Warning
+        );
+
+        let ok_first = vec![snapshot("sdex", 995, 1000), snapshot("amm", 990, 1000)];
+        assert_eq!(aggregate_indexer_freshness(&ok_first), SyncStatus::Warning);
+    }
+
+    #[test]
+    fn freshness_unknown_outranks_ok() {
+        let snaps = vec![
+            snapshot("sdex", 995, 1000),
+            LagSnapshot {
+                status: SyncStatus::Unknown,
+                ..snapshot("amm", 0, 0)
+            },
+        ];
+        assert_eq!(aggregate_indexer_freshness(&snaps), SyncStatus::Unknown);
+    }
+
+    #[test]
+    fn applies_freshness_header_to_response() {
+        let mut response = (StatusCode::OK, Json(serde_json::json!({}))).into_response();
+        apply_indexer_freshness_headers(&mut response, &[snapshot("sdex", 995, 1000)]);
+
+        let value = response
+            .headers()
+            .get(INDEXER_FRESHNESS_HEADER)
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(value, Some("ok"));
+    }
+
+    #[test]
+    fn applies_unknown_header_when_no_snapshots() {
+        let mut response = (StatusCode::OK, Json(serde_json::json!({}))).into_response();
+        apply_indexer_freshness_headers(&mut response, &[]);
+
+        let value = response
+            .headers()
+            .get(INDEXER_FRESHNESS_HEADER)
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(value, Some("unknown"));
+    }
 }

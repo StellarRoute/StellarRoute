@@ -24,7 +24,7 @@ impl Modify for SecurityAddon {
 use crate::models::{
     AssetInfo, AssetMetadataBulkResponse, AssetMetadataResponse, BatchItemError,
     BatchQuoteItemResult, BatchQuoteResponse, CacheFlushResponse, CacheMetricsResponse,
-    DataFreshness, DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo,
+    DataFreshness, DataQuality, DependenciesHealthResponse, ErrorResponse, ExcludedVenueInfo,
     ExclusionDiagnostics, ExclusionReason, HealthResponse, OrderbookLevel, OrderbookResponse,
     PairsResponse, PathStep, PriceHistoryPoint, PriceHistoryResponse,
     QuoteExpirationWebhookPayload, QuoteExpirationWebhookRegistrationResponse,
@@ -98,6 +98,7 @@ use crate::models::{
         VenueEvaluation,
         PathStep,
         DataFreshness,
+        DataQuality,
         ExclusionDiagnostics,
         ExcludedVenueInfo,
         ExclusionReason,
@@ -189,3 +190,51 @@ use crate::models::{
     modifiers(&SecurityAddon)
 )]
 pub struct ApiDoc;
+
+#[cfg(test)]
+mod tests {
+    use super::ApiDoc;
+    use utoipa::OpenApi;
+
+    /// LIVE-02: the quote data-quality vocabulary must be documented in the
+    /// generated OpenAPI spec, as a closed set of string enum values.
+    #[test]
+    fn openapi_documents_data_quality_enum() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).expect("serialize openapi");
+        let schema = &spec["components"]["schemas"]["DataQuality"];
+
+        assert!(
+            schema.is_object(),
+            "DataQuality schema must be present in components.schemas, got {schema}"
+        );
+
+        let variants = schema["enum"]
+            .as_array()
+            .expect("DataQuality schema must declare an enum array");
+        let names: Vec<&str> = variants.iter().filter_map(|v| v.as_str()).collect();
+
+        for expected in ["live", "degraded", "stale", "unknown"] {
+            assert!(
+                names.contains(&expected),
+                "DataQuality enum must document `{expected}`, got {names:?}"
+            );
+        }
+        assert_eq!(names.len(), 4, "DataQuality enum must be closed: {names:?}");
+    }
+
+    /// The quote endpoint's documented 200 response must reference the
+    /// data-quality vocabulary so clients can discover it from the operation.
+    #[test]
+    fn quote_endpoint_references_data_quality_vocabulary() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).expect("serialize openapi");
+        let description = spec["paths"]["/api/v1/quote/{base}/{quote}"]["get"]["responses"]["200"]
+            ["description"]
+            .as_str()
+            .unwrap_or_default();
+
+        assert!(
+            description.contains("DataQuality"),
+            "quote 200 response must document the data-quality vocabulary, got {description:?}"
+        );
+    }
+}

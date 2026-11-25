@@ -45,9 +45,21 @@ cargo run -p stellarroute-sdk --bin stellarroute -- --output json health
 cargo run -p stellarroute-sdk --bin stellarroute -- --api-url http://127.0.0.1:3000 health
 ```
 
-The `health` subcommand exits with code `0` when the API responds and reports
-its status, even if a dependency reports `unhealthy`. Use the `status` and per-
-component values in the output to triage.
+The `health` subcommand always prints the payload, then picks the exit code from
+what the API reported: `0` when the overall status is `healthy` and every
+component is `healthy` or `not_configured`, and `5` when the service is
+degraded — either a non-`healthy` overall status or any component that is neither
+`healthy` nor `not_configured` (for example a `degraded` Redis cache or indexer
+lag). A non-2xx response (for example `503` when a required dependency is down)
+is still an exit `4` runtime error.
+
+Because the payload is printed before the non-zero exit, `--output json` remains
+machine-readable while still gating scripts and probes:
+
+```bash
+# Fail the script when the API reports degraded dependencies
+cargo run -p stellarroute-sdk --bin stellarroute -- --output json health || echo "API degraded"
+```
 
 ## pairs
 
@@ -155,6 +167,7 @@ cargo run -p stellarroute-sdk --bin stellarroute -- --api-url "$API" --output js
 - `2` — CLI usage/validation error
 - `3` — invalid client configuration
 - `4` — runtime/API error
+- `5` — API reachable but reporting degraded health (`health`)
 
 ## Related documentation
 

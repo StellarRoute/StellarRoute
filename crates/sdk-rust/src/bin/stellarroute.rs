@@ -12,13 +12,15 @@ const EXIT_SUCCESS: i32 = 0;
 const EXIT_USAGE_ERROR: i32 = 2;
 const EXIT_CONFIG_ERROR: i32 = 3;
 const EXIT_RUNTIME_ERROR: i32 = 4;
+/// The API answered but reported degraded health (see `stellarroute health`).
+const EXIT_DEGRADED: i32 = 5;
 
 #[derive(Parser, Debug)]
 #[command(
     name = "stellarroute",
     about = "Query the StellarRoute API from the terminal",
     long_about = "Query the StellarRoute API from terminal workflows with machine-friendly or human-friendly output.",
-    after_help = "Output formats:\n  json | table | human\n\nExit codes:\n  0 success\n  2 CLI usage/validation error\n  3 invalid client configuration\n  4 runtime/API error",
+    after_help = "Output formats:\n  json | table | human\n\nExit codes:\n  0 success\n  2 CLI usage/validation error\n  3 invalid client configuration\n  4 runtime/API error\n  5 API reachable but reporting degraded health (health)",
     version
 )]
 struct Cli {
@@ -256,7 +258,12 @@ async fn main() {
 
     match run(cli).await {
         Ok(output) => {
-            println!("{output}");
+            println!("{}", output.text);
+            // A degraded health probe still prints its payload, then exits
+            // non-zero so scripts and probes can gate on it.
+            if output.exit_code != EXIT_SUCCESS {
+                std::process::exit(output.exit_code);
+            }
         }
         Err((code, message)) => {
             eprintln!("Error: {message}");
@@ -271,7 +278,26 @@ fn color_enabled(no_color_flag: bool) -> bool {
     !no_color_flag && std::env::var_os("NO_COLOR").is_none()
 }
 
-async fn run(cli: Cli) -> Result<String, (i32, String)> {
+/// Rendered command output plus the exit code to use after printing it.
+///
+/// Most commands succeed, so [`CommandOutput::from`] defaults to
+/// [`EXIT_SUCCESS`]; `health` overrides the code when the API reports
+/// degraded dependencies.
+struct CommandOutput {
+    text: String,
+    exit_code: i32,
+}
+
+impl From<String> for CommandOutput {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+            exit_code: EXIT_SUCCESS,
+        }
+    }
+}
+
+async fn run(cli: Cli) -> Result<CommandOutput, (i32, String)> {
     let client = StellarRouteClient::new(&cli.api_url)
         .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string()))?;
     let color = color_enabled(cli.no_color);
@@ -282,6 +308,7 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
             .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::Pairs { limit } => render_pairs(&client, limit, cli.output)
             .await
+            .map(CommandOutput::from)
             .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::Quote {
             base,
@@ -300,6 +327,7 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
             color,
         )
         .await
+        .map(CommandOutput::from)
         .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::Orderbook {
             base,
@@ -307,6 +335,7 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
             levels,
         } => render_orderbook(&client, &base, &quote, levels.get(), cli.output)
             .await
+            .map(CommandOutput::from)
             .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::Routes {
             base,
@@ -326,6 +355,7 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
             cli.output,
         )
         .await
+        .map(CommandOutput::from)
         .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
         Commands::BatchQuote {
             pairs,
@@ -333,12 +363,16 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
             quote_type,
         } => render_batch_quote(&client, &pairs, amount.as_deref(), quote_type, cli.output)
             .await
+            .map(CommandOutput::from)
             .map_err(|error| (exit_code_for_sdk_error(&error), error.to_string())),
-        Commands::AgentHealth => render_agent_health(&cli.api_url, cli.output).await,
-        Commands::CardHealth => render_card_health(&cli.api_url, cli.output).await,
+        Commands::AgentHealth => render_agent_health(&cli.api_url, cli.output)
+            .await
+            .map(CommandOutput::from),
+        Commands::CardHealth => render_card_health(&cli.api_url, cli.output)
+            .await
+            .map(CommandOutput::from),
     }
 }
-
 
 async fn render_batch_quote(
     client: &StellarRouteClient,
@@ -430,7 +464,15 @@ fn format_batch_quote(
                 })
                 .collect::<Vec<_>>();
             let table = format_table(
-                &["base", "quote", "amount", "quote_type", "price", "total", "steps"],
+                &[
+                    "base",
+                    "quote",
+                    "amount",
+                    "quote_type",
+                    "price",
+                    "total",
+                    "steps",
+                ],
                 rows,
             );
             Ok(format!(
@@ -442,13 +484,49 @@ fn format_batch_quote(
     }
 }
 
+/// Per-component health values that do not indicate degradation.
+///
+/// `healthy` is the nominal value; `not_configured` covers optional
+/// dependencies (for example the Redis cache) that are intentionally absent.
+const NON_DEGRADED_COMPONENT_STATUSES: [&str; 2] = ["healthy", "not_configured"];
+
+/// Whether a `/health` payload reports degraded service.
+///
+/// `GET /health` returns `200 OK` with an overall `healthy` status while
+/// optional dependencies (the Redis cache, indexer lag) are degraded — those
+/// states only show up per component. Degradation is therefore reported when
+/// the overall status is not `healthy`, or when any component is neither
+/// `healthy` nor `not_configured`.
+fn health_is_degraded(response: &HealthResponse) -> bool {
+    if !response.is_healthy() {
+        return true;
+    }
+
+    response
+        .components
+        .values()
+        .any(|status| !NON_DEGRADED_COMPONENT_STATUSES.contains(&status.as_str()))
+}
+
+/// Probe `GET /health` and render it.
+///
+/// The payload is always rendered, but the returned [`CommandOutput`] carries
+/// [`EXIT_DEGRADED`] instead of [`EXIT_SUCCESS`] when the API reports degraded
+/// dependencies, so `stellarroute health` can gate scripts and probes.
 async fn render_health(
     client: &StellarRouteClient,
     output: OutputFormat,
-) -> Result<String, SdkError> {
+) -> Result<CommandOutput, SdkError> {
     let response = client.health().await?;
 
-    format_health(&response, output)
+    let text = format_health(&response, output)?;
+    let exit_code = if health_is_degraded(&response) {
+        EXIT_DEGRADED
+    } else {
+        EXIT_SUCCESS
+    };
+
+    Ok(CommandOutput { text, exit_code })
 }
 
 #[derive(Debug, Deserialize)]
@@ -1213,7 +1291,6 @@ fn exit_code_for_sdk_error(error: &SdkError) -> i32 {
     }
 }
 
-
 fn split_pair(pair: &str) -> (String, String) {
     match pair.split_once('/') {
         Some((base, quote)) => (base.to_string(), quote.to_string()),
@@ -1223,9 +1300,9 @@ fn split_pair(pair: &str) -> (String, String) {
 
 /// Validates a `BASE/QUOTE` pair argument, applying [`parse_asset`] to each half.
 fn parse_pair(value: &str) -> Result<String, String> {
-    let (base, quote) = value.split_once('/').ok_or_else(|| {
-        format!("invalid pair '{value}'; expected BASE/QUOTE (e.g. native/USDC)")
-    })?;
+    let (base, quote) = value
+        .split_once('/')
+        .ok_or_else(|| format!("invalid pair '{value}'; expected BASE/QUOTE (e.g. native/USDC)"))?;
     if quote.contains('/') {
         return Err(format!(
             "invalid pair '{value}'; expected exactly one '/' separator"
@@ -1628,6 +1705,156 @@ step | from   | to   | price     | source
             }),
             EXIT_RUNTIME_ERROR
         );
+    }
+
+    // ── health subcommand tests ───────────────────────────────────────────────
+
+    fn health_response(status: &str, components: &[(&str, &str)]) -> HealthResponse {
+        HealthResponse {
+            status: status.to_string(),
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            version: "0.6.0".to_string(),
+            components: components
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn health_is_not_degraded_when_all_components_healthy() {
+        let response = health_response("healthy", &[("database", "healthy"), ("redis", "healthy")]);
+        assert!(!health_is_degraded(&response));
+    }
+
+    #[test]
+    fn health_is_not_degraded_without_components() {
+        let response = health_response("healthy", &[]);
+        assert!(!health_is_degraded(&response));
+    }
+
+    #[test]
+    fn health_treats_not_configured_components_as_non_degraded() {
+        // The Redis cache is optional, so an absent cache reports `not_configured`
+        // rather than a failure.
+        let response = health_response(
+            "healthy",
+            &[("database", "healthy"), ("redis", "not_configured")],
+        );
+        assert!(!health_is_degraded(&response));
+    }
+
+    #[test]
+    fn health_is_degraded_when_redis_reports_degraded() {
+        // `/health` still returns `200 OK` with an overall `healthy` status while
+        // the optional cache is degraded, so the per-component value is decisive.
+        let response =
+            health_response("healthy", &[("database", "healthy"), ("redis", "degraded")]);
+        assert!(health_is_degraded(&response));
+    }
+
+    #[test]
+    fn health_is_degraded_when_overall_status_is_unhealthy() {
+        let response = health_response("unhealthy", &[("database", "unhealthy")]);
+        assert!(health_is_degraded(&response));
+    }
+
+    #[test]
+    fn health_is_degraded_on_soft_indexer_lag() {
+        let response = health_response("healthy", &[("indexer", "warning (lag: 12 ledgers)")]);
+        assert!(health_is_degraded(&response));
+    }
+
+    #[tokio::test]
+    async fn render_health_exits_degraded_when_component_is_degraded() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "healthy",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "version": "0.6.0",
+                "components": { "database": "healthy", "redis": "degraded" },
+            })))
+            .mount(&server)
+            .await;
+
+        let client = StellarRouteClient::new(&server.uri()).expect("client should build");
+        let output = render_health(&client, OutputFormat::Human)
+            .await
+            .expect("200 should render health");
+
+        assert_eq!(output.exit_code, EXIT_DEGRADED);
+        assert!(output.text.contains("redis: degraded"));
+    }
+
+    #[tokio::test]
+    async fn render_health_exits_success_when_all_components_healthy() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "healthy",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "version": "0.6.0",
+                "components": { "database": "healthy", "redis": "not_configured" },
+            })))
+            .mount(&server)
+            .await;
+
+        let client = StellarRouteClient::new(&server.uri()).expect("client should build");
+        let output = render_health(&client, OutputFormat::Human)
+            .await
+            .expect("200 should render health");
+
+        assert_eq!(output.exit_code, EXIT_SUCCESS);
+    }
+
+    #[tokio::test]
+    async fn render_health_degraded_json_output_is_machine_readable() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "healthy",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "version": "0.6.0",
+                "components": { "redis": "degraded" },
+            })))
+            .mount(&server)
+            .await;
+
+        let client = StellarRouteClient::new(&server.uri()).expect("client should build");
+        let output = render_health(&client, OutputFormat::Json)
+            .await
+            .expect("200 should render health");
+
+        // The payload is printed before the non-zero exit so `--json` stays usable.
+        assert_eq!(output.exit_code, EXIT_DEGRADED);
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&output.text).expect("degraded health should stay valid JSON");
+        assert_eq!(parsed["status"], "healthy");
+        assert_eq!(parsed["components"][0]["name"], "redis");
+        assert_eq!(parsed["components"][0]["status"], "degraded");
+    }
+
+    #[tokio::test]
+    async fn render_health_503_is_a_runtime_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let client = StellarRouteClient::new(&server.uri()).expect("client should build");
+        let error = render_health(&client, OutputFormat::Human)
+            .await
+            .expect_err("503 should be a runtime error");
+
+        assert_eq!(error.status_code(), Some(503));
+        assert_eq!(exit_code_for_sdk_error(&error), EXIT_RUNTIME_ERROR);
     }
 
     // ── routes subcommand tests ───────────────────────────────────────────────
@@ -2136,7 +2363,10 @@ step | from   | to   | price     | source
     fn batch_quote_requires_at_least_one_pair() {
         let error = Cli::try_parse_from(["stellarroute", "batch-quote"])
             .expect_err("at least one pair is required");
-        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
 
     #[test]
@@ -2146,5 +2376,4 @@ step | from   | to   | price     | source
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
         assert!(error.to_string().contains("BASE/QUOTE"));
     }
-
 }

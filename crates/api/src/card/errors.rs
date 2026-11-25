@@ -53,7 +53,7 @@ impl CardErrorCode {
             Self::KycRequired => StatusCode::FORBIDDEN,                      // 403
             Self::FxExpired => StatusCode::BAD_REQUEST,                      // 400
             Self::CountryBlocked => StatusCode::BAD_REQUEST,                 // 400
-            Self::PartnerUnconfigured => StatusCode::SERVICE_UNAVAILABLE,   // 503
+            Self::PartnerUnconfigured => StatusCode::SERVICE_UNAVAILABLE,    // 503
         }
     }
 }
@@ -88,10 +88,7 @@ mod tests {
             CardErrorCode::LimitExceeded.http_status(),
             StatusCode::BAD_REQUEST
         );
-        assert_eq!(
-            CardErrorCode::Frozen.http_status(),
-            StatusCode::FORBIDDEN
-        );
+        assert_eq!(CardErrorCode::Frozen.http_status(), StatusCode::FORBIDDEN);
         assert_eq!(
             CardErrorCode::KycRequired.http_status(),
             StatusCode::FORBIDDEN

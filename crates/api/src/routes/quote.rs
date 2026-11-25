@@ -59,7 +59,12 @@ use crate::{
         ("fields" = Option<String>, Query, description = "Optional comma-separated top-level quote fields to include (e.g., 'price,total,path'). Unknown fields return 400."),
     ),
     responses(
-        (status = 200, description = "Price quote", body = QuoteResponse),
+        (
+            status = 200,
+            description = "Price quote. Data-quality vocabulary is documented on the \
+                `DataQuality` schema (`live` | `degraded` | `stale` | `unknown`).",
+            body = QuoteResponse
+        ),
         (
             status = 400,
             description = "Invalid parameters",
@@ -638,6 +643,7 @@ pub(crate) async fn get_quote_inner(
                             )));
                         }
                         crate::cache::CacheResult::Miss => {
+                            state.cache_metrics.inc_quote_miss();
                             crate::metrics::record_cache_miss("quote");
                         }
                         crate::cache::CacheResult::Unavailable => {
@@ -649,6 +655,7 @@ pub(crate) async fn get_quote_inner(
                     }
                 }
             } else {
+                state.cache_metrics.inc_quote_miss();
                 crate::metrics::record_cache_miss("quote");
             }
 
@@ -2145,6 +2152,25 @@ mod tests {
         let (rejections, excluded) = metrics.snapshot_staleness();
         assert_eq!(rejections, 1);
         assert_eq!(excluded, 5);
+    }
+
+    // --- Redis cache miss metric for the quote path (LIVE-03) ---
+
+    /// The `/metrics/cache` endpoint reports `quote_misses` from
+    /// [`CacheMetrics::snapshot`]. A quote that misses the Redis cache (or has no
+    /// cache configured) must move the miss side of that tuple, never the hit.
+    #[test]
+    fn quote_cache_misses_increment_in_process_counter() {
+        let metrics = CacheMetrics::default();
+        assert_eq!(metrics.snapshot(), (0, 0));
+
+        metrics.inc_quote_hit();
+        metrics.inc_quote_miss();
+        metrics.inc_quote_miss();
+
+        let (hits, misses) = metrics.snapshot();
+        assert_eq!(hits, 1, "one cache hit recorded");
+        assert_eq!(misses, 2, "two cache misses recorded on the quote path");
     }
 
     // --- Req 6.3: mixed-freshness — NoRouteFound when fresh candidates lack liquidity ---

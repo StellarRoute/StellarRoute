@@ -38,3 +38,4 @@ The CLI uses stable exit codes for scripting:
 - `2`: CLI usage/validation error (including invalid `--output`)
 - `3`: invalid client configuration (for example, malformed `--api-url`)
 - `4`: runtime/API error (HTTP/API/serialization failure)
+- `5`: API reachable but reporting degraded health (`health`)

@@ -139,7 +139,7 @@ impl PairInvalidationGraph {
             .or_default()
             .insert(key);
     }
- 
+
     /// Register a route cache key for a pair
     pub fn register_route(&self, pair: &Pair, cache_key: impl Into<String>) {
         let key = cache_key.into();

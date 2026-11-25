@@ -62,10 +62,7 @@ impl CardEnvGuard {
 impl Drop for CardEnvGuard {
     fn drop(&mut self) {
         restore_var("CARD_ENABLED", self.card_enabled.take());
-        restore_var(
-            "CARD_PARTNER_STELLAR_ADDRESS",
-            self.partner_address.take(),
-        );
+        restore_var("CARD_PARTNER_STELLAR_ADDRESS", self.partner_address.take());
     }
 }
 

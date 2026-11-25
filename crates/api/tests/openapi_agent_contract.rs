@@ -65,8 +65,7 @@ async fn openapi_agent_paths_are_present() {
         );
 
         assert!(
-            operation["responses"]["200"].is_object()
-                || operation["responses"]["404"].is_object(),
+            operation["responses"]["200"].is_object() || operation["responses"]["404"].is_object(),
             "{method} {path} must document at least a 200 or 404 response"
         );
     }

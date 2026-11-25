@@ -141,7 +141,10 @@ async fn run() -> anyhow::Result<()> {
         for line in &lines {
             writeln!(handle, "{}", line)?;
         }
-        eprintln!("Exported {} redacted audit log records to stdout", total_records);
+        eprintln!(
+            "Exported {} redacted audit log records to stdout",
+            total_records
+        );
         return Ok(());
     }
 
@@ -158,7 +161,8 @@ async fn run() -> anyhow::Result<()> {
     }
 
     if let Some(ref bucket) = cli.s3_bucket {
-        upload_to_object_storage(bucket, &cli.s3_prefix, cli.s3_endpoint.as_deref(), &lines).await?;
+        upload_to_object_storage(bucket, &cli.s3_prefix, cli.s3_endpoint.as_deref(), &lines)
+            .await?;
     }
 
     Ok(())
@@ -167,7 +171,12 @@ async fn run() -> anyhow::Result<()> {
 fn parse_iso8601(s: &str) -> anyhow::Result<chrono::DateTime<chrono::Utc>> {
     chrono::DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&chrono::Utc))
-        .map_err(|_| anyhow::anyhow!("Invalid timestamp '{}': expected ISO8601 / RFC3339 format", s))
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "Invalid timestamp '{}': expected ISO8601 / RFC3339 format",
+                s
+            )
+        })
 }
 
 async fn fetch_route_audit_logs(
@@ -197,7 +206,8 @@ async fn fetch_route_audit_logs(
     let mut entries = Vec::with_capacity(rows.len());
     for row in rows {
         use sqlx::Row;
-        let inputs: AuditInputs = serde_json::from_value(row.get::<serde_json::Value, _>("inputs"))?;
+        let inputs: AuditInputs =
+            serde_json::from_value(row.get::<serde_json::Value, _>("inputs"))?;
         let selected: Option<AuditSelected> = row
             .get::<Option<serde_json::Value>, _>("selected")
             .map(serde_json::from_value)
@@ -326,7 +336,10 @@ async fn upload_to_object_storage(
                 status,
                 tmp_path.display()
             );
-            Err(anyhow::anyhow!("S3 upload command failed with status {}", status))
+            Err(anyhow::anyhow!(
+                "S3 upload command failed with status {}",
+                status
+            ))
         }
         Err(e) => {
             eprintln!(

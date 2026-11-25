@@ -32,7 +32,10 @@ async fn apply_migrations(pool: &PgPool) {
         .expect("migration lock failed");
 
     for (name, migration) in [
-        ("0001_init.sql", include_str!("../../indexer/migrations/0001_init.sql")),
+        (
+            "0001_init.sql",
+            include_str!("../../indexer/migrations/0001_init.sql"),
+        ),
         (
             "0002_performance_indexes.sql",
             include_str!("../../indexer/migrations/0002_performance_indexes.sql"),
@@ -100,13 +103,12 @@ async fn apply_migrations(pool: &PgPool) {
         .await
         .expect("migration ledger setup failed");
 
-        let applied: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM _schema_migrations WHERE name = $1)",
-        )
-        .bind(name)
-        .fetch_one(&mut *transaction)
-        .await
-        .expect("migration status query failed");
+        let applied: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM _schema_migrations WHERE name = $1)")
+                .bind(name)
+                .fetch_one(&mut *transaction)
+                .await
+                .expect("migration status query failed");
 
         if !applied {
             sqlx::raw_sql(migration)
@@ -121,10 +123,7 @@ async fn apply_migrations(pool: &PgPool) {
         }
     }
 
-    transaction
-        .commit()
-        .await
-        .expect("migration commit failed");
+    transaction.commit().await.expect("migration commit failed");
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -279,7 +278,9 @@ async fn get_asset_metadata_fixture_returns_200_with_optional_issuer() {
     let response = router
         .oneshot(
             Request::builder()
-                .uri(format!("/api/v1/assets/{FIXTURE_CODE}?issuer={FIXTURE_ISSUER}"))
+                .uri(format!(
+                    "/api/v1/assets/{FIXTURE_CODE}?issuer={FIXTURE_ISSUER}"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -288,10 +289,9 @@ async fn get_asset_metadata_fixture_returns_200_with_optional_issuer() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let json = body_json(response).await;
-    let expected: Value = serde_json::from_str(include_str!(
-        "fixtures/assets/issued_asset_metadata.json"
-    ))
-    .expect("issued asset fixture is not valid JSON");
+    let expected: Value =
+        serde_json::from_str(include_str!("fixtures/assets/issued_asset_metadata.json"))
+            .expect("issued asset fixture is not valid JSON");
     assert_eq!(json["data"], expected);
 
     cleanup_asset_fixture(&pool).await;
@@ -316,9 +316,8 @@ async fn get_asset_metadata_fixture_returns_404_for_unknown_asset() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let json = body_json(response).await;
-    let expected: Value = serde_json::from_str(include_str!(
-        "fixtures/assets/missing_asset_error.json"
-    ))
-    .expect("missing asset fixture is not valid JSON");
+    let expected: Value =
+        serde_json::from_str(include_str!("fixtures/assets/missing_asset_error.json"))
+            .expect("missing asset fixture is not valid JSON");
     assert_eq!(json["data"]["error"], expected["error"]);
 }

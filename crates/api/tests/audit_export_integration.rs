@@ -70,7 +70,10 @@ fn export_swap_submit_redacts_account_public_key() {
 
     let json = serde_json::to_string(&entry).expect("serialize");
 
-    assert!(!json.contains(ACCOUNT), "raw account key must not be present");
+    assert!(
+        !json.contains(ACCOUNT),
+        "raw account key must not be present"
+    );
     assert!(json.contains("GABC"), "account prefix preserved");
     assert!(json.contains('#'), "fingerprint hash separator present");
 }
@@ -96,7 +99,10 @@ fn export_ndjson_line_serialization_is_valid() {
     AuditRedactor::redact(&mut route_entry);
 
     let line = serde_json::to_string(&route_entry).expect("serialize line");
-    assert!(!line.contains('\n'), "NDJSON lines must not contain raw newlines");
+    assert!(
+        !line.contains('\n'),
+        "NDJSON lines must not contain raw newlines"
+    );
 
     let parsed: serde_json::Value = serde_json::from_str(&line).expect("parse line");
     assert_eq!(parsed["request_id"], "req-01");

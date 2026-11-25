@@ -125,10 +125,7 @@ async fn validate_disabled_returns_404() {
         .mount(&server)
         .await;
 
-    let err = client(&server)
-        .validate_intent(request)
-        .await
-        .unwrap_err();
+    let err = client(&server).validate_intent(request).await.unwrap_err();
     assert!(err.is_not_found());
     assert_eq!(err.status_code(), Some(404));
 }

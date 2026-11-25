@@ -339,7 +339,6 @@ async fn run(cli: Cli) -> Result<String, (i32, String)> {
     }
 }
 
-
 async fn render_batch_quote(
     client: &StellarRouteClient,
     pairs: &[String],
@@ -430,7 +429,15 @@ fn format_batch_quote(
                 })
                 .collect::<Vec<_>>();
             let table = format_table(
-                &["base", "quote", "amount", "quote_type", "price", "total", "steps"],
+                &[
+                    "base",
+                    "quote",
+                    "amount",
+                    "quote_type",
+                    "price",
+                    "total",
+                    "steps",
+                ],
                 rows,
             );
             Ok(format!(
@@ -1213,7 +1220,6 @@ fn exit_code_for_sdk_error(error: &SdkError) -> i32 {
     }
 }
 
-
 fn split_pair(pair: &str) -> (String, String) {
     match pair.split_once('/') {
         Some((base, quote)) => (base.to_string(), quote.to_string()),
@@ -1223,9 +1229,9 @@ fn split_pair(pair: &str) -> (String, String) {
 
 /// Validates a `BASE/QUOTE` pair argument, applying [`parse_asset`] to each half.
 fn parse_pair(value: &str) -> Result<String, String> {
-    let (base, quote) = value.split_once('/').ok_or_else(|| {
-        format!("invalid pair '{value}'; expected BASE/QUOTE (e.g. native/USDC)")
-    })?;
+    let (base, quote) = value
+        .split_once('/')
+        .ok_or_else(|| format!("invalid pair '{value}'; expected BASE/QUOTE (e.g. native/USDC)"))?;
     if quote.contains('/') {
         return Err(format!(
             "invalid pair '{value}'; expected exactly one '/' separator"
@@ -2136,7 +2142,10 @@ step | from   | to   | price     | source
     fn batch_quote_requires_at_least_one_pair() {
         let error = Cli::try_parse_from(["stellarroute", "batch-quote"])
             .expect_err("at least one pair is required");
-        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
 
     #[test]
@@ -2146,5 +2155,4 @@ step | from   | to   | price     | source
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
         assert!(error.to_string().contains("BASE/QUOTE"));
     }
-
 }

@@ -48,7 +48,10 @@ async fn asset_metadata_returns_full_payload() {
     assert_eq!(asset.decimals, 7);
     assert_eq!(asset.asset_type, "credit_alphanum4");
     assert_eq!(asset.display_name.as_deref(), Some("USD Coin"));
-    assert_eq!(asset.icon_url.as_deref(), Some("https://example.test/usdc.png"));
+    assert_eq!(
+        asset.icon_url.as_deref(),
+        Some("https://example.test/usdc.png")
+    );
     assert_eq!(asset.domain.as_deref(), Some("centre.io"));
 }
 
@@ -118,7 +121,10 @@ async fn asset_metadata_maps_404_to_not_found() {
         .mount(&server)
         .await;
 
-    let err = client(&server).asset_metadata("NOPE", None).await.unwrap_err();
+    let err = client(&server)
+        .asset_metadata("NOPE", None)
+        .await
+        .unwrap_err();
 
     match err {
         SdkError::Api { code, status, .. } => {
@@ -141,7 +147,10 @@ async fn asset_metadata_surfaces_server_error() {
         .mount(&server)
         .await;
 
-    let err = client(&server).asset_metadata("USDC", None).await.unwrap_err();
+    let err = client(&server)
+        .asset_metadata("USDC", None)
+        .await
+        .unwrap_err();
 
     assert!(
         matches!(err, SdkError::Api { status: 500, .. }),

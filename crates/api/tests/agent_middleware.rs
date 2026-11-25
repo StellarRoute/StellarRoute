@@ -177,12 +177,7 @@ async fn agent_flag_off_answers_404_without_database() {
     for path in ["/api/v1/agent/health", "/api/v1/agent/tools"] {
         let response = router
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(path)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
             .await
             .expect("request failed");
         assert_eq!(

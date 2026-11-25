@@ -54,11 +54,7 @@ pub async fn agent_health() -> impl IntoResponse {
             .into_response();
     }
 
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({ "enabled": true })),
-    )
-        .into_response()
+    (StatusCode::OK, Json(serde_json::json!({ "enabled": true }))).into_response()
 }
 
 /// List the static AI agent tool catalog.
@@ -88,7 +84,13 @@ pub async fn agent_tools() -> impl IntoResponse {
             .into_response();
     }
 
-    (StatusCode::OK, Json(AgentToolsResponse { tools: list_agent_tools() })).into_response()
+    (
+        StatusCode::OK,
+        Json(AgentToolsResponse {
+            tools: list_agent_tools(),
+        }),
+    )
+        .into_response()
 }
 
 /// Validate an agent intent without storing it
@@ -109,9 +111,7 @@ pub async fn agent_tools() -> impl IntoResponse {
         (status = 422, description = "Intent failed validation", body = ErrorResponse),
     )
 )]
-pub async fn agent_intents_validate(
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
+pub async fn agent_intents_validate(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
     if !is_agent_enabled() {
         return (
             StatusCode::NOT_FOUND,

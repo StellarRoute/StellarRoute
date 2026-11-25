@@ -59,7 +59,12 @@ use crate::{
         ("fields" = Option<String>, Query, description = "Optional comma-separated top-level quote fields to include (e.g., 'price,total,path'). Unknown fields return 400."),
     ),
     responses(
-        (status = 200, description = "Price quote", body = QuoteResponse),
+        (
+            status = 200,
+            description = "Price quote. Data-quality vocabulary is documented on the \
+                `DataQuality` schema (`live` | `degraded` | `stale` | `unknown`).",
+            body = QuoteResponse
+        ),
         (
             status = 400,
             description = "Invalid parameters",

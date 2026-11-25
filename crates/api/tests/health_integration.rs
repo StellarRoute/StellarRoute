@@ -97,6 +97,48 @@ fn health_response_allows_degraded_optional_redis() {
 }
 
 // ---------------------------------------------------------------------------
+// Router-level tests (no external deps — lazy pool)
+// ---------------------------------------------------------------------------
+
+/// The `/health` probe must advertise indexer freshness as a response header so
+/// staging/edge probes can gate on it without parsing the JSON body.
+#[tokio::test]
+async fn health_exposes_indexer_freshness_header() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/unused")
+        .expect("failed to create lazy pool");
+
+    let router = Server::new(ServerConfig::default(), DatabasePools::new(pool, None))
+        .await
+        .into_router();
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("Request failed");
+
+    let freshness = response
+        .headers()
+        .get("x-indexer-freshness")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    assert!(
+        matches!(
+            freshness.as_str(),
+            "ok" | "warning" | "critical" | "unknown"
+        ),
+        "x-indexer-freshness header must be present and well-formed, got {freshness:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Live endpoint tests (require DATABASE_URL)
 // ---------------------------------------------------------------------------
 

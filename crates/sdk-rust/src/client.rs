@@ -26,14 +26,15 @@ use reqwest::{header, Url};
 use crate::{
     error::{ApiErrorCode, RateLimitInfo, Result, SdkError},
     types::{
-        AgentHealth, AssetMetadataResponse, BatchQuoteRequest, BatchQuoteResponse, CardApplicationDraft,
-        CardApplicationValidation, CardAuthorization, CardAuthorizationsResponse, CardHealth,
-        CctpPrepareBurnResponse, CctpPrepareMintResponse, CctpQuoteRequest, CctpQuoteResponse,
-        CctpReattestResponse, CctpSubmitBurnRequest, CctpSubmitBurnResponse, CctpSubmitMintRequest,
-        CctpSubmitMintResponse, CctpTransferStatusResponse, ErrorResponse, HealthResponse,
-        OrderbookResponse, PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest,
-        RoutesResponse, SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest,
-        SwapSubmitResponse, ValidateIntentRequest, ValidateIntentResponse, CCTP_IDEMPOTENCY_HEADER,
+        AgentHealth, AssetMetadataResponse, BatchQuoteRequest, BatchQuoteResponse,
+        CardApplicationDraft, CardApplicationValidation, CardAuthorization,
+        CardAuthorizationsResponse, CardHealth, CctpPrepareBurnResponse, CctpPrepareMintResponse,
+        CctpQuoteRequest, CctpQuoteResponse, CctpReattestResponse, CctpSubmitBurnRequest,
+        CctpSubmitBurnResponse, CctpSubmitMintRequest, CctpSubmitMintResponse,
+        CctpTransferStatusResponse, ErrorResponse, HealthResponse, OrderbookResponse,
+        PairsResponse, QuoteRequest, QuoteResponse, RoutesRequest, RoutesResponse,
+        SwapPrepareRequest, SwapPrepareResponse, SwapSubmitRequest, SwapSubmitResponse,
+        ValidateIntentRequest, ValidateIntentResponse, CCTP_IDEMPOTENCY_HEADER,
         CCTP_TRANSFER_ACCESS_HEADER,
     },
 };
@@ -205,7 +206,6 @@ impl StellarRouteClient {
         self.get(&format!("api/v1/price-history/{base}/{quote}"))
             .await
     }
-
 
     /// `GET /api/v1/assets/{code}` — fetch metadata for a single asset.
     ///
@@ -437,7 +437,10 @@ impl StellarRouteClient {
     /// `Ok(AgentHealth { enabled: false })`, never a panic. Any other error
     /// is propagated unchanged.
     pub async fn agent_health(&self) -> Result<AgentHealth> {
-        match self.get_unwrapped::<AgentHealth>("api/v1/agent/health").await {
+        match self
+            .get_unwrapped::<AgentHealth>("api/v1/agent/health")
+            .await
+        {
             Ok(health) => Ok(health),
             Err(e) if e.status_code() == Some(404) => Ok(AgentHealth::disabled()),
             Err(e) => Err(e),
@@ -447,7 +450,10 @@ impl StellarRouteClient {
     /// `POST /api/v1/agent/intents/validate` — validate an agent intent.
     ///
     /// Posts the intent as JSON. Returns the normalized intent on success.
-    pub async fn validate_intent(&self, request: ValidateIntentRequest) -> Result<ValidateIntentResponse> {
+    pub async fn validate_intent(
+        &self,
+        request: ValidateIntentRequest,
+    ) -> Result<ValidateIntentResponse> {
         self.post_unwrapped("api/v1/agent/intents/validate", &request)
             .await
     }

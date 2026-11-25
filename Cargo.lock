@@ -5298,6 +5298,7 @@ dependencies = [
  "chrono",
  "clap",
  "insta",
+ "proptest",
  "reqwest",
  "serde",
  "serde_json",

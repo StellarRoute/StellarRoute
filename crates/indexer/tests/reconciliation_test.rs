@@ -427,8 +427,8 @@ mod integration_tests {
 
 #[cfg(test)]
 mod unit_tests {
-    use stellarroute_indexer::reconciliation::{CheckType, DriftSeverity, ReconciliationRun};
     use chrono::Utc;
+    use stellarroute_indexer::reconciliation::{CheckType, DriftSeverity, ReconciliationRun};
     use uuid::Uuid;
 
     #[test]

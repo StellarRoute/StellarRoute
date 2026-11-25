@@ -497,4 +497,3 @@ async fn different_ips_have_independent_limits() {
         .unwrap();
     assert_eq!(allowed.status(), StatusCode::OK);
 }
-

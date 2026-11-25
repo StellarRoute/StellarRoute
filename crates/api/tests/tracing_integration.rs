@@ -65,7 +65,8 @@ struct Visitor<'a>(&'a mut std::collections::HashMap<String, String>);
 
 impl<'a> tracing::field::Visit for Visitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.0.insert(field.name().to_string(), format!("{:?}", value));
+        self.0
+            .insert(field.name().to_string(), format!("{:?}", value));
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
@@ -161,4 +162,3 @@ fn test_quote_span_attributes_and_names() {
     );
     assert_eq!(quote_span.fields.get("cache_hit").unwrap(), "true");
 }
-

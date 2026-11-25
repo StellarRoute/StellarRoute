@@ -220,6 +220,25 @@ pub struct DataFreshness {
     pub max_staleness_secs: u64,
 }
 
+/// Categorical quality label for the market data underlying a quote.
+///
+/// Exposed as a documented OpenAPI enum (and Rust type) so clients share one
+/// closed vocabulary for judging how trustworthy a quote is. This is an
+/// OpenAPI/documentation surface only: it does not alter quote selection,
+/// ranking, or execution, and is not serialized on the runtime response body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DataQuality {
+    /// Every evaluated source was fresh; the quote reflects live market state.
+    Live,
+    /// At least one source was stale, but a usable quote was still produced.
+    Degraded,
+    /// Underlying data is beyond the freshness budget; treat the quote as advisory.
+    Stale,
+    /// Freshness could not be determined for the underlying data.
+    Unknown,
+}
+
 /// Price quote response with expiry and staleness metadata
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct QuoteResponse {
@@ -895,6 +914,42 @@ mod tests {
             let serialized = serde_json::to_string(&df).expect("serialize");
             let deserialized: DataFreshness = serde_json::from_str(&serialized).expect("deserialize");
             prop_assert_eq!(df, deserialized);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // DataQuality enum — OpenAPI-only data-quality vocabulary (LIVE-02)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn data_quality_serializes_to_snake_case() {
+        let cases = [
+            (DataQuality::Live, "\"live\""),
+            (DataQuality::Degraded, "\"degraded\""),
+            (DataQuality::Stale, "\"stale\""),
+            (DataQuality::Unknown, "\"unknown\""),
+        ];
+
+        for (variant, expected) in cases {
+            assert_eq!(
+                serde_json::to_string(&variant).expect("serialize"),
+                expected,
+                "DataQuality::{variant:?} must serialize to {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn data_quality_round_trips_from_wire_strings() {
+        for variant in [
+            DataQuality::Live,
+            DataQuality::Degraded,
+            DataQuality::Stale,
+            DataQuality::Unknown,
+        ] {
+            let json = serde_json::to_string(&variant).expect("serialize");
+            let back: DataQuality = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(variant, back);
         }
     }
 
